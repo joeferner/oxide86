@@ -1,0 +1,11 @@
+[package]
+name = "emu86"
+version = "0.1.0"
+edition = "2024"
+
+[workspace]
+members = ["core", "native", "wasm"]
+
+[workspace.dependencies]
+anyhow = "1.0.100"
+clap = "4.5.54"
