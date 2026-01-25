@@ -35,6 +35,17 @@ The `emu86-native` crate provides a command-line interface for running 8086 prog
 - Interactive debugging capabilities
 - Memory inspection and register viewing
 
+**Native BIOS Implementation** ([native/src/bios/](native/src/bios/)):
+The native platform implements the `Bios` trait through `NativeBios`, which is organized into focused modules:
+- [native_bios.rs](native/src/bios/native_bios.rs) - Main `NativeBios` struct that implements the `Bios` trait
+- [console.rs](native/src/bios/console.rs) - Console I/O operations (keyboard and screen)
+- [disk.rs](native/src/bios/disk.rs) - Disk controller operations
+- [file.rs](native/src/bios/file.rs) - File operations via `FileManager`
+- [directory.rs](native/src/bios/directory.rs) - Directory operations via `DirectoryManager`
+- [memory_allocator.rs](native/src/bios/memory_allocator.rs) - DOS memory allocation
+- [time.rs](native/src/bios/time.rs) - System time and RTC operations
+- [peripheral.rs](native/src/bios/peripheral.rs) - Serial port and printer stubs
+
 ### WebAssembly Build ([wasm/](wasm/))
 The `emu86-wasm` crate provides WebAssembly bindings:
 - Browser-based emulation

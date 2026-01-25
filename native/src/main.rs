@@ -2,9 +2,9 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::{Computer, DiskImage, DiskGeometry};
 
-mod stdio_bios;
+mod bios;
+use bios::NativeBios;
 use log::info;
-use stdio_bios::StdioBios;
 
 mod simple_io_device;
 use simple_io_device::SimpleIoDevice;
@@ -70,7 +70,7 @@ fn main() -> Result<()> {
     };
 
     let io_device = SimpleIoDevice::new(cli.verbose_io);
-    let bios = StdioBios::new(disk, &cli.workdir);
+    let bios = NativeBios::new(disk, &cli.workdir);
     let video = TerminalVideo::new();
     let mut computer = Computer::new(bios, io_device, video);
 
