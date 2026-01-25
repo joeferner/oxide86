@@ -102,4 +102,8 @@ impl Bios for NullBios {
     fn find_next(&mut self, _search_id: usize) -> Result<FindData, u8> {
         Err(dos_errors::NO_MORE_FILES)
     }
+
+    fn get_system_ticks(&self) -> u32 {
+        0 // No real time available in null implementation
+    }
 }

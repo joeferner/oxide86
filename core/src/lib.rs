@@ -20,6 +20,11 @@ pub struct Computer<B: Bios = NullBios, I: IoDevice = NullIoDevice, V: VideoCont
     io_port: IoPort<I>,
     video: Video,
     video_controller: V,
+    /// Cycle counter for timer emulation
+    cycle_count: u64,
+    /// Cycles per timer tick (PIT frequency / 18.2 Hz)
+    /// 8086 at 4.77 MHz: approximately 262144 cycles per tick
+    cycles_per_tick: u64,
 }
 
 impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
@@ -27,6 +32,12 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         let mut memory = Memory::new();
         memory.initialize_ivt();
         memory.initialize_bda();
+
+        // Initialize BDA timer counter from host system time
+        let initial_ticks = bios.get_system_ticks();
+        memory.write_word(memory::BDA_START + memory::BDA_TIMER_COUNTER, (initial_ticks & 0xFFFF) as u16);
+        memory.write_word(memory::BDA_START + memory::BDA_TIMER_COUNTER + 2, (initial_ticks >> 16) as u16);
+
         Self {
             cpu: Cpu::new(),
             memory,
@@ -34,6 +45,10 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             io_port: IoPort::new(io_device),
             video: Video::new(),
             video_controller,
+            cycle_count: 0,
+            // 8086 at 4.77 MHz with PIT at 18.2 Hz: ~262144 cycles per tick
+            // This is approximate: 4770000 / 18.2 ≈ 262088
+            cycles_per_tick: 262088,
         }
     }
 
@@ -105,6 +120,11 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         for (offset, value) in self.memory.drain_video_writes() {
             self.video.write_byte(offset, value);
         }
+
+        // Increment cycle counter and update timer
+        // Approximate: assume each instruction takes 10 cycles
+        // Real 8086 instructions vary from 2 to 100+ cycles
+        self.increment_cycles(10);
     }
 
     pub fn dump_registers(&self) {
@@ -128,5 +148,37 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
     /// Check if CPU is halted
     pub fn is_halted(&self) -> bool {
         self.cpu.is_halted()
+    }
+
+    /// Increment cycle counter and update system timer if needed
+    /// This simulates the PIT (Programmable Interval Timer) running at 18.2 Hz
+    fn increment_cycles(&mut self, cycles: u64) {
+        self.cycle_count += cycles;
+
+        // Check if we've accumulated enough cycles for a timer tick
+        if self.cycle_count >= self.cycles_per_tick {
+            self.cycle_count -= self.cycles_per_tick;
+
+            // Read current timer counter from BDA
+            let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
+            let low_word = self.memory.read_word(counter_addr);
+            let high_word = self.memory.read_word(counter_addr + 2);
+            let mut tick_count = ((high_word as u32) << 16) | (low_word as u32);
+
+            // Increment tick count
+            tick_count = tick_count.wrapping_add(1);
+
+            // Check for midnight rollover (0x001800B0 ticks = 24 hours)
+            if tick_count >= 0x001800B0 {
+                tick_count = 0;
+                // Set midnight overflow flag
+                let overflow_addr = memory::BDA_START + memory::BDA_TIMER_OVERFLOW;
+                self.memory.write_byte(overflow_addr, 1);
+            }
+
+            // Write updated tick count back to BDA
+            self.memory.write_word(counter_addr, (tick_count & 0xFFFF) as u16);
+            self.memory.write_word(counter_addr + 2, (tick_count >> 16) as u16);
+        }
     }
 }

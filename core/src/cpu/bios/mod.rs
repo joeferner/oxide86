@@ -239,6 +239,13 @@ pub trait Bios {
     /// Get current default drive (INT 21h, AH=19h)
     /// Returns the current drive number (0=A, 1=B, etc.)
     fn get_current_drive(&self) -> u8;
+
+    // --- INT 1Ah - Time Services ---
+
+    /// Get system time in BIOS ticks since midnight (INT 1Ah, AH=00h)
+    /// Returns the current time in ticks (18.2 Hz timer)
+    /// Platform implementations should read the host system time
+    fn get_system_ticks(&self) -> u32;
 }
 
 impl Cpu {

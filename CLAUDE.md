@@ -187,6 +187,24 @@ The system timer counter (offset 0x6C, 4 bytes) tracks time using the PIT (Progr
 - INT 1Ah AH=01h sets the tick count and clears the midnight flag
 - The timer counter is a 32-bit value stored in little-endian format (low word at 0x6C, high word at 0x6E)
 
+**Timer Emulation:**
+
+The emulator simulates the PIT timer with cycle-based timing:
+- **Initialization**: On startup, the timer is initialized from the host system time via `Bios::get_system_ticks()`
+  - Native implementation reads the current time of day and converts to BIOS ticks
+  - This ensures programs see a realistic time value immediately
+- **Automatic Increment**: The timer automatically increments as the CPU executes instructions
+  - Each instruction execution adds to a cycle counter
+  - When the cycle count reaches ~262,088 cycles (simulating 18.2 Hz on a 4.77 MHz 8086), the timer increments by 1 tick
+  - This happens in `Computer::increment_cycles()` which is called after each instruction in `Computer::step()`
+- **Midnight Rollover**: When the timer reaches 0x001800B0 (24 hours), it:
+  - Resets to 0
+  - Sets the midnight overflow flag (BDA offset 0x70) to 1
+  - The flag is cleared when read by INT 1Ah AH=00h
+- **Manual Control**: Programs can still set the timer to any value using INT 1Ah AH=01h
+  - The cycle-based increment continues from the new value
+  - This allows programs to synchronize or adjust the time
+
 **Reading Timer in Assembly:**
 ```asm
 ; Get system time using INT 1Ah

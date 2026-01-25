@@ -606,6 +606,32 @@ impl<D: DiskController> Bios for StdioBios<D> {
         // Always return drive A (0)
         0
     }
+
+    fn get_system_ticks(&self) -> u32 {
+        use std::time::SystemTime;
+
+        // Get current system time
+        let now = SystemTime::now();
+        let duration = now
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default();
+
+        // Get seconds since Unix epoch
+        let total_seconds = duration.as_secs();
+
+        // Calculate seconds since midnight (local time approximation)
+        // Note: This is simplified and doesn't account for timezones properly
+        let seconds_in_day = 24 * 60 * 60;
+        let seconds_since_midnight = (total_seconds % seconds_in_day) as u32;
+
+        // Convert to BIOS ticks (18.2 ticks per second)
+        // More precisely: 1193182 / 65536 = 18.2065 Hz
+        // We use: ticks = seconds * 182 / 10
+        let ticks = (seconds_since_midnight as u64 * 182 / 10) as u32;
+
+        // Ensure we don't exceed the maximum tick count for a day
+        ticks.min(0x001800B0)
+    }
 }
 
 impl<D: DiskController> StdioBios<D> {
