@@ -1,4 +1,4 @@
-use crate::{Bios, DriveParams, cpu::bios::{FindData, KeyPress, RtcTime, SeekMethod, SerialParams, SerialStatus, PrinterStatus, dos_errors, int14::line_status, int17::printer_status}, disk_errors};
+use crate::{Bios, DriveParams, cpu::bios::{FindData, KeyPress, RtcTime, RtcDate, SeekMethod, SerialParams, SerialStatus, PrinterStatus, dos_errors, int14::line_status, int17::printer_status}, disk_errors};
 
 /// A null I/O handler that does nothing (for testing or headless operation)
 pub struct NullBios;
@@ -201,6 +201,10 @@ impl Bios for NullBios {
     }
 
     fn get_rtc_time(&self) -> Option<RtcTime> {
+        None // No RTC available in null implementation
+    }
+
+    fn get_rtc_date(&self) -> Option<RtcDate> {
         None // No RTC available in null implementation
     }
 }

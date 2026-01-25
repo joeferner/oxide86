@@ -1,5 +1,5 @@
 use emu86_core::cpu::bios::{
-    DriveParams, FindData, KeyPress, RtcTime, SeekMethod, SerialParams, SerialStatus, PrinterStatus, disk_errors, dos_errors, file_access, file_attributes,
+    DriveParams, FindData, KeyPress, RtcTime, RtcDate, SeekMethod, SerialParams, SerialStatus, PrinterStatus, disk_errors, dos_errors, file_access, file_attributes,
 };
 use emu86_core::cpu::bios::int14::line_status;
 use emu86_core::cpu::bios::int17::printer_status;
@@ -803,9 +803,75 @@ impl<D: DiskController> Bios for StdioBios<D> {
             dst_flag: 0, // Standard time (no DST support in this simple implementation)
         })
     }
+
+    fn get_rtc_date(&self) -> Option<RtcDate> {
+        use std::time::SystemTime;
+
+        // Get current system time
+        let now = SystemTime::now();
+        let duration = now
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default();
+
+        // Get total seconds since Unix epoch
+        let total_seconds = duration.as_secs();
+
+        // Calculate date (simplified Gregorian calendar calculation)
+        // Days since Unix epoch (January 1, 1970)
+        let days_since_epoch = (total_seconds / 86400) as i32;
+
+        // Calculate year, month, day using a simplified algorithm
+        // This is an approximation that works for dates between 1970-2099
+        let mut days_remaining = days_since_epoch;
+
+        // Start from 1970
+        let mut year = 1970;
+        loop {
+            let days_in_year = if Self::is_leap_year(year) { 366 } else { 365 };
+            if days_remaining < days_in_year {
+                break;
+            }
+            days_remaining -= days_in_year;
+            year += 1;
+        }
+
+        // Find month and day
+        let days_in_months = if Self::is_leap_year(year) {
+            [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        } else {
+            [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
+        };
+
+        let mut month = 1u8;
+        for &days_in_month in &days_in_months {
+            if days_remaining < days_in_month {
+                break;
+            }
+            days_remaining -= days_in_month;
+            month += 1;
+        }
+
+        let day = (days_remaining + 1) as u8;
+
+        // Calculate century and year within century
+        let century = (year / 100) as u8;
+        let year_in_century = (year % 100) as u8;
+
+        Some(RtcDate {
+            century,
+            year: year_in_century,
+            month,
+            day,
+        })
+    }
 }
 
 impl<D: DiskController> StdioBios<D> {
+    /// Check if a year is a leap year
+    fn is_leap_year(year: i32) -> bool {
+        (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
+    }
+
     /// Find the next matching file in a search
     fn find_next_matching(search_state: &mut SearchState) -> Result<FindData, u8> {
         loop {

@@ -59,6 +59,19 @@ pub struct RtcTime {
     pub dst_flag: u8,
 }
 
+/// RTC (Real Time Clock) date data returned by INT 1Ah, AH=04h
+#[derive(Debug, Clone, Copy)]
+pub struct RtcDate {
+    /// Century (19 or 20, decimal not BCD)
+    pub century: u8,
+    /// Year within century (0-99, decimal not BCD)
+    pub year: u8,
+    /// Month (1-12, decimal not BCD)
+    pub month: u8,
+    /// Day of month (1-31, decimal not BCD)
+    pub day: u8,
+}
+
 /// File seek methods for INT 21h, AH=42h
 #[derive(Debug, Clone, Copy)]
 pub enum SeekMethod {
@@ -287,6 +300,11 @@ pub trait Bios {
     /// Returns current time in decimal format (not BCD - conversion is done by caller)
     /// Returns None if RTC is not available (e.g., on original 8086 systems)
     fn get_rtc_time(&self) -> Option<RtcTime>;
+
+    /// Get Real Time Clock date (INT 1Ah, AH=04h)
+    /// Returns current date in decimal format (not BCD - conversion is done by caller)
+    /// Returns None if RTC is not available (e.g., on original 8086 systems)
+    fn get_rtc_date(&self) -> Option<RtcDate>;
 }
 
 impl Cpu {

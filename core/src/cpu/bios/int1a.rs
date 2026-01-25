@@ -21,6 +21,7 @@ impl Cpu {
             0x00 => self.int1a_get_system_time(memory),
             0x01 => self.int1a_set_system_time(memory),
             0x02 => self.int1a_read_rtc_time(io),
+            0x04 => self.int1a_read_rtc_date(io),
             _ => {
                 warn!("Unhandled INT 0x1A function: AH=0x{:02X}", function);
             }
@@ -90,6 +91,39 @@ impl Cpu {
                 // Set output registers
                 self.cx = ((hours_bcd as u16) << 8) | (minutes_bcd as u16); // CH = hours, CL = minutes
                 self.dx = ((seconds_bcd as u16) << 8) | (time.dst_flag as u16); // DH = seconds, DL = DST flag
+
+                // Clear CF to indicate success
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            None => {
+                // RTC not available - set CF to indicate failure
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 1Ah, AH=04h - Read Real Time Clock Date
+    /// Reads the current date from the RTC (AT systems only, not available on original 8086/XT)
+    /// Input: None
+    /// Output:
+    ///   CF = 0 if successful
+    ///   CF = 1 if RTC not operating or not present
+    ///   CH = century (BCD format, e.g., 0x19 or 0x20)
+    ///   CL = year (BCD format, 0-99)
+    ///   DH = month (BCD format, 1-12)
+    ///   DL = day (BCD format, 1-31)
+    fn int1a_read_rtc_date<T: Bios>(&mut self, io: &T) {
+        match io.get_rtc_date() {
+            Some(date) => {
+                // Convert decimal values to BCD format
+                let century_bcd = Self::decimal_to_bcd(date.century);
+                let year_bcd = Self::decimal_to_bcd(date.year);
+                let month_bcd = Self::decimal_to_bcd(date.month);
+                let day_bcd = Self::decimal_to_bcd(date.day);
+
+                // Set output registers
+                self.cx = ((century_bcd as u16) << 8) | (year_bcd as u16); // CH = century, CL = year
+                self.dx = ((month_bcd as u16) << 8) | (day_bcd as u16); // DH = month, DL = day
 
                 // Clear CF to indicate success
                 self.set_flag(cpu_flag::CARRY, false);
