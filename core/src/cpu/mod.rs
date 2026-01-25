@@ -183,8 +183,14 @@ impl Cpu {
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
 
+            // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
+            0xC0..=0xC1 => self.shift_rotate_group(opcode, memory),
+
             // RET with optional pop (C2: with imm16, C3: without)
             0xC2..=0xC3 => self.ret(opcode, memory),
+
+            // Shift/Rotate Group 2 (D0: r/m8, 1; D1: r/m16, 1; D2: r/m8, CL; D3: r/m16, CL)
+            0xD0..=0xD3 => self.shift_rotate_group(opcode, memory),
 
             // CALL near relative (E8)
             0xE8 => self.call_near(memory),
