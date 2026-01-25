@@ -145,4 +145,29 @@ impl Cpu {
             }
         }
     }
+
+    /// MOV segment register to r/m16 (opcode 8C)
+    /// 8C: MOV r/m16, segreg
+    /// Copies a segment register (ES, CS, SS, DS) to a 16-bit register or memory location
+    pub(in crate::cpu) fn mov_segreg_to_rm(&mut self, memory: &mut Memory) {
+        let modrm = self.fetch_byte(memory);
+        let (mode, seg_reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+
+        // The reg field specifies which segment register (ES=0, CS=1, SS=2, DS=3)
+        let value = self.get_segreg(seg_reg);
+        self.write_rm16(mode, rm, addr, value, memory);
+    }
+
+    /// MOV r/m16 to segment register (opcode 8E)
+    /// 8E: MOV segreg, r/m16
+    /// Copies a 16-bit register or memory value to a segment register (ES, CS, SS, DS)
+    /// Note: MOV to CS is not recommended as it affects instruction fetching
+    pub(in crate::cpu) fn mov_rm_to_segreg(&mut self, memory: &mut Memory) {
+        let modrm = self.fetch_byte(memory);
+        let (mode, seg_reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+
+        // The reg field specifies which segment register (ES=0, CS=1, SS=2, DS=3)
+        let value = self.read_rm16(mode, rm, addr, memory);
+        self.set_segreg(seg_reg, value);
+    }
 }

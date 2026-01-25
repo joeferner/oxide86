@@ -177,6 +177,12 @@ impl Cpu {
             // MOV register to/from r/m (88-8B)
             0x88..=0x8B => self.mov_reg_rm(opcode, memory),
 
+            // MOV segment register to r/m16 (8C)
+            0x8C => self.mov_segreg_to_rm(memory),
+
+            // MOV r/m16 to segment register (8E)
+            0x8E => self.mov_rm_to_segreg(memory),
+
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
             0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory),
 
@@ -299,6 +305,28 @@ impl Cpu {
             5 => self.bp,
             6 => self.si,
             7 => self.di,
+            _ => unreachable!(),
+        }
+    }
+
+    // Get segment register value
+    pub(super) fn get_segreg(&self, reg: u8) -> u16 {
+        match reg & 0x03 {
+            0 => self.es,
+            1 => self.cs,
+            2 => self.ss,
+            3 => self.ds,
+            _ => unreachable!(),
+        }
+    }
+
+    // Set segment register value
+    pub(super) fn set_segreg(&mut self, reg: u8, value: u16) {
+        match reg & 0x03 {
+            0 => self.es = value,
+            1 => self.cs = value,
+            2 => self.ss = value,
+            3 => self.ds = value,
             _ => unreachable!(),
         }
     }
