@@ -32,6 +32,9 @@ pub struct Cpu {
 
     // Halted flag
     halted: bool,
+
+    // Segment override prefix (for next instruction only)
+    segment_override: Option<u16>,
 }
 
 // Flag bit positions
@@ -63,6 +66,7 @@ impl Cpu {
             ip: 0,
             flags: 0,
             halted: false,
+            segment_override: None,
         }
     }
 
@@ -76,6 +80,7 @@ impl Cpu {
         self.flags = 0x0002; // Reserved bit always set
         self.sp = 0;
         self.halted = false;
+        self.segment_override = None;
         // Other registers are undefined on reset
     }
 
@@ -193,6 +198,14 @@ impl Cpu {
             // AND immediate to AL/AX
             0x24..=0x25 => self.and_imm_acc(opcode, memory),
 
+            // ES: segment override prefix (26)
+            0x26 => {
+                self.segment_override = Some(self.es);
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+                self.segment_override = None;
+            }
+
             // DAA - Decimal Adjust After Addition (27)
             0x27 => self.daa(),
 
@@ -201,6 +214,14 @@ impl Cpu {
 
             // SUB immediate to AL/AX
             0x2C..=0x2D => self.sub_imm_acc(opcode, memory),
+
+            // CS: segment override prefix (2E)
+            0x2E => {
+                self.segment_override = Some(self.cs);
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+                self.segment_override = None;
+            }
 
             // DAS - Decimal Adjust After Subtraction (2F)
             0x2F => self.das(),
@@ -211,6 +232,14 @@ impl Cpu {
             // XOR immediate to AL/AX
             0x34..=0x35 => self.xor_imm_acc(opcode, memory),
 
+            // SS: segment override prefix (36)
+            0x36 => {
+                self.segment_override = Some(self.ss);
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+                self.segment_override = None;
+            }
+
             // AAA - ASCII Adjust After Addition (37)
             0x37 => self.aaa(),
 
@@ -219,6 +248,14 @@ impl Cpu {
 
             // CMP immediate to AL/AX
             0x3C..=0x3D => self.cmp_imm_acc(opcode, memory),
+
+            // DS: segment override prefix (3E)
+            0x3E => {
+                self.segment_override = Some(self.ds);
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+                self.segment_override = None;
+            }
 
             // AAS - ASCII Adjust After Subtraction (3F)
             0x3F => self.aas(),
@@ -596,7 +633,8 @@ impl Cpu {
                 if mode == 0b00 {
                     // Special case: direct address (16-bit displacement, no base)
                     let disp = self.fetch_word(memory);
-                    return (mode, reg, rm, Self::physical_address(self.ds, disp), self.ds);
+                    let seg = self.segment_override.unwrap_or(self.ds);
+                    return (mode, reg, rm, Self::physical_address(seg, disp), seg);
                 } else {
                     (self.bp, self.ss)  // [BP]
                 }
@@ -621,8 +659,10 @@ impl Cpu {
             _ => unreachable!(),
         };
 
-        let effective_addr = Self::physical_address(default_seg, effective_offset);
-        (mode, reg, rm, effective_addr, default_seg)
+        // Use segment override if present, otherwise use default segment
+        let effective_seg = self.segment_override.unwrap_or(default_seg);
+        let effective_addr = Self::physical_address(effective_seg, effective_offset);
+        (mode, reg, rm, effective_addr, effective_seg)
     }
 
     // Read 8-bit value from register or memory based on mod field

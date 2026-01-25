@@ -26,6 +26,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
     pub fn new(bios: B, io_device: I, video_controller: V) -> Self {
         let mut memory = Memory::new();
         memory.initialize_ivt();
+        memory.initialize_bda();
         Self {
             cpu: Cpu::new(),
             memory,

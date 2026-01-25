@@ -123,7 +123,9 @@ impl Cpu {
 
         // Fetch the direct memory offset (16-bit address)
         let offset = self.fetch_word(memory);
-        let addr = Self::physical_address(self.ds, offset);
+        // Use segment override if present, otherwise use DS
+        let segment = self.segment_override.unwrap_or(self.ds);
+        let addr = Self::physical_address(segment, offset);
 
         if is_word {
             if to_acc {
@@ -277,7 +279,9 @@ impl Cpu {
     pub(in crate::cpu) fn xlat(&mut self, memory: &Memory) {
         let al = (self.ax & 0xFF) as u8;
         let offset = self.bx.wrapping_add(al as u16);
-        let addr = Self::physical_address(self.ds, offset);
+        // Use segment override if present, otherwise use DS
+        let segment = self.segment_override.unwrap_or(self.ds);
+        let addr = Self::physical_address(segment, offset);
         let value = memory.read_byte(addr);
         self.ax = (self.ax & 0xFF00) | (value as u16);
     }

@@ -19,13 +19,15 @@ impl Cpu {
     /// Moves data from DS:SI to ES:DI, then increments/decrements SI and DI
     /// based on the Direction Flag (DF).
     /// If DF=0: increment (forward), if DF=1: decrement (backward)
+    /// Note: Segment override can apply to source (DS:SI) but not destination (ES:DI is hardcoded)
     pub(in crate::cpu) fn movs(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
             // MOVSW - Move word
-            let src_addr = Self::physical_address(self.ds, self.si);
-            let dst_addr = Self::physical_address(self.es, self.di);
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let src_addr = Self::physical_address(src_seg, self.si);
+            let dst_addr = Self::physical_address(self.es, self.di); // ES:DI is always ES
             let value = memory.read_word(src_addr);
             memory.write_word(dst_addr, value);
 
@@ -41,8 +43,9 @@ impl Cpu {
             }
         } else {
             // MOVSB - Move byte
-            let src_addr = Self::physical_address(self.ds, self.si);
-            let dst_addr = Self::physical_address(self.es, self.di);
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let src_addr = Self::physical_address(src_seg, self.si);
+            let dst_addr = Self::physical_address(self.es, self.di); // ES:DI is always ES
             let value = memory.read_byte(src_addr);
             memory.write_byte(dst_addr, value);
 
@@ -66,13 +69,15 @@ impl Cpu {
     /// Compares DS:SI with ES:DI (subtracts ES:DI from DS:SI), sets flags,
     /// then increments/decrements SI and DI based on DF.
     /// Does not store the result, only affects flags.
+    /// Note: Segment override can apply to source (DS:SI) but not destination (ES:DI is hardcoded)
     pub(in crate::cpu) fn cmps(&mut self, opcode: u8, memory: &Memory) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
             // CMPSW - Compare word
-            let src_addr = Self::physical_address(self.ds, self.si);
-            let dst_addr = Self::physical_address(self.es, self.di);
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let src_addr = Self::physical_address(src_seg, self.si);
+            let dst_addr = Self::physical_address(self.es, self.di); // ES:DI is always ES
             let src = memory.read_word(src_addr);
             let dst = memory.read_word(dst_addr);
 
@@ -90,8 +95,9 @@ impl Cpu {
             }
         } else {
             // CMPSB - Compare byte
-            let src_addr = Self::physical_address(self.ds, self.si);
-            let dst_addr = Self::physical_address(self.es, self.di);
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let src_addr = Self::physical_address(src_seg, self.si);
+            let dst_addr = Self::physical_address(self.es, self.di); // ES:DI is always ES
             let src = memory.read_byte(src_addr);
             let dst = memory.read_byte(dst_addr);
 
@@ -158,12 +164,14 @@ impl Cpu {
     /// AD: LODSW - Load word from DS:SI into AX
     ///
     /// Loads data from DS:SI into AL/AX, then increments/decrements SI based on DF.
+    /// Note: Segment override can apply to DS:SI
     pub(in crate::cpu) fn lods(&mut self, opcode: u8, memory: &Memory) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
             // LODSW - Load word
-            let addr = Self::physical_address(self.ds, self.si);
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let addr = Self::physical_address(src_seg, self.si);
             self.ax = memory.read_word(addr);
 
             // Update SI based on direction flag
@@ -174,7 +182,8 @@ impl Cpu {
             }
         } else {
             // LODSB - Load byte
-            let addr = Self::physical_address(self.ds, self.si);
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let addr = Self::physical_address(src_seg, self.si);
             let value = memory.read_byte(addr);
             self.ax = (self.ax & 0xFF00) | (value as u16);
 
@@ -278,7 +287,8 @@ impl Cpu {
 
         if is_word {
             // OUTSW - Output word
-            let addr = Self::physical_address(self.ds, self.si);
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let addr = Self::physical_address(src_seg, self.si);
             let value = memory.read_word(addr);
             io_port.write_word(port, value);
 
@@ -290,7 +300,8 @@ impl Cpu {
             }
         } else {
             // OUTSB - Output byte
-            let addr = Self::physical_address(self.ds, self.si);
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let addr = Self::physical_address(src_seg, self.si);
             let value = memory.read_byte(addr);
             io_port.write_byte(port, value);
 

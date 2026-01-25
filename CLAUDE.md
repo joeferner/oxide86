@@ -64,6 +64,106 @@ The `emu86-wasm` crate provides WebAssembly bindings:
 - 20-bit address bus (1MB addressable memory)
 - 16-bit data bus
 
+### Segment Override Prefixes
+
+The emulator supports segment override prefixes for memory access instructions:
+- **0x26**: ES override - Forces memory access to use ES segment
+- **0x2E**: CS override - Forces memory access to use CS segment
+- **0x36**: SS override - Forces memory access to use SS segment
+- **0x3E**: DS override - Forces memory access to use DS segment
+
+**Implementation** ([core/src/cpu/mod.rs](core/src/cpu/mod.rs)):
+- The CPU maintains a `segment_override: Option<u16>` field
+- When a segment override prefix is encountered, it sets `segment_override` to the appropriate segment register value
+- The next instruction is executed recursively with the override active
+- After execution, `segment_override` is cleared
+- The following functions check `segment_override` and use it instead of the default segment:
+  - `decode_modrm()` - For memory operands ([core/src/cpu/mod.rs](core/src/cpu/mod.rs))
+  - `mov_acc_moffs()` - For direct memory offset moves ([core/src/cpu/instructions/data_transfer.rs](core/src/cpu/instructions/data_transfer.rs))
+  - `xlat()` - For table lookup translation ([core/src/cpu/instructions/data_transfer.rs](core/src/cpu/instructions/data_transfer.rs))
+  - String instruction source operands (DS:SI) ([core/src/cpu/instructions/string.rs](core/src/cpu/instructions/string.rs)):
+    - `movs()` - MOVSB/MOVSW source
+    - `cmps()` - CMPSB/CMPSW source
+    - `lods()` - LODSB/LODSW
+    - `outs()` - OUTSB/OUTSW
+
+**Important Notes:**
+- String instruction destinations (ES:DI) **cannot** be overridden - ES is hardcoded per x86 spec
+- Stack operations (SS:SP) do not use segment overrides
+- Code fetching (CS:IP) does not use segment overrides
+- BIOS/DOS interrupt handlers use specific segments as defined by their API contracts
+
+**Example Usage:**
+```asm
+mov ax, 0x0040
+mov es, ax
+mov ax, [es:0x10]  ; Read from ES:0x0010 instead of DS:0x0010
+
+; String instruction with override
+mov ax, 0x0040
+mov es, ax
+lodsb              ; Normally loads from DS:SI
+es lodsb           ; With override, loads from ES:SI
+```
+
+### BIOS Data Area (BDA)
+
+The emulator initializes a BIOS Data Area at segment 0x0040 (physical address 0x0400) containing system configuration information, compatible with IBM PC BIOS.
+
+**Initialization** ([core/src/memory.rs](core/src/memory.rs)):
+- The BDA is automatically initialized by `Memory::initialize_bda()` when the `Computer` is created
+- Total size: 256 bytes (0x0040:0000 to 0x0040:00FF)
+
+**BDA Fields:**
+
+| Offset | Size | Description | Default Value |
+|--------|------|-------------|---------------|
+| 0x00 | 8 bytes | COM1-COM4 port addresses | 0x03F8, 0x02F8, 0x03E8, 0x02E8 |
+| 0x08 | 8 bytes | LPT1-LPT4 port addresses | 0x0378, 0x0278, 0x03BC, 0x0000 |
+| 0x10 | 2 bytes | Equipment list word | 0x0061 (floppy + color 80x25) |
+| 0x13 | 2 bytes | Memory size in KB | 640 |
+| 0x17 | 1 byte | Keyboard shift flags 1 | 0x00 |
+| 0x18 | 1 byte | Keyboard shift flags 2 | 0x00 |
+| 0x1A | 2 bytes | Keyboard buffer head pointer | 0x001E |
+| 0x1C | 2 bytes | Keyboard buffer tail pointer | 0x001E |
+| 0x1E | 32 bytes | Keyboard buffer (16 scan code/char pairs) | All zeros |
+| 0x49 | 1 byte | Current video mode | 0x03 (80x25 color text) |
+| 0x4A | 2 bytes | Number of screen columns | 80 |
+| 0x4C | 2 bytes | Video page size in bytes | 4000 |
+| 0x4E | 2 bytes | Current video page offset | 0x0000 |
+| 0x50 | 16 bytes | Cursor positions for 8 pages | All zeros (row 0, col 0) |
+| 0x60 | 1 byte | Cursor end scan line | 0x0D |
+| 0x61 | 1 byte | Cursor start scan line | 0x0C |
+| 0x62 | 1 byte | Active display page | 0x00 |
+| 0x63 | 2 bytes | CRT controller base port | 0x03D4 (color) |
+| 0x65 | 1 byte | CRT mode control register | 0x09 |
+| 0x66 | 1 byte | CRT palette register | 0x00 |
+
+**Equipment List Bits** (offset 0x10):
+- Bit 0: Floppy drive installed
+- Bits 4-5: Initial video mode (0x20 = 80x25 color, 0x30 = 80x25 mono)
+- Bits 6-7: Number of floppy drives minus 1
+- Bits 9-11: Number of serial ports
+- Bits 14-15: Number of printers
+
+**Reading BDA in Assembly:**
+```asm
+; Set ES to BDA segment
+mov ax, 0x0040
+mov es, ax
+
+; Read equipment list
+mov ax, [es:0x10]
+
+; Read memory size in KB
+mov ax, [es:0x13]
+
+; Read video mode
+mov al, [es:0x49]
+```
+
+**Example:** See [examples/bda_test.asm](examples/bda_test.asm) for a complete BDA reading example.
+
 ### Interrupt Handling Architecture
 
 **BIOS Interrupt Implementation**
