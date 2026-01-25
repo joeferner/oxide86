@@ -139,6 +139,12 @@ impl Cpu {
                 // Return AL=0x00 (not installed)
                 self.ax &= 0xFF00;
             }
+            0x02 => {
+                // Release HMA
+                // Return AL=0x00 (HMA not allocated/not supported)
+                // 8086 doesn't have HMA - it requires 80286+ with extended memory
+                self.ax &= 0xFF00;
+            }
             _ => {
                 // Unknown subfunction - return not installed
                 self.ax &= 0xFF00;
