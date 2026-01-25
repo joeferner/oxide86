@@ -86,12 +86,12 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
                 // Manually advance IP past the INT instruction
                 self.cpu.ip = self.cpu.ip.wrapping_add(2);
                 // Execute with BIOS I/O
-                self.cpu.execute_int_with_io(int_num, &mut self.memory, &mut self.bios);
+                self.cpu.execute_int_with_io(int_num, &mut self.memory, &mut self.bios, &mut self.video);
             }
             0xCC => {
                 // INT 3 - advance IP and execute INT 3
                 self.cpu.ip = self.cpu.ip.wrapping_add(1);
-                self.cpu.execute_int_with_io(3, &mut self.memory, &mut self.bios);
+                self.cpu.execute_int_with_io(3, &mut self.memory, &mut self.bios, &mut self.video);
             }
             _ => {
                 // Normal instruction - use execute_with_io

@@ -63,6 +63,77 @@ The `emu86-wasm` crate provides WebAssembly bindings:
 - 20-bit address bus (1MB addressable memory)
 - 16-bit data bus
 
+### Interrupt Handling Architecture
+
+**BIOS Interrupt Implementation**
+
+The emulator supports BIOS interrupts through a trait-based system that allows platform-specific I/O while keeping the core platform-agnostic.
+
+**Interrupt Dispatch Flow:**
+```
+INT instruction (0xCD/0xCC) → Computer::step() intercepts
+  → Cpu::execute_int_with_io(int_num, memory, bios, video)
+  → Cpu::handle_bios_interrupt(int_num, memory, bios, video)
+  → Specific interrupt handler (handle_int10, handle_int13, handle_int21)
+  → Individual service functions based on AH register
+```
+
+**Implemented Interrupts:**
+
+- **INT 10h - Video Services** ([core/src/cpu/bios.rs](core/src/cpu/bios.rs))
+  - AH=00h: Set video mode
+  - AH=02h: Set cursor position
+  - AH=06h/07h: Scroll up/down
+  - AH=09h: Write character and attribute
+  - AH=0Eh: Teletype output
+  - AH=13h: Write string
+
+- **INT 13h - Disk Services** ([core/src/cpu/bios.rs](core/src/cpu/bios.rs))
+  - AH=00h: Reset disk system
+  - AH=02h: Read sectors
+  - AH=03h: Write sectors
+  - AH=08h: Get drive parameters
+
+- **INT 21h - DOS Services** ([core/src/cpu/bios.rs](core/src/cpu/bios.rs))
+  - AH=01h: Read character with echo
+  - AH=02h: Write character
+  - AH=09h: Write string
+  - AH=4Ch: Exit program
+
+**Adding New BIOS Interrupts:**
+
+To add a new BIOS interrupt handler:
+
+1. Add interrupt handler method in [core/src/cpu/bios.rs](core/src/cpu/bios.rs):
+   ```rust
+   fn handle_intXX(&mut self, memory: &mut Memory, io: &mut T, video: &mut Video) {
+       let function = (self.ax >> 8) as u8; // Get AH
+       match function {
+           0x00 => self.intXX_function_00(...),
+           _ => warn!("Unhandled INT 0xXX function: AH=0x{:02X}", function),
+       }
+   }
+   ```
+
+2. Add case to `handle_bios_interrupt()` dispatch in the same file:
+   ```rust
+   match int_num {
+       0xXX => {
+           self.handle_intXX(memory, io, video);
+           true
+       }
+       // ... existing cases
+   }
+   ```
+
+3. No changes needed to Computer or CPU core - dispatch is automatic
+
+**Critical Files:**
+- [core/src/cpu/bios.rs](core/src/cpu/bios.rs) - BIOS interrupt handlers
+- [core/src/cpu/mod.rs](core/src/cpu/mod.rs) - Interrupt dispatch (`execute_int_with_io`)
+- [core/src/lib.rs](core/src/lib.rs) - Computer integration (INT opcode detection)
+- [core/src/cpu/instructions/control_flow.rs](core/src/cpu/instructions/control_flow.rs) - INT instruction implementation
+
 ## Development
 
 ### Building

@@ -110,9 +110,10 @@ impl Cpu {
         int_num: u8,
         memory: &mut Memory,
         io: &mut T,
+        video: &mut crate::video::Video,
     ) {
         // Try to handle with BIOS I/O first
-        if self.handle_bios_interrupt(int_num, memory, io) {
+        if self.handle_bios_interrupt(int_num, memory, io, video) {
             // Handled by BIOS, don't do the normal INT
             return;
         }
