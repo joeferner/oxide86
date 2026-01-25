@@ -133,11 +133,11 @@ impl Cpu {
             // PUSH CS (0E)
             0x0E => self.push_segreg(opcode, memory),
 
-            // AND r/m to register
-            0x20..=0x23 => self.and_rm_reg(opcode, memory),
+            // ADC r/m to register (10-13)
+            0x10..=0x13 => self.adc_rm_reg(opcode, memory),
 
-            // AND immediate to AL/AX
-            0x24..=0x25 => self.and_imm_acc(opcode, memory),
+            // ADC immediate to AL/AX (14-15)
+            0x14..=0x15 => self.adc_imm_acc(opcode, memory),
 
             // PUSH SS (16)
             0x16 => self.push_segreg(opcode, memory),
@@ -145,11 +145,26 @@ impl Cpu {
             // POP SS (17)
             0x17 => self.pop_segreg(opcode, memory),
 
+            // SBB r/m to register (18-1B)
+            0x18..=0x1B => self.sbb_rm_reg(opcode, memory),
+
+            // SBB immediate to AL/AX (1C-1D)
+            0x1C..=0x1D => self.sbb_imm_acc(opcode, memory),
+
             // PUSH DS (1E)
             0x1E => self.push_segreg(opcode, memory),
 
             // POP DS (1F)
             0x1F => self.pop_segreg(opcode, memory),
+
+            // AND r/m to register
+            0x20..=0x23 => self.and_rm_reg(opcode, memory),
+
+            // AND immediate to AL/AX
+            0x24..=0x25 => self.and_imm_acc(opcode, memory),
+
+            // DAA - Decimal Adjust After Addition (27)
+            0x27 => self.daa(),
 
             // SUB r/m to register
             0x28..=0x2B => self.sub_rm_reg(opcode, memory),
@@ -157,17 +172,26 @@ impl Cpu {
             // SUB immediate to AL/AX
             0x2C..=0x2D => self.sub_imm_acc(opcode, memory),
 
+            // DAS - Decimal Adjust After Subtraction (2F)
+            0x2F => self.das(),
+
             // XOR r/m to register
             0x30..=0x33 => self.xor_rm_reg(opcode, memory),
 
             // XOR immediate to AL/AX
             0x34..=0x35 => self.xor_imm_acc(opcode, memory),
 
+            // AAA - ASCII Adjust After Addition (37)
+            0x37 => self.aaa(),
+
             // CMP r/m to register
             0x38..=0x3B => self.cmp_rm_reg(opcode, memory),
 
             // CMP immediate to AL/AX
             0x3C..=0x3D => self.cmp_imm_acc(opcode, memory),
+
+            // AAS - ASCII Adjust After Subtraction (3F)
+            0x3F => self.aas(),
 
             // INC 16-bit register (40-47)
             0x40..=0x47 => self.inc_reg16(opcode),
@@ -195,17 +219,47 @@ impl Cpu {
             // TEST r/m and register (84-85)
             0x84..=0x85 => self.test_rm_reg(opcode, memory),
 
+            // XCHG r/m and register (86-87)
+            0x86..=0x87 => self.xchg_rm_reg(opcode, memory),
+
             // MOV register to/from r/m (88-8B)
             0x88..=0x8B => self.mov_reg_rm(opcode, memory),
 
             // MOV segment register to r/m16 (8C)
             0x8C => self.mov_segreg_to_rm(memory),
 
+            // LEA - Load Effective Address (8D)
+            0x8D => self.lea(memory),
+
             // MOV r/m16 to segment register (8E)
             0x8E => self.mov_rm_to_segreg(memory),
 
             // POP r/m16 (8F) - Group 1A
             0x8F => self.pop_rm16(memory),
+
+            // NOP / XCHG AX, reg (90-97)
+            0x90..=0x97 => self.xchg_ax_reg(opcode),
+
+            // CBW - Convert Byte to Word (98)
+            0x98 => self.cbw(),
+
+            // CWD - Convert Word to Doubleword (99)
+            0x99 => self.cwd(),
+
+            // CALL far (9A)
+            0x9A => self.call_far(memory),
+
+            // PUSHF - Push Flags (9C)
+            0x9C => self.pushf(memory),
+
+            // POPF - Pop Flags (9D)
+            0x9D => self.popf(memory),
+
+            // SAHF - Store AH into Flags (9E)
+            0x9E => self.sahf(),
+
+            // LAHF - Load AH from Flags (9F)
+            0x9F => self.lahf(),
 
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
             0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory),
@@ -231,23 +285,59 @@ impl Cpu {
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
 
-            // PUSHF - Push Flags (9C)
-            0x9C => self.pushf(memory),
-
-            // POPF - Pop Flags (9D)
-            0x9D => self.popf(memory),
-
             // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
             0xC0..=0xC1 => self.shift_rotate_group(opcode, memory),
-
-            // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
-            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, memory),
 
             // RET with optional pop (C2: with imm16, C3: without)
             0xC2..=0xC3 => self.ret(opcode, memory),
 
+            // LES - Load Pointer using ES (C4)
+            0xC4 => self.les(memory),
+
+            // LDS - Load Pointer using DS (C5)
+            0xC5 => self.lds(memory),
+
+            // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
+            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, memory),
+
+            // RET far (CA: with imm16, CB: without)
+            0xCA..=0xCB => self.retf(opcode, memory),
+
+            // INT 3 - Breakpoint (CC)
+            0xCC => self.int3(memory),
+
+            // INT - Software Interrupt (CD)
+            0xCD => self.int(memory),
+
+            // INTO - Interrupt on Overflow (CE)
+            0xCE => self.into(memory),
+
+            // IRET - Interrupt Return (CF)
+            0xCF => self.iret(memory),
+
             // Shift/Rotate Group 2 (D0: r/m8, 1; D1: r/m16, 1; D2: r/m8, CL; D3: r/m16, CL)
             0xD0..=0xD3 => self.shift_rotate_group(opcode, memory),
+
+            // AAM - ASCII Adjust After Multiplication (D4)
+            0xD4 => self.aam(memory),
+
+            // AAD - ASCII Adjust Before Division (D5)
+            0xD5 => self.aad(memory),
+
+            // XLAT - Table Look-up Translation (D7)
+            0xD7 => self.xlat(memory),
+
+            // LOOPNE/LOOPNZ (E0)
+            0xE0 => self.loopne(memory),
+
+            // LOOPE/LOOPZ (E1)
+            0xE1 => self.loope(memory),
+
+            // LOOP (E2)
+            0xE2 => self.loop_inst(memory),
+
+            // JCXZ (E3)
+            0xE3 => self.jcxz(memory),
 
             // CALL near relative (E8)
             0xE8 => self.call_near(memory),
@@ -255,14 +345,32 @@ impl Cpu {
             // JMP near relative (E9)
             0xE9 => self.jmp_near(memory),
 
+            // JMP far (EA)
+            0xEA => self.jmp_far(memory),
+
             // JMP short relative (EB)
             0xEB => self.jmp_short(memory),
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
 
+            // CMC - Complement Carry Flag (F5)
+            0xF5 => self.cmc(),
+
             // NOT/NEG/MUL/DIV Group 3 (F6: 8-bit, F7: 16-bit)
             0xF6..=0xF7 => self.unary_group3(opcode, memory),
+
+            // CLC - Clear Carry Flag (F8)
+            0xF8 => self.clc(),
+
+            // STC - Set Carry Flag (F9)
+            0xF9 => self.stc(),
+
+            // CLI - Clear Interrupt Flag (FA)
+            0xFA => self.cli(),
+
+            // STI - Set Interrupt Flag (FB)
+            0xFB => self.sti(),
 
             // CLD - Clear Direction Flag (FC)
             0xFC => self.cld(),
@@ -270,8 +378,20 @@ impl Cpu {
             // STD - Set Direction Flag (FD)
             0xFD => self.std_flag(),
 
-            // INC/DEC r/m (FE: 8-bit, FF: 16-bit)
-            0xFE..=0xFF => self.inc_dec_rm(opcode, memory),
+            // INC/DEC/CALL/JMP Group 4/5 (FE: 8-bit, FF: 16-bit)
+            0xFE => self.inc_dec_rm(opcode, memory),
+            0xFF => {
+                // For FF, we need to check the reg field to determine operation
+                let modrm_peek = memory.read_byte(Self::physical_address(self.cs, self.ip));
+                let reg_field = (modrm_peek >> 3) & 0x07;
+                match reg_field {
+                    0 | 1 => self.inc_dec_rm(opcode, memory),  // INC/DEC
+                    2 | 3 => self.call_indirect(memory),        // CALL near/far
+                    4 | 5 => self.jmp_indirect(memory),         // JMP near/far
+                    6 => panic!("PUSH r/m16 not implemented"),
+                    _ => panic!("Invalid FF operation: {}", reg_field),
+                }
+            }
 
             _ => {
                 panic!("Unknown opcode: {:#04X} at {:04X}:{:04X}", opcode, self.cs, self.ip.wrapping_sub(1));

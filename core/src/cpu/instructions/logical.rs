@@ -1,4 +1,4 @@
-use super::super::{Cpu, FLAG_CARRY, FLAG_OVERFLOW};
+use super::super::{Cpu, FLAG_CARRY, FLAG_OVERFLOW, FLAG_INTERRUPT};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -301,8 +301,18 @@ impl Cpu {
     /// NOT/NEG/MUL/DIV/TEST Group 3 (opcode 0xF6 for 8-bit, 0xF7 for 16-bit)
     /// F6 /0: TEST r/m8, imm8
     /// F6 /2: NOT r/m8
+    /// F6 /3: NEG r/m8
+    /// F6 /4: MUL r/m8
+    /// F6 /5: IMUL r/m8
+    /// F6 /6: DIV r/m8
+    /// F6 /7: IDIV r/m8
     /// F7 /0: TEST r/m16, imm16
     /// F7 /2: NOT r/m16
+    /// F7 /3: NEG r/m16
+    /// F7 /4: MUL r/m16
+    /// F7 /5: IMUL r/m16
+    /// F7 /6: DIV r/m16
+    /// F7 /7: IDIV r/m16
     pub(in crate::cpu) fn unary_group3(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let modrm = self.fetch_byte(memory);
@@ -338,7 +348,167 @@ impl Cpu {
                 }
                 // NOT doesn't affect flags
             }
+            3 => {
+                // NEG (two's complement negation)
+                if is_word {
+                    let value = self.read_rm16(mode, rm, addr, memory);
+                    let result = value.wrapping_neg();
+                    self.write_rm16(mode, rm, addr, result, memory);
+                    self.set_flags_16(result);
+                    self.set_flag(FLAG_CARRY, value != 0);
+                    self.set_flag(FLAG_OVERFLOW, value == 0x8000);
+                    // Auxiliary carry for lower nibble
+                    self.set_flag(FLAG_AUXILIARY, (value & 0x0F) != 0);
+                } else {
+                    let value = self.read_rm8(mode, rm, addr, memory);
+                    let result = value.wrapping_neg();
+                    self.write_rm8(mode, rm, addr, result, memory);
+                    self.set_flags_8(result);
+                    self.set_flag(FLAG_CARRY, value != 0);
+                    self.set_flag(FLAG_OVERFLOW, value == 0x80);
+                    // Auxiliary carry for lower nibble
+                    self.set_flag(FLAG_AUXILIARY, (value & 0x0F) != 0);
+                }
+            }
+            4 => {
+                // MUL (unsigned multiply)
+                if is_word {
+                    let value = self.read_rm16(mode, rm, addr, memory);
+                    let result = (self.ax as u32) * (value as u32);
+                    self.ax = result as u16;
+                    self.dx = (result >> 16) as u16;
+                    // CF and OF are set if upper half (DX) is non-zero
+                    let upper_non_zero = self.dx != 0;
+                    self.set_flag(FLAG_CARRY, upper_non_zero);
+                    self.set_flag(FLAG_OVERFLOW, upper_non_zero);
+                    // Other flags are undefined, but we'll leave them as is
+                } else {
+                    let value = self.read_rm8(mode, rm, addr, memory);
+                    let al = (self.ax & 0xFF) as u8;
+                    let result = (al as u16) * (value as u16);
+                    self.ax = result;
+                    // CF and OF are set if upper half (AH) is non-zero
+                    let upper_non_zero = (result >> 8) != 0;
+                    self.set_flag(FLAG_CARRY, upper_non_zero);
+                    self.set_flag(FLAG_OVERFLOW, upper_non_zero);
+                }
+            }
+            5 => {
+                // IMUL (signed multiply)
+                if is_word {
+                    let value = self.read_rm16(mode, rm, addr, memory) as i16;
+                    let result = (self.ax as i16 as i32) * (value as i32);
+                    self.ax = result as u16;
+                    self.dx = (result >> 16) as u16;
+                    // CF and OF are set if result can't fit in lower half
+                    // i.e., if sign extension of AX != DX:AX
+                    let sign_extended = (self.ax as i16) as i32;
+                    let overflow = sign_extended != result;
+                    self.set_flag(FLAG_CARRY, overflow);
+                    self.set_flag(FLAG_OVERFLOW, overflow);
+                } else {
+                    let value = self.read_rm8(mode, rm, addr, memory) as i8;
+                    let al = (self.ax & 0xFF) as i8;
+                    let result = (al as i16) * (value as i16);
+                    self.ax = result as u16;
+                    // CF and OF are set if result can't fit in AL
+                    let sign_extended = ((self.ax & 0xFF) as i8) as i16;
+                    let overflow = sign_extended != result;
+                    self.set_flag(FLAG_CARRY, overflow);
+                    self.set_flag(FLAG_OVERFLOW, overflow);
+                }
+            }
+            6 => {
+                // DIV (unsigned divide)
+                if is_word {
+                    let divisor = self.read_rm16(mode, rm, addr, memory) as u32;
+                    if divisor == 0 {
+                        panic!("Division by zero");
+                    }
+                    let dividend = ((self.dx as u32) << 16) | (self.ax as u32);
+                    let quotient = dividend / divisor;
+                    let remainder = dividend % divisor;
+                    if quotient > 0xFFFF {
+                        panic!("Divide overflow");
+                    }
+                    self.ax = quotient as u16;
+                    self.dx = remainder as u16;
+                    // Flags are undefined after DIV
+                } else {
+                    let divisor = self.read_rm8(mode, rm, addr, memory) as u16;
+                    if divisor == 0 {
+                        panic!("Division by zero");
+                    }
+                    let dividend = self.ax;
+                    let quotient = dividend / divisor;
+                    let remainder = dividend % divisor;
+                    if quotient > 0xFF {
+                        panic!("Divide overflow");
+                    }
+                    self.ax = ((remainder as u16) << 8) | (quotient as u16);
+                    // Flags are undefined after DIV
+                }
+            }
+            7 => {
+                // IDIV (signed divide)
+                if is_word {
+                    let divisor = self.read_rm16(mode, rm, addr, memory) as i16 as i32;
+                    if divisor == 0 {
+                        panic!("Division by zero");
+                    }
+                    let dividend = (((self.dx as u16) as i16 as i32) << 16) | (self.ax as u16 as i32);
+                    let quotient = dividend / divisor;
+                    let remainder = dividend % divisor;
+                    if quotient > 32767 || quotient < -32768 {
+                        panic!("Divide overflow");
+                    }
+                    self.ax = quotient as u16;
+                    self.dx = remainder as u16;
+                    // Flags are undefined after IDIV
+                } else {
+                    let divisor = self.read_rm8(mode, rm, addr, memory) as i8 as i16;
+                    if divisor == 0 {
+                        panic!("Division by zero");
+                    }
+                    let dividend = self.ax as i16;
+                    let quotient = dividend / divisor;
+                    let remainder = dividend % divisor;
+                    if quotient > 127 || quotient < -128 {
+                        panic!("Divide overflow");
+                    }
+                    let al = quotient as u8;
+                    let ah = remainder as u8;
+                    self.ax = ((ah as u16) << 8) | (al as u16);
+                    // Flags are undefined after IDIV
+                }
+            }
             _ => panic!("Unimplemented Group 3 operation: {}", operation),
         }
+    }
+
+    /// CLC - Clear Carry Flag (opcode 0xF8)
+    pub(in crate::cpu) fn clc(&mut self) {
+        self.set_flag(FLAG_CARRY, false);
+    }
+
+    /// STC - Set Carry Flag (opcode 0xF9)
+    pub(in crate::cpu) fn stc(&mut self) {
+        self.set_flag(FLAG_CARRY, true);
+    }
+
+    /// CMC - Complement Carry Flag (opcode 0xF5)
+    pub(in crate::cpu) fn cmc(&mut self) {
+        let carry = self.get_flag(FLAG_CARRY);
+        self.set_flag(FLAG_CARRY, !carry);
+    }
+
+    /// CLI - Clear Interrupt Flag (opcode 0xFA)
+    pub(in crate::cpu) fn cli(&mut self) {
+        self.set_flag(FLAG_INTERRUPT, false);
+    }
+
+    /// STI - Set Interrupt Flag (opcode 0xFB)
+    pub(in crate::cpu) fn sti(&mut self) {
+        self.set_flag(FLAG_INTERRUPT, true);
     }
 }

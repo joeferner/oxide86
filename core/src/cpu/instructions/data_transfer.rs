@@ -232,4 +232,158 @@ impl Cpu {
         let value = self.pop(memory);
         self.write_rm16(mode, rm, addr, value, memory);
     }
+
+    /// XCHG register with accumulator (opcodes 90-97)
+    /// 90: NOP (XCHG AX, AX) - special case
+    /// 91-97: XCHG AX, reg16
+    pub(in crate::cpu) fn xchg_ax_reg(&mut self, opcode: u8) {
+        let reg = opcode & 0x07;
+        if reg == 0 {
+            // NOP - XCHG AX, AX does nothing
+            return;
+        }
+        let temp = self.ax;
+        self.ax = self.get_reg16(reg);
+        self.set_reg16(reg, temp);
+    }
+
+    /// XCHG register/memory with register (opcodes 86-87)
+    /// 86: XCHG r/m8, r8
+    /// 87: XCHG r/m16, r16
+    pub(in crate::cpu) fn xchg_rm_reg(&mut self, opcode: u8, memory: &mut Memory) {
+        let is_word = opcode & 0x01 != 0;
+        let modrm = self.fetch_byte(memory);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+
+        if is_word {
+            // 16-bit exchange
+            let reg_val = self.get_reg16(reg);
+            let rm_val = self.read_rm16(mode, rm, addr, memory);
+            self.set_reg16(reg, rm_val);
+            self.write_rm16(mode, rm, addr, reg_val, memory);
+        } else {
+            // 8-bit exchange
+            let reg_val = self.get_reg8(reg);
+            let rm_val = self.read_rm8(mode, rm, addr, memory);
+            self.set_reg8(reg, rm_val);
+            self.write_rm8(mode, rm, addr, reg_val, memory);
+        }
+    }
+
+    /// XLAT - Table Look-up Translation (opcode 0xD7)
+    /// Translates AL using lookup table at DS:BX
+    /// AL = [DS:BX + AL]
+    pub(in crate::cpu) fn xlat(&mut self, memory: &Memory) {
+        let al = (self.ax & 0xFF) as u8;
+        let offset = self.bx.wrapping_add(al as u16);
+        let addr = Self::physical_address(self.ds, offset);
+        let value = memory.read_byte(addr);
+        self.ax = (self.ax & 0xFF00) | (value as u16);
+    }
+
+    /// LEA - Load Effective Address (opcode 0x8D)
+    /// Loads the offset of the source operand into destination register
+    pub(in crate::cpu) fn lea(&mut self, memory: &Memory) {
+        let modrm = self.fetch_byte(memory);
+        let mode = modrm >> 6;
+        let reg = (modrm >> 3) & 0x07;
+        let rm = modrm & 0x07;
+
+        // LEA only works with memory operands (mode != 11)
+        if mode == 0b11 {
+            panic!("LEA cannot use register operand");
+        }
+
+        // Calculate the effective address offset (not physical address)
+        let offset = match rm {
+            0b000 => self.bx.wrapping_add(self.si),  // [BX + SI]
+            0b001 => self.bx.wrapping_add(self.di),  // [BX + DI]
+            0b010 => self.bp.wrapping_add(self.si),  // [BP + SI]
+            0b011 => self.bp.wrapping_add(self.di),  // [BP + DI]
+            0b100 => self.si,                         // [SI]
+            0b101 => self.di,                         // [DI]
+            0b110 => {
+                if mode == 0b00 {
+                    // Special case: direct address
+                    self.fetch_word(memory)
+                } else {
+                    self.bp  // [BP]
+                }
+            }
+            0b111 => self.bx,                         // [BX]
+            _ => unreachable!(),
+        };
+
+        // Add displacement based on mode
+        let effective_offset = match mode {
+            0b00 => offset,  // No displacement (except for direct addressing handled above)
+            0b01 => {
+                // 8-bit signed displacement
+                let disp = self.fetch_byte(memory) as i8;
+                offset.wrapping_add(disp as i16 as u16)
+            }
+            0b10 => {
+                // 16-bit displacement
+                let disp = self.fetch_word(memory);
+                offset.wrapping_add(disp)
+            }
+            _ => unreachable!(),
+        };
+
+        self.set_reg16(reg, effective_offset);
+    }
+
+    /// LDS - Load Pointer using DS (opcode 0xC5)
+    /// Loads far pointer from memory into register and DS
+    pub(in crate::cpu) fn lds(&mut self, memory: &Memory) {
+        let modrm = self.fetch_byte(memory);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+
+        // LDS only works with memory operands
+        if mode == 0b11 {
+            panic!("LDS cannot use register operand");
+        }
+
+        // Read offset and segment from memory (4 bytes total)
+        let offset = memory.read_word(addr);
+        let segment = memory.read_word(addr + 2);
+
+        self.set_reg16(reg, offset);
+        self.ds = segment;
+    }
+
+    /// LES - Load Pointer using ES (opcode 0xC4)
+    /// Loads far pointer from memory into register and ES
+    pub(in crate::cpu) fn les(&mut self, memory: &Memory) {
+        let modrm = self.fetch_byte(memory);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+
+        // LES only works with memory operands
+        if mode == 0b11 {
+            panic!("LES cannot use register operand");
+        }
+
+        // Read offset and segment from memory (4 bytes total)
+        let offset = memory.read_word(addr);
+        let segment = memory.read_word(addr + 2);
+
+        self.set_reg16(reg, offset);
+        self.es = segment;
+    }
+
+    /// LAHF - Load AH from Flags (opcode 0x9F)
+    /// Loads SF, ZF, AF, PF, CF into AH
+    pub(in crate::cpu) fn lahf(&mut self) {
+        let ah = (self.flags & 0xFF) as u8;
+        self.ax = (self.ax & 0x00FF) | ((ah as u16) << 8);
+    }
+
+    /// SAHF - Store AH into Flags (opcode 0x9E)
+    /// Stores AH into SF, ZF, AF, PF, CF
+    pub(in crate::cpu) fn sahf(&mut self) {
+        let ah = ((self.ax >> 8) & 0xFF) as u8;
+        // Only update lower 8 bits of flags (SF, ZF, 0, AF, 0, PF, 1, CF)
+        // Preserve upper 8 bits
+        self.flags = (self.flags & 0xFF00) | (ah as u16);
+    }
 }
