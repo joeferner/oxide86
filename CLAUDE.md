@@ -807,19 +807,27 @@ The emulator implements additional DOS system functions for compatibility with D
   - Input: BX = number of paragraphs (16-byte blocks) to allocate
   - Output (success): CF clear, AX = segment of allocated memory block
   - Output (failure): CF set, AX = error code, BX = size of largest available block
-  - Memory management is not fully implemented in the simple BIOS - returns insufficient memory error
+  - **Implementation:** Native platform implements a simple memory allocator
+    - Allocates from segment 0x2000 to 0xA000 (conventional memory)
+    - Uses a bump allocator strategy with HashMap tracking
+    - Supports approximately 512KB of allocatable memory
 
 - **AH=49h - Free Memory:**
   - Input: ES = segment of memory block to free
   - Output (success): CF clear
   - Output (failure): CF set, AX = error code
-  - Memory management is not fully implemented in the simple BIOS - returns error
+  - **Implementation:** Removes block from allocation table
+    - Validates segment address belongs to an allocated block
+    - Returns INVALID_MEMORY_BLOCK_ADDRESS error if segment not found
 
 - **AH=4Ah - Resize Memory Block:**
   - Input: ES = segment of block to resize, BX = new size in paragraphs
   - Output (success): CF clear
   - Output (failure): CF set, AX = error code, BX = maximum size available
-  - Memory management is not fully implemented in the simple BIOS - returns error
+  - **Implementation:** Resizes existing memory blocks
+    - Shrinking always succeeds (reduces block size)
+    - Growing only succeeds if block is the last allocated block
+    - Returns INSUFFICIENT_MEMORY if cannot resize in place
 
 - **AH=50h - Set PSP Address:**
   - Input: BX = segment of new Program Segment Prefix
