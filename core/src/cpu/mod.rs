@@ -130,6 +130,12 @@ impl Cpu {
             // CMP immediate to AL/AX
             0x3C..=0x3D => self.cmp_imm_acc(opcode, memory),
 
+            // INC 16-bit register (40-47)
+            0x40..=0x47 => self.inc_reg16(opcode),
+
+            // DEC 16-bit register (48-4F)
+            0x48..=0x4F => self.dec_reg16(opcode),
+
             // Conditional jumps (70-7F)
             0x70..=0x7F => self.jmp_conditional(opcode, memory),
 
@@ -152,6 +158,9 @@ impl Cpu {
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
+
+            // INC/DEC r/m (FE: 8-bit, FF: 16-bit)
+            0xFE..=0xFF => self.inc_dec_rm(opcode, memory),
 
             _ => {
                 panic!("Unknown opcode: {:#04X} at {:04X}:{:04X}", opcode, self.cs, self.ip.wrapping_sub(1));

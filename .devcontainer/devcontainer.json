@@ -14,14 +14,12 @@
       "extensions": [
         "bierner.markdown-emoji",
         "ms-vscode.hexeditor",
-        "ritwickdey.liveserver",
         "rust-lang.rust-analyzer",
         "smulyono.reveal",
         "streetsidesoftware.code-spell-checker",
         "esbenp.prettier-vscode",
         "dbaeumer.vscode-eslint",
-        "hashicorp.terraform",
-        "yy0931.vscode-sqlite3-editor"
+        "HaxoGames.x86-assembly-syntax"
       ]
     }
   }

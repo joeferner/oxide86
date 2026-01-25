@@ -476,6 +476,104 @@ impl Cpu {
         self.ip = self.ip.wrapping_add(offset as u16);
     }
 
+    /// INC 16-bit register (opcodes 40-47)
+    /// Increment register by 1 (does not affect carry flag)
+    pub(super) fn inc_reg16(&mut self, opcode: u8) {
+        let reg = opcode & 0x07;
+        let value = self.get_reg16(reg);
+        let result = value.wrapping_add(1);
+
+        self.set_reg16(reg, result);
+        self.set_flags_16(result);
+        // INC does not affect the carry flag
+        let overflow = value == 0x7FFF; // Overflow when going from max positive to negative
+        self.set_flag(FLAG_OVERFLOW, overflow);
+        let aux_carry = (value & 0x0F) == 0x0F;
+        self.set_flag(FLAG_AUXILIARY, aux_carry);
+    }
+
+    /// DEC 16-bit register (opcodes 48-4F)
+    /// Decrement register by 1 (does not affect carry flag)
+    pub(super) fn dec_reg16(&mut self, opcode: u8) {
+        let reg = opcode & 0x07;
+        let value = self.get_reg16(reg);
+        let result = value.wrapping_sub(1);
+
+        self.set_reg16(reg, result);
+        self.set_flags_16(result);
+        // DEC does not affect the carry flag
+        let overflow = value == 0x8000; // Overflow when going from min negative to positive
+        self.set_flag(FLAG_OVERFLOW, overflow);
+        let aux_carry = (value & 0x0F) == 0;
+        self.set_flag(FLAG_AUXILIARY, aux_carry);
+    }
+
+    /// INC/DEC r/m (opcode 0xFE for 8-bit, 0xFF for 16-bit)
+    /// FE /0: INC r/m8
+    /// FE /1: DEC r/m8
+    /// FF /0: INC r/m16
+    /// FF /1: DEC r/m16
+    pub(super) fn inc_dec_rm(&mut self, opcode: u8, memory: &Memory) {
+        let is_word = opcode & 0x01 != 0;
+        let modrm = self.fetch_byte(memory);
+        let operation = (modrm >> 3) & 0x07;
+        let rm = modrm & 0x07;
+        let mode = modrm >> 6;
+
+        // For now, only handle register mode (mode = 11b)
+        if mode == 0b11 {
+            match operation {
+                0 => {
+                    // INC
+                    if is_word {
+                        let value = self.get_reg16(rm);
+                        let result = value.wrapping_add(1);
+                        self.set_reg16(rm, result);
+                        self.set_flags_16(result);
+                        let overflow = value == 0x7FFF;
+                        self.set_flag(FLAG_OVERFLOW, overflow);
+                        let aux_carry = (value & 0x0F) == 0x0F;
+                        self.set_flag(FLAG_AUXILIARY, aux_carry);
+                    } else {
+                        let value = self.get_reg8(rm);
+                        let result = value.wrapping_add(1);
+                        self.set_reg8(rm, result);
+                        self.set_flags_8(result);
+                        let overflow = value == 0x7F;
+                        self.set_flag(FLAG_OVERFLOW, overflow);
+                        let aux_carry = (value & 0x0F) == 0x0F;
+                        self.set_flag(FLAG_AUXILIARY, aux_carry);
+                    }
+                }
+                1 => {
+                    // DEC
+                    if is_word {
+                        let value = self.get_reg16(rm);
+                        let result = value.wrapping_sub(1);
+                        self.set_reg16(rm, result);
+                        self.set_flags_16(result);
+                        let overflow = value == 0x8000;
+                        self.set_flag(FLAG_OVERFLOW, overflow);
+                        let aux_carry = (value & 0x0F) == 0;
+                        self.set_flag(FLAG_AUXILIARY, aux_carry);
+                    } else {
+                        let value = self.get_reg8(rm);
+                        let result = value.wrapping_sub(1);
+                        self.set_reg8(rm, result);
+                        self.set_flags_8(result);
+                        let overflow = value == 0x80;
+                        self.set_flag(FLAG_OVERFLOW, overflow);
+                        let aux_carry = (value & 0x0F) == 0;
+                        self.set_flag(FLAG_AUXILIARY, aux_carry);
+                    }
+                }
+                _ => panic!("Invalid INC/DEC operation: {}", operation),
+            }
+        } else {
+            panic!("Memory addressing modes not yet implemented");
+        }
+    }
+
     /// Conditional jumps - short relative (opcodes 70-7F)
     /// Jump to IP + signed 8-bit displacement if condition is met
     pub(super) fn jmp_conditional(&mut self, opcode: u8, memory: &Memory) {

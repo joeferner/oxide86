@@ -1,4 +1,4 @@
-; loop_demo.asm - Demonstrates SUB, CMP, and conditional jumps
+; loop_demo.asm - Demonstrates DEC, CMP, and conditional jumps
 ; This program counts down from 10 to 1 using a loop
 
 ; Initialize counter to 10
@@ -6,8 +6,8 @@ MOV CL, 10         ; CL = 10
 
 ; Loop start
 loop_start:
-    ; Decrement counter (using SUB instead of DEC for now)
-    SUB CL, 1      ; CL = CL - 1
+    ; Decrement counter
+    DEC CL         ; CL = CL - 1
 
     ; Compare counter with zero
     CMP CL, 0      ; Compare CL with 0 (sets flags)
