@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 clap = { workspace = true }
 emu86-core = { path = "../core" }
+anyhow = { workspace = true }
