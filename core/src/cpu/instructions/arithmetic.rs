@@ -7,56 +7,65 @@ impl Cpu {
     /// 01: ADD r/m16, r16
     /// 02: ADD r8, r/m8
     /// 03: ADD r16, r/m16
-    pub(in crate::cpu) fn add_rm_reg(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn add_rm_reg(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
         let modrm = self.fetch_byte(memory);
-        let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        // For now, only handle register-to-register (mode = 11b)
-        if mode == 0b11 {
-            if is_word {
-                // 16-bit register add
-                let src = if dir { self.get_reg16(rm) } else { self.get_reg16(reg) };
-                let dst = if dir { self.get_reg16(reg) } else { self.get_reg16(rm) };
-
-                let (result, carry) = dst.overflowing_add(src);
-                let overflow = ((dst ^ result) & (src ^ result) & 0x8000) != 0;
-
-                if dir {
-                    self.set_reg16(reg, result);
-                } else {
-                    self.set_reg16(rm, result);
-                }
-
-                self.set_flags_16(result);
-                self.set_flag(FLAG_CARRY, carry);
-                self.set_flag(FLAG_OVERFLOW, overflow);
+        if is_word {
+            // 16-bit add
+            let src = if dir {
+                self.read_rm16(mode, rm, addr, memory)
             } else {
-                // 8-bit register add
-                let src = if dir { self.get_reg8(rm) } else { self.get_reg8(reg) };
-                let dst = if dir { self.get_reg8(reg) } else { self.get_reg8(rm) };
+                self.get_reg16(reg)
+            };
+            let dst = if dir {
+                self.get_reg16(reg)
+            } else {
+                self.read_rm16(mode, rm, addr, memory)
+            };
 
-                let (result, carry) = dst.overflowing_add(src);
-                let overflow = ((dst ^ result) & (src ^ result) & 0x80) != 0;
-                let aux_carry = ((dst & 0x0F) + (src & 0x0F)) > 0x0F;
+            let (result, carry) = dst.overflowing_add(src);
+            let overflow = ((dst ^ result) & (src ^ result) & 0x8000) != 0;
 
-                if dir {
-                    self.set_reg8(reg, result);
-                } else {
-                    self.set_reg8(rm, result);
-                }
-
-                self.set_flags_8(result);
-                self.set_flag(FLAG_CARRY, carry);
-                self.set_flag(FLAG_OVERFLOW, overflow);
-                self.set_flag(FLAG_AUXILIARY, aux_carry);
+            if dir {
+                self.set_reg16(reg, result);
+            } else {
+                self.write_rm16(mode, rm, addr, result, memory);
             }
+
+            self.set_flags_16(result);
+            self.set_flag(FLAG_CARRY, carry);
+            self.set_flag(FLAG_OVERFLOW, overflow);
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            // 8-bit add
+            let src = if dir {
+                self.read_rm8(mode, rm, addr, memory)
+            } else {
+                self.get_reg8(reg)
+            };
+            let dst = if dir {
+                self.get_reg8(reg)
+            } else {
+                self.read_rm8(mode, rm, addr, memory)
+            };
+
+            let (result, carry) = dst.overflowing_add(src);
+            let overflow = ((dst ^ result) & (src ^ result) & 0x80) != 0;
+            let aux_carry = ((dst & 0x0F) + (src & 0x0F)) > 0x0F;
+
+            if dir {
+                self.set_reg8(reg, result);
+            } else {
+                self.write_rm8(mode, rm, addr, result, memory);
+            }
+
+            self.set_flags_8(result);
+            self.set_flag(FLAG_CARRY, carry);
+            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(FLAG_AUXILIARY, aux_carry);
         }
     }
 
@@ -94,185 +103,202 @@ impl Cpu {
 
     /// Arithmetic with immediate to r/m (opcode 0x80)
     /// 80: Immediate Group 1 - ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m8, imm8
-    pub(in crate::cpu) fn arith_imm8_rm8(&mut self, memory: &Memory) {
+    pub(in crate::cpu) fn arith_imm8_rm8(&mut self, memory: &mut Memory) {
         let modrm = self.fetch_byte(memory);
-        let operation = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+        let imm = self.fetch_byte(memory);
+        let dst = self.read_rm8(mode, rm, addr, memory);
 
-        // For now, only handle register mode (mode = 11b)
-        if mode == 0b11 {
-            let imm = self.fetch_byte(memory);
-            let dst = self.get_reg8(rm);
-
-            match operation {
-                0 => {
-                    // ADD
-                    let (result, carry) = dst.overflowing_add(imm);
-                    let overflow = ((dst ^ result) & (imm ^ result) & 0x80) != 0;
-                    let aux_carry = ((dst & 0x0F) + (imm & 0x0F)) > 0x0F;
-                    self.set_reg8(rm, result);
-                    self.set_flags_8(result);
-                    self.set_flag(FLAG_CARRY, carry);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
-                    self.set_flag(FLAG_AUXILIARY, aux_carry);
-                }
-                1 => {
-                    // OR
-                    let result = dst | imm;
-                    self.set_reg8(rm, result);
-                    self.set_flags_8(result);
-                    self.set_flag(FLAG_CARRY, false);
-                    self.set_flag(FLAG_OVERFLOW, false);
-                }
-                4 => {
-                    // AND
-                    let result = dst & imm;
-                    self.set_reg8(rm, result);
-                    self.set_flags_8(result);
-                    self.set_flag(FLAG_CARRY, false);
-                    self.set_flag(FLAG_OVERFLOW, false);
-                }
-                5 => {
-                    // SUB
-                    let (result, carry) = dst.overflowing_sub(imm);
-                    let overflow = ((dst ^ imm) & (dst ^ result) & 0x80) != 0;
-                    let aux_carry = (dst & 0x0F) < (imm & 0x0F);
-                    self.set_reg8(rm, result);
-                    self.set_flags_8(result);
-                    self.set_flag(FLAG_CARRY, carry);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
-                    self.set_flag(FLAG_AUXILIARY, aux_carry);
-                }
-                6 => {
-                    // XOR
-                    let result = dst ^ imm;
-                    self.set_reg8(rm, result);
-                    self.set_flags_8(result);
-                    self.set_flag(FLAG_CARRY, false);
-                    self.set_flag(FLAG_OVERFLOW, false);
-                }
-                7 => {
-                    // CMP (like SUB but doesn't store result)
-                    let (result, carry) = dst.overflowing_sub(imm);
-                    let overflow = ((dst ^ imm) & (dst ^ result) & 0x80) != 0;
-                    let aux_carry = (dst & 0x0F) < (imm & 0x0F);
-                    self.set_flags_8(result);
-                    self.set_flag(FLAG_CARRY, carry);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
-                    self.set_flag(FLAG_AUXILIARY, aux_carry);
-                }
-                _ => panic!("Unimplemented arithmetic operation: {}", operation),
+        match operation {
+            0 => {
+                // ADD
+                let (result, carry) = dst.overflowing_add(imm);
+                let overflow = ((dst ^ result) & (imm ^ result) & 0x80) != 0;
+                let aux_carry = ((dst & 0x0F) + (imm & 0x0F)) > 0x0F;
+                self.write_rm8(mode, rm, addr, result, memory);
+                self.set_flags_8(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
+                self.set_flag(FLAG_AUXILIARY, aux_carry);
             }
-        } else {
-            panic!("Memory addressing modes not yet implemented");
+            1 => {
+                // OR
+                let result = dst | imm;
+                self.write_rm8(mode, rm, addr, result, memory);
+                self.set_flags_8(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            4 => {
+                // AND
+                let result = dst & imm;
+                self.write_rm8(mode, rm, addr, result, memory);
+                self.set_flags_8(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            5 => {
+                // SUB
+                let (result, carry) = dst.overflowing_sub(imm);
+                let overflow = ((dst ^ imm) & (dst ^ result) & 0x80) != 0;
+                let aux_carry = (dst & 0x0F) < (imm & 0x0F);
+                self.write_rm8(mode, rm, addr, result, memory);
+                self.set_flags_8(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
+                self.set_flag(FLAG_AUXILIARY, aux_carry);
+            }
+            6 => {
+                // XOR
+                let result = dst ^ imm;
+                self.write_rm8(mode, rm, addr, result, memory);
+                self.set_flags_8(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            7 => {
+                // CMP (like SUB but doesn't store result)
+                let (result, carry) = dst.overflowing_sub(imm);
+                let overflow = ((dst ^ imm) & (dst ^ result) & 0x80) != 0;
+                let aux_carry = (dst & 0x0F) < (imm & 0x0F);
+                self.set_flags_8(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
+                self.set_flag(FLAG_AUXILIARY, aux_carry);
+            }
+            _ => panic!("Unimplemented arithmetic operation: {}", operation),
         }
     }
 
     /// Arithmetic with immediate to r/m (opcode 0x81)
     /// 81: Immediate Group 1 - ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m16, imm16
-    pub(in crate::cpu) fn arith_imm16_rm(&mut self, memory: &Memory) {
+    pub(in crate::cpu) fn arith_imm16_rm(&mut self, memory: &mut Memory) {
         let modrm = self.fetch_byte(memory);
-        let operation = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+        let imm = self.fetch_word(memory);
+        let dst = self.read_rm16(mode, rm, addr, memory);
 
-        // For now, only handle register mode (mode = 11b)
-        if mode == 0b11 {
-            let imm = self.fetch_word(memory);
-            let dst = self.get_reg16(rm);
-
-            match operation {
-                0 => {
-                    // ADD
-                    let (result, carry) = dst.overflowing_add(imm);
-                    let overflow = ((dst ^ result) & (imm ^ result) & 0x8000) != 0;
-                    self.set_reg16(rm, result);
-                    self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, carry);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
-                }
-                _ => panic!("Unimplemented arithmetic operation: {}", operation),
+        match operation {
+            0 => {
+                // ADD
+                let (result, carry) = dst.overflowing_add(imm);
+                let overflow = ((dst ^ result) & (imm ^ result) & 0x8000) != 0;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
             }
-        } else {
-            panic!("Memory addressing modes not yet implemented");
+            1 => {
+                // OR
+                let result = dst | imm;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            4 => {
+                // AND
+                let result = dst & imm;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            5 => {
+                // SUB
+                let (result, carry) = dst.overflowing_sub(imm);
+                let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
+            }
+            6 => {
+                // XOR
+                let result = dst ^ imm;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            7 => {
+                // CMP (like SUB but doesn't store result)
+                let (result, carry) = dst.overflowing_sub(imm);
+                let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
+            }
+            _ => panic!("Unimplemented arithmetic operation: {}", operation),
         }
     }
 
     /// Arithmetic with sign-extended immediate to r/m (opcode 0x83)
     /// 83: Immediate Group 1 - ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m16, imm8 (sign-extended)
-    pub(in crate::cpu) fn arith_imm8_rm(&mut self, memory: &Memory) {
+    pub(in crate::cpu) fn arith_imm8_rm(&mut self, memory: &mut Memory) {
         let modrm = self.fetch_byte(memory);
-        let operation = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
-
-        // For now, only handle register mode (mode = 11b)
-        if mode == 0b11 {
-            let imm8 = self.fetch_byte(memory);
-            // Sign-extend the 8-bit immediate to 16 bits
-            let imm = if imm8 & 0x80 != 0 {
-                0xFF00 | (imm8 as u16)
-            } else {
-                imm8 as u16
-            };
-            let dst = self.get_reg16(rm);
-
-            match operation {
-                0 => {
-                    // ADD
-                    let (result, carry) = dst.overflowing_add(imm);
-                    let overflow = ((dst ^ result) & (imm ^ result) & 0x8000) != 0;
-                    self.set_reg16(rm, result);
-                    self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, carry);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
-                }
-                1 => {
-                    // OR
-                    let result = dst | imm;
-                    self.set_reg16(rm, result);
-                    self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, false);
-                    self.set_flag(FLAG_OVERFLOW, false);
-                }
-                4 => {
-                    // AND
-                    let result = dst & imm;
-                    self.set_reg16(rm, result);
-                    self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, false);
-                    self.set_flag(FLAG_OVERFLOW, false);
-                }
-                5 => {
-                    // SUB
-                    let (result, carry) = dst.overflowing_sub(imm);
-                    let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
-                    self.set_reg16(rm, result);
-                    self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, carry);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
-                }
-                6 => {
-                    // XOR
-                    let result = dst ^ imm;
-                    self.set_reg16(rm, result);
-                    self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, false);
-                    self.set_flag(FLAG_OVERFLOW, false);
-                }
-                7 => {
-                    // CMP (like SUB but doesn't store result)
-                    let (result, carry) = dst.overflowing_sub(imm);
-                    let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
-                    self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, carry);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
-                }
-                _ => panic!("Unimplemented arithmetic operation: {}", operation),
-            }
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+        let imm8 = self.fetch_byte(memory);
+        // Sign-extend the 8-bit immediate to 16 bits
+        let imm = if imm8 & 0x80 != 0 {
+            0xFF00 | (imm8 as u16)
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            imm8 as u16
+        };
+        let dst = self.read_rm16(mode, rm, addr, memory);
+
+        match operation {
+            0 => {
+                // ADD
+                let (result, carry) = dst.overflowing_add(imm);
+                let overflow = ((dst ^ result) & (imm ^ result) & 0x8000) != 0;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
+            }
+            1 => {
+                // OR
+                let result = dst | imm;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            4 => {
+                // AND
+                let result = dst & imm;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            5 => {
+                // SUB
+                let (result, carry) = dst.overflowing_sub(imm);
+                let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
+            }
+            6 => {
+                // XOR
+                let result = dst ^ imm;
+                self.write_rm16(mode, rm, addr, result, memory);
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(FLAG_OVERFLOW, false);
+            }
+            7 => {
+                // CMP (like SUB but doesn't store result)
+                let (result, carry) = dst.overflowing_sub(imm);
+                let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
+                self.set_flags_16(result);
+                self.set_flag(FLAG_CARRY, carry);
+                self.set_flag(FLAG_OVERFLOW, overflow);
+            }
+            _ => panic!("Unimplemented arithmetic operation: {}", operation),
         }
     }
 
@@ -281,56 +307,65 @@ impl Cpu {
     /// 29: SUB r/m16, r16
     /// 2A: SUB r8, r/m8
     /// 2B: SUB r16, r/m16
-    pub(in crate::cpu) fn sub_rm_reg(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn sub_rm_reg(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
         let modrm = self.fetch_byte(memory);
-        let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        // For now, only handle register-to-register (mode = 11b)
-        if mode == 0b11 {
-            if is_word {
-                // 16-bit register sub
-                let src = if dir { self.get_reg16(rm) } else { self.get_reg16(reg) };
-                let dst = if dir { self.get_reg16(reg) } else { self.get_reg16(rm) };
-
-                let (result, carry) = dst.overflowing_sub(src);
-                let overflow = ((dst ^ src) & (dst ^ result) & 0x8000) != 0;
-
-                if dir {
-                    self.set_reg16(reg, result);
-                } else {
-                    self.set_reg16(rm, result);
-                }
-
-                self.set_flags_16(result);
-                self.set_flag(FLAG_CARRY, carry);
-                self.set_flag(FLAG_OVERFLOW, overflow);
+        if is_word {
+            // 16-bit sub
+            let src = if dir {
+                self.read_rm16(mode, rm, addr, memory)
             } else {
-                // 8-bit register sub
-                let src = if dir { self.get_reg8(rm) } else { self.get_reg8(reg) };
-                let dst = if dir { self.get_reg8(reg) } else { self.get_reg8(rm) };
+                self.get_reg16(reg)
+            };
+            let dst = if dir {
+                self.get_reg16(reg)
+            } else {
+                self.read_rm16(mode, rm, addr, memory)
+            };
 
-                let (result, carry) = dst.overflowing_sub(src);
-                let overflow = ((dst ^ src) & (dst ^ result) & 0x80) != 0;
-                let aux_carry = (dst & 0x0F) < (src & 0x0F);
+            let (result, carry) = dst.overflowing_sub(src);
+            let overflow = ((dst ^ src) & (dst ^ result) & 0x8000) != 0;
 
-                if dir {
-                    self.set_reg8(reg, result);
-                } else {
-                    self.set_reg8(rm, result);
-                }
-
-                self.set_flags_8(result);
-                self.set_flag(FLAG_CARRY, carry);
-                self.set_flag(FLAG_OVERFLOW, overflow);
-                self.set_flag(FLAG_AUXILIARY, aux_carry);
+            if dir {
+                self.set_reg16(reg, result);
+            } else {
+                self.write_rm16(mode, rm, addr, result, memory);
             }
+
+            self.set_flags_16(result);
+            self.set_flag(FLAG_CARRY, carry);
+            self.set_flag(FLAG_OVERFLOW, overflow);
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            // 8-bit sub
+            let src = if dir {
+                self.read_rm8(mode, rm, addr, memory)
+            } else {
+                self.get_reg8(reg)
+            };
+            let dst = if dir {
+                self.get_reg8(reg)
+            } else {
+                self.read_rm8(mode, rm, addr, memory)
+            };
+
+            let (result, carry) = dst.overflowing_sub(src);
+            let overflow = ((dst ^ src) & (dst ^ result) & 0x80) != 0;
+            let aux_carry = (dst & 0x0F) < (src & 0x0F);
+
+            if dir {
+                self.set_reg8(reg, result);
+            } else {
+                self.write_rm8(mode, rm, addr, result, memory);
+            }
+
+            self.set_flags_8(result);
+            self.set_flag(FLAG_CARRY, carry);
+            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(FLAG_AUXILIARY, aux_carry);
         }
     }
 
@@ -403,64 +438,57 @@ impl Cpu {
     /// FE /1: DEC r/m8
     /// FF /0: INC r/m16
     /// FF /1: DEC r/m16
-    pub(in crate::cpu) fn inc_dec_rm(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn inc_dec_rm(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let modrm = self.fetch_byte(memory);
-        let operation = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        // For now, only handle register mode (mode = 11b)
-        if mode == 0b11 {
-            match operation {
-                0 => {
-                    // INC
-                    if is_word {
-                        let value = self.get_reg16(rm);
-                        let result = value.wrapping_add(1);
-                        self.set_reg16(rm, result);
-                        self.set_flags_16(result);
-                        let overflow = value == 0x7FFF;
-                        self.set_flag(FLAG_OVERFLOW, overflow);
-                        let aux_carry = (value & 0x0F) == 0x0F;
-                        self.set_flag(FLAG_AUXILIARY, aux_carry);
-                    } else {
-                        let value = self.get_reg8(rm);
-                        let result = value.wrapping_add(1);
-                        self.set_reg8(rm, result);
-                        self.set_flags_8(result);
-                        let overflow = value == 0x7F;
-                        self.set_flag(FLAG_OVERFLOW, overflow);
-                        let aux_carry = (value & 0x0F) == 0x0F;
-                        self.set_flag(FLAG_AUXILIARY, aux_carry);
-                    }
+        match operation {
+            0 => {
+                // INC
+                if is_word {
+                    let value = self.read_rm16(mode, rm, addr, memory);
+                    let result = value.wrapping_add(1);
+                    self.write_rm16(mode, rm, addr, result, memory);
+                    self.set_flags_16(result);
+                    let overflow = value == 0x7FFF;
+                    self.set_flag(FLAG_OVERFLOW, overflow);
+                    let aux_carry = (value & 0x0F) == 0x0F;
+                    self.set_flag(FLAG_AUXILIARY, aux_carry);
+                } else {
+                    let value = self.read_rm8(mode, rm, addr, memory);
+                    let result = value.wrapping_add(1);
+                    self.write_rm8(mode, rm, addr, result, memory);
+                    self.set_flags_8(result);
+                    let overflow = value == 0x7F;
+                    self.set_flag(FLAG_OVERFLOW, overflow);
+                    let aux_carry = (value & 0x0F) == 0x0F;
+                    self.set_flag(FLAG_AUXILIARY, aux_carry);
                 }
-                1 => {
-                    // DEC
-                    if is_word {
-                        let value = self.get_reg16(rm);
-                        let result = value.wrapping_sub(1);
-                        self.set_reg16(rm, result);
-                        self.set_flags_16(result);
-                        let overflow = value == 0x8000;
-                        self.set_flag(FLAG_OVERFLOW, overflow);
-                        let aux_carry = (value & 0x0F) == 0;
-                        self.set_flag(FLAG_AUXILIARY, aux_carry);
-                    } else {
-                        let value = self.get_reg8(rm);
-                        let result = value.wrapping_sub(1);
-                        self.set_reg8(rm, result);
-                        self.set_flags_8(result);
-                        let overflow = value == 0x80;
-                        self.set_flag(FLAG_OVERFLOW, overflow);
-                        let aux_carry = (value & 0x0F) == 0;
-                        self.set_flag(FLAG_AUXILIARY, aux_carry);
-                    }
-                }
-                _ => panic!("Invalid INC/DEC operation: {}", operation),
             }
-        } else {
-            panic!("Memory addressing modes not yet implemented");
+            1 => {
+                // DEC
+                if is_word {
+                    let value = self.read_rm16(mode, rm, addr, memory);
+                    let result = value.wrapping_sub(1);
+                    self.write_rm16(mode, rm, addr, result, memory);
+                    self.set_flags_16(result);
+                    let overflow = value == 0x8000;
+                    self.set_flag(FLAG_OVERFLOW, overflow);
+                    let aux_carry = (value & 0x0F) == 0;
+                    self.set_flag(FLAG_AUXILIARY, aux_carry);
+                } else {
+                    let value = self.read_rm8(mode, rm, addr, memory);
+                    let result = value.wrapping_sub(1);
+                    self.write_rm8(mode, rm, addr, result, memory);
+                    self.set_flags_8(result);
+                    let overflow = value == 0x80;
+                    self.set_flag(FLAG_OVERFLOW, overflow);
+                    let aux_carry = (value & 0x0F) == 0;
+                    self.set_flag(FLAG_AUXILIARY, aux_carry);
+                }
+            }
+            _ => panic!("Invalid INC/DEC operation: {}", operation),
         }
     }
 }

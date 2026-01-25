@@ -177,6 +177,9 @@ impl Cpu {
             // MOV register to/from r/m (88-8B)
             0x88..=0x8B => self.mov_reg_rm(opcode, memory),
 
+            // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
+            0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory),
+
             // TEST immediate to AL/AX (A8-A9)
             0xA8..=0xA9 => self.test_imm_acc(opcode, memory),
 
@@ -185,6 +188,9 @@ impl Cpu {
 
             // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
             0xC0..=0xC1 => self.shift_rotate_group(opcode, memory),
+
+            // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
+            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, memory),
 
             // RET with optional pop (C2: with imm16, C3: without)
             0xC2..=0xC3 => self.ret(opcode, memory),
@@ -303,6 +309,105 @@ impl Cpu {
         let value = memory.read_word(addr);
         self.sp = self.sp.wrapping_add(2);
         value
+    }
+
+    // Decode ModR/M byte and calculate effective address
+    // Returns (mod, reg, r/m, effective_address, default_segment)
+    // mod: 00=no disp (except r/m=110), 01=8-bit disp, 10=16-bit disp, 11=register
+    // For mod=11, effective_address is unused
+    pub(super) fn decode_modrm(&mut self, modrm: u8, memory: &Memory) -> (u8, u8, u8, usize, u16) {
+        let mode = modrm >> 6;
+        let reg = (modrm >> 3) & 0x07;
+        let rm = modrm & 0x07;
+
+        if mode == 0b11 {
+            // Register mode - no memory access
+            return (mode, reg, rm, 0, self.ds);
+        }
+
+        // Calculate base address from r/m field
+        let (base_addr, default_seg) = match rm {
+            0b000 => (self.bx.wrapping_add(self.si), self.ds),  // [BX + SI]
+            0b001 => (self.bx.wrapping_add(self.di), self.ds),  // [BX + DI]
+            0b010 => (self.bp.wrapping_add(self.si), self.ss),  // [BP + SI]
+            0b011 => (self.bp.wrapping_add(self.di), self.ss),  // [BP + DI]
+            0b100 => (self.si, self.ds),                         // [SI]
+            0b101 => (self.di, self.ds),                         // [DI]
+            0b110 => {
+                if mode == 0b00 {
+                    // Special case: direct address (16-bit displacement, no base)
+                    let disp = self.fetch_word(memory);
+                    return (mode, reg, rm, Self::physical_address(self.ds, disp), self.ds);
+                } else {
+                    (self.bp, self.ss)  // [BP]
+                }
+            }
+            0b111 => (self.bx, self.ds),                         // [BX]
+            _ => unreachable!(),
+        };
+
+        // Add displacement based on mode
+        let effective_offset = match mode {
+            0b00 => base_addr,  // No displacement
+            0b01 => {
+                // 8-bit signed displacement
+                let disp = self.fetch_byte(memory) as i8;
+                base_addr.wrapping_add(disp as i16 as u16)
+            }
+            0b10 => {
+                // 16-bit displacement
+                let disp = self.fetch_word(memory);
+                base_addr.wrapping_add(disp)
+            }
+            _ => unreachable!(),
+        };
+
+        let effective_addr = Self::physical_address(default_seg, effective_offset);
+        (mode, reg, rm, effective_addr, default_seg)
+    }
+
+    // Read 8-bit value from register or memory based on mod field
+    pub(super) fn read_rm8(&self, mode: u8, rm: u8, addr: usize, memory: &Memory) -> u8 {
+        if mode == 0b11 {
+            // Register mode
+            self.get_reg8(rm)
+        } else {
+            // Memory mode
+            memory.read_byte(addr)
+        }
+    }
+
+    // Read 16-bit value from register or memory based on mod field
+    pub(super) fn read_rm16(&self, mode: u8, rm: u8, addr: usize, memory: &Memory) -> u16 {
+        if mode == 0b11 {
+            // Register mode
+            self.get_reg16(rm)
+        } else {
+            // Memory mode
+            memory.read_word(addr)
+        }
+    }
+
+    // Write 8-bit value to register or memory based on mod field
+    pub(super) fn write_rm8(&mut self, mode: u8, rm: u8, addr: usize, value: u8, memory: &mut Memory) {
+        if mode == 0b11 {
+            // Register mode
+            self.set_reg8(rm, value);
+        } else {
+            // Memory mode
+            memory.write_byte(addr, value);
+        }
+    }
+
+    // Write 16-bit value to register or memory based on mod field
+    pub(super) fn write_rm16(&mut self, mode: u8, rm: u8, addr: usize, value: u16, memory: &mut Memory) {
+        if mode == 0b11 {
+            // Register mode
+            self.set_reg16(rm, value);
+        } else {
+            // Memory mode
+            memory.write_word(addr, value);
+        }
     }
 
     // Calculate and set flags for 8-bit result

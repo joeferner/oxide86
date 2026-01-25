@@ -7,44 +7,53 @@ impl Cpu {
     /// 39: CMP r/m16, r16
     /// 3A: CMP r8, r/m8
     /// 3B: CMP r16, r/m16
-    pub(in crate::cpu) fn cmp_rm_reg(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn cmp_rm_reg(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
         let modrm = self.fetch_byte(memory);
-        let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        // For now, only handle register-to-register (mode = 11b)
-        if mode == 0b11 {
-            if is_word {
-                // 16-bit register cmp
-                let src = if dir { self.get_reg16(rm) } else { self.get_reg16(reg) };
-                let dst = if dir { self.get_reg16(reg) } else { self.get_reg16(rm) };
-
-                let (result, carry) = dst.overflowing_sub(src);
-                let overflow = ((dst ^ src) & (dst ^ result) & 0x8000) != 0;
-
-                self.set_flags_16(result);
-                self.set_flag(FLAG_CARRY, carry);
-                self.set_flag(FLAG_OVERFLOW, overflow);
+        if is_word {
+            // 16-bit cmp
+            let src = if dir {
+                self.read_rm16(mode, rm, addr, memory)
             } else {
-                // 8-bit register cmp
-                let src = if dir { self.get_reg8(rm) } else { self.get_reg8(reg) };
-                let dst = if dir { self.get_reg8(reg) } else { self.get_reg8(rm) };
+                self.get_reg16(reg)
+            };
+            let dst = if dir {
+                self.get_reg16(reg)
+            } else {
+                self.read_rm16(mode, rm, addr, memory)
+            };
 
-                let (result, carry) = dst.overflowing_sub(src);
-                let overflow = ((dst ^ src) & (dst ^ result) & 0x80) != 0;
-                let aux_carry = (dst & 0x0F) < (src & 0x0F);
+            let (result, carry) = dst.overflowing_sub(src);
+            let overflow = ((dst ^ src) & (dst ^ result) & 0x8000) != 0;
 
-                self.set_flags_8(result);
-                self.set_flag(FLAG_CARRY, carry);
-                self.set_flag(FLAG_OVERFLOW, overflow);
-                self.set_flag(FLAG_AUXILIARY, aux_carry);
-            }
+            self.set_flags_16(result);
+            self.set_flag(FLAG_CARRY, carry);
+            self.set_flag(FLAG_OVERFLOW, overflow);
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            // 8-bit cmp
+            let src = if dir {
+                self.read_rm8(mode, rm, addr, memory)
+            } else {
+                self.get_reg8(reg)
+            };
+            let dst = if dir {
+                self.get_reg8(reg)
+            } else {
+                self.read_rm8(mode, rm, addr, memory)
+            };
+
+            let (result, carry) = dst.overflowing_sub(src);
+            let overflow = ((dst ^ src) & (dst ^ result) & 0x80) != 0;
+            let aux_carry = (dst & 0x0F) < (src & 0x0F);
+
+            self.set_flags_8(result);
+            self.set_flag(FLAG_CARRY, carry);
+            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(FLAG_AUXILIARY, aux_carry);
         }
     }
 

@@ -7,47 +7,57 @@ impl Cpu {
     /// 21: AND r/m16, r16
     /// 22: AND r8, r/m8
     /// 23: AND r16, r/m16
-    pub(in crate::cpu) fn and_rm_reg(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn and_rm_reg(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0;
 
         let modrm = self.fetch_byte(memory);
-        let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        if mode == 0b11 {
-            if is_word {
-                let src = if dir { self.get_reg16(rm) } else { self.get_reg16(reg) };
-                let dst = if dir { self.get_reg16(reg) } else { self.get_reg16(rm) };
-                let result = dst & src;
-
-                if dir {
-                    self.set_reg16(reg, result);
-                } else {
-                    self.set_reg16(rm, result);
-                }
-
-                self.set_flags_16(result);
-                self.set_flag(FLAG_CARRY, false);
-                self.set_flag(FLAG_OVERFLOW, false);
+        if is_word {
+            let src = if dir {
+                self.read_rm16(mode, rm, addr, memory)
             } else {
-                let src = if dir { self.get_reg8(rm) } else { self.get_reg8(reg) };
-                let dst = if dir { self.get_reg8(reg) } else { self.get_reg8(rm) };
-                let result = dst & src;
+                self.get_reg16(reg)
+            };
+            let dst = if dir {
+                self.get_reg16(reg)
+            } else {
+                self.read_rm16(mode, rm, addr, memory)
+            };
+            let result = dst & src;
 
-                if dir {
-                    self.set_reg8(reg, result);
-                } else {
-                    self.set_reg8(rm, result);
-                }
-
-                self.set_flags_8(result);
-                self.set_flag(FLAG_CARRY, false);
-                self.set_flag(FLAG_OVERFLOW, false);
+            if dir {
+                self.set_reg16(reg, result);
+            } else {
+                self.write_rm16(mode, rm, addr, result, memory);
             }
+
+            self.set_flags_16(result);
+            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(FLAG_OVERFLOW, false);
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            let src = if dir {
+                self.read_rm8(mode, rm, addr, memory)
+            } else {
+                self.get_reg8(reg)
+            };
+            let dst = if dir {
+                self.get_reg8(reg)
+            } else {
+                self.read_rm8(mode, rm, addr, memory)
+            };
+            let result = dst & src;
+
+            if dir {
+                self.set_reg8(reg, result);
+            } else {
+                self.write_rm8(mode, rm, addr, result, memory);
+            }
+
+            self.set_flags_8(result);
+            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(FLAG_OVERFLOW, false);
         }
     }
 
@@ -79,47 +89,57 @@ impl Cpu {
     /// 09: OR r/m16, r16
     /// 0A: OR r8, r/m8
     /// 0B: OR r16, r/m16
-    pub(in crate::cpu) fn or_rm_reg(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn or_rm_reg(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0;
 
         let modrm = self.fetch_byte(memory);
-        let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        if mode == 0b11 {
-            if is_word {
-                let src = if dir { self.get_reg16(rm) } else { self.get_reg16(reg) };
-                let dst = if dir { self.get_reg16(reg) } else { self.get_reg16(rm) };
-                let result = dst | src;
-
-                if dir {
-                    self.set_reg16(reg, result);
-                } else {
-                    self.set_reg16(rm, result);
-                }
-
-                self.set_flags_16(result);
-                self.set_flag(FLAG_CARRY, false);
-                self.set_flag(FLAG_OVERFLOW, false);
+        if is_word {
+            let src = if dir {
+                self.read_rm16(mode, rm, addr, memory)
             } else {
-                let src = if dir { self.get_reg8(rm) } else { self.get_reg8(reg) };
-                let dst = if dir { self.get_reg8(reg) } else { self.get_reg8(rm) };
-                let result = dst | src;
+                self.get_reg16(reg)
+            };
+            let dst = if dir {
+                self.get_reg16(reg)
+            } else {
+                self.read_rm16(mode, rm, addr, memory)
+            };
+            let result = dst | src;
 
-                if dir {
-                    self.set_reg8(reg, result);
-                } else {
-                    self.set_reg8(rm, result);
-                }
-
-                self.set_flags_8(result);
-                self.set_flag(FLAG_CARRY, false);
-                self.set_flag(FLAG_OVERFLOW, false);
+            if dir {
+                self.set_reg16(reg, result);
+            } else {
+                self.write_rm16(mode, rm, addr, result, memory);
             }
+
+            self.set_flags_16(result);
+            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(FLAG_OVERFLOW, false);
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            let src = if dir {
+                self.read_rm8(mode, rm, addr, memory)
+            } else {
+                self.get_reg8(reg)
+            };
+            let dst = if dir {
+                self.get_reg8(reg)
+            } else {
+                self.read_rm8(mode, rm, addr, memory)
+            };
+            let result = dst | src;
+
+            if dir {
+                self.set_reg8(reg, result);
+            } else {
+                self.write_rm8(mode, rm, addr, result, memory);
+            }
+
+            self.set_flags_8(result);
+            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(FLAG_OVERFLOW, false);
         }
     }
 
@@ -151,47 +171,57 @@ impl Cpu {
     /// 31: XOR r/m16, r16
     /// 32: XOR r8, r/m8
     /// 33: XOR r16, r/m16
-    pub(in crate::cpu) fn xor_rm_reg(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn xor_rm_reg(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0;
 
         let modrm = self.fetch_byte(memory);
-        let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        if mode == 0b11 {
-            if is_word {
-                let src = if dir { self.get_reg16(rm) } else { self.get_reg16(reg) };
-                let dst = if dir { self.get_reg16(reg) } else { self.get_reg16(rm) };
-                let result = dst ^ src;
-
-                if dir {
-                    self.set_reg16(reg, result);
-                } else {
-                    self.set_reg16(rm, result);
-                }
-
-                self.set_flags_16(result);
-                self.set_flag(FLAG_CARRY, false);
-                self.set_flag(FLAG_OVERFLOW, false);
+        if is_word {
+            let src = if dir {
+                self.read_rm16(mode, rm, addr, memory)
             } else {
-                let src = if dir { self.get_reg8(rm) } else { self.get_reg8(reg) };
-                let dst = if dir { self.get_reg8(reg) } else { self.get_reg8(rm) };
-                let result = dst ^ src;
+                self.get_reg16(reg)
+            };
+            let dst = if dir {
+                self.get_reg16(reg)
+            } else {
+                self.read_rm16(mode, rm, addr, memory)
+            };
+            let result = dst ^ src;
 
-                if dir {
-                    self.set_reg8(reg, result);
-                } else {
-                    self.set_reg8(rm, result);
-                }
-
-                self.set_flags_8(result);
-                self.set_flag(FLAG_CARRY, false);
-                self.set_flag(FLAG_OVERFLOW, false);
+            if dir {
+                self.set_reg16(reg, result);
+            } else {
+                self.write_rm16(mode, rm, addr, result, memory);
             }
+
+            self.set_flags_16(result);
+            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(FLAG_OVERFLOW, false);
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            let src = if dir {
+                self.read_rm8(mode, rm, addr, memory)
+            } else {
+                self.get_reg8(reg)
+            };
+            let dst = if dir {
+                self.get_reg8(reg)
+            } else {
+                self.read_rm8(mode, rm, addr, memory)
+            };
+            let result = dst ^ src;
+
+            if dir {
+                self.set_reg8(reg, result);
+            } else {
+                self.write_rm8(mode, rm, addr, result, memory);
+            }
+
+            self.set_flags_8(result);
+            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(FLAG_OVERFLOW, false);
         }
     }
 
@@ -221,34 +251,28 @@ impl Cpu {
     /// TEST r/m and register (opcodes 84-85)
     /// 84: TEST r/m8, r8
     /// 85: TEST r/m16, r16
-    pub(in crate::cpu) fn test_rm_reg(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn test_rm_reg(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
 
         let modrm = self.fetch_byte(memory);
-        let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        if mode == 0b11 {
-            if is_word {
-                let src = self.get_reg16(reg);
-                let dst = self.get_reg16(rm);
-                let result = dst & src;
+        if is_word {
+            let src = self.get_reg16(reg);
+            let dst = self.read_rm16(mode, rm, addr, memory);
+            let result = dst & src;
 
-                self.set_flags_16(result);
-                self.set_flag(FLAG_CARRY, false);
-                self.set_flag(FLAG_OVERFLOW, false);
-            } else {
-                let src = self.get_reg8(reg);
-                let dst = self.get_reg8(rm);
-                let result = dst & src;
-
-                self.set_flags_8(result);
-                self.set_flag(FLAG_CARRY, false);
-                self.set_flag(FLAG_OVERFLOW, false);
-            }
+            self.set_flags_16(result);
+            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(FLAG_OVERFLOW, false);
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            let src = self.get_reg8(reg);
+            let dst = self.read_rm8(mode, rm, addr, memory);
+            let result = dst & src;
+
+            self.set_flags_8(result);
+            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(FLAG_OVERFLOW, false);
         }
     }
 
@@ -282,46 +306,39 @@ impl Cpu {
     pub(in crate::cpu) fn unary_group3(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let modrm = self.fetch_byte(memory);
-        let operation = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
-        // For now, only handle register mode (mode = 11b)
-        if mode == 0b11 {
-            match operation {
-                0 => {
-                    // TEST r/m, imm
-                    if is_word {
-                        let imm = self.fetch_word(memory);
-                        let value = self.get_reg16(rm);
-                        let result = value & imm;
-                        self.set_flags_16(result);
-                        self.set_flag(FLAG_CARRY, false);
-                        self.set_flag(FLAG_OVERFLOW, false);
-                    } else {
-                        let imm = self.fetch_byte(memory);
-                        let value = self.get_reg8(rm);
-                        let result = value & imm;
-                        self.set_flags_8(result);
-                        self.set_flag(FLAG_CARRY, false);
-                        self.set_flag(FLAG_OVERFLOW, false);
-                    }
+        match operation {
+            0 => {
+                // TEST r/m, imm
+                if is_word {
+                    let imm = self.fetch_word(memory);
+                    let value = self.read_rm16(mode, rm, addr, memory);
+                    let result = value & imm;
+                    self.set_flags_16(result);
+                    self.set_flag(FLAG_CARRY, false);
+                    self.set_flag(FLAG_OVERFLOW, false);
+                } else {
+                    let imm = self.fetch_byte(memory);
+                    let value = self.read_rm8(mode, rm, addr, memory);
+                    let result = value & imm;
+                    self.set_flags_8(result);
+                    self.set_flag(FLAG_CARRY, false);
+                    self.set_flag(FLAG_OVERFLOW, false);
                 }
-                2 => {
-                    // NOT
-                    if is_word {
-                        let value = self.get_reg16(rm);
-                        self.set_reg16(rm, !value);
-                    } else {
-                        let value = self.get_reg8(rm);
-                        self.set_reg8(rm, !value);
-                    }
-                    // NOT doesn't affect flags
-                }
-                _ => panic!("Unimplemented Group 3 operation: {}", operation),
             }
-        } else {
-            panic!("Memory addressing modes not yet implemented");
+            2 => {
+                // NOT
+                if is_word {
+                    let value = self.read_rm16(mode, rm, addr, memory);
+                    self.write_rm16(mode, rm, addr, !value, memory);
+                } else {
+                    let value = self.read_rm8(mode, rm, addr, memory);
+                    self.write_rm8(mode, rm, addr, !value, memory);
+                }
+                // NOT doesn't affect flags
+            }
+            _ => panic!("Unimplemented Group 3 operation: {}", operation),
         }
     }
 }
