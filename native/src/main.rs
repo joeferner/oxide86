@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use emu86_core::Computer;
+use emu86_core::{Computer, DiskImage, DiskGeometry};
 
 mod stdio_bios;
 use stdio_bios::StdioBios;
@@ -26,6 +26,10 @@ struct Cli {
     /// Enable verbose I/O port logging
     #[arg(long)]
     verbose_io: bool,
+
+    /// Path to disk image file (optional, will create empty 1.44MB floppy if not specified)
+    #[arg(long)]
+    disk: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -33,8 +37,20 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // Load or create disk image
+    let disk = if let Some(disk_path) = &cli.disk {
+        let disk_data = std::fs::read(disk_path)
+            .with_context(|| format!("Failed to read disk image: {}", disk_path))?;
+        DiskImage::new(disk_data)
+            .context("Failed to create disk image from file")?
+    } else {
+        // Create empty 1.44MB floppy disk
+        DiskImage::empty(DiskGeometry::FLOPPY_1440K)
+    };
+
     let io_device = SimpleIoDevice::new(cli.verbose_io);
-    let mut computer = Computer::new(StdioBios, io_device);
+    let bios = StdioBios::new(disk);
+    let mut computer = Computer::new(bios, io_device);
 
     // Load the program binary
     let program_data = std::fs::read(&cli.program)

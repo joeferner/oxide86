@@ -10,6 +10,7 @@ emu86 is a software emulator for the Intel 8086 microprocessor, the 16-bit CPU t
 
 - Examples should be written in x86 assembly language.
 - nasm should be assumed to be installed so no need to write special python assemblers.
+- when compiling and running examples use examples/run.sh or update run.sh as needed
 - avoid using python for any tasks
 - don't write unit tests or integration tests unless directed to
 
