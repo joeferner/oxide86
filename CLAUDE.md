@@ -373,6 +373,18 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - No function codes - directly outputs the character in AL
   - Used by DOS internally for console output
 
+- **INT 2Fh - DOS Multiplex Interrupt** ([core/src/cpu/bios/int2f.rs](core/src/cpu/bios/int2f.rs))
+  - Inter-program communication and TSR installation checks
+  - AH = multiplex number (function group), AL = subfunction
+  - **Implemented multiplex numbers:**
+    - AH=11h: Network redirector installation check - Returns AL=0x00 (not installed)
+    - AH=12h: DOS internal functions (SHARE, PRINT) - Returns AL=0x00 (not installed)
+    - AH=16h: Windows enhanced mode installation check - Returns AL=0x00 (not running)
+    - AH=43h: XMS (Extended Memory Specification) - Returns AL=0x00 (not installed, 8086 has no extended memory)
+    - AH=4Ah: HMA (High Memory Area) query - Returns AL=0x00 (not installed)
+    - AH=B7h: APPEND installation check - Returns AL=0x00 (not installed)
+  - All unrecognized multiplex numbers return AL=0x00 (standard "not installed" response)
+
 **Adding New BIOS Interrupts:**
 
 To add a new BIOS interrupt handler:
