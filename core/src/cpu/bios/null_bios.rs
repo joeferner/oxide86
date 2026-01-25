@@ -1,4 +1,4 @@
-use crate::{Bios, DriveParams, cpu::bios::{FindData, KeyPress, SeekMethod, dos_errors}, disk_errors};
+use crate::{Bios, DriveParams, cpu::bios::{FindData, KeyPress, SeekMethod, SerialParams, SerialStatus, dos_errors, int14::line_status}, disk_errors};
 
 /// A null I/O handler that does nothing (for testing or headless operation)
 pub struct NullBios;
@@ -101,6 +101,32 @@ impl Bios for NullBios {
 
     fn find_next(&mut self, _search_id: usize) -> Result<FindData, u8> {
         Err(dos_errors::NO_MORE_FILES)
+    }
+
+    fn serial_init(&mut self, _port: u8, _params: SerialParams) -> SerialStatus {
+        // No serial port available - return timeout status
+        SerialStatus {
+            line_status: line_status::TIMEOUT,
+            modem_status: 0,
+        }
+    }
+
+    fn serial_write(&mut self, _port: u8, _ch: u8) -> u8 {
+        // No serial port available - return timeout
+        line_status::TIMEOUT
+    }
+
+    fn serial_read(&mut self, _port: u8) -> Result<(u8, u8), u8> {
+        // No serial port available - return timeout error
+        Err(line_status::TIMEOUT)
+    }
+
+    fn serial_status(&self, _port: u8) -> SerialStatus {
+        // No serial port available - return timeout status
+        SerialStatus {
+            line_status: line_status::TIMEOUT,
+            modem_status: 0,
+        }
     }
 
     fn get_system_ticks(&self) -> u32 {

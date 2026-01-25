@@ -41,6 +41,7 @@ pub struct Cpu {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
 pub(super) enum RepeatPrefix {
     Rep,      // 0xF3 - Repeat while CX != 0
     Repe,     // 0xF3 - Repeat while CX != 0 and ZF = 1

@@ -5,6 +5,7 @@ mod int10;
 mod int11;
 mod int12;
 mod int13;
+pub mod int14;
 mod int15;
 mod int16;
 mod int1a;
@@ -16,6 +17,7 @@ use super::Cpu;
 use crate::memory::Memory;
 use log::warn;
 pub use null_bios::NullBios;
+pub use int14::{SerialParams, SerialStatus};
 
 /// Drive parameters returned by INT 13h, AH=08h
 #[derive(Debug, Clone, Copy)]
@@ -244,6 +246,24 @@ pub trait Bios {
     /// Returns the current drive number (0=A, 1=B, etc.)
     fn get_current_drive(&self) -> u8;
 
+    // --- INT 14h - Serial Port Services ---
+
+    /// Initialize serial port (INT 14h, AH=00h)
+    /// Returns the port status after initialization
+    fn serial_init(&mut self, port: u8, params: SerialParams) -> SerialStatus;
+
+    /// Write character to serial port (INT 14h, AH=01h)
+    /// Returns line status (bit 7 set if timeout)
+    fn serial_write(&mut self, port: u8, ch: u8) -> u8;
+
+    /// Read character from serial port (INT 14h, AH=02h)
+    /// Returns (character, line_status) on success, or line_status with timeout bit on error
+    fn serial_read(&mut self, port: u8) -> Result<(u8, u8), u8>;
+
+    /// Get serial port status (INT 14h, AH=03h)
+    /// Returns line and modem status
+    fn serial_status(&self, port: u8) -> SerialStatus;
+
     // --- INT 1Ah - Time Services ---
 
     /// Get system time in BIOS ticks since midnight (INT 1Ah, AH=00h)
@@ -277,6 +297,10 @@ impl Cpu {
             }
             0x13 => {
                 self.handle_int13(memory, io);
+                true
+            }
+            0x14 => {
+                self.handle_int14(memory, io);
                 true
             }
             0x15 => {

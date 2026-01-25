@@ -1,6 +1,7 @@
 use emu86_core::cpu::bios::{
-    DriveParams, FindData, KeyPress, SeekMethod, disk_errors, dos_errors, file_access, file_attributes,
+    DriveParams, FindData, KeyPress, SeekMethod, SerialParams, SerialStatus, disk_errors, dos_errors, file_access, file_attributes,
 };
+use emu86_core::cpu::bios::int14::line_status;
 /// Standard I/O implementation of Bios for native platform
 use emu86_core::{Bios, DiskController, SECTOR_SIZE};
 use std::collections::HashMap;
@@ -605,6 +606,32 @@ impl<D: DiskController> Bios for StdioBios<D> {
         // For Unix-like systems, we don't have drive letters
         // Always return drive A (0)
         0
+    }
+
+    fn serial_init(&mut self, _port: u8, _params: SerialParams) -> SerialStatus {
+        // Serial port not available in stdio implementation
+        SerialStatus {
+            line_status: line_status::TIMEOUT,
+            modem_status: 0,
+        }
+    }
+
+    fn serial_write(&mut self, _port: u8, _ch: u8) -> u8 {
+        // Serial port not available - return timeout
+        line_status::TIMEOUT
+    }
+
+    fn serial_read(&mut self, _port: u8) -> Result<(u8, u8), u8> {
+        // Serial port not available - return timeout error
+        Err(line_status::TIMEOUT)
+    }
+
+    fn serial_status(&self, _port: u8) -> SerialStatus {
+        // Serial port not available
+        SerialStatus {
+            line_status: line_status::TIMEOUT,
+            modem_status: 0,
+        }
     }
 
     fn get_system_ticks(&self) -> u32 {

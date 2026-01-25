@@ -315,6 +315,12 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=03h: Write sectors
   - AH=08h: Get drive parameters
 
+- **INT 14h - Serial Port Services** ([core/src/cpu/bios/int14.rs](core/src/cpu/bios/int14.rs))
+  - AH=00h: Initialize serial port - Configure baud rate, parity, stop bits, and word length
+  - AH=01h: Write character - Transmit a character to the serial port
+  - AH=02h: Read character - Receive a character from the serial port
+  - AH=03h: Get status - Get line and modem status
+
 - **INT 15h - Miscellaneous System Services** ([core/src/cpu/bios/int15.rs](core/src/cpu/bios/int15.rs))
   - AH=86h: Wait - Microsecond delay (returns immediately in emulator)
   - AH=88h: Get extended memory size - Returns 0 KB for 8086 (no extended memory)
@@ -399,6 +405,86 @@ To add a new BIOS interrupt handler:
    ```
 
 3. No changes needed to Computer or CPU core - dispatch is automatic
+
+**Serial Port Services (INT 14h):**
+
+The emulator implements BIOS serial port services through the `Bios` trait. Serial port operations allow communication with COM ports (COM1-COM4).
+
+**Serial Port Parameters:**
+
+When initializing a serial port (AH=00h), the AL register contains configuration parameters:
+- Bits 7-5: Baud rate (000=110, 001=150, 010=300, 011=600, 100=1200, 101=2400, 110=4800, 111=9600)
+- Bits 4-3: Parity (00=none, 01=odd, 10=none, 11=even)
+- Bit 2: Stop bits (0=1 stop bit, 1=2 stop bits)
+- Bits 1-0: Word length (10=7 bits, 11=8 bits)
+
+**Line Status Bits (returned in AH):**
+- Bit 7: Timeout
+- Bit 6: Transmit shift register empty
+- Bit 5: Transmit holding register empty
+- Bit 4: Break detect
+- Bit 3: Framing error
+- Bit 2: Parity error
+- Bit 1: Overrun error
+- Bit 0: Data ready
+
+**Modem Status Bits (returned in AL):**
+- Bit 7: Received line signal detect
+- Bit 6: Ring indicator
+- Bit 5: Data set ready
+- Bit 4: Clear to send
+- Bit 3: Change in receive line signal detect
+- Bit 2: Trailing edge ring indicator
+- Bit 1: Change in data set ready
+- Bit 0: Change in clear to send
+
+**Implementing Serial Port Operations in Platform Code:**
+
+To support serial ports, implement these `Bios` trait methods:
+
+```rust
+fn serial_init(&mut self, port: u8, params: SerialParams) -> SerialStatus;
+fn serial_write(&mut self, port: u8, ch: u8) -> u8;
+fn serial_read(&mut self, port: u8) -> Result<(u8, u8), u8>;
+fn serial_status(&self, port: u8) -> SerialStatus;
+```
+
+**Port Numbers:**
+- 0 = COM1 (I/O base 0x03F8)
+- 1 = COM2 (I/O base 0x02F8)
+- 2 = COM3 (I/O base 0x03E8)
+- 3 = COM4 (I/O base 0x02E8)
+
+**Example Usage in Assembly:**
+```asm
+; Initialize COM1 at 9600 baud, no parity, 1 stop bit, 8 bits
+mov dx, 0          ; DX = port number (0 = COM1)
+mov al, 0xE3       ; AL = parameters (111=9600, 00=no parity, 0=1 stop, 11=8 bits)
+mov ah, 0x00       ; AH = function 00h (initialize)
+int 0x14           ; Call serial services
+; AH = line status, AL = modem status
+
+; Write a character to COM1
+mov dx, 0          ; DX = port number
+mov al, 'A'        ; AL = character to send
+mov ah, 0x01       ; AH = function 01h (write character)
+int 0x14           ; Call serial services
+; AH = line status (bit 7 set if timeout)
+
+; Read a character from COM1
+mov dx, 0          ; DX = port number
+mov ah, 0x02       ; AH = function 02h (read character)
+int 0x14           ; Call serial services
+; AH = line status, AL = received character (if no timeout)
+
+; Get serial port status
+mov dx, 0          ; DX = port number
+mov ah, 0x03       ; AH = function 03h (get status)
+int 0x14           ; Call serial services
+; AH = line status, AL = modem status
+```
+
+**Note:** The default native and WASM implementations return timeout errors for all serial port operations, as actual serial port hardware is not available. Platform-specific implementations can provide real serial port access if needed.
 
 **DOS File Operations (INT 21h):**
 
