@@ -100,6 +100,13 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
     - AH=01h: Read character with echo
     - AH=02h: Write character
     - AH=09h: Write string
+  - **Directory Operations:**
+    - AH=39h: Create directory (MKDIR)
+    - AH=3Ah: Remove directory (RMDIR)
+    - AH=3Bh: Change directory (CHDIR)
+    - AH=47h: Get current directory
+    - AH=4Eh: Find first file
+    - AH=4Fh: Find next file
   - **File Operations:**
     - AH=3Ch: Create or truncate file
     - AH=3Dh: Open existing file
@@ -152,12 +159,15 @@ INT 21h with AH=3Ch-42h → handle_int21() → int21_*_file()
 
 **DOS Error Codes** (defined in `dos_errors` module):
 - `SUCCESS` (0x00): Operation successful
+- `INVALID_FUNCTION` (0x01): Invalid function number
 - `FILE_NOT_FOUND` (0x02): File not found
 - `PATH_NOT_FOUND` (0x03): Path not found
 - `TOO_MANY_OPEN_FILES` (0x04): No handles available
 - `ACCESS_DENIED` (0x05): Permission denied
 - `INVALID_HANDLE` (0x06): Invalid file handle
-- `INVALID_FUNCTION` (0x01): Invalid function number
+- `INVALID_DRIVE` (0x0F): Invalid drive specification
+- `ATTEMPT_TO_REMOVE_CURRENT_DIR` (0x10): Cannot remove current directory
+- `NO_MORE_FILES` (0x12): No more matching files in directory search
 
 **File Access Modes** (for AH=3Dh - Open File):
 - `READ_ONLY` (0x00): Open for reading only
@@ -168,6 +178,14 @@ INT 21h with AH=3Ch-42h → handle_int21() → int21_*_file()
 - `SeekMethod::FromStart` (0): Seek from beginning of file
 - `SeekMethod::FromCurrent` (1): Seek from current position
 - `SeekMethod::FromEnd` (2): Seek from end of file
+
+**File Attributes** (defined in `file_attributes` module):
+- `READ_ONLY` (0x01): File is read-only
+- `HIDDEN` (0x02): File is hidden
+- `SYSTEM` (0x04): File is a system file
+- `VOLUME_LABEL` (0x08): Entry is a volume label
+- `DIRECTORY` (0x10): Entry is a directory
+- `ARCHIVE` (0x20): File has been modified since last backup
 
 **Implementing File Operations in Platform Code:**
 
@@ -188,6 +206,57 @@ fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<
 - Handle 2: Standard Error (STDERR)
 
 Platform implementations should reserve these handles for console I/O and start user file handles at 3 or higher.
+
+**DOS Directory Operations (INT 21h):**
+
+The emulator implements DOS directory operations through the `Bios` trait. Platform-specific implementations must provide actual directory manipulation.
+
+**Directory Operation Flow:**
+```
+INT 21h with AH=39h-4Fh → handle_int21() → int21_*_dir() / int21_find_*()
+  → Bios trait method (dir_create, dir_remove, find_first, etc.)
+  → Platform-specific implementation
+  → Return success or error code
+```
+
+**Implementing Directory Operations in Platform Code:**
+
+To support directory operations, implement these `Bios` trait methods:
+
+```rust
+fn dir_create(&mut self, dirname: &str) -> Result<(), u8>;
+fn dir_remove(&mut self, dirname: &str) -> Result<(), u8>;
+fn dir_change(&mut self, dirname: &str) -> Result<(), u8>;
+fn dir_get_current(&self, drive: u8) -> Result<String, u8>;
+fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), u8>;
+fn find_next(&mut self, search_id: usize) -> Result<FindData, u8>;
+```
+
+**FindData Structure:**
+
+File search operations return a `FindData` structure containing:
+- `attributes`: File attributes (see File Attributes above)
+- `time`: File modification time in DOS packed format (bits 0-4: seconds/2, 5-10: minutes, 11-15: hours)
+- `date`: File modification date in DOS packed format (bits 0-4: day, 5-8: month, 9-15: year-1980)
+- `size`: File size in bytes (32-bit)
+- `filename`: Filename in null-terminated string format (max 13 bytes for 8.3 format)
+
+**DTA (Disk Transfer Area) Format:**
+
+Find first/next operations use a 43-byte DTA structure:
+- Offset 0-20: Reserved for internal use (search state)
+- Offset 21: File attributes (1 byte)
+- Offset 22-23: File time (2 bytes, little-endian)
+- Offset 24-25: File date (2 bytes, little-endian)
+- Offset 26-29: File size (4 bytes, little-endian)
+- Offset 30-42: Filename (null-terminated, max 13 bytes)
+
+**Wildcard Matching:**
+
+The native implementation supports DOS-style wildcards in file patterns:
+- `*` matches any sequence of characters
+- `?` matches any single character
+- Pattern matching is case-insensitive
 
 **Working Directory:**
 

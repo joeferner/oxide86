@@ -88,6 +88,31 @@ pub enum SeekMethod {
     FromEnd = 0x02,
 }
 
+/// File attributes for DOS
+pub mod file_attributes {
+    pub const READ_ONLY: u8 = 0x01;
+    pub const HIDDEN: u8 = 0x02;
+    pub const SYSTEM: u8 = 0x04;
+    pub const VOLUME_LABEL: u8 = 0x08;
+    pub const DIRECTORY: u8 = 0x10;
+    pub const ARCHIVE: u8 = 0x20;
+}
+
+/// File information returned by find first/next operations
+#[derive(Debug, Clone)]
+pub struct FindData {
+    /// File attributes
+    pub attributes: u8,
+    /// File time (DOS packed format)
+    pub time: u16,
+    /// File date (DOS packed format)
+    pub date: u16,
+    /// File size in bytes
+    pub size: u32,
+    /// Filename (null-terminated, 13 bytes max for 8.3 format)
+    pub filename: String,
+}
+
 /// Trait for handling BIOS interrupt I/O operations
 /// Platform-specific code (native, WASM) implements this to provide actual I/O
 pub trait Bios {
@@ -158,6 +183,33 @@ pub trait Bios {
     /// Seek within file (INT 21h, AH=42h)
     /// Returns the new file position on success, or error code on failure
     fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8>;
+
+    // --- INT 21h - DOS Directory Services ---
+
+    /// Create directory (INT 21h, AH=39h)
+    /// Returns success or error code
+    fn dir_create(&mut self, dirname: &str) -> Result<(), u8>;
+
+    /// Remove directory (INT 21h, AH=3Ah)
+    /// Returns success or error code
+    fn dir_remove(&mut self, dirname: &str) -> Result<(), u8>;
+
+    /// Change current directory (INT 21h, AH=3Bh)
+    /// Returns success or error code
+    fn dir_change(&mut self, dirname: &str) -> Result<(), u8>;
+
+    /// Get current directory (INT 21h, AH=47h)
+    /// Returns the current directory path (without drive letter)
+    fn dir_get_current(&self, drive: u8) -> Result<String, u8>;
+
+    /// Find first matching file (INT 21h, AH=4Eh)
+    /// Returns file data on success, or error code on failure
+    /// The search_id is used to identify this search for subsequent find_next calls
+    fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), u8>;
+
+    /// Find next matching file (INT 21h, AH=4Fh)
+    /// Returns file data on success, or error code on failure
+    fn find_next(&mut self, search_id: usize) -> Result<FindData, u8>;
 }
 
 /// A null I/O handler that does nothing (for testing or headless operation)
@@ -230,6 +282,30 @@ impl Bios for NullBios {
     fn file_seek(&mut self, _handle: u16, _offset: i32, _method: SeekMethod) -> Result<u32, u8> {
         Err(dos_errors::INVALID_HANDLE)
     }
+
+    fn dir_create(&mut self, _dirname: &str) -> Result<(), u8> {
+        Err(dos_errors::ACCESS_DENIED)
+    }
+
+    fn dir_remove(&mut self, _dirname: &str) -> Result<(), u8> {
+        Err(dos_errors::ACCESS_DENIED)
+    }
+
+    fn dir_change(&mut self, _dirname: &str) -> Result<(), u8> {
+        Err(dos_errors::PATH_NOT_FOUND)
+    }
+
+    fn dir_get_current(&self, _drive: u8) -> Result<String, u8> {
+        Err(dos_errors::INVALID_DRIVE)
+    }
+
+    fn find_first(&mut self, _pattern: &str, _attributes: u8) -> Result<(usize, FindData), u8> {
+        Err(dos_errors::NO_MORE_FILES)
+    }
+
+    fn find_next(&mut self, _search_id: usize) -> Result<FindData, u8> {
+        Err(dos_errors::NO_MORE_FILES)
+    }
 }
 
 impl Cpu {
@@ -274,13 +350,19 @@ impl Cpu {
             0x01 => self.int21_read_char_with_echo(io),
             0x02 => self.int21_write_char(io),
             0x09 => self.int21_write_string(memory, io),
+            0x39 => self.int21_create_dir(memory, io),
+            0x3A => self.int21_remove_dir(memory, io),
+            0x3B => self.int21_change_dir(memory, io),
             0x3C => self.int21_create_file(memory, io),
             0x3D => self.int21_open_file(memory, io),
             0x3E => self.int21_close_file(io),
             0x3F => self.int21_read_file(memory, io),
             0x40 => self.int21_write_file(memory, io),
             0x42 => self.int21_seek_file(io),
+            0x47 => self.int21_get_current_dir(memory, io),
             0x4C => self.int21_exit(),
+            0x4E => self.int21_find_first(memory, io),
+            0x4F => self.int21_find_next(memory, io),
             _ => {
                 warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
             }
@@ -495,6 +577,195 @@ impl Cpu {
                 self.set_flag(super::FLAG_CARRY, true);
             }
         }
+    }
+
+    /// INT 21h, AH=39h - Create Directory (MKDIR)
+    /// Input:
+    ///   DS:DX = pointer to null-terminated directory name
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code
+    fn int21_create_dir<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+        let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
+
+        match io.dir_create(&dirname) {
+            Ok(()) => {
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=3Ah - Remove Directory (RMDIR)
+    /// Input:
+    ///   DS:DX = pointer to null-terminated directory name
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code
+    fn int21_remove_dir<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+        let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
+
+        match io.dir_remove(&dirname) {
+            Ok(()) => {
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=3Bh - Change Current Directory (CHDIR)
+    /// Input:
+    ///   DS:DX = pointer to null-terminated directory name
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code
+    fn int21_change_dir<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+        let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
+
+        match io.dir_change(&dirname) {
+            Ok(()) => {
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=47h - Get Current Directory
+    /// Input:
+    ///   DL = drive number (0=default, 1=A, 2=B, etc.)
+    ///   DS:SI = pointer to 64-byte buffer for directory path
+    /// Output:
+    ///   CF clear if success: buffer filled with path (without drive or leading backslash)
+    ///   CF set if error: AX = error code
+    fn int21_get_current_dir<T: Bios>(&mut self, memory: &mut Memory, io: &T) {
+        let drive = (self.dx & 0xFF) as u8; // DL
+
+        match io.dir_get_current(drive) {
+            Ok(path) => {
+                // Write path to DS:SI (null-terminated)
+                let buffer_addr = Self::physical_address(self.ds, self.si);
+                for (i, &byte) in path.as_bytes().iter().enumerate() {
+                    if i >= 63 {
+                        break; // Leave room for null terminator
+                    }
+                    memory.write_byte(buffer_addr + i, byte);
+                }
+                // Write null terminator
+                let len = path.len().min(63);
+                memory.write_byte(buffer_addr + len, 0);
+
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=4Eh - Find First Matching File
+    /// Input:
+    ///   DS:DX = pointer to null-terminated file pattern (may include wildcards)
+    ///   CX = file attributes to match
+    ///   ES:BX = pointer to DTA (Disk Transfer Area, 43 bytes)
+    /// Output:
+    ///   CF clear if success: DTA filled with file information
+    ///   CF set if error: AX = error code
+    fn int21_find_first<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+        let pattern = self.read_null_terminated_string(memory, self.ds, self.dx);
+        let attributes = (self.cx & 0xFF) as u8;
+
+        match io.find_first(&pattern, attributes) {
+            Ok((search_id, find_data)) => {
+                // Write search ID to a hidden location (we'll use offset 0 of DTA for this)
+                let dta_addr = Self::physical_address(self.es, self.bx);
+
+                // DOS DTA format for find first/next:
+                // Offset 0-20: Reserved for DOS (we'll store search_id here)
+                // Offset 21: File attributes
+                // Offset 22-23: File time
+                // Offset 24-25: File date
+                // Offset 26-29: File size (32-bit little-endian)
+                // Offset 30-42: Filename (null-terminated, 13 bytes max)
+
+                // Store search_id in first 8 bytes (as u64)
+                for i in 0..8 {
+                    memory.write_byte(dta_addr + i, ((search_id >> (i * 8)) & 0xFF) as u8);
+                }
+
+                self.write_find_data_to_dta(memory, dta_addr, &find_data);
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=4Fh - Find Next Matching File
+    /// Input:
+    ///   ES:BX = pointer to DTA (must contain data from previous find first/next)
+    /// Output:
+    ///   CF clear if success: DTA filled with file information
+    ///   CF set if error: AX = error code
+    fn int21_find_next<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+        let dta_addr = Self::physical_address(self.es, self.bx);
+
+        // Read search_id from DTA
+        let mut search_id: usize = 0;
+        for i in 0..8 {
+            search_id |= (memory.read_byte(dta_addr + i) as usize) << (i * 8);
+        }
+
+        match io.find_next(search_id) {
+            Ok(find_data) => {
+                self.write_find_data_to_dta(memory, dta_addr, &find_data);
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// Helper function to write FindData to DTA
+    fn write_find_data_to_dta(&self, memory: &mut Memory, dta_addr: usize, find_data: &FindData) {
+        // Offset 21: File attributes
+        memory.write_byte(dta_addr + 21, find_data.attributes);
+
+        // Offset 22-23: File time (little-endian)
+        memory.write_byte(dta_addr + 22, (find_data.time & 0xFF) as u8);
+        memory.write_byte(dta_addr + 23, (find_data.time >> 8) as u8);
+
+        // Offset 24-25: File date (little-endian)
+        memory.write_byte(dta_addr + 24, (find_data.date & 0xFF) as u8);
+        memory.write_byte(dta_addr + 25, (find_data.date >> 8) as u8);
+
+        // Offset 26-29: File size (32-bit little-endian)
+        memory.write_byte(dta_addr + 26, (find_data.size & 0xFF) as u8);
+        memory.write_byte(dta_addr + 27, ((find_data.size >> 8) & 0xFF) as u8);
+        memory.write_byte(dta_addr + 28, ((find_data.size >> 16) & 0xFF) as u8);
+        memory.write_byte(dta_addr + 29, ((find_data.size >> 24) & 0xFF) as u8);
+
+        // Offset 30-42: Filename (null-terminated, max 13 bytes)
+        let filename_bytes = find_data.filename.as_bytes();
+        for (i, &byte) in filename_bytes.iter().take(12).enumerate() {
+            memory.write_byte(dta_addr + 30 + i, byte);
+        }
+        // Null terminator
+        let len = filename_bytes.len().min(12);
+        memory.write_byte(dta_addr + 30 + len, 0);
     }
 
     /// Helper function to read a null-terminated string from memory
