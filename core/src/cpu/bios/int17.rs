@@ -24,7 +24,9 @@ impl PrinterStatus {
     /// Create a ready status (printer ready, no errors)
     pub fn ready() -> Self {
         Self {
-            status: printer_status::NOT_BUSY | printer_status::SELECTED | printer_status::ACKNOWLEDGE,
+            status: printer_status::NOT_BUSY
+                | printer_status::SELECTED
+                | printer_status::ACKNOWLEDGE,
         }
     }
 

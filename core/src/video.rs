@@ -32,9 +32,9 @@ pub mod colors {
 /// VGA text mode character attribute
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextAttribute {
-    pub foreground: u8,  // 4 bits
-    pub background: u8,  // 3 bits
-    pub blink: bool,     // 1 bit
+    pub foreground: u8, // 4 bits
+    pub background: u8, // 3 bits
+    pub blink: bool,    // 1 bit
 }
 
 impl TextAttribute {
@@ -242,13 +242,13 @@ impl VgaIoPorts {
                 // Cursor location low byte
                 self.cursor_location_low = value;
                 // Calculate cursor position
-                let offset = ((self.cursor_location_high as u16) << 8)
-                           | (self.cursor_location_low as u16);
+                let offset =
+                    ((self.cursor_location_high as u16) << 8) | (self.cursor_location_low as u16);
                 let row = (offset as usize) / TEXT_MODE_COLS;
                 let col = (offset as usize) % TEXT_MODE_COLS;
                 Some(CursorPosition { row, col })
             }
-            _ => None
+            _ => None,
         }
     }
 
@@ -257,7 +257,7 @@ impl VgaIoPorts {
         match self.crtc_index {
             0x0E => self.cursor_location_high,
             0x0F => self.cursor_location_low,
-            _ => 0xFF
+            _ => 0xFF,
         }
     }
 }

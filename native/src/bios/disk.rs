@@ -1,4 +1,4 @@
-use emu86_core::cpu::bios::{disk_errors, DriveParams};
+use emu86_core::cpu::bios::{DriveParams, disk_errors};
 use emu86_core::{DiskController, SECTOR_SIZE};
 
 // Disk-related operations for NativeBios
@@ -106,8 +106,7 @@ pub fn disk_get_type<D: DiskController>(disk: &D, drive: u8) -> Result<(u8, u32)
     };
 
     // Calculate total sector count
-    let total_sectors =
-        geom.cylinders as u32 * geom.heads as u32 * geom.sectors_per_track as u32;
+    let total_sectors = geom.cylinders as u32 * geom.heads as u32 * geom.sectors_per_track as u32;
 
     Ok((drive_type, total_sectors))
 }

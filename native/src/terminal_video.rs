@@ -1,4 +1,6 @@
-use emu86_core::video::{VideoController, TextCell, TextAttribute, CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS};
+use emu86_core::video::{
+    CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextAttribute, TextCell, VideoController,
+};
 use std::io::{self, Write};
 
 /// Terminal-based video controller using ANSI escape codes

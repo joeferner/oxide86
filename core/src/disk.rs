@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 
 /// Standard sector size for floppy disks (512 bytes)
 pub const SECTOR_SIZE: usize = 512;

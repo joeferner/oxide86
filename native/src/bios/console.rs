@@ -30,9 +30,9 @@ pub fn read_key() -> Option<KeyPress> {
             // For simple implementation, use ASCII code as scan code
             // In a real implementation, we'd need to map special keys to proper scan codes
             let scan_code = match ascii_code {
-                0x0D => 0x1C, // Enter key
-                0x08 => 0x0E, // Backspace
-                0x1B => 0x01, // Escape
+                0x0D => 0x1C,    // Enter key
+                0x08 => 0x0E,    // Backspace
+                0x1B => 0x01,    // Escape
                 _ => ascii_code, // Use ASCII as scan code for regular keys
             };
             Some(KeyPress {

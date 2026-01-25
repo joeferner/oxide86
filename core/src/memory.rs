@@ -1,5 +1,5 @@
+use crate::video::{VIDEO_MEMORY_END, VIDEO_MEMORY_START};
 use anyhow::{Result, anyhow};
-use crate::video::{VIDEO_MEMORY_START, VIDEO_MEMORY_END};
 
 // 1MB = 0x100000 bytes
 pub const MEMORY_SIZE: usize = 0x100000;
@@ -15,31 +15,31 @@ pub const BIOS_INTERRUPT_HANDLERS: usize = 0xF000; // Segment where BIOS handler
 // BIOS Data Area (BDA) constants
 pub const BDA_SEGMENT: u16 = 0x0040;
 pub const BDA_START: usize = 0x0400; // Physical address (0x40 * 16)
-pub const BDA_SIZE: usize = 0x100;   // 256 bytes
+pub const BDA_SIZE: usize = 0x100; // 256 bytes
 
 // BDA field offsets (from 0x0040:0000)
-pub const BDA_COM_PORTS: usize = 0x00;       // COM1-COM4 port addresses (4 words)
-pub const BDA_LPT_PORTS: usize = 0x08;       // LPT1-LPT4 port addresses (4 words)
-pub const BDA_EQUIPMENT_LIST: usize = 0x10;  // Equipment list word
-pub const BDA_MEMORY_SIZE: usize = 0x13;     // Memory size in KB (word)
+pub const BDA_COM_PORTS: usize = 0x00; // COM1-COM4 port addresses (4 words)
+pub const BDA_LPT_PORTS: usize = 0x08; // LPT1-LPT4 port addresses (4 words)
+pub const BDA_EQUIPMENT_LIST: usize = 0x10; // Equipment list word
+pub const BDA_MEMORY_SIZE: usize = 0x13; // Memory size in KB (word)
 pub const BDA_KEYBOARD_FLAGS1: usize = 0x17; // Keyboard shift flags
 pub const BDA_KEYBOARD_FLAGS2: usize = 0x18; // Keyboard shift flags
 pub const BDA_KEYBOARD_BUFFER_HEAD: usize = 0x1A; // Keyboard buffer head pointer
 pub const BDA_KEYBOARD_BUFFER_TAIL: usize = 0x1C; // Keyboard buffer tail pointer
-pub const BDA_KEYBOARD_BUFFER: usize = 0x1E;      // Keyboard buffer (32 bytes)
-pub const BDA_VIDEO_MODE: usize = 0x49;      // Current video mode
-pub const BDA_SCREEN_COLUMNS: usize = 0x4A;  // Number of screen columns
+pub const BDA_KEYBOARD_BUFFER: usize = 0x1E; // Keyboard buffer (32 bytes)
+pub const BDA_VIDEO_MODE: usize = 0x49; // Current video mode
+pub const BDA_SCREEN_COLUMNS: usize = 0x4A; // Number of screen columns
 pub const BDA_VIDEO_PAGE_SIZE: usize = 0x4C; // Video page size in bytes
 pub const BDA_VIDEO_PAGE_OFFSET: usize = 0x4E; // Current page start address
-pub const BDA_CURSOR_POS: usize = 0x50;      // Cursor positions for 8 pages (16 bytes)
+pub const BDA_CURSOR_POS: usize = 0x50; // Cursor positions for 8 pages (16 bytes)
 pub const BDA_CURSOR_END_LINE: usize = 0x60; // Cursor end scan line
 pub const BDA_CURSOR_START_LINE: usize = 0x61; // Cursor start scan line
-pub const BDA_ACTIVE_PAGE: usize = 0x62;     // Active display page
-pub const BDA_CRTC_PORT: usize = 0x63;       // CRT controller base port address
+pub const BDA_ACTIVE_PAGE: usize = 0x62; // Active display page
+pub const BDA_CRTC_PORT: usize = 0x63; // CRT controller base port address
 pub const BDA_CRT_MODE_CONTROL: usize = 0x65; // CRT mode control register
-pub const BDA_CRT_PALETTE: usize = 0x66;     // CRT palette register
-pub const BDA_TIMER_COUNTER: usize = 0x6C;   // Timer counter (dword) - ticks since midnight
-pub const BDA_TIMER_OVERFLOW: usize = 0x70;  // Timer midnight rollover flag (byte)
+pub const BDA_CRT_PALETTE: usize = 0x66; // CRT palette register
+pub const BDA_TIMER_COUNTER: usize = 0x6C; // Timer counter (dword) - ticks since midnight
+pub const BDA_TIMER_OVERFLOW: usize = 0x70; // Timer midnight rollover flag (byte)
 
 // Equipment list bits
 pub const EQUIPMENT_FLOPPY_INSTALLED: u16 = 0x0001;
@@ -197,14 +197,14 @@ impl Memory {
     pub fn initialize_bda(&mut self) {
         // COM port addresses (0x0040:0000 - 4 words)
         // Standard COM port I/O addresses
-        self.write_word(BDA_START + BDA_COM_PORTS, 0x03F8);     // COM1
+        self.write_word(BDA_START + BDA_COM_PORTS, 0x03F8); // COM1
         self.write_word(BDA_START + BDA_COM_PORTS + 2, 0x02F8); // COM2
         self.write_word(BDA_START + BDA_COM_PORTS + 4, 0x03E8); // COM3
         self.write_word(BDA_START + BDA_COM_PORTS + 6, 0x02E8); // COM4
 
         // LPT port addresses (0x0040:0008 - 4 words)
         // Standard LPT (parallel) port I/O addresses
-        self.write_word(BDA_START + BDA_LPT_PORTS, 0x0378);     // LPT1
+        self.write_word(BDA_START + BDA_LPT_PORTS, 0x0378); // LPT1
         self.write_word(BDA_START + BDA_LPT_PORTS + 2, 0x0278); // LPT2
         self.write_word(BDA_START + BDA_LPT_PORTS + 4, 0x03BC); // LPT3
         self.write_word(BDA_START + BDA_LPT_PORTS + 6, 0x0000); // LPT4 (not installed)
@@ -212,9 +212,9 @@ impl Memory {
         // Equipment list word (0x0040:0010)
         // Bits indicate installed hardware
         let mut equipment = 0u16;
-        equipment |= EQUIPMENT_FLOPPY_INSTALLED;           // Floppy drive installed
-        equipment |= EQUIPMENT_VIDEO_MODE_80X25_COLOR;     // 80x25 color text mode
-        equipment |= 0x0040;                               // 1 floppy drive (bits 6-7: count-1 = 0)
+        equipment |= EQUIPMENT_FLOPPY_INSTALLED; // Floppy drive installed
+        equipment |= EQUIPMENT_VIDEO_MODE_80X25_COLOR; // 80x25 color text mode
+        equipment |= 0x0040; // 1 floppy drive (bits 6-7: count-1 = 0)
         // No math coprocessor, no serial ports configured in equipment list
         self.write_word(BDA_START + BDA_EQUIPMENT_LIST, equipment);
 
@@ -257,7 +257,7 @@ impl Memory {
         }
 
         // Cursor shape (0x0040:0060-0061)
-        self.write_byte(BDA_START + BDA_CURSOR_END_LINE, 0x0D);   // Cursor end scan line
+        self.write_byte(BDA_START + BDA_CURSOR_END_LINE, 0x0D); // Cursor end scan line
         self.write_byte(BDA_START + BDA_CURSOR_START_LINE, 0x0C); // Cursor start scan line
 
         // Active display page (0x0040:0062)

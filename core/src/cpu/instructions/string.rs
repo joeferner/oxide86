@@ -1,7 +1,7 @@
 use super::super::{Cpu, RepeatPrefix};
 use crate::cpu::cpu_flag;
-use crate::memory::Memory;
 use crate::io_port::{IoDevice, IoPort};
+use crate::memory::Memory;
 
 impl Cpu {
     /// MOVS - Move String (opcodes A4-A5)
@@ -399,12 +399,7 @@ impl Cpu {
         }
     }
 
-    fn outs_once<I: IoDevice>(
-        &mut self,
-        is_word: bool,
-        memory: &Memory,
-        io_port: &mut IoPort<I>,
-    ) {
+    fn outs_once<I: IoDevice>(&mut self, is_word: bool, memory: &Memory, io_port: &mut IoPort<I>) {
         let port = self.dx;
 
         if is_word {
@@ -477,7 +472,10 @@ impl Cpu {
         // Zero, Sign, Parity flags (parity on low byte only)
         self.set_flag(cpu_flag::ZERO, result == 0);
         self.set_flag(cpu_flag::SIGN, (result & 0x8000) != 0);
-        self.set_flag(cpu_flag::PARITY, (result as u8).count_ones().is_multiple_of(2));
+        self.set_flag(
+            cpu_flag::PARITY,
+            (result as u8).count_ones().is_multiple_of(2),
+        );
 
         // Carry flag (set if borrow occurred)
         self.set_flag(cpu_flag::CARRY, left < right);

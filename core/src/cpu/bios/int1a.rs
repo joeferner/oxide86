@@ -2,8 +2,8 @@ use log::warn;
 
 use crate::Bios;
 use crate::cpu::cpu_flag;
-use crate::{cpu::Cpu, memory::Memory};
 use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW};
+use crate::{cpu::Cpu, memory::Memory};
 
 /// Timer ticks at 18.2 Hz (PIT channel 0 frequency)
 /// Ticks per day = 24 * 60 * 60 * 18.2 = 1,573,040 (0x1800B0)
@@ -46,8 +46,8 @@ impl Cpu {
         memory.write_byte(overflow_addr, 0); // Clear the flag
 
         // Return values
-        self.cx = high_word;  // CX = high word of tick count
-        self.dx = low_word;   // DX = low word of tick count
+        self.cx = high_word; // CX = high word of tick count
+        self.dx = low_word; // DX = low word of tick count
         self.ax = (self.ax & 0xFF00) | (midnight_flag as u16); // AL = midnight flag
     }
 
@@ -62,7 +62,7 @@ impl Cpu {
 
         // Write timer counter to BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
-        memory.write_word(counter_addr, low_word);     // Low word
+        memory.write_word(counter_addr, low_word); // Low word
         memory.write_word(counter_addr + 2, high_word); // High word
 
         // Clear midnight overflow flag when setting time

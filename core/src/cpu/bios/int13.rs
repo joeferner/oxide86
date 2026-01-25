@@ -1,6 +1,10 @@
 use log::warn;
 
-use crate::{Bios, cpu::{Cpu, cpu_flag}, memory::Memory};
+use crate::{
+    Bios,
+    cpu::{Cpu, cpu_flag},
+    memory::Memory,
+};
 
 /// INT 13h error codes
 pub mod disk_errors {

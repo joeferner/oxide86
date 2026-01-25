@@ -50,22 +50,28 @@ impl Cpu {
         let offset = self.fetch_byte(memory) as i8;
 
         let condition = match opcode {
-            0x70 => self.get_flag(cpu_flag::OVERFLOW),                    // JO - Jump if overflow
-            0x71 => !self.get_flag(cpu_flag::OVERFLOW),                   // JNO - Jump if not overflow
-            0x72 => self.get_flag(cpu_flag::CARRY),                       // JB/JC/JNAE - Jump if below/carry
-            0x73 => !self.get_flag(cpu_flag::CARRY),                      // JAE/JNB/JNC - Jump if above or equal/not below/not carry
-            0x74 => self.get_flag(cpu_flag::ZERO),                        // JE/JZ - Jump if equal/zero
-            0x75 => !self.get_flag(cpu_flag::ZERO),                       // JNE/JNZ - Jump if not equal/not zero
-            0x76 => self.get_flag(cpu_flag::CARRY) || self.get_flag(cpu_flag::ZERO),  // JBE/JNA - Jump if below or equal/not above
+            0x70 => self.get_flag(cpu_flag::OVERFLOW), // JO - Jump if overflow
+            0x71 => !self.get_flag(cpu_flag::OVERFLOW), // JNO - Jump if not overflow
+            0x72 => self.get_flag(cpu_flag::CARRY),    // JB/JC/JNAE - Jump if below/carry
+            0x73 => !self.get_flag(cpu_flag::CARRY), // JAE/JNB/JNC - Jump if above or equal/not below/not carry
+            0x74 => self.get_flag(cpu_flag::ZERO),   // JE/JZ - Jump if equal/zero
+            0x75 => !self.get_flag(cpu_flag::ZERO),  // JNE/JNZ - Jump if not equal/not zero
+            0x76 => self.get_flag(cpu_flag::CARRY) || self.get_flag(cpu_flag::ZERO), // JBE/JNA - Jump if below or equal/not above
             0x77 => !self.get_flag(cpu_flag::CARRY) && !self.get_flag(cpu_flag::ZERO), // JA/JNBE - Jump if above/not below or equal
-            0x78 => self.get_flag(cpu_flag::SIGN),                        // JS - Jump if sign
-            0x79 => !self.get_flag(cpu_flag::SIGN),                       // JNS - Jump if not sign
-            0x7A => self.get_flag(cpu_flag::PARITY),                      // JP/JPE - Jump if parity/parity even
-            0x7B => !self.get_flag(cpu_flag::PARITY),                     // JNP/JPO - Jump if not parity/parity odd
-            0x7C => self.get_flag(cpu_flag::SIGN) != self.get_flag(cpu_flag::OVERFLOW),  // JL/JNGE - Jump if less/not greater or equal
-            0x7D => self.get_flag(cpu_flag::SIGN) == self.get_flag(cpu_flag::OVERFLOW),  // JGE/JNL - Jump if greater or equal/not less
-            0x7E => self.get_flag(cpu_flag::ZERO) || (self.get_flag(cpu_flag::SIGN) != self.get_flag(cpu_flag::OVERFLOW)),  // JLE/JNG - Jump if less or equal/not greater
-            0x7F => !self.get_flag(cpu_flag::ZERO) && (self.get_flag(cpu_flag::SIGN) == self.get_flag(cpu_flag::OVERFLOW)), // JG/JNLE - Jump if greater/not less or equal
+            0x78 => self.get_flag(cpu_flag::SIGN), // JS - Jump if sign
+            0x79 => !self.get_flag(cpu_flag::SIGN), // JNS - Jump if not sign
+            0x7A => self.get_flag(cpu_flag::PARITY), // JP/JPE - Jump if parity/parity even
+            0x7B => !self.get_flag(cpu_flag::PARITY), // JNP/JPO - Jump if not parity/parity odd
+            0x7C => self.get_flag(cpu_flag::SIGN) != self.get_flag(cpu_flag::OVERFLOW), // JL/JNGE - Jump if less/not greater or equal
+            0x7D => self.get_flag(cpu_flag::SIGN) == self.get_flag(cpu_flag::OVERFLOW), // JGE/JNL - Jump if greater or equal/not less
+            0x7E => {
+                self.get_flag(cpu_flag::ZERO)
+                    || (self.get_flag(cpu_flag::SIGN) != self.get_flag(cpu_flag::OVERFLOW))
+            } // JLE/JNG - Jump if less or equal/not greater
+            0x7F => {
+                !self.get_flag(cpu_flag::ZERO)
+                    && (self.get_flag(cpu_flag::SIGN) == self.get_flag(cpu_flag::OVERFLOW))
+            } // JG/JNLE - Jump if greater/not less or equal
             _ => unreachable!(),
         };
 

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use emu86_core::{Computer, DiskImage, DiskGeometry};
+use emu86_core::{Computer, DiskGeometry, DiskImage};
 
 mod bios;
 use bios::NativeBios;
@@ -62,8 +62,7 @@ fn main() -> Result<()> {
     let disk = if let Some(disk_path) = &cli.disk {
         let disk_data = std::fs::read(disk_path)
             .with_context(|| format!("Failed to read disk image: {}", disk_path))?;
-        DiskImage::new(disk_data)
-            .context("Failed to create disk image from file")?
+        DiskImage::new(disk_data).context("Failed to create disk image from file")?
     } else {
         // Create empty 1.44MB floppy disk
         DiskImage::empty(DiskGeometry::FLOPPY_1440K)
@@ -78,11 +77,15 @@ fn main() -> Result<()> {
         // Boot from disk
         let boot_drive = parse_hex_or_dec(&cli.boot_drive)?;
         if boot_drive > 0xFF {
-            return Err(anyhow::anyhow!("Boot drive must be 0x00-0xFF, got 0x{:04X}", boot_drive));
+            return Err(anyhow::anyhow!(
+                "Boot drive must be 0x00-0xFF, got 0x{:04X}",
+                boot_drive
+            ));
         }
 
         info!("Booting from drive 0x{:02X}...", boot_drive);
-        computer.boot(boot_drive as u8)
+        computer
+            .boot(boot_drive as u8)
             .context("Failed to boot from disk")?;
 
         info!("Boot sector loaded at 0x0000:0x7C00");
@@ -96,10 +99,16 @@ fn main() -> Result<()> {
         let segment = parse_hex_or_dec(&cli.segment)?;
         let offset = parse_hex_or_dec(&cli.offset)?;
 
-        computer.load_program(&program_data, segment, offset)
+        computer
+            .load_program(&program_data, segment, offset)
             .context("Failed to load program")?;
 
-        info!("Loaded {} bytes at {:04X}:{:04X}", program_data.len(), segment, offset);
+        info!(
+            "Loaded {} bytes at {:04X}:{:04X}",
+            program_data.len(),
+            segment,
+            offset
+        );
         info!("Starting execution...\n");
     }
 
@@ -114,8 +123,7 @@ fn main() -> Result<()> {
 
 fn parse_hex_or_dec(s: &str) -> Result<u16> {
     if let Some(hex) = s.strip_prefix("0x") {
-        u16::from_str_radix(hex, 16)
-            .with_context(|| format!("Invalid hex value: {}", s))
+        u16::from_str_radix(hex, 16).with_context(|| format!("Invalid hex value: {}", s))
     } else {
         s.parse::<u16>()
             .with_context(|| format!("Invalid decimal value: {}", s))

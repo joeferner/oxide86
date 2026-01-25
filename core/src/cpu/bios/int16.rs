@@ -1,8 +1,10 @@
 use log::warn;
 
 use crate::cpu::cpu_flag;
+use crate::memory::{
+    BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_KEYBOARD_FLAGS1, BDA_START,
+};
 use crate::{cpu::Cpu, memory::Memory};
-use crate::memory::{BDA_START, BDA_KEYBOARD_FLAGS1, BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL};
 
 impl Cpu {
     /// INT 0x16 - Keyboard Services

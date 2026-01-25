@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, BenchmarkId};
+use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
 use emu86_core::Computer;
 
 /// Assemble a simple program for benchmarking
@@ -11,10 +11,10 @@ fn assemble_simple_loop() -> Vec<u8> {
     // JNZ LOOP_START ; 75 FD
     // HLT            ; F4
     vec![
-        0xB9, 0x10, 0x27,  // MOV CX, 10000
-        0x49,              // DEC CX (loop start)
-        0x75, 0xFD,        // JNZ -3 (jump to DEC CX)
-        0xF4,              // HLT
+        0xB9, 0x10, 0x27, // MOV CX, 10000
+        0x49, // DEC CX (loop start)
+        0x75, 0xFD, // JNZ -3 (jump to DEC CX)
+        0xF4, // HLT
     ]
 }
 
@@ -30,14 +30,14 @@ fn assemble_arithmetic_ops() -> Vec<u8> {
     // JNZ LOOP_START ; 75 F7
     // HLT            ; F4
     vec![
-        0xB9, 0xE8, 0x03,  // MOV CX, 1000
-        0xB8, 0x00, 0x00,  // MOV AX, 0
-        0x40,              // INC AX (loop start)
-        0x05, 0x02, 0x00,  // ADD AX, 2
-        0x2D, 0x01, 0x00,  // SUB AX, 1
-        0x49,              // DEC CX
-        0x75, 0xF7,        // JNZ -9 (jump to INC AX)
-        0xF4,              // HLT
+        0xB9, 0xE8, 0x03, // MOV CX, 1000
+        0xB8, 0x00, 0x00, // MOV AX, 0
+        0x40, // INC AX (loop start)
+        0x05, 0x02, 0x00, // ADD AX, 2
+        0x2D, 0x01, 0x00, // SUB AX, 1
+        0x49, // DEC CX
+        0x75, 0xF7, // JNZ -9 (jump to INC AX)
+        0xF4, // HLT
     ]
 }
 
@@ -54,15 +54,15 @@ fn assemble_memory_ops() -> Vec<u8> {
     // JNZ LOOP_START    ; 75 F6
     // HLT               ; F4
     vec![
-        0xB9, 0xE8, 0x03,  // MOV CX, 1000
-        0xBB, 0x00, 0x10,  // MOV BX, 0x1000
-        0x89, 0x07,        // MOV [BX], AX (loop start)
-        0x8B, 0x07,        // MOV AX, [BX]
-        0x43,              // INC BX
-        0x43,              // INC BX
-        0x49,              // DEC CX
-        0x75, 0xF6,        // JNZ -10 (jump to MOV [BX], AX)
-        0xF4,              // HLT
+        0xB9, 0xE8, 0x03, // MOV CX, 1000
+        0xBB, 0x00, 0x10, // MOV BX, 0x1000
+        0x89, 0x07, // MOV [BX], AX (loop start)
+        0x8B, 0x07, // MOV AX, [BX]
+        0x43, // INC BX
+        0x43, // INC BX
+        0x49, // DEC CX
+        0x75, 0xF6, // JNZ -10 (jump to MOV [BX], AX)
+        0xF4, // HLT
     ]
 }
 
@@ -78,14 +78,14 @@ fn assemble_register_only() -> Vec<u8> {
     // JNZ LOOP_START    ; 75 FA
     // HLT               ; F4
     vec![
-        0xB9, 0x10, 0x27,  // MOV CX, 10000
-        0xB8, 0x00, 0x00,  // MOV AX, 0
-        0x40,              // INC AX (loop start)
-        0x43,              // INC BX
-        0x42,              // INC DX
-        0x49,              // DEC CX
-        0x75, 0xFA,        // JNZ -6 (jump to INC AX)
-        0xF4,              // HLT
+        0xB9, 0x10, 0x27, // MOV CX, 10000
+        0xB8, 0x00, 0x00, // MOV AX, 0
+        0x40, // INC AX (loop start)
+        0x43, // INC BX
+        0x42, // INC DX
+        0x49, // DEC CX
+        0x75, 0xFA, // JNZ -6 (jump to INC AX)
+        0xF4, // HLT
     ]
 }
 
@@ -98,22 +98,22 @@ fn assemble_nop_loop() -> Vec<u8> {
     // JNZ LOOP_START    ; 75 FC
     // HLT               ; F4
     vec![
-        0xB9, 0x10, 0x27,  // MOV CX, 10000
-        0x90,              // NOP (loop start)
-        0x49,              // DEC CX
-        0x75, 0xFC,        // JNZ -4 (jump to NOP)
-        0xF4,              // HLT
+        0xB9, 0x10, 0x27, // MOV CX, 10000
+        0x90, // NOP (loop start)
+        0x49, // DEC CX
+        0x75, 0xFC, // JNZ -4 (jump to NOP)
+        0xF4, // HLT
     ]
 }
 
 /// Count the approximate number of instructions in a program
 fn count_instructions(program: &Vec<u8>) -> u64 {
     match program {
-        p if p == &assemble_simple_loop() => 10000 * 2 + 2,  // loop_iterations * (DEC + JNZ) + MOV + HLT
+        p if p == &assemble_simple_loop() => 10000 * 2 + 2, // loop_iterations * (DEC + JNZ) + MOV + HLT
         p if p == &assemble_arithmetic_ops() => 1000 * 5 + 3, // loop_iterations * (INC + ADD + SUB + DEC + JNZ) + setup + HLT
-        p if p == &assemble_memory_ops() => 1000 * 6 + 3,     // loop_iterations * (MOV mem + MOV from mem + 2*INC + DEC + JNZ) + setup + HLT
+        p if p == &assemble_memory_ops() => 1000 * 6 + 3, // loop_iterations * (MOV mem + MOV from mem + 2*INC + DEC + JNZ) + setup + HLT
         p if p == &assemble_register_only() => 10000 * 5 + 3, // loop_iterations * (3*INC + DEC + JNZ) + setup + HLT
-        p if p == &assemble_nop_loop() => 10000 * 3 + 2,      // loop_iterations * (NOP + DEC + JNZ) + MOV + HLT
+        p if p == &assemble_nop_loop() => 10000 * 3 + 2, // loop_iterations * (NOP + DEC + JNZ) + MOV + HLT
         _ => 0,
     }
 }
@@ -189,15 +189,9 @@ fn benchmark_programs(c: &mut Criterion) {
 
         let id = BenchmarkId::from_parameter(name);
 
-        group.bench_with_input(
-            id,
-            program,
-            |b, prog| {
-                b.iter(|| {
-                    run_program_benchmark(black_box(prog.clone()))
-                });
-            }
-        );
+        group.bench_with_input(id, program, |b, prog| {
+            b.iter(|| run_program_benchmark(black_box(prog.clone())));
+        });
 
         // After the benchmark, we'll print estimated performance in the summary
         info!("\n{} stats:", name);
@@ -251,7 +245,7 @@ fn benchmark_programs(c: &mut Criterion) {
     info!();
 
     // Compare to real 8086
-    let real_8086_mhz = 4.77;  // Original IBM PC
+    let real_8086_mhz = 4.77; // Original IBM PC
     let speedup = average_mhz / real_8086_mhz;
 
     info!("Real 8086 (IBM PC):           {} MHz", real_8086_mhz);
@@ -273,23 +267,21 @@ fn single_instruction_overhead(c: &mut Criterion) {
 
     // Benchmark individual instruction types
     let instructions = vec![
-        ("nop", vec![0x90, 0xF4]),           // NOP, HLT
-        ("inc_ax", vec![0x40, 0xF4]),        // INC AX, HLT
+        ("nop", vec![0x90, 0xF4]),                 // NOP, HLT
+        ("inc_ax", vec![0x40, 0xF4]),              // INC AX, HLT
         ("mov_imm", vec![0xB8, 0x34, 0x12, 0xF4]), // MOV AX, 0x1234, HLT
     ];
 
     for (name, program) in instructions.iter() {
-        group.bench_with_input(
-            BenchmarkId::from_parameter(name),
-            program,
-            |b, prog| {
-                b.iter(|| {
-                    let mut computer = Computer::new();
-                    computer.load_program(black_box(prog), 0x1000, 0x0000).unwrap();
-                    computer.run();
-                });
-            }
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(name), program, |b, prog| {
+            b.iter(|| {
+                let mut computer = Computer::new();
+                computer
+                    .load_program(black_box(prog), 0x1000, 0x0000)
+                    .unwrap();
+                computer.run();
+            });
+        });
     }
 
     group.finish();

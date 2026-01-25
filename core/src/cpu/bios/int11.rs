@@ -1,5 +1,5 @@
+use crate::memory::{BDA_EQUIPMENT_LIST, BDA_START};
 use crate::{cpu::Cpu, memory::Memory};
-use crate::memory::{BDA_START, BDA_EQUIPMENT_LIST};
 
 impl Cpu {
     /// INT 0x11 - Get Equipment List

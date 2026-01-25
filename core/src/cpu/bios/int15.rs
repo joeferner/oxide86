@@ -1,12 +1,11 @@
+use crate::{
+    cpu::{Cpu, cpu_flag},
+    memory::Memory,
+};
 use log::warn;
-use crate::{cpu::{Cpu, cpu_flag}, memory::Memory};
 
 impl Cpu {
-    pub(super) fn handle_int15<T: super::Bios>(
-        &mut self,
-        memory: &mut Memory,
-        _io: &mut T,
-    ) {
+    pub(super) fn handle_int15<T: super::Bios>(&mut self, memory: &mut Memory, _io: &mut T) {
         let function = (self.ax >> 8) as u8; // Get AH
         match function {
             0x41 => self.int15_wait_external_event(),
@@ -93,15 +92,15 @@ impl Cpu {
 
         // Build system descriptor table
         let table: [u8; 10] = [
-            0x08, 0x00,  // Length: 8 bytes (not including length field)
-            0xFF,        // Model byte: 0xFF = PC
-            0x00,        // Submodel: 0 = PC
-            0x01,        // BIOS revision: 1
-            0x00,        // Feature byte 1: no special features
-            0x00,        // Feature byte 2
-            0x00,        // Feature byte 3
-            0x00,        // Feature byte 4
-            0x00,        // Feature byte 5
+            0x08, 0x00, // Length: 8 bytes (not including length field)
+            0xFF, // Model byte: 0xFF = PC
+            0x00, // Submodel: 0 = PC
+            0x01, // BIOS revision: 1
+            0x00, // Feature byte 1: no special features
+            0x00, // Feature byte 2
+            0x00, // Feature byte 3
+            0x00, // Feature byte 4
+            0x00, // Feature byte 5
         ];
 
         // Write table to memory

@@ -1,19 +1,25 @@
 use anyhow::Result;
 
-use crate::{cpu::Cpu, memory::Memory};
-use crate::io_port::IoPort;
-pub use crate::cpu::bios::{Bios, NullBios, DriveParams, KeyPress, disk_errors};
-pub use crate::io_port::{IoDevice, NullIoDevice};
+pub use crate::cpu::bios::{Bios, DriveParams, KeyPress, NullBios, disk_errors};
 pub use crate::disk::{DiskController, DiskGeometry, DiskImage, SECTOR_SIZE};
-pub use crate::video::{VideoController, NullVideoController, Video, TextCell, TextAttribute, CursorPosition, colors};
+use crate::io_port::IoPort;
+pub use crate::io_port::{IoDevice, NullIoDevice};
+pub use crate::video::{
+    CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
+};
+use crate::{cpu::Cpu, memory::Memory};
 
 pub mod cpu;
-pub mod memory;
-pub mod io_port;
 pub mod disk;
+pub mod io_port;
+pub mod memory;
 pub mod video;
 
-pub struct Computer<B: Bios = NullBios, I: IoDevice = NullIoDevice, V: VideoController = NullVideoController> {
+pub struct Computer<
+    B: Bios = NullBios,
+    I: IoDevice = NullIoDevice,
+    V: VideoController = NullVideoController,
+> {
     cpu: Cpu,
     memory: Memory,
     bios: B,
@@ -35,8 +41,14 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
 
         // Initialize BDA timer counter from host system time
         let initial_ticks = bios.get_system_ticks();
-        memory.write_word(memory::BDA_START + memory::BDA_TIMER_COUNTER, (initial_ticks & 0xFFFF) as u16);
-        memory.write_word(memory::BDA_START + memory::BDA_TIMER_COUNTER + 2, (initial_ticks >> 16) as u16);
+        memory.write_word(
+            memory::BDA_START + memory::BDA_TIMER_COUNTER,
+            (initial_ticks & 0xFFFF) as u16,
+        );
+        memory.write_word(
+            memory::BDA_START + memory::BDA_TIMER_COUNTER + 2,
+            (initial_ticks >> 16) as u16,
+        );
 
         Self {
             cpu: Cpu::new(),
@@ -84,17 +96,30 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
     pub fn boot(&mut self, drive: u8) -> Result<()> {
         // Read boot sector using BIOS disk services
         // Boot sector is at cylinder 0, head 0, sector 1
-        let boot_sector = self.bios.disk_read_sectors(drive, 0, 0, 1, 1)
-            .map_err(|error_code| anyhow::anyhow!("Failed to read boot sector: error code 0x{:02X}", error_code))?;
+        let boot_sector = self
+            .bios
+            .disk_read_sectors(drive, 0, 0, 1, 1)
+            .map_err(|error_code| {
+                anyhow::anyhow!(
+                    "Failed to read boot sector: error code 0x{:02X}",
+                    error_code
+                )
+            })?;
 
         if boot_sector.len() != 512 {
-            return Err(anyhow::anyhow!("Boot sector must be exactly 512 bytes, got {}", boot_sector.len()));
+            return Err(anyhow::anyhow!(
+                "Boot sector must be exactly 512 bytes, got {}",
+                boot_sector.len()
+            ));
         }
 
         // Verify boot signature (0x55AA at offset 510-511)
         if boot_sector[510] != 0x55 || boot_sector[511] != 0xAA {
-            return Err(anyhow::anyhow!("Invalid boot sector signature: expected 0x55AA, got 0x{:02X}{:02X}",
-                boot_sector[511], boot_sector[510]));
+            return Err(anyhow::anyhow!(
+                "Invalid boot sector signature: expected 0x55AA, got 0x{:02X}{:02X}",
+                boot_sector[511],
+                boot_sector[510]
+            ));
         }
 
         // Load boot sector to 0x0000:0x7C00 (physical address 0x7C00)
@@ -149,17 +174,24 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
                 // Manually advance IP past the INT instruction
                 self.cpu.ip = self.cpu.ip.wrapping_add(2);
                 // Execute with BIOS I/O
-                self.cpu.execute_int_with_io(int_num, &mut self.memory, &mut self.bios, &mut self.video);
+                self.cpu.execute_int_with_io(
+                    int_num,
+                    &mut self.memory,
+                    &mut self.bios,
+                    &mut self.video,
+                );
             }
             0xCC => {
                 // INT 3 - advance IP and execute INT 3
                 self.cpu.ip = self.cpu.ip.wrapping_add(1);
-                self.cpu.execute_int_with_io(3, &mut self.memory, &mut self.bios, &mut self.video);
+                self.cpu
+                    .execute_int_with_io(3, &mut self.memory, &mut self.bios, &mut self.video);
             }
             _ => {
                 // Normal instruction - use execute_with_io
                 let opcode = self.cpu.fetch_byte(&self.memory);
-                self.cpu.execute_with_io(opcode, &mut self.memory, &mut self.io_port);
+                self.cpu
+                    .execute_with_io(opcode, &mut self.memory, &mut self.io_port);
             }
         }
 
@@ -181,14 +213,17 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
     /// Update video display if needed (call periodically or after step)
     pub fn update_video(&mut self) {
         if self.video.is_dirty() {
-            self.video_controller.update_display(self.video.get_buffer());
+            self.video_controller
+                .update_display(self.video.get_buffer());
             self.video_controller.update_cursor(self.video.get_cursor());
             self.video.clear_dirty();
         }
     }
 
     /// Get video buffer for inspection
-    pub fn get_video_buffer(&self) -> &[TextCell; crate::video::TEXT_MODE_COLS * crate::video::TEXT_MODE_ROWS] {
+    pub fn get_video_buffer(
+        &self,
+    ) -> &[TextCell; crate::video::TEXT_MODE_COLS * crate::video::TEXT_MODE_ROWS] {
         self.video.get_buffer()
     }
 
@@ -224,8 +259,10 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             }
 
             // Write updated tick count back to BDA
-            self.memory.write_word(counter_addr, (tick_count & 0xFFFF) as u16);
-            self.memory.write_word(counter_addr + 2, (tick_count >> 16) as u16);
+            self.memory
+                .write_word(counter_addr, (tick_count & 0xFFFF) as u16);
+            self.memory
+                .write_word(counter_addr + 2, (tick_count >> 16) as u16);
         }
     }
 }

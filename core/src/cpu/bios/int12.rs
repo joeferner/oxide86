@@ -1,5 +1,5 @@
+use crate::memory::{BDA_MEMORY_SIZE, BDA_START};
 use crate::{cpu::Cpu, memory::Memory};
-use crate::memory::{BDA_START, BDA_MEMORY_SIZE};
 
 impl Cpu {
     /// INT 0x12 - Get Memory Size

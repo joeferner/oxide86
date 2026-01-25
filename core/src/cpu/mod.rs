@@ -770,7 +770,10 @@ impl Cpu {
     pub(super) fn set_flags_16(&mut self, result: u16) {
         self.set_flag(cpu_flag::ZERO, result == 0);
         self.set_flag(cpu_flag::SIGN, (result & 0x8000) != 0);
-        self.set_flag(cpu_flag::PARITY, (result as u8).count_ones().is_multiple_of(2));
+        self.set_flag(
+            cpu_flag::PARITY,
+            (result as u8).count_ones().is_multiple_of(2),
+        );
     }
 
     // Dump register state
@@ -791,14 +794,34 @@ impl Cpu {
         info!(
             "CF={}  PF={}  AF={}  ZF={}  SF={}  TF={}  IF={}  DF={}  OF={}",
             if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 },
-            if self.get_flag(cpu_flag::PARITY) { 1 } else { 0 },
-            if self.get_flag(cpu_flag::AUXILIARY) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::PARITY) {
+                1
+            } else {
+                0
+            },
+            if self.get_flag(cpu_flag::AUXILIARY) {
+                1
+            } else {
+                0
+            },
             if self.get_flag(cpu_flag::ZERO) { 1 } else { 0 },
             if self.get_flag(cpu_flag::SIGN) { 1 } else { 0 },
             if self.get_flag(cpu_flag::TRAP) { 1 } else { 0 },
-            if self.get_flag(cpu_flag::INTERRUPT) { 1 } else { 0 },
-            if self.get_flag(cpu_flag::DIRECTION) { 1 } else { 0 },
-            if self.get_flag(cpu_flag::OVERFLOW) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::INTERRUPT) {
+                1
+            } else {
+                0
+            },
+            if self.get_flag(cpu_flag::DIRECTION) {
+                1
+            } else {
+                0
+            },
+            if self.get_flag(cpu_flag::OVERFLOW) {
+                1
+            } else {
+                0
+            },
         );
     }
 }

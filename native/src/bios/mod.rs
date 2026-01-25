@@ -190,13 +190,19 @@ impl<D: DiskController> Bios for NativeBios<D> {
         // Bit 0 = 1 for console input (stdin)
         // Bit 1 = 1 for console output (stdout)
         match handle {
-            0 => Ok(0x80D0), // STDIN: device (bit 7), console input (bit 0), binary mode
-            1 => Ok(0x80D1), // STDOUT: device (bit 7), console output (bit 1), binary mode
-            2 => Ok(0x80D1), // STDERR: device (bit 7), console output (bit 1), binary mode
+            0 => Ok(0x80D1), // STDIN: device (bit 7), console input (bit 0)
+            1 => Ok(0x80D2), // STDOUT: device (bit 7), console output (bit 1)
+            2 => Ok(0x80D2), // STDERR: device (bit 7), console output (bit 1)
             _ => {
-                // For file handles, check if it's a valid handle
-                if self.file_manager.contains_handle(handle) {
-                    // It's a file (bit 7 = 0)
+                // Check if it's a DOS device handle
+                if let Some(device) = self.file_manager.get_device(handle) {
+                    // Return device info based on device type
+                    match device {
+                        file::DosDevice::Null => Ok(0x8004), // NUL device (bit 7), special device
+                        file::DosDevice::Console => Ok(0x80D3), // CON device (bit 7), console I/O
+                    }
+                } else if self.file_manager.contains_handle(handle) {
+                    // It's a regular file (bit 7 = 0)
                     Ok(0x0000)
                 } else {
                     Err(dos_errors::INVALID_HANDLE)

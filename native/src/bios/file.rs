@@ -1,12 +1,20 @@
-use emu86_core::cpu::bios::{dos_errors, file_access, SeekMethod};
+use emu86_core::cpu::bios::{SeekMethod, dos_errors, file_access};
 use std::collections::HashMap;
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 
+/// DOS device types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DosDevice {
+    Null,    // NUL device
+    Console, // CON device
+}
+
 /// File handle management for NativeBios
 pub struct FileManager {
     open_files: HashMap<u16, File>,
+    device_handles: HashMap<u16, DosDevice>,
     next_handle: u16,
     working_dir: PathBuf,
 }
@@ -15,6 +23,7 @@ impl FileManager {
     pub fn new(working_dir: impl AsRef<Path>) -> Self {
         Self {
             open_files: HashMap::new(),
+            device_handles: HashMap::new(),
             next_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
             working_dir: working_dir.as_ref().to_path_buf(),
         }
@@ -38,6 +47,19 @@ impl FileManager {
         Some(handle)
     }
 
+    /// Check if a filename is a DOS device name
+    fn is_dos_device(filename: &str) -> Option<DosDevice> {
+        // DOS device names are case-insensitive and may have extensions
+        let name = filename.to_uppercase();
+        let base_name = name.split('.').next().unwrap_or(&name);
+
+        match base_name {
+            "NUL" => Some(DosDevice::Null),
+            "CON" => Some(DosDevice::Console),
+            _ => None,
+        }
+    }
+
     /// Resolve a filename relative to the working directory
     fn resolve_path(&self, filename: &str) -> PathBuf {
         let path = Path::new(filename);
@@ -52,6 +74,12 @@ impl FileManager {
         let handle = self
             .allocate_handle()
             .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+
+        // Check if it's a DOS device
+        if let Some(device) = Self::is_dos_device(filename) {
+            self.device_handles.insert(handle, device);
+            return Ok(handle);
+        }
 
         let path = self.resolve_path(filename);
 
@@ -80,6 +108,12 @@ impl FileManager {
         let handle = self
             .allocate_handle()
             .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+
+        // Check if it's a DOS device
+        if let Some(device) = Self::is_dos_device(filename) {
+            self.device_handles.insert(handle, device);
+            return Ok(handle);
+        }
 
         let path = self.resolve_path(filename);
 
@@ -119,7 +153,10 @@ impl FileManager {
             return Err(dos_errors::INVALID_HANDLE);
         }
 
-        if self.open_files.remove(&handle).is_some() {
+        // Try removing from device handles first, then file handles
+        if self.device_handles.remove(&handle).is_some()
+            || self.open_files.remove(&handle).is_some()
+        {
             Ok(())
         } else {
             Err(dos_errors::INVALID_HANDLE)
@@ -136,6 +173,25 @@ impl FileManager {
                     Ok(buffer)
                 }
                 Err(_) => Err(dos_errors::ACCESS_DENIED),
+            }
+        } else if let Some(device) = self.device_handles.get(&handle) {
+            // Handle DOS devices
+            match device {
+                DosDevice::Null => {
+                    // NUL always returns EOF (0 bytes)
+                    Ok(Vec::new())
+                }
+                DosDevice::Console => {
+                    // CON reads from stdin
+                    let mut buffer = vec![0u8; max_bytes as usize];
+                    match io::stdin().read(&mut buffer) {
+                        Ok(n) => {
+                            buffer.truncate(n);
+                            Ok(buffer)
+                        }
+                        Err(_) => Err(dos_errors::ACCESS_DENIED),
+                    }
+                }
             }
         } else if let Some(file) = self.open_files.get_mut(&handle) {
             let mut buffer = vec![0u8; max_bytes as usize];
@@ -169,6 +225,24 @@ impl FileManager {
                 }
                 Err(_) => Err(dos_errors::ACCESS_DENIED),
             }
+        } else if let Some(device) = self.device_handles.get(&handle) {
+            // Handle DOS devices
+            match device {
+                DosDevice::Null => {
+                    // NUL discards all data but reports success
+                    Ok(data.len() as u16)
+                }
+                DosDevice::Console => {
+                    // CON writes to stdout
+                    match io::stdout().write(data) {
+                        Ok(n) => {
+                            let _ = io::stdout().flush();
+                            Ok(n as u16)
+                        }
+                        Err(_) => Err(dos_errors::ACCESS_DENIED),
+                    }
+                }
+            }
         } else if let Some(file) = self.open_files.get_mut(&handle) {
             match file.write(data) {
                 Ok(n) => Ok(n as u16),
@@ -180,8 +254,8 @@ impl FileManager {
     }
 
     pub fn seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8> {
-        // Standard handles don't support seeking
-        if handle < 3 {
+        // Standard handles and device handles don't support seeking
+        if handle < 3 || self.device_handles.contains_key(&handle) {
             return Err(dos_errors::INVALID_HANDLE);
         }
 
@@ -202,6 +276,10 @@ impl FileManager {
     }
 
     pub fn contains_handle(&self, handle: u16) -> bool {
-        self.open_files.contains_key(&handle)
+        self.open_files.contains_key(&handle) || self.device_handles.contains_key(&handle)
+    }
+
+    pub fn get_device(&self, handle: u16) -> Option<DosDevice> {
+        self.device_handles.get(&handle).copied()
     }
 }

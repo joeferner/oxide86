@@ -1,10 +1,6 @@
 use log::warn;
 
-use crate::{
-    cpu::Cpu,
-    memory::Memory,
-    Bios,
-};
+use crate::{Bios, cpu::Cpu, memory::Memory};
 
 impl Cpu {
     /// INT 0x2F - DOS Multiplex Interrupt

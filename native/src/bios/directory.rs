@@ -1,4 +1,4 @@
-use emu86_core::cpu::bios::{dos_errors, file_attributes, FindData};
+use emu86_core::cpu::bios::{FindData, dos_errors, file_attributes};
 use std::collections::HashMap;
 use std::fs::{DirBuilder, ReadDir};
 use std::io;
