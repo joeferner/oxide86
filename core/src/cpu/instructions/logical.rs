@@ -1,4 +1,4 @@
-use super::super::{Cpu, FLAG_CARRY, FLAG_OVERFLOW, FLAG_INTERRUPT};
+use super::super::{Cpu, FLAG_AUXILIARY, FLAG_CARRY, FLAG_OVERFLOW, FLAG_INTERRUPT};
 use crate::memory::Memory;
 
 impl Cpu {

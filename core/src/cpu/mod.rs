@@ -32,15 +32,15 @@ pub struct Cpu {
 }
 
 // Flag bit positions
-const FLAG_CARRY: u16 = 1 << 0;
-const FLAG_PARITY: u16 = 1 << 2;
-const FLAG_AUXILIARY: u16 = 1 << 4;
-const FLAG_ZERO: u16 = 1 << 6;
-const FLAG_SIGN: u16 = 1 << 7;
-const FLAG_TRAP: u16 = 1 << 8;
-const FLAG_INTERRUPT: u16 = 1 << 9;
-const FLAG_DIRECTION: u16 = 1 << 10;
-const FLAG_OVERFLOW: u16 = 1 << 11;
+pub(super) const FLAG_CARRY: u16 = 1 << 0;
+pub(super) const FLAG_PARITY: u16 = 1 << 2;
+pub(super) const FLAG_AUXILIARY: u16 = 1 << 4;
+pub(super) const FLAG_ZERO: u16 = 1 << 6;
+pub(super) const FLAG_SIGN: u16 = 1 << 7;
+pub(super) const FLAG_TRAP: u16 = 1 << 8;
+pub(super) const FLAG_INTERRUPT: u16 = 1 << 9;
+pub(super) const FLAG_DIRECTION: u16 = 1 << 10;
+pub(super) const FLAG_OVERFLOW: u16 = 1 << 11;
 
 impl Cpu {
     pub fn new() -> Self {
