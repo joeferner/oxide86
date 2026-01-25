@@ -133,16 +133,14 @@ impl Cpu {
                 // MOV [offset], AX
                 memory.write_word(addr, self.ax);
             }
+        } else if to_acc {
+            // MOV AL, [offset]
+            let value = memory.read_byte(addr);
+            self.ax = (self.ax & 0xFF00) | (value as u16);
         } else {
-            if to_acc {
-                // MOV AL, [offset]
-                let value = memory.read_byte(addr);
-                self.ax = (self.ax & 0xFF00) | (value as u16);
-            } else {
-                // MOV [offset], AL
-                let value = (self.ax & 0xFF) as u8;
-                memory.write_byte(addr, value);
-            }
+            // MOV [offset], AL
+            let value = (self.ax & 0xFF) as u8;
+            memory.write_byte(addr, value);
         }
     }
 
@@ -226,7 +224,10 @@ impl Cpu {
 
         // The reg field should be 0 for POP (it's an opcode extension)
         if reg_field != 0 {
-            panic!("Invalid opcode extension for 8F: expected /0, got /{}", reg_field);
+            panic!(
+                "Invalid opcode extension for 8F: expected /0, got /{}",
+                reg_field
+            );
         }
 
         let value = self.pop(memory);
@@ -296,27 +297,27 @@ impl Cpu {
 
         // Calculate the effective address offset (not physical address)
         let offset = match rm {
-            0b000 => self.bx.wrapping_add(self.si),  // [BX + SI]
-            0b001 => self.bx.wrapping_add(self.di),  // [BX + DI]
-            0b010 => self.bp.wrapping_add(self.si),  // [BP + SI]
-            0b011 => self.bp.wrapping_add(self.di),  // [BP + DI]
-            0b100 => self.si,                         // [SI]
-            0b101 => self.di,                         // [DI]
+            0b000 => self.bx.wrapping_add(self.si), // [BX + SI]
+            0b001 => self.bx.wrapping_add(self.di), // [BX + DI]
+            0b010 => self.bp.wrapping_add(self.si), // [BP + SI]
+            0b011 => self.bp.wrapping_add(self.di), // [BP + DI]
+            0b100 => self.si,                       // [SI]
+            0b101 => self.di,                       // [DI]
             0b110 => {
                 if mode == 0b00 {
                     // Special case: direct address
                     self.fetch_word(memory)
                 } else {
-                    self.bp  // [BP]
+                    self.bp // [BP]
                 }
             }
-            0b111 => self.bx,                         // [BX]
+            0b111 => self.bx, // [BX]
             _ => unreachable!(),
         };
 
         // Add displacement based on mode
         let effective_offset = match mode {
-            0b00 => offset,  // No displacement (except for direct addressing handled above)
+            0b00 => offset, // No displacement (except for direct addressing handled above)
             0b01 => {
                 // 8-bit signed displacement
                 let disp = self.fetch_byte(memory) as i8;

@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 emu86-core = { path = "../core" }
+
+[lints]
+workspace = true

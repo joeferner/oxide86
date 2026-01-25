@@ -791,7 +791,6 @@ impl Cpu {
     /// NEG - Two's Complement Negation (F6/F7 Group 3, operation 3)
     /// NEG r/m8 or NEG r/m16
     /// Handled in unary_group3 in logical.rs, but the logic belongs here conceptually
-
     /// DAA - Decimal Adjust After Addition (opcode 0x27)
     /// Adjusts AL after BCD addition
     pub(in crate::cpu) fn daa(&mut self) {
@@ -886,7 +885,7 @@ impl Cpu {
         let new_al = al % base;
         self.ax = ((ah as u16) << 8) | (new_al as u16);
         self.set_flags_8(new_al);
-        self.set_flag(FLAG_PARITY, self.ax.count_ones() % 2 == 0);
+        self.set_flag(FLAG_PARITY, self.ax.count_ones().is_multiple_of(2));
     }
 
     /// AAD - ASCII Adjust Before Division (opcode 0xD5)

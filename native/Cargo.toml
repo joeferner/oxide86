@@ -9,3 +9,6 @@ emu86-core = { path = "../core" }
 anyhow = { workspace = true }
 env_logger = "0.11.8"
 log = { workspace = true }
+
+[lints]
+workspace = true

@@ -321,7 +321,7 @@ impl Cpu {
         // Zero, Sign, Parity flags
         self.set_flag(FLAG_ZERO, result == 0);
         self.set_flag(FLAG_SIGN, (result & 0x80) != 0);
-        self.set_flag(FLAG_PARITY, result.count_ones() % 2 == 0);
+        self.set_flag(FLAG_PARITY, result.count_ones().is_multiple_of(2));
 
         // Carry flag (set if borrow occurred)
         self.set_flag(FLAG_CARRY, left < right);
@@ -344,7 +344,7 @@ impl Cpu {
         // Zero, Sign, Parity flags (parity on low byte only)
         self.set_flag(FLAG_ZERO, result == 0);
         self.set_flag(FLAG_SIGN, (result & 0x8000) != 0);
-        self.set_flag(FLAG_PARITY, (result as u8).count_ones() % 2 == 0);
+        self.set_flag(FLAG_PARITY, (result as u8).count_ones().is_multiple_of(2));
 
         // Carry flag (set if borrow occurred)
         self.set_flag(FLAG_CARRY, left < right);

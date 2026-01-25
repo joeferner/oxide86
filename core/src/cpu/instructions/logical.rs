@@ -1,4 +1,4 @@
-use super::super::{Cpu, FLAG_AUXILIARY, FLAG_CARRY, FLAG_OVERFLOW, FLAG_INTERRUPT};
+use super::super::{Cpu, FLAG_AUXILIARY, FLAG_CARRY, FLAG_INTERRUPT, FLAG_OVERFLOW};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -440,12 +440,12 @@ impl Cpu {
                         panic!("Division by zero");
                     }
                     let dividend = self.ax;
-                    let quotient = dividend / divisor;
-                    let remainder = dividend % divisor;
+                    let quotient: u16 = dividend / divisor;
+                    let remainder: u16 = dividend % divisor;
                     if quotient > 0xFF {
                         panic!("Divide overflow");
                     }
-                    self.ax = ((remainder as u16) << 8) | (quotient as u16);
+                    self.ax = (remainder << 8) | quotient;
                     // Flags are undefined after DIV
                 }
             }
@@ -456,10 +456,10 @@ impl Cpu {
                     if divisor == 0 {
                         panic!("Division by zero");
                     }
-                    let dividend = (((self.dx as u16) as i16 as i32) << 16) | (self.ax as u16 as i32);
+                    let dividend = ((self.dx as i16 as i32) << 16) | (self.ax as i32);
                     let quotient = dividend / divisor;
                     let remainder = dividend % divisor;
-                    if quotient > 32767 || quotient < -32768 {
+                    if !(-32768..=32767).contains(&quotient) {
                         panic!("Divide overflow");
                     }
                     self.ax = quotient as u16;
@@ -473,7 +473,7 @@ impl Cpu {
                     let dividend = self.ax as i16;
                     let quotient = dividend / divisor;
                     let remainder = dividend % divisor;
-                    if quotient > 127 || quotient < -128 {
+                    if !(-128..=127).contains(&quotient) {
                         panic!("Divide overflow");
                     }
                     let al = quotient as u8;

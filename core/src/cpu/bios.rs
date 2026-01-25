@@ -1,5 +1,5 @@
-/// BIOS and DOS interrupt handler trait and implementation
-/// The core provides the interrupt dispatch mechanism, but I/O is handled via callbacks
+// BIOS and DOS interrupt handler trait and implementation
+// The core provides the interrupt dispatch mechanism, but I/O is handled via callbacks
 
 use super::Cpu;
 use crate::memory::Memory;
@@ -261,7 +261,7 @@ impl Cpu {
         let success = io.disk_reset(drive);
 
         if success {
-            self.ax = self.ax & 0x00FF; // AH = 0 (success)
+            self.ax &= 0x00FF; // AH = 0 (success)
             self.set_flag(super::FLAG_CARRY, false);
         } else {
             self.ax = (self.ax & 0x00FF) | ((disk_errors::RESET_FAILED as u16) << 8);
@@ -305,12 +305,12 @@ impl Cpu {
                 let sectors_read = (data.len() / 512).min(count as usize) as u8;
 
                 self.ax = (self.ax & 0xFF00) | (sectors_read as u16); // AL = sectors read
-                self.ax = self.ax & 0x00FF; // AH = 0 (success)
+                self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(super::FLAG_CARRY, false);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
-                self.ax = self.ax & 0xFF00; // AL = 0 (no sectors read)
+                self.ax &= 0xFF00; // AL = 0 (no sectors read)
                 self.set_flag(super::FLAG_CARRY, true);
             }
         }
@@ -351,12 +351,12 @@ impl Cpu {
         match io.disk_write_sectors(drive, cylinder_8bit, head, sector, count, &data) {
             Ok(sectors_written) => {
                 self.ax = (self.ax & 0xFF00) | (sectors_written as u16); // AL = sectors written
-                self.ax = self.ax & 0x00FF; // AH = 0 (success)
+                self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(super::FLAG_CARRY, false);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
-                self.ax = self.ax & 0xFF00; // AL = 0 (no sectors written)
+                self.ax &= 0xFF00; // AL = 0 (no sectors written)
                 self.set_flag(super::FLAG_CARRY, true);
             }
         }
@@ -388,7 +388,7 @@ impl Cpu {
 
                 self.cx = ((cylinder_low as u16) << 8) | (cl as u16); // CH:CL
                 self.dx = ((params.max_head as u16) << 8) | (params.drive_count as u16); // DH:DL
-                self.ax = self.ax & 0x00FF; // AH = 0 (success)
+                self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(super::FLAG_CARRY, false);
             }
             Err(error_code) => {

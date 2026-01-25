@@ -672,14 +672,14 @@ impl Cpu {
     pub(super) fn set_flags_8(&mut self, result: u8) {
         self.set_flag(FLAG_ZERO, result == 0);
         self.set_flag(FLAG_SIGN, (result & 0x80) != 0);
-        self.set_flag(FLAG_PARITY, result.count_ones() % 2 == 0);
+        self.set_flag(FLAG_PARITY, result.count_ones().is_multiple_of(2));
     }
 
     // Calculate and set flags for 16-bit result
     pub(super) fn set_flags_16(&mut self, result: u16) {
         self.set_flag(FLAG_ZERO, result == 0);
         self.set_flag(FLAG_SIGN, (result & 0x8000) != 0);
-        self.set_flag(FLAG_PARITY, (result as u8).count_ones() % 2 == 0);
+        self.set_flag(FLAG_PARITY, (result as u8).count_ones().is_multiple_of(2));
     }
 
     // Dump register state

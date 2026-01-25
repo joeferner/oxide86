@@ -13,3 +13,6 @@ criterion = { version = "0.8.1", features = ["html_reports"] }
 [[bench]]
 name = "instruction_benchmarks"
 harness = false
+
+[lints]
+workspace = true
