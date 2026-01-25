@@ -2,9 +2,9 @@ FROM mcr.microsoft.com/devcontainers/rust:2.0.6-bookworm
 
 RUN apt-get update
 
-# install wasm pack and flamegraph
+# install wasm pack, flamegraph, and nasm
 RUN \
-  apt-get install -y linux-perf \
+  apt-get install -y linux-perf nasm \
   && rustup target add wasm32-unknown-unknown && cargo install wasm-pack \
   && cargo install flamegraph \
   && rm -rf /usr/local/cargo/registry
