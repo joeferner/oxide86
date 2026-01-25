@@ -2,6 +2,12 @@ use super::Cpu;
 use crate::memory::Memory;
 
 impl Cpu {
+    /// HLT - Halt (opcode F4)
+    /// Stops instruction execution until a hardware interrupt occurs
+    pub(super) fn hlt(&mut self) {
+        self.halted = true;
+    }
+
     /// MOV immediate to register (opcodes B0-BF)
     /// B0-B7: MOV reg8, imm8
     /// B8-BF: MOV reg16, imm16

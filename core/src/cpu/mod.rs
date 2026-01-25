@@ -101,13 +101,11 @@ impl Cpu {
     // Decode and execute instruction
     fn execute(&mut self, opcode: u8, memory: &mut Memory) {
         match opcode {
-            // HLT - Halt
-            0xF4 => {
-                self.halted = true;
-            }
-
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
+
+            // HLT - Halt (F4)
+            0xF4 => self.hlt(),
 
             _ => {
                 panic!("Unknown opcode: {:#04X} at {:04X}:{:04X}", opcode, self.cs, self.ip.wrapping_sub(1));
