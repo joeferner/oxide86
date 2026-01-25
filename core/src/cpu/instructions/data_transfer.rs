@@ -170,4 +170,66 @@ impl Cpu {
         let value = self.read_rm16(mode, rm, addr, memory);
         self.set_segreg(seg_reg, value);
     }
+
+    /// PUSH segment register (opcodes 06, 0E, 16, 1E)
+    /// 06: PUSH ES
+    /// 0E: PUSH CS
+    /// 16: PUSH SS
+    /// 1E: PUSH DS
+    pub(in crate::cpu) fn push_segreg(&mut self, opcode: u8, memory: &mut Memory) {
+        let seg = match opcode {
+            0x06 => 0, // ES
+            0x0E => 1, // CS
+            0x16 => 2, // SS
+            0x1E => 3, // DS
+            _ => unreachable!(),
+        };
+        let value = self.get_segreg(seg);
+        self.push(value, memory);
+    }
+
+    /// POP segment register (opcodes 07, 0F, 17, 1F)
+    /// 07: POP ES
+    /// 0F: POP CS (note: POP CS is unusual, typically not used)
+    /// 17: POP SS
+    /// 1F: POP DS
+    pub(in crate::cpu) fn pop_segreg(&mut self, opcode: u8, memory: &mut Memory) {
+        let seg = match opcode {
+            0x07 => 0, // ES
+            0x0F => 1, // CS
+            0x17 => 2, // SS
+            0x1F => 3, // DS
+            _ => unreachable!(),
+        };
+        let value = self.pop(memory);
+        self.set_segreg(seg, value);
+    }
+
+    /// PUSHF - Push Flags Register (opcode 9C)
+    /// Pushes the FLAGS register onto the stack
+    pub(in crate::cpu) fn pushf(&mut self, memory: &mut Memory) {
+        self.push(self.flags, memory);
+    }
+
+    /// POPF - Pop Flags Register (opcode 9D)
+    /// Pops a word from the stack into the FLAGS register
+    pub(in crate::cpu) fn popf(&mut self, memory: &mut Memory) {
+        self.flags = self.pop(memory);
+    }
+
+    /// POP r/m16 (opcode 8F) - Group 1A
+    /// 8F /0: POP r/m16
+    /// Pops a word from stack to register or memory location
+    pub(in crate::cpu) fn pop_rm16(&mut self, memory: &mut Memory) {
+        let modrm = self.fetch_byte(memory);
+        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+
+        // The reg field should be 0 for POP (it's an opcode extension)
+        if reg_field != 0 {
+            panic!("Invalid opcode extension for 8F: expected /0, got /{}", reg_field);
+        }
+
+        let value = self.pop(memory);
+        self.write_rm16(mode, rm, addr, value, memory);
+    }
 }

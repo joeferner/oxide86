@@ -118,17 +118,38 @@ impl Cpu {
             // ADD immediate to AL/AX
             0x04..=0x05 => self.add_imm_acc(opcode, memory),
 
+            // PUSH ES (06)
+            0x06 => self.push_segreg(opcode, memory),
+
+            // POP ES (07)
+            0x07 => self.pop_segreg(opcode, memory),
+
             // OR r/m to register
             0x08..=0x0B => self.or_rm_reg(opcode, memory),
 
             // OR immediate to AL/AX
             0x0C..=0x0D => self.or_imm_acc(opcode, memory),
 
+            // PUSH CS (0E)
+            0x0E => self.push_segreg(opcode, memory),
+
             // AND r/m to register
             0x20..=0x23 => self.and_rm_reg(opcode, memory),
 
             // AND immediate to AL/AX
             0x24..=0x25 => self.and_imm_acc(opcode, memory),
+
+            // PUSH SS (16)
+            0x16 => self.push_segreg(opcode, memory),
+
+            // POP SS (17)
+            0x17 => self.pop_segreg(opcode, memory),
+
+            // PUSH DS (1E)
+            0x1E => self.push_segreg(opcode, memory),
+
+            // POP DS (1F)
+            0x1F => self.pop_segreg(opcode, memory),
 
             // SUB r/m to register
             0x28..=0x2B => self.sub_rm_reg(opcode, memory),
@@ -183,6 +204,9 @@ impl Cpu {
             // MOV r/m16 to segment register (8E)
             0x8E => self.mov_rm_to_segreg(memory),
 
+            // POP r/m16 (8F) - Group 1A
+            0x8F => self.pop_rm16(memory),
+
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
             0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory),
 
@@ -206,6 +230,12 @@ impl Cpu {
 
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
+
+            // PUSHF - Push Flags (9C)
+            0x9C => self.pushf(memory),
+
+            // POPF - Pop Flags (9D)
+            0x9D => self.popf(memory),
 
             // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
             0xC0..=0xC1 => self.shift_rotate_group(opcode, memory),
