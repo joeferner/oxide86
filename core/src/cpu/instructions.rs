@@ -462,6 +462,39 @@ impl Cpu {
         }
     }
 
+    /// PUSH 16-bit register (opcodes 50-57)
+    /// Push register onto stack
+    pub(super) fn push_reg16(&mut self, opcode: u8, memory: &mut Memory) {
+        let reg = opcode & 0x07;
+        let value = self.get_reg16(reg);
+        self.push(value, memory);
+    }
+
+    /// POP 16-bit register (opcodes 58-5F)
+    /// Pop from stack to register
+    pub(super) fn pop_reg16(&mut self, opcode: u8, memory: &mut Memory) {
+        let reg = opcode & 0x07;
+        let value = self.pop(memory);
+        self.set_reg16(reg, value);
+    }
+
+    /// PUSH immediate (opcode 68: 16-bit, 6A: sign-extended 8-bit)
+    pub(super) fn push_imm(&mut self, opcode: u8, memory: &mut Memory) {
+        let value = if opcode == 0x68 {
+            // PUSH imm16
+            self.fetch_word(memory)
+        } else {
+            // PUSH imm8 (sign-extended to 16 bits)
+            let imm8 = self.fetch_byte(memory);
+            if imm8 & 0x80 != 0 {
+                0xFF00 | (imm8 as u16)
+            } else {
+                imm8 as u16
+            }
+        };
+        self.push(value, memory);
+    }
+
     /// JMP short relative (opcode EB)
     /// Jump to IP + signed 8-bit displacement
     pub(super) fn jmp_short(&mut self, memory: &Memory) {
@@ -474,6 +507,28 @@ impl Cpu {
     pub(super) fn jmp_near(&mut self, memory: &Memory) {
         let offset = self.fetch_word(memory) as i16;
         self.ip = self.ip.wrapping_add(offset as u16);
+    }
+
+    /// CALL near relative (opcode E8)
+    /// Call procedure at IP + signed 16-bit offset
+    pub(super) fn call_near(&mut self, memory: &mut Memory) {
+        let offset = self.fetch_word(memory) as i16;
+        // Push return address (current IP after reading offset)
+        self.push(self.ip, memory);
+        // Jump to target
+        self.ip = self.ip.wrapping_add(offset as u16);
+    }
+
+    /// RET (opcode C3: near return, C2: near return with imm16 pop)
+    pub(super) fn ret(&mut self, opcode: u8, memory: &mut Memory) {
+        // Pop return address
+        self.ip = self.pop(memory);
+
+        // If opcode is C2, also pop additional bytes from stack
+        if opcode == 0xC2 {
+            let bytes_to_pop = self.fetch_word(memory);
+            self.sp = self.sp.wrapping_add(bytes_to_pop);
+        }
     }
 
     /// INC 16-bit register (opcodes 40-47)

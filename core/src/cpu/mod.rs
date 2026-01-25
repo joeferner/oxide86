@@ -136,6 +136,15 @@ impl Cpu {
             // DEC 16-bit register (48-4F)
             0x48..=0x4F => self.dec_reg16(opcode),
 
+            // PUSH 16-bit register (50-57)
+            0x50..=0x57 => self.push_reg16(opcode, memory),
+
+            // POP 16-bit register (58-5F)
+            0x58..=0x5F => self.pop_reg16(opcode, memory),
+
+            // PUSH immediate (68: imm16, 6A: imm8 sign-extended)
+            0x68 | 0x6A => self.push_imm(opcode, memory),
+
             // Conditional jumps (70-7F)
             0x70..=0x7F => self.jmp_conditional(opcode, memory),
 
@@ -149,6 +158,12 @@ impl Cpu {
 
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
+
+            // RET with optional pop (C2: with imm16, C3: without)
+            0xC2..=0xC3 => self.ret(opcode, memory),
+
+            // CALL near relative (E8)
+            0xE8 => self.call_near(memory),
 
             // JMP near relative (E9)
             0xE9 => self.jmp_near(memory),
@@ -240,6 +255,21 @@ impl Cpu {
     // Get a specific flag
     pub(super) fn get_flag(&self, flag: u16) -> bool {
         (self.flags & flag) != 0
+    }
+
+    // Push 16-bit value onto stack
+    pub(super) fn push(&mut self, value: u16, memory: &mut Memory) {
+        self.sp = self.sp.wrapping_sub(2);
+        let addr = Self::physical_address(self.ss, self.sp);
+        memory.write_word(addr, value);
+    }
+
+    // Pop 16-bit value from stack
+    pub(super) fn pop(&mut self, memory: &Memory) -> u16 {
+        let addr = Self::physical_address(self.ss, self.sp);
+        let value = memory.read_word(addr);
+        self.sp = self.sp.wrapping_add(2);
+        value
     }
 
     // Calculate and set flags for 8-bit result

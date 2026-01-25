@@ -45,4 +45,17 @@ impl Memory {
     pub fn write_byte(&mut self, address: usize, value: u8) {
         self.data[address % MEMORY_SIZE] = value;
     }
+
+    // Read a 16-bit word (little-endian)
+    pub fn read_word(&self, address: usize) -> u16 {
+        let low = self.read_byte(address) as u16;
+        let high = self.read_byte(address + 1) as u16;
+        (high << 8) | low
+    }
+
+    // Write a 16-bit word (little-endian)
+    pub fn write_word(&mut self, address: usize, value: u16) {
+        self.write_byte(address, (value & 0xFF) as u8);
+        self.write_byte(address + 1, (value >> 8) as u8);
+    }
 }
