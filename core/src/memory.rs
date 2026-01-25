@@ -109,28 +109,31 @@ impl Memory {
     }
 
     /// Install INT 0x21 (DOS services) handler
-    /// This is a minimal implementation that handles common DOS functions
+    ///
+    /// This is a STUB that only provides a valid return point (IRET).
+    ///
+    /// Real INT 0x21 processing is handled by the Bios trait implementation
+    /// when using the Computer wrapper (see cpu::bios module). The Computer
+    /// intercepts INT instructions and dispatches them to handle_bios_interrupt()
+    /// which performs actual I/O operations.
+    ///
+    /// This memory-based stub exists to:
+    /// - Provide a valid IVT entry at F000:0100
+    /// - Allow basic operation if Cpu is used directly without Computer wrapper
+    /// - Demonstrate proper interrupt handler structure
+    ///
+    /// A full memory-based implementation would:
+    /// 1. Check AH register value for function number
+    /// 2. Dispatch to appropriate handler (character I/O, file operations, etc.)
+    /// 3. Perform the requested operation
+    /// 4. Return with IRET
     fn install_int21_handler(&mut self) {
         let handler_segment = 0xF000;
         let handler_offset = 0x0100;
         let handler_addr = ((handler_segment as usize) << 4) + (handler_offset as usize);
 
-        // INT 0x21 handler code
-        // We'll implement a simple handler that checks AH register for function number
-        let mut code_offset = 0;
-
-        // For now, we'll just implement a simple stub that returns with IRET
-        // A full implementation would check AH and dispatch to different functions
-
-        // Simple handler that just returns:
-        // IRET (CF)
-        self.write_byte(handler_addr + code_offset, 0xCF);
-        code_offset += 1;
-
-        // Note: A real implementation would:
-        // 1. Check AH register value
-        // 2. Dispatch to appropriate handler (e.g., character I/O, file operations)
-        // 3. Perform the requested operation
-        // 4. Return with IRET
+        // Stub handler: Just return with IRET
+        // IRET instruction (0xCF)
+        self.write_byte(handler_addr, 0xCF);
     }
 }
