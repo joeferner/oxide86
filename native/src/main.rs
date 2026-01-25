@@ -9,6 +9,9 @@ use stdio_bios::StdioBios;
 mod simple_io_device;
 use simple_io_device::SimpleIoDevice;
 
+mod terminal_video;
+use terminal_video::TerminalVideo;
+
 #[derive(Parser)]
 #[command(name = "emu86")]
 #[command(about = "Intel 8086 CPU Emulator", long_about = None)]
@@ -51,7 +54,8 @@ fn main() -> Result<()> {
 
     let io_device = SimpleIoDevice::new(cli.verbose_io);
     let bios = StdioBios::new(disk);
-    let mut computer = Computer::new(bios, io_device);
+    let video = TerminalVideo::new();
+    let mut computer = Computer::new(bios, io_device, video);
 
     // Load the program binary
     let program_data = std::fs::read(&cli.program)

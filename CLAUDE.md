@@ -13,6 +13,9 @@ emu86 is a software emulator for the Intel 8086 microprocessor, the 16-bit CPU t
 - when compiling and running examples use examples/run.sh or update run.sh as needed
 - avoid using python for any tasks
 - don't write unit tests or integration tests unless directed to
+- write code in core that supports both native and wasm
+- don't support backwards compatibility
+- run clippy when done
 
 ## Architecture
 

@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use crate::video::{VIDEO_MEMORY_START, VIDEO_MEMORY_END};
 
 // 1MB = 0x100000 bytes
 pub const MEMORY_SIZE: usize = 0x100000;
@@ -13,12 +14,14 @@ pub const BIOS_INTERRUPT_HANDLERS: usize = 0xF000; // Segment where BIOS handler
 
 pub struct Memory {
     data: Vec<u8>,
+    video_writes: Vec<(usize, u8)>,
 }
 
 impl Memory {
     pub fn new() -> Self {
         Self {
             data: vec![0; MEMORY_SIZE],
+            video_writes: Vec::new(),
         }
     }
 
@@ -51,7 +54,14 @@ impl Memory {
     }
 
     pub fn write_byte(&mut self, address: usize, value: u8) {
-        self.data[address % MEMORY_SIZE] = value;
+        let addr = address % MEMORY_SIZE;
+        self.data[addr] = value;
+
+        // Check if write is in video memory range
+        if (VIDEO_MEMORY_START..=VIDEO_MEMORY_END).contains(&addr) {
+            let offset = addr - VIDEO_MEMORY_START;
+            self.video_writes.push((offset, value));
+        }
     }
 
     // Read a 16-bit word (little-endian)
@@ -135,5 +145,10 @@ impl Memory {
         // Stub handler: Just return with IRET
         // IRET instruction (0xCF)
         self.write_byte(handler_addr, 0xCF);
+    }
+
+    /// Drain video memory writes collected during instruction execution
+    pub fn drain_video_writes(&mut self) -> std::vec::Drain<'_, (usize, u8)> {
+        self.video_writes.drain(..)
     }
 }

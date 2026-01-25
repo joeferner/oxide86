@@ -5,21 +5,25 @@ use crate::io_port::IoPort;
 pub use crate::cpu::bios::{Bios, NullBios, DriveParams, disk_errors};
 pub use crate::io_port::{IoDevice, NullIoDevice};
 pub use crate::disk::{DiskController, DiskGeometry, DiskImage, SECTOR_SIZE};
+pub use crate::video::{VideoController, NullVideoController, Video, TextCell, TextAttribute, CursorPosition, colors};
 
 pub mod cpu;
 pub mod memory;
 pub mod io_port;
 pub mod disk;
+pub mod video;
 
-pub struct Computer<B: Bios = NullBios, I: IoDevice = NullIoDevice> {
+pub struct Computer<B: Bios = NullBios, I: IoDevice = NullIoDevice, V: VideoController = NullVideoController> {
     cpu: Cpu,
     memory: Memory,
     bios: B,
     io_port: IoPort<I>,
+    video: Video,
+    video_controller: V,
 }
 
-impl<B: Bios, I: IoDevice> Computer<B, I> {
-    pub fn new(bios: B, io_device: I) -> Self {
+impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
+    pub fn new(bios: B, io_device: I, video_controller: V) -> Self {
         let mut memory = Memory::new();
         memory.initialize_ivt();
         Self {
@@ -27,6 +31,8 @@ impl<B: Bios, I: IoDevice> Computer<B, I> {
             memory,
             bios,
             io_port: IoPort::new(io_device),
+            video: Video::new(),
+            video_controller,
         }
     }
 
@@ -60,6 +66,7 @@ impl<B: Bios, I: IoDevice> Computer<B, I> {
     pub fn run(&mut self) {
         while !self.cpu.is_halted() {
             self.step();
+            self.update_video();
         }
     }
 
@@ -92,9 +99,33 @@ impl<B: Bios, I: IoDevice> Computer<B, I> {
                 self.cpu.execute_with_io(opcode, &mut self.memory, &mut self.io_port);
             }
         }
+
+        // Process any video memory writes that occurred during instruction execution
+        for (offset, value) in self.memory.drain_video_writes() {
+            self.video.write_byte(offset, value);
+        }
     }
 
     pub fn dump_registers(&self) {
         self.cpu.dump_registers();
+    }
+
+    /// Update video display if needed (call periodically or after step)
+    pub fn update_video(&mut self) {
+        if self.video.is_dirty() {
+            self.video_controller.update_display(self.video.get_buffer());
+            self.video_controller.update_cursor(self.video.get_cursor());
+            self.video.clear_dirty();
+        }
+    }
+
+    /// Get video buffer for inspection
+    pub fn get_video_buffer(&self) -> &[TextCell; crate::video::TEXT_MODE_COLS * crate::video::TEXT_MODE_ROWS] {
+        self.video.get_buffer()
+    }
+
+    /// Check if CPU is halted
+    pub fn is_halted(&self) -> bool {
+        self.cpu.is_halted()
     }
 }
