@@ -4,10 +4,12 @@ use crate::{cpu::Cpu, memory::Memory};
 use crate::io_port::IoPort;
 pub use crate::cpu::bios::{Bios, NullBios};
 pub use crate::io_port::{IoDevice, NullIoDevice};
+pub use crate::disk::{DiskController, DiskGeometry, DiskImage, SECTOR_SIZE};
 
 pub mod cpu;
 pub mod memory;
 pub mod io_port;
+pub mod disk;
 
 pub struct Computer<B: Bios = NullBios, I: IoDevice = NullIoDevice> {
     cpu: Cpu,
