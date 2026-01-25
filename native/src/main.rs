@@ -34,12 +34,20 @@ struct Cli {
     /// Path to disk image file (optional, will create empty 1.44MB floppy if not specified)
     #[arg(long)]
     disk: Option<String>,
+
+    /// Working directory for file operations (default: current directory)
+    #[arg(long, default_value = ".")]
+    workdir: String,
 }
 
 fn main() -> Result<()> {
     env_logger::init();
 
     let cli = Cli::parse();
+
+    // Create working directory if it doesn't exist
+    std::fs::create_dir_all(&cli.workdir)
+        .with_context(|| format!("Failed to create working directory: {}", cli.workdir))?;
 
     // Load or create disk image
     let disk = if let Some(disk_path) = &cli.disk {
@@ -53,7 +61,7 @@ fn main() -> Result<()> {
     };
 
     let io_device = SimpleIoDevice::new(cli.verbose_io);
-    let bios = StdioBios::new(disk);
+    let bios = StdioBios::new(disk, &cli.workdir);
     let video = TerminalVideo::new();
     let mut computer = Computer::new(bios, io_device, video);
 

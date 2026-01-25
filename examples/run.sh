@@ -1,7 +1,8 @@
 #!/bin/bash
 # Script to assemble and run 8086 assembly programs
-
 set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 if [ $# -lt 1 ]; then
     echo "Usage: $0 <file.asm> [--segment SEGMENT] [--offset OFFSET]"
@@ -25,6 +26,12 @@ fi
 BASENAME="${ASM_FILE%.asm}"
 BIN_FILE="${BASENAME}.bin"
 
+# Get the directory where this script is located
+WORK_DIR="${SCRIPT_DIR}/workdir"
+
+# Create working directory for file I/O operations
+mkdir -p "$WORK_DIR"
+
 # Assemble the program
 echo "Assembling $ASM_FILE..."
 nasm -f bin "$ASM_FILE" -o "$BIN_FILE"
@@ -36,7 +43,7 @@ if [ $? -eq 0 ]; then
     # Run the program
     echo "Running $BIN_FILE..."
     echo "================================"
-    cargo run -p emu86-native -- "$BIN_FILE" "$@"
+    cargo run -p emu86-native -- "$BIN_FILE" --workdir "$WORK_DIR" "$@"
 else
     echo "Assembly failed"
     exit 1

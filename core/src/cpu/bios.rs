@@ -48,6 +48,46 @@ pub mod disk_errors {
     pub const SENSE_OPERATION_FAILED: u8 = 0xFF;
 }
 
+/// INT 21h DOS error codes
+pub mod dos_errors {
+    pub const SUCCESS: u8 = 0x00;
+    pub const INVALID_FUNCTION: u8 = 0x01;
+    pub const FILE_NOT_FOUND: u8 = 0x02;
+    pub const PATH_NOT_FOUND: u8 = 0x03;
+    pub const TOO_MANY_OPEN_FILES: u8 = 0x04;
+    pub const ACCESS_DENIED: u8 = 0x05;
+    pub const INVALID_HANDLE: u8 = 0x06;
+    pub const MEMORY_CONTROL_BLOCKS_DESTROYED: u8 = 0x07;
+    pub const INSUFFICIENT_MEMORY: u8 = 0x08;
+    pub const INVALID_MEMORY_BLOCK_ADDRESS: u8 = 0x09;
+    pub const INVALID_ENVIRONMENT: u8 = 0x0A;
+    pub const INVALID_FORMAT: u8 = 0x0B;
+    pub const INVALID_ACCESS_CODE: u8 = 0x0C;
+    pub const INVALID_DATA: u8 = 0x0D;
+    pub const INVALID_DRIVE: u8 = 0x0F;
+    pub const ATTEMPT_TO_REMOVE_CURRENT_DIR: u8 = 0x10;
+    pub const NOT_SAME_DEVICE: u8 = 0x11;
+    pub const NO_MORE_FILES: u8 = 0x12;
+}
+
+/// File access modes for INT 21h, AH=3Dh
+pub mod file_access {
+    pub const READ_ONLY: u8 = 0x00;
+    pub const WRITE_ONLY: u8 = 0x01;
+    pub const READ_WRITE: u8 = 0x02;
+}
+
+/// File seek methods for INT 21h, AH=42h
+#[derive(Debug, Clone, Copy)]
+pub enum SeekMethod {
+    /// Seek from beginning of file
+    FromStart = 0x00,
+    /// Seek from current position
+    FromCurrent = 0x01,
+    /// Seek from end of file
+    FromEnd = 0x02,
+}
+
 /// Trait for handling BIOS interrupt I/O operations
 /// Platform-specific code (native, WASM) implements this to provide actual I/O
 pub trait Bios {
@@ -92,6 +132,32 @@ pub trait Bios {
     /// Get drive parameters (INT 13h, AH=08h)
     /// Returns drive parameters on success, or error code on failure
     fn disk_get_params(&self, drive: u8) -> Result<DriveParams, u8>;
+
+    // --- INT 21h - DOS File Services ---
+
+    /// Create or truncate file (INT 21h, AH=3Ch)
+    /// Returns file handle on success, or error code on failure
+    fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, u8>;
+
+    /// Open existing file (INT 21h, AH=3Dh)
+    /// Returns file handle on success, or error code on failure
+    fn file_open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8>;
+
+    /// Close file (INT 21h, AH=3Eh)
+    /// Returns success or error code
+    fn file_close(&mut self, handle: u16) -> Result<(), u8>;
+
+    /// Read from file or device (INT 21h, AH=3Fh)
+    /// Returns the data read on success, or error code on failure
+    fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, u8>;
+
+    /// Write to file or device (INT 21h, AH=40h)
+    /// Returns the number of bytes written on success, or error code on failure
+    fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, u8>;
+
+    /// Seek within file (INT 21h, AH=42h)
+    /// Returns the new file position on success, or error code on failure
+    fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8>;
 }
 
 /// A null I/O handler that does nothing (for testing or headless operation)
@@ -140,6 +206,30 @@ impl Bios for NullBios {
     fn disk_get_params(&self, _drive: u8) -> Result<DriveParams, u8> {
         Err(disk_errors::INVALID_COMMAND)
     }
+
+    fn file_create(&mut self, _filename: &str, _attributes: u8) -> Result<u16, u8> {
+        Err(dos_errors::ACCESS_DENIED)
+    }
+
+    fn file_open(&mut self, _filename: &str, _access_mode: u8) -> Result<u16, u8> {
+        Err(dos_errors::FILE_NOT_FOUND)
+    }
+
+    fn file_close(&mut self, _handle: u16) -> Result<(), u8> {
+        Err(dos_errors::INVALID_HANDLE)
+    }
+
+    fn file_read(&mut self, _handle: u16, _max_bytes: u16) -> Result<Vec<u8>, u8> {
+        Err(dos_errors::INVALID_HANDLE)
+    }
+
+    fn file_write(&mut self, _handle: u16, _data: &[u8]) -> Result<u16, u8> {
+        Err(dos_errors::INVALID_HANDLE)
+    }
+
+    fn file_seek(&mut self, _handle: u16, _offset: i32, _method: SeekMethod) -> Result<u32, u8> {
+        Err(dos_errors::INVALID_HANDLE)
+    }
 }
 
 impl Cpu {
@@ -184,6 +274,12 @@ impl Cpu {
             0x01 => self.int21_read_char_with_echo(io),
             0x02 => self.int21_write_char(io),
             0x09 => self.int21_write_string(memory, io),
+            0x3C => self.int21_create_file(memory, io),
+            0x3D => self.int21_open_file(memory, io),
+            0x3E => self.int21_close_file(io),
+            0x3F => self.int21_read_file(memory, io),
+            0x40 => self.int21_write_file(memory, io),
+            0x42 => self.int21_seek_file(io),
             0x4C => self.int21_exit(),
             _ => {
                 warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
@@ -232,6 +328,190 @@ impl Cpu {
     fn int21_exit(&mut self) {
         // Halt the CPU
         self.halted = true;
+    }
+
+    /// INT 21h, AH=3Ch - Create or Truncate File
+    /// Input:
+    ///   DS:DX = pointer to null-terminated filename
+    ///   CX = file attributes
+    /// Output:
+    ///   CF clear if success: AX = file handle
+    ///   CF set if error: AX = error code
+    fn int21_create_file<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+        let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
+        let attributes = (self.cx & 0xFF) as u8;
+
+        match io.file_create(&filename, attributes) {
+            Ok(handle) => {
+                self.ax = handle;
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=3Dh - Open Existing File
+    /// Input:
+    ///   DS:DX = pointer to null-terminated filename
+    ///   AL = access mode (0=read, 1=write, 2=read/write)
+    /// Output:
+    ///   CF clear if success: AX = file handle
+    ///   CF set if error: AX = error code
+    fn int21_open_file<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+        let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
+        let access_mode = (self.ax & 0xFF) as u8;
+
+        match io.file_open(&filename, access_mode) {
+            Ok(handle) => {
+                self.ax = handle;
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=3Eh - Close File
+    /// Input:
+    ///   BX = file handle
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code
+    fn int21_close_file<T: Bios>(&mut self, io: &mut T) {
+        let handle = self.bx;
+
+        match io.file_close(handle) {
+            Ok(()) => {
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=3Fh - Read from File or Device
+    /// Input:
+    ///   BX = file handle
+    ///   CX = number of bytes to read
+    ///   DS:DX = pointer to buffer
+    /// Output:
+    ///   CF clear if success: AX = number of bytes read
+    ///   CF set if error: AX = error code
+    fn int21_read_file<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+        let handle = self.bx;
+        let max_bytes = self.cx;
+
+        match io.file_read(handle, max_bytes) {
+            Ok(data) => {
+                // Write data to DS:DX
+                let buffer_addr = Self::physical_address(self.ds, self.dx);
+                for (i, &byte) in data.iter().enumerate() {
+                    memory.write_byte(buffer_addr + i, byte);
+                }
+                self.ax = data.len() as u16;
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=40h - Write to File or Device
+    /// Input:
+    ///   BX = file handle
+    ///   CX = number of bytes to write
+    ///   DS:DX = pointer to data
+    /// Output:
+    ///   CF clear if success: AX = number of bytes written
+    ///   CF set if error: AX = error code
+    fn int21_write_file<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+        let handle = self.bx;
+        let num_bytes = self.cx;
+
+        // Read data from DS:DX
+        let buffer_addr = Self::physical_address(self.ds, self.dx);
+        let mut data = Vec::with_capacity(num_bytes as usize);
+        for i in 0..num_bytes {
+            data.push(memory.read_byte(buffer_addr + i as usize));
+        }
+
+        match io.file_write(handle, &data) {
+            Ok(bytes_written) => {
+                self.ax = bytes_written;
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=42h - Seek (LSEEK)
+    /// Input:
+    ///   BX = file handle
+    ///   AL = seek method (0=from start, 1=from current, 2=from end)
+    ///   CX:DX = signed offset (32-bit)
+    /// Output:
+    ///   CF clear if success: DX:AX = new file position
+    ///   CF set if error: AX = error code
+    fn int21_seek_file<T: Bios>(&mut self, io: &mut T) {
+        let handle = self.bx;
+        let method_code = (self.ax & 0xFF) as u8;
+
+        // Combine CX:DX into a 32-bit signed offset
+        let offset = ((self.cx as u32) << 16) | (self.dx as u32);
+        let offset_signed = offset as i32;
+
+        let method = match method_code {
+            0 => SeekMethod::FromStart,
+            1 => SeekMethod::FromCurrent,
+            2 => SeekMethod::FromEnd,
+            _ => {
+                self.ax = dos_errors::INVALID_FUNCTION as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+                return;
+            }
+        };
+
+        match io.file_seek(handle, offset_signed, method) {
+            Ok(new_position) => {
+                // Return new position in DX:AX
+                self.dx = (new_position >> 16) as u16;
+                self.ax = (new_position & 0xFFFF) as u16;
+                self.set_flag(super::FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(super::FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// Helper function to read a null-terminated string from memory
+    fn read_null_terminated_string(&self, memory: &Memory, segment: u16, offset: u16) -> String {
+        let mut addr = Self::physical_address(segment, offset);
+        let mut result = String::new();
+
+        loop {
+            let ch = memory.read_byte(addr);
+            if ch == 0 {
+                break;
+            }
+            result.push(ch as char);
+            addr += 1;
+        }
+
+        result
     }
 
     /// INT 0x13 - BIOS Disk Services

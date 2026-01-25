@@ -15,7 +15,8 @@ emu86 is a software emulator for the Intel 8086 microprocessor, the 16-bit CPU t
 - don't write unit tests or integration tests unless directed to
 - write code in core that supports both native and wasm
 - don't support backwards compatibility
-- run clippy when done
+- when done run clippy
+- when done update CLAUDE.md to help future code edits
 
 ## Architecture
 
@@ -95,10 +96,19 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=08h: Get drive parameters
 
 - **INT 21h - DOS Services** ([core/src/cpu/bios.rs](core/src/cpu/bios.rs))
-  - AH=01h: Read character with echo
-  - AH=02h: Write character
-  - AH=09h: Write string
-  - AH=4Ch: Exit program
+  - **Console I/O:**
+    - AH=01h: Read character with echo
+    - AH=02h: Write character
+    - AH=09h: Write string
+  - **File Operations:**
+    - AH=3Ch: Create or truncate file
+    - AH=3Dh: Open existing file
+    - AH=3Eh: Close file
+    - AH=3Fh: Read from file or device
+    - AH=40h: Write to file or device
+    - AH=42h: Seek (LSEEK)
+  - **Process Control:**
+    - AH=4Ch: Exit program
 
 **Adding New BIOS Interrupts:**
 
@@ -127,6 +137,67 @@ To add a new BIOS interrupt handler:
    ```
 
 3. No changes needed to Computer or CPU core - dispatch is automatic
+
+**DOS File Operations (INT 21h):**
+
+The emulator implements DOS file operations through the `Bios` trait. Platform-specific implementations (native, WASM) must provide actual file I/O.
+
+**File Operation Flow:**
+```
+INT 21h with AH=3Ch-42h → handle_int21() → int21_*_file()
+  → Bios trait method (file_create, file_open, etc.)
+  → Platform-specific implementation
+  → Return file handle or error code
+```
+
+**DOS Error Codes** (defined in `dos_errors` module):
+- `SUCCESS` (0x00): Operation successful
+- `FILE_NOT_FOUND` (0x02): File not found
+- `PATH_NOT_FOUND` (0x03): Path not found
+- `TOO_MANY_OPEN_FILES` (0x04): No handles available
+- `ACCESS_DENIED` (0x05): Permission denied
+- `INVALID_HANDLE` (0x06): Invalid file handle
+- `INVALID_FUNCTION` (0x01): Invalid function number
+
+**File Access Modes** (for AH=3Dh - Open File):
+- `READ_ONLY` (0x00): Open for reading only
+- `WRITE_ONLY` (0x01): Open for writing only
+- `READ_WRITE` (0x02): Open for both reading and writing
+
+**Seek Methods** (for AH=42h - LSEEK):
+- `SeekMethod::FromStart` (0): Seek from beginning of file
+- `SeekMethod::FromCurrent` (1): Seek from current position
+- `SeekMethod::FromEnd` (2): Seek from end of file
+
+**Implementing File Operations in Platform Code:**
+
+To support file operations, implement these `Bios` trait methods:
+
+```rust
+fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, u8>;
+fn file_open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8>;
+fn file_close(&mut self, handle: u16) -> Result<(), u8>;
+fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, u8>;
+fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, u8>;
+fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8>;
+```
+
+**Standard File Handles:**
+- Handle 0: Standard Input (STDIN)
+- Handle 1: Standard Output (STDOUT)
+- Handle 2: Standard Error (STDERR)
+
+Platform implementations should reserve these handles for console I/O and start user file handles at 3 or higher.
+
+**Working Directory:**
+
+The native implementation supports a working directory for file operations:
+- All file paths are resolved relative to the working directory
+- Absolute paths are used as-is
+- The working directory can be specified with `--workdir <path>` command-line option
+- Default working directory is the current directory
+- The `examples/run.sh` script automatically creates and uses `examples/workdir/`
+- `examples/workdir/` is ignored by git to avoid polluting the repository
 
 **Critical Files:**
 - [core/src/cpu/bios.rs](core/src/cpu/bios.rs) - BIOS interrupt handlers
