@@ -49,10 +49,12 @@ impl Cpu {
             0x01 => self.int21_read_char_with_echo(io),
             0x02 => self.int21_write_char(io),
             0x09 => self.int21_write_string(memory, io),
+            0x0E => self.int21_select_disk(io),
             0x19 => self.int21_get_current_drive(io),
             0x25 => self.int21_set_interrupt_vector(memory),
             0x30 => self.int21_get_dos_version(),
             0x35 => self.int21_get_interrupt_vector(memory),
+            0x37 => self.int21_switch_char(),
             0x39 => self.int21_create_dir(memory, io),
             0x3A => self.int21_remove_dir(memory, io),
             0x3B => self.int21_change_dir(memory, io),
@@ -62,10 +64,15 @@ impl Cpu {
             0x3F => self.int21_read_file(memory, io),
             0x40 => self.int21_write_file(memory, io),
             0x42 => self.int21_seek_file(io),
+            0x44 => self.int21_ioctl(io),
             0x47 => self.int21_get_current_dir(memory, io),
+            0x48 => self.int21_allocate_memory(io),
+            0x49 => self.int21_free_memory(io),
+            0x4A => self.int21_resize_memory(io),
             0x4C => self.int21_exit(),
             0x4E => self.int21_find_first(memory, io),
             0x4F => self.int21_find_next(memory, io),
+            0x50 => self.int21_set_psp(io),
             _ => {
                 warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
             }
@@ -541,6 +548,199 @@ impl Cpu {
         // Null terminator
         let len = filename_bytes.len().min(12);
         memory.write_byte(dta_addr + 30 + len, 0);
+    }
+
+    /// INT 21h, AH=0Eh - Select Default Disk
+    /// Input:
+    ///   DL = drive number (0=A, 1=B, etc.)
+    /// Output:
+    ///   AL = number of logical drives in system
+    fn int21_select_disk<T: Bios>(&mut self, io: &mut T) {
+        let drive = (self.dx & 0xFF) as u8; // DL
+        let num_drives = io.set_default_drive(drive);
+        self.ax = (self.ax & 0xFF00) | (num_drives as u16);
+    }
+
+    /// INT 21h, AH=37h - Get/Set Switch Character (DOS 2.x)
+    /// Input:
+    ///   AL = 0: Get switch character
+    ///   AL = 1: Set switch character
+    ///   DL = new switch character (when AL=1)
+    /// Output:
+    ///   DL = switch character (when AL=0)
+    ///   AL = 0xFF (indicates function not supported in DOS 5+)
+    fn int21_switch_char(&mut self) {
+        let subfunction = (self.ax & 0xFF) as u8; // AL
+
+        // This function is obsolete in DOS 5.0+
+        // Return AL=0xFF to indicate function not supported
+        self.ax = (self.ax & 0xFF00) | 0xFF;
+
+        // For compatibility, return '/' as the switch character
+        if subfunction == 0x00 {
+            self.dx = (self.dx & 0xFF00) | ('/' as u16);
+        }
+    }
+
+    /// INT 21h, AH=44h - IOCTL (Input/Output Control)
+    /// Input:
+    ///   AL = subfunction
+    ///   BX = file handle (for most subfunctions)
+    /// Output: Varies by subfunction
+    fn int21_ioctl<T: Bios>(&mut self, io: &mut T) {
+        let subfunction = (self.ax & 0xFF) as u8; // AL
+        let handle = self.bx;
+
+        match subfunction {
+            0x00 => {
+                // Get device information
+                match io.ioctl_get_device_info(handle) {
+                    Ok(info) => {
+                        self.dx = info;
+                        self.set_flag(cpu_flag::CARRY, false);
+                    }
+                    Err(error_code) => {
+                        self.ax = error_code as u16;
+                        self.set_flag(cpu_flag::CARRY, true);
+                    }
+                }
+            }
+            0x01 => {
+                // Set device information
+                let info = self.dx;
+                match io.ioctl_set_device_info(handle, info) {
+                    Ok(()) => {
+                        self.set_flag(cpu_flag::CARRY, false);
+                    }
+                    Err(error_code) => {
+                        self.ax = error_code as u16;
+                        self.set_flag(cpu_flag::CARRY, true);
+                    }
+                }
+            }
+            0x06 => {
+                // Get input status
+                // Return AL=0xFF if ready, AL=0x00 if not ready
+                // For simplicity, always return ready for standard handles
+                if handle <= 2 {
+                    self.ax = (self.ax & 0xFF00) | 0xFF;
+                } else {
+                    self.ax &= 0xFF00;
+                }
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x07 => {
+                // Get output status
+                // Return AL=0xFF if ready, AL=0x00 if not ready
+                // For simplicity, always return ready for standard handles
+                if handle <= 2 {
+                    self.ax = (self.ax & 0xFF00) | 0xFF;
+                } else {
+                    self.ax &= 0xFF00;
+                }
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x08 => {
+                // Check if block device is removable
+                // Return AL=0 if removable, AL=1 if fixed
+                // For compatibility, return fixed (most emulated drives are fixed)
+                self.ax = (self.ax & 0xFF00) | 0x01;
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x09 => {
+                // Check if block device is remote
+                // Return DX bit 12 set if remote
+                // For simplicity, all devices are local
+                self.dx &= !0x1000; // Clear bit 12
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x0A => {
+                // Check if handle is remote
+                // Return DX bit 15 set if remote
+                // For simplicity, all handles are local
+                self.dx &= !0x8000; // Clear bit 15
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            _ => {
+                warn!("Unhandled IOCTL subfunction: AL=0x{:02X}", subfunction);
+                self.ax = dos_errors::INVALID_FUNCTION as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=48h - Allocate Memory
+    /// Input:
+    ///   BX = number of paragraphs (16-byte blocks) to allocate
+    /// Output:
+    ///   CF clear if success: AX = segment of allocated memory
+    ///   CF set if error: AX = error code, BX = size of largest available block
+    fn int21_allocate_memory<T: Bios>(&mut self, io: &mut T) {
+        let paragraphs = self.bx;
+
+        match io.memory_allocate(paragraphs) {
+            Ok(segment) => {
+                self.ax = segment;
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            Err((error_code, max_available)) => {
+                self.ax = error_code as u16;
+                self.bx = max_available;
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=49h - Free Memory
+    /// Input:
+    ///   ES = segment of block to free
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code
+    fn int21_free_memory<T: Bios>(&mut self, io: &mut T) {
+        let segment = self.es;
+
+        match io.memory_free(segment) {
+            Ok(()) => {
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=4Ah - Resize Memory Block
+    /// Input:
+    ///   ES = segment of block to resize
+    ///   BX = new size in paragraphs
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code, BX = maximum size available
+    fn int21_resize_memory<T: Bios>(&mut self, io: &mut T) {
+        let segment = self.es;
+        let paragraphs = self.bx;
+
+        match io.memory_resize(segment, paragraphs) {
+            Ok(()) => {
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            Err((error_code, max_available)) => {
+                self.ax = error_code as u16;
+                self.bx = max_available;
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=50h - Set PSP Address
+    /// Input:
+    ///   BX = segment of new PSP
+    /// Output: None
+    fn int21_set_psp<T: Bios>(&mut self, io: &mut T) {
+        let segment = self.bx;
+        io.set_psp(segment);
     }
 
     /// Helper function to read a null-terminated string from memory

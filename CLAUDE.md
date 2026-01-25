@@ -422,13 +422,21 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
     - AH=3Fh: Read from file or device
     - AH=40h: Write to file or device
     - AH=42h: Seek (LSEEK)
+    - AH=44h: IOCTL (Input/Output Control)
+  - **Memory Management:**
+    - AH=48h: Allocate memory
+    - AH=49h: Free memory
+    - AH=4Ah: Resize memory block
   - **Process Control:**
     - AH=4Ch: Exit program
+    - AH=50h: Set PSP address
   - **System Functions:**
+    - AH=0Eh: Select default disk
     - AH=19h: Get current default drive
     - AH=25h: Set interrupt vector
     - AH=30h: Get DOS version
     - AH=35h: Get interrupt vector
+    - AH=37h: Get/Set switch character (obsolete, returns not supported)
 
 - **INT 29h - Fast Console Output** ([core/src/cpu/bios/int29.rs](core/src/cpu/bios/int29.rs))
   - Faster character output for DOS
@@ -764,6 +772,59 @@ The emulator implements additional DOS system functions for compatibility with D
   - Output: ES:BX = current interrupt handler address
   - Reads the interrupt vector table (IVT) at address 0000:0000
   - Used by programs to save and restore interrupt vectors
+
+- **AH=0Eh - Select Default Disk:**
+  - Input: DL = drive number (0=A, 1=B, etc.)
+  - Output: AL = number of logical drives in system
+  - Sets the current default drive
+  - In the native implementation, always returns 1 (only drive A available)
+
+- **AH=37h - Get/Set Switch Character:**
+  - Input: AL = 0 (get) or 1 (set), DL = new switch character (when AL=1)
+  - Output: DL = switch character (when AL=0), AL = 0xFF (function not supported)
+  - This function is obsolete in DOS 5.0+ and returns AL=0xFF to indicate not supported
+  - For compatibility, returns '/' as the switch character when queried
+
+- **AH=44h - IOCTL (Input/Output Control):**
+  - Input: AL = subfunction, BX = file handle
+  - Provides device-specific control operations
+  - **Implemented subfunctions:**
+    - AL=00h: Get device information - Returns DX = device info word
+    - AL=01h: Set device information - Sets device info from DX
+    - AL=06h: Get input status - Returns AL=0xFF if ready
+    - AL=07h: Get output status - Returns AL=0xFF if ready
+    - AL=08h: Check if block device is removable - Returns AL=1 (fixed)
+    - AL=09h: Check if block device is remote - Returns DX bit 12 clear (local)
+    - AL=0Ah: Check if handle is remote - Returns DX bit 15 clear (local)
+  - **Device information word (for AL=00h/01h):**
+    - Bit 7: 1 = character device, 0 = disk file
+    - Bit 6: 0 = EOF on input (files only)
+    - Bit 5: 0 = binary mode, 1 = cooked mode
+    - Bit 0: 1 = console input device
+    - Bit 1: 1 = console output device
+
+- **AH=48h - Allocate Memory:**
+  - Input: BX = number of paragraphs (16-byte blocks) to allocate
+  - Output (success): CF clear, AX = segment of allocated memory block
+  - Output (failure): CF set, AX = error code, BX = size of largest available block
+  - Memory management is not fully implemented in the simple BIOS - returns insufficient memory error
+
+- **AH=49h - Free Memory:**
+  - Input: ES = segment of memory block to free
+  - Output (success): CF clear
+  - Output (failure): CF set, AX = error code
+  - Memory management is not fully implemented in the simple BIOS - returns error
+
+- **AH=4Ah - Resize Memory Block:**
+  - Input: ES = segment of block to resize, BX = new size in paragraphs
+  - Output (success): CF clear
+  - Output (failure): CF set, AX = error code, BX = maximum size available
+  - Memory management is not fully implemented in the simple BIOS - returns error
+
+- **AH=50h - Set PSP Address:**
+  - Input: BX = segment of new Program Segment Prefix
+  - Sets the current PSP segment for the running program
+  - PSP tracking is not fully implemented in the simple BIOS but the function is available for compatibility
 
 **Interrupt Vector Table (IVT):**
 

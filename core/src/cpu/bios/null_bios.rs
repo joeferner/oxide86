@@ -8,6 +8,48 @@ impl Bios for NullBios {
         0 // Default to drive A
     }
 
+    fn set_default_drive(&mut self, _drive: u8) -> u8 {
+        1 // Return 1 logical drive (A:)
+    }
+
+    fn memory_allocate(&mut self, _paragraphs: u16) -> Result<u16, (u8, u16)> {
+        Err((dos_errors::INSUFFICIENT_MEMORY, 0))
+    }
+
+    fn memory_free(&mut self, _segment: u16) -> Result<(), u8> {
+        Err(dos_errors::INVALID_MEMORY_BLOCK_ADDRESS)
+    }
+
+    fn memory_resize(&mut self, _segment: u16, _paragraphs: u16) -> Result<(), (u8, u16)> {
+        Err((dos_errors::INVALID_MEMORY_BLOCK_ADDRESS, 0))
+    }
+
+    fn get_psp(&self) -> u16 {
+        0x0000 // Default PSP segment
+    }
+
+    fn set_psp(&mut self, _segment: u16) {
+        // Do nothing in null implementation
+    }
+
+    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, u8> {
+        // Return device information for standard handles
+        match handle {
+            0 => Ok(0x80D0), // STDIN: device, no EOF, binary mode
+            1 => Ok(0x80D1), // STDOUT: device, no EOF, binary mode
+            2 => Ok(0x80D1), // STDERR: device, no EOF, binary mode
+            _ => Err(dos_errors::INVALID_HANDLE),
+        }
+    }
+
+    fn ioctl_set_device_info(&mut self, handle: u16, _info: u16) -> Result<(), u8> {
+        // Only allow setting info for standard handles
+        match handle {
+            0..=2 => Ok(()),
+            _ => Err(dos_errors::INVALID_HANDLE),
+        }
+    }
+
     fn read_char(&mut self) -> Option<u8> {
         None
     }

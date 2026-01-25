@@ -628,6 +628,79 @@ impl<D: DiskController> Bios for StdioBios<D> {
         0
     }
 
+    fn set_default_drive(&mut self, _drive: u8) -> u8 {
+        // For Unix-like systems, we don't have drive letters
+        // Always return 1 logical drive (A:)
+        1
+    }
+
+    fn memory_allocate(&mut self, _paragraphs: u16) -> Result<u16, (u8, u16)> {
+        // Memory management is not implemented in this simple BIOS
+        // Return error indicating insufficient memory
+        Err((dos_errors::INSUFFICIENT_MEMORY, 0))
+    }
+
+    fn memory_free(&mut self, _segment: u16) -> Result<(), u8> {
+        // Memory management is not implemented
+        Err(dos_errors::INVALID_MEMORY_BLOCK_ADDRESS)
+    }
+
+    fn memory_resize(&mut self, _segment: u16, _paragraphs: u16) -> Result<(), (u8, u16)> {
+        // Memory management is not implemented
+        Err((dos_errors::INVALID_MEMORY_BLOCK_ADDRESS, 0))
+    }
+
+    fn get_psp(&self) -> u16 {
+        // Default PSP segment for simple programs
+        0x0100
+    }
+
+    fn set_psp(&mut self, _segment: u16) {
+        // PSP tracking is not implemented in this simple BIOS
+    }
+
+    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, u8> {
+        // Return device information word
+        // Bit 7 = 1 for character device, 0 for disk file
+        // Bit 6 = 0 for EOF on input (for files)
+        // Bit 5 = 0 for binary mode (raw), 1 for cooked mode
+        // Bit 0 = 1 for console input (stdin)
+        // Bit 1 = 1 for console output (stdout)
+        match handle {
+            0 => Ok(0x80D0), // STDIN: device (bit 7), console input (bit 0), binary mode
+            1 => Ok(0x80D1), // STDOUT: device (bit 7), console output (bit 1), binary mode
+            2 => Ok(0x80D1), // STDERR: device (bit 7), console output (bit 1), binary mode
+            _ => {
+                // For file handles, check if it's a valid handle
+                if self.open_files.contains_key(&handle) {
+                    // It's a file (bit 7 = 0)
+                    Ok(0x0000)
+                } else {
+                    Err(dos_errors::INVALID_HANDLE)
+                }
+            }
+        }
+    }
+
+    fn ioctl_set_device_info(&mut self, handle: u16, _info: u16) -> Result<(), u8> {
+        // Allow setting device info for standard handles and open files
+        match handle {
+            0..=2 => {
+                // Standard handles - allow setting but ignore
+                Ok(())
+            }
+            _ => {
+                // Check if it's a valid file handle
+                if self.open_files.contains_key(&handle) {
+                    // Allow setting but ignore for files
+                    Ok(())
+                } else {
+                    Err(dos_errors::INVALID_HANDLE)
+                }
+            }
+        }
+    }
+
     fn serial_init(&mut self, _port: u8, _params: SerialParams) -> SerialStatus {
         // Serial port not available in stdio implementation
         SerialStatus {

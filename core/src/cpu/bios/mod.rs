@@ -212,6 +212,38 @@ pub trait Bios {
     /// Returns the current drive number (0=A, 1=B, etc.)
     fn get_current_drive(&self) -> u8;
 
+    /// Set default drive (INT 21h, AH=0Eh)
+    /// Returns the total number of logical drives
+    fn set_default_drive(&mut self, drive: u8) -> u8;
+
+    /// Allocate memory (INT 21h, AH=48h)
+    /// Returns segment of allocated memory on success, or (error_code, max_available) on failure
+    fn memory_allocate(&mut self, paragraphs: u16) -> Result<u16, (u8, u16)>;
+
+    /// Free memory (INT 21h, AH=49h)
+    /// Returns success or error code
+    fn memory_free(&mut self, segment: u16) -> Result<(), u8>;
+
+    /// Resize memory block (INT 21h, AH=4Ah)
+    /// Returns success or (error_code, max_available) on failure
+    fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (u8, u16)>;
+
+    /// Get PSP segment (INT 21h, AH=50h/51h/62h)
+    /// Returns the current Program Segment Prefix segment
+    fn get_psp(&self) -> u16;
+
+    /// Set PSP segment (INT 21h, AH=50h)
+    /// Sets the current Program Segment Prefix segment
+    fn set_psp(&mut self, segment: u16);
+
+    /// Get device information for IOCTL (INT 21h, AH=44h, AL=00h)
+    /// Returns device information word for the given handle
+    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, u8>;
+
+    /// Set device information for IOCTL (INT 21h, AH=44h, AL=01h)
+    /// Sets device information word for the given handle
+    fn ioctl_set_device_info(&mut self, handle: u16, info: u16) -> Result<(), u8>;
+
     // --- INT 14h - Serial Port Services ---
 
     /// Initialize serial port (INT 14h, AH=00h)
