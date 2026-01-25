@@ -9,12 +9,10 @@ impl Cpu {
     /// D1: Shift r/m16, 1
     /// D2: Shift r/m8, CL
     /// D3: Shift r/m16, CL
-    pub(in crate::cpu) fn shift_rotate_group(&mut self, opcode: u8, memory: &Memory) {
+    pub(in crate::cpu) fn shift_rotate_group(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
         let modrm = self.fetch_byte(memory);
-        let operation = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-        let mode = modrm >> 6;
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
         // Determine shift count
         let count = match opcode {
@@ -24,37 +22,34 @@ impl Cpu {
             _ => unreachable!(),
         };
 
-        // For now, only handle register mode (mode = 11b)
-        if mode == 0b11 {
-            if is_word {
-                let value = self.get_reg16(rm);
-                let result = match operation {
-                    0 => self.rol_16(value, count),
-                    1 => self.ror_16(value, count),
-                    2 => self.rcl_16(value, count),
-                    3 => self.rcr_16(value, count),
-                    4 | 6 => self.shl_16(value, count), // SAL is same as SHL
-                    5 => self.shr_16(value, count),
-                    7 => self.sar_16(value, count),
-                    _ => unreachable!(),
-                };
-                self.set_reg16(rm, result);
-            } else {
-                let value = self.get_reg8(rm);
-                let result = match operation {
-                    0 => self.rol_8(value, count),
-                    1 => self.ror_8(value, count),
-                    2 => self.rcl_8(value, count),
-                    3 => self.rcr_8(value, count),
-                    4 | 6 => self.shl_8(value, count), // SAL is same as SHL
-                    5 => self.shr_8(value, count),
-                    7 => self.sar_8(value, count),
-                    _ => unreachable!(),
-                };
-                self.set_reg8(rm, result);
-            }
+        if is_word {
+            // 16-bit shift/rotate
+            let value = self.read_rm16(mode, rm, addr, memory);
+            let result = match operation {
+                0 => self.rol_16(value, count),
+                1 => self.ror_16(value, count),
+                2 => self.rcl_16(value, count),
+                3 => self.rcr_16(value, count),
+                4 | 6 => self.shl_16(value, count), // SAL is same as SHL
+                5 => self.shr_16(value, count),
+                7 => self.sar_16(value, count),
+                _ => unreachable!(),
+            };
+            self.write_rm16(mode, rm, addr, result, memory);
         } else {
-            panic!("Memory addressing modes not yet implemented");
+            // 8-bit shift/rotate
+            let value = self.read_rm8(mode, rm, addr, memory);
+            let result = match operation {
+                0 => self.rol_8(value, count),
+                1 => self.ror_8(value, count),
+                2 => self.rcl_8(value, count),
+                3 => self.rcr_8(value, count),
+                4 | 6 => self.shl_8(value, count), // SAL is same as SHL
+                5 => self.shr_8(value, count),
+                7 => self.sar_8(value, count),
+                _ => unreachable!(),
+            };
+            self.write_rm8(mode, rm, addr, result, memory);
         }
     }
 
