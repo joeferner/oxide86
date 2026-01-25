@@ -9,6 +9,7 @@ impl Cpu {
     ) {
         let function = (self.ax >> 8) as u8; // Get AH
         match function {
+            0x41 => self.int15_wait_external_event(),
             0x86 => self.int15_wait(memory),
             0x88 => self.int15_get_extended_memory(),
             0xC0 => self.int15_get_system_config(memory),
@@ -18,6 +19,22 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }
+    }
+
+    /// INT 15h AH=41h - Wait for External Event (PS/2)
+    ///
+    /// Input:
+    ///   AL = event type to wait for
+    ///
+    /// Output:
+    ///   CF = 1 (function not supported on 8086)
+    ///
+    /// Note: This is a PS/2-specific function that is not available on 8086 systems.
+    /// The 8086 predates PS/2, so this function returns "not supported".
+    fn int15_wait_external_event(&mut self) {
+        // This is a PS/2 function not available on 8086 systems
+        // Return function not supported
+        self.set_flag(cpu_flag::CARRY, true);
     }
 
     /// INT 15h AH=86h - Wait (microsecond delay)

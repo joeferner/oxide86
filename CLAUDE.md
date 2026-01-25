@@ -323,6 +323,7 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=03h: Get status - Get line and modem status
 
 - **INT 15h - Miscellaneous System Services** ([core/src/cpu/bios/int15.rs](core/src/cpu/bios/int15.rs))
+  - AH=41h: Wait for external event - PS/2 function (returns not supported on 8086)
   - AH=86h: Wait - Microsecond delay (returns immediately in emulator)
   - AH=88h: Get extended memory size - Returns 0 KB for 8086 (no extended memory)
   - AH=C0h: Get system configuration - Returns pointer to system descriptor table

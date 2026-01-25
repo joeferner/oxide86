@@ -205,7 +205,7 @@ impl Cpu {
             }
             Err(_) => {
                 // Drive not present
-                self.ax = self.ax & 0x00FF; // AH = 0x00 (drive not present)
+                self.ax &= 0x00FF; // AH = 0x00 (drive not present)
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }

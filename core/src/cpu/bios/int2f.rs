@@ -27,7 +27,7 @@ impl Cpu {
             _ => {
                 // For unknown multiplex numbers, return AL=0x00 (not installed)
                 // This is the standard behavior for installation checks
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
                 warn!(
                     "Unhandled INT 0x2F multiplex: AH=0x{:02X}, AL=0x{:02X}",
                     multiplex_num, subfunction
@@ -44,11 +44,11 @@ impl Cpu {
             0x00 => {
                 // Installation check
                 // Return AL=0x00 (not installed)
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
             }
             _ => {
                 // Unknown subfunction - return not installed
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
                 warn!(
                     "Unhandled INT 0x2F AH=11h subfunction: AL=0x{:02X}",
                     subfunction
@@ -65,11 +65,11 @@ impl Cpu {
             0x00 => {
                 // Installation check
                 // Return AL=0x00 (not installed)
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
             }
             _ => {
                 // Unknown subfunction - return not installed
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
                 warn!(
                     "Unhandled INT 0x2F AH=12h subfunction: AL=0x{:02X}",
                     subfunction
@@ -86,11 +86,11 @@ impl Cpu {
             0x00 | 0x05 | 0x06 | 0x07 => {
                 // Installation/version checks
                 // Return AL=0x00 (Windows not running)
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
             }
             _ => {
                 // Unknown subfunction - return not running
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
                 warn!(
                     "Unhandled INT 0x2F AH=16h subfunction: AL=0x{:02X}",
                     subfunction
@@ -109,18 +109,18 @@ impl Cpu {
                 // Installation check
                 // Return AL=0x00 (XMS not installed)
                 // 8086 doesn't support extended memory
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
             }
             0x10 => {
                 // Get XMS entry point
                 // Return ES:BX = 0000:0000 (not available)
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
                 self.es = 0x0000;
                 self.bx = 0x0000;
             }
             _ => {
                 // Unknown subfunction - return not installed
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
                 warn!(
                     "Unhandled INT 0x2F AH=43h subfunction: AL=0x{:02X}",
                     subfunction
@@ -137,11 +137,11 @@ impl Cpu {
             0x00 => {
                 // Installation check for HIMEM.SYS
                 // Return AL=0x00 (not installed)
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
             }
             _ => {
                 // Unknown subfunction - return not installed
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
                 warn!(
                     "Unhandled INT 0x2F AH=4Ah subfunction: AL=0x{:02X}",
                     subfunction
@@ -158,11 +158,11 @@ impl Cpu {
             0x00 => {
                 // Installation check
                 // Return AL=0x00 (APPEND not installed)
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
             }
             _ => {
                 // Unknown subfunction - return not installed
-                self.ax = (self.ax & 0xFF00) | 0x00;
+                self.ax &= 0xFF00;
                 warn!(
                     "Unhandled INT 0x2F AH=B7h subfunction: AL=0x{:02X}",
                     subfunction
