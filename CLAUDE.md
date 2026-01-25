@@ -305,6 +305,10 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=0Eh: Teletype output
   - AH=13h: Write string
 
+- **INT 12h - Get Memory Size** ([core/src/cpu/bios/int12.rs](core/src/cpu/bios/int12.rs))
+  - Returns AX = conventional memory size in KB (typically 640)
+  - No function codes - directly returns memory size from BDA
+
 - **INT 13h - Disk Services** ([core/src/cpu/bios/int13.rs](core/src/cpu/bios/int13.rs))
   - AH=00h: Reset disk system
   - AH=02h: Read sectors
