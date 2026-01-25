@@ -4,11 +4,40 @@ use crate::{
     Bios,
     cpu::{
         Cpu,
-        bios::{FindData, SeekMethod, dos_errors},
+        bios::{FindData, SeekMethod},
         cpu_flag,
     },
     memory::Memory,
 };
+
+/// INT 21h DOS error codes
+pub mod dos_errors {
+    pub const SUCCESS: u8 = 0x00;
+    pub const INVALID_FUNCTION: u8 = 0x01;
+    pub const FILE_NOT_FOUND: u8 = 0x02;
+    pub const PATH_NOT_FOUND: u8 = 0x03;
+    pub const TOO_MANY_OPEN_FILES: u8 = 0x04;
+    pub const ACCESS_DENIED: u8 = 0x05;
+    pub const INVALID_HANDLE: u8 = 0x06;
+    pub const MEMORY_CONTROL_BLOCKS_DESTROYED: u8 = 0x07;
+    pub const INSUFFICIENT_MEMORY: u8 = 0x08;
+    pub const INVALID_MEMORY_BLOCK_ADDRESS: u8 = 0x09;
+    pub const INVALID_ENVIRONMENT: u8 = 0x0A;
+    pub const INVALID_FORMAT: u8 = 0x0B;
+    pub const INVALID_ACCESS_CODE: u8 = 0x0C;
+    pub const INVALID_DATA: u8 = 0x0D;
+    pub const INVALID_DRIVE: u8 = 0x0F;
+    pub const ATTEMPT_TO_REMOVE_CURRENT_DIR: u8 = 0x10;
+    pub const NOT_SAME_DEVICE: u8 = 0x11;
+    pub const NO_MORE_FILES: u8 = 0x12;
+}
+
+/// File access modes for INT 21h, AH=3Dh
+pub mod file_access {
+    pub const READ_ONLY: u8 = 0x00;
+    pub const WRITE_ONLY: u8 = 0x01;
+    pub const READ_WRITE: u8 = 0x02;
+}
 
 impl Cpu {
     /// INT 0x21 - DOS Services

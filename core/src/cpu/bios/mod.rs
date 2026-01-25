@@ -17,10 +17,12 @@ pub mod null_bios;
 
 use super::Cpu;
 use crate::memory::Memory;
-use log::warn;
-pub use null_bios::NullBios;
+pub use int13::disk_errors;
 pub use int14::{SerialParams, SerialStatus};
 pub use int17::PrinterStatus;
+pub use int21::{dos_errors, file_access};
+use log::warn;
+pub use null_bios::NullBios;
 
 /// Drive parameters returned by INT 13h, AH=08h
 #[derive(Debug, Clone, Copy)]
@@ -55,65 +57,6 @@ pub struct RtcTime {
     pub seconds: u8,
     /// Daylight saving time flag (0 = standard time, 1 = daylight time)
     pub dst_flag: u8,
-}
-
-/// INT 13h error codes
-pub mod disk_errors {
-    pub const SUCCESS: u8 = 0x00;
-    pub const INVALID_COMMAND: u8 = 0x01;
-    pub const ADDRESS_MARK_NOT_FOUND: u8 = 0x02;
-    pub const WRITE_PROTECTED: u8 = 0x03;
-    pub const SECTOR_NOT_FOUND: u8 = 0x04;
-    pub const RESET_FAILED: u8 = 0x05;
-    pub const DISK_CHANGED: u8 = 0x06;
-    pub const DRIVE_PARAMETER_ACTIVITY_FAILED: u8 = 0x07;
-    pub const DMA_OVERRUN: u8 = 0x08;
-    pub const DMA_BOUNDARY_ERROR: u8 = 0x09;
-    pub const BAD_SECTOR: u8 = 0x0A;
-    pub const BAD_TRACK: u8 = 0x0B;
-    pub const UNSUPPORTED_TRACK: u8 = 0x0C;
-    pub const INVALID_NUMBER_OF_SECTORS: u8 = 0x0D;
-    pub const CONTROL_DATA_ADDRESS_MARK_DETECTED: u8 = 0x0E;
-    pub const DMA_ARBITRATION_LEVEL_OUT_OF_RANGE: u8 = 0x0F;
-    pub const UNCORRECTABLE_CRC_ERROR: u8 = 0x10;
-    pub const ECC_CORRECTED_DATA_ERROR: u8 = 0x11;
-    pub const CONTROLLER_FAILURE: u8 = 0x20;
-    pub const SEEK_FAILED: u8 = 0x40;
-    pub const TIMEOUT: u8 = 0x80;
-    pub const DRIVE_NOT_READY: u8 = 0xAA;
-    pub const UNDEFINED_ERROR: u8 = 0xBB;
-    pub const WRITE_FAULT: u8 = 0xCC;
-    pub const STATUS_REGISTER_ERROR: u8 = 0xE0;
-    pub const SENSE_OPERATION_FAILED: u8 = 0xFF;
-}
-
-/// INT 21h DOS error codes
-pub mod dos_errors {
-    pub const SUCCESS: u8 = 0x00;
-    pub const INVALID_FUNCTION: u8 = 0x01;
-    pub const FILE_NOT_FOUND: u8 = 0x02;
-    pub const PATH_NOT_FOUND: u8 = 0x03;
-    pub const TOO_MANY_OPEN_FILES: u8 = 0x04;
-    pub const ACCESS_DENIED: u8 = 0x05;
-    pub const INVALID_HANDLE: u8 = 0x06;
-    pub const MEMORY_CONTROL_BLOCKS_DESTROYED: u8 = 0x07;
-    pub const INSUFFICIENT_MEMORY: u8 = 0x08;
-    pub const INVALID_MEMORY_BLOCK_ADDRESS: u8 = 0x09;
-    pub const INVALID_ENVIRONMENT: u8 = 0x0A;
-    pub const INVALID_FORMAT: u8 = 0x0B;
-    pub const INVALID_ACCESS_CODE: u8 = 0x0C;
-    pub const INVALID_DATA: u8 = 0x0D;
-    pub const INVALID_DRIVE: u8 = 0x0F;
-    pub const ATTEMPT_TO_REMOVE_CURRENT_DIR: u8 = 0x10;
-    pub const NOT_SAME_DEVICE: u8 = 0x11;
-    pub const NO_MORE_FILES: u8 = 0x12;
-}
-
-/// File access modes for INT 21h, AH=3Dh
-pub mod file_access {
-    pub const READ_ONLY: u8 = 0x00;
-    pub const WRITE_ONLY: u8 = 0x01;
-    pub const READ_WRITE: u8 = 0x02;
 }
 
 /// File seek methods for INT 21h, AH=42h
