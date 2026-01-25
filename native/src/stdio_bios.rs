@@ -326,6 +326,25 @@ impl<D: DiskController> Bios for StdioBios<D> {
         })
     }
 
+    fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8> {
+        let geom = self.disk.geometry();
+
+        // Determine drive type based on drive number
+        // 0x00-0x7F are floppy drives, 0x80-0xFF are hard disks
+        let drive_type = if drive < 0x80 {
+            // Floppy disk with change-line support
+            0x02
+        } else {
+            // Fixed disk (hard disk)
+            0x03
+        };
+
+        // Calculate total sector count
+        let total_sectors = geom.cylinders as u32 * geom.heads as u32 * geom.sectors_per_track as u32;
+
+        Ok((drive_type, total_sectors))
+    }
+
     fn file_create(&mut self, filename: &str, _attributes: u8) -> Result<u16, u8> {
         let handle = self
             .allocate_handle()

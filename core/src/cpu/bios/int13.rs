@@ -13,6 +13,7 @@ impl Cpu {
             0x02 => self.int13_read_sectors(memory, io),
             0x03 => self.int13_write_sectors(memory, io),
             0x08 => self.int13_get_drive_params(io),
+            0x15 => self.int13_get_disk_type(io),
             _ => {
                 warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -166,6 +167,45 @@ impl Cpu {
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 13h, AH=15h - Get Disk Type
+    /// Input:
+    ///   DL = drive number (0x00-0x7F for floppies, 0x80-0xFF for hard disks)
+    /// Output:
+    ///   AH = drive type:
+    ///     0x00 = drive not present
+    ///     0x01 = floppy disk drive without change-line support
+    ///     0x02 = floppy disk drive with change-line support
+    ///     0x03 = fixed disk (hard disk)
+    ///   CF = clear if drive exists, set if drive does not exist
+    ///   For type 0x03 (fixed disk):
+    ///     CX:DX = number of 512-byte sectors (32-bit value, CX=high word, DX=low word)
+    fn int13_get_disk_type<T: Bios>(&mut self, io: &T) {
+        let drive = (self.dx & 0xFF) as u8; // Get DL
+
+        match io.disk_get_type(drive) {
+            Ok((drive_type, sector_count)) => {
+                // Set AH = drive type
+                self.ax = (self.ax & 0x00FF) | ((drive_type as u16) << 8);
+
+                // If it's a fixed disk (type 0x03), set CX:DX to sector count
+                if drive_type == 0x03 {
+                    let high_word = ((sector_count >> 16) & 0xFFFF) as u16;
+                    let low_word = (sector_count & 0xFFFF) as u16;
+                    self.cx = high_word;
+                    self.dx = low_word;
+                }
+
+                // Clear carry flag (drive exists)
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            Err(_) => {
+                // Drive not present
+                self.ax = self.ax & 0x00FF; // AH = 0x00 (drive not present)
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }

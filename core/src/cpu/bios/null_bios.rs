@@ -55,6 +55,10 @@ impl Bios for NullBios {
         Err(disk_errors::INVALID_COMMAND)
     }
 
+    fn disk_get_type(&self, _drive: u8) -> Result<(u8, u32), u8> {
+        Err(disk_errors::INVALID_COMMAND)
+    }
+
     fn file_create(&mut self, _filename: &str, _attributes: u8) -> Result<u16, u8> {
         Err(dos_errors::ACCESS_DENIED)
     }

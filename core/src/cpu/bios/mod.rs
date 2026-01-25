@@ -190,6 +190,13 @@ pub trait Bios {
     /// Returns drive parameters on success, or error code on failure
     fn disk_get_params(&self, drive: u8) -> Result<DriveParams, u8>;
 
+    /// Get disk type (INT 13h, AH=15h)
+    /// Returns (drive_type, sector_count) where:
+    /// - drive_type: 0x00 = not present, 0x01 = floppy no change-line,
+    ///               0x02 = floppy with change-line, 0x03 = fixed disk
+    /// - sector_count: total 512-byte sectors (only for type 0x03)
+    fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8>;
+
     // --- INT 21h - DOS File Services ---
 
     /// Create or truncate file (INT 21h, AH=3Ch)

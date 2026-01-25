@@ -314,6 +314,7 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=02h: Read sectors
   - AH=03h: Write sectors
   - AH=08h: Get drive parameters
+  - AH=15h: Get disk type
 
 - **INT 14h - Serial Port Services** ([core/src/cpu/bios/int14.rs](core/src/cpu/bios/int14.rs))
   - AH=00h: Initialize serial port - Configure baud rate, parity, stop bits, and word length
