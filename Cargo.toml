@@ -9,3 +9,4 @@ members = ["core", "native", "wasm"]
 [workspace.dependencies]
 anyhow = "1.0.100"
 clap = { version = "4.5.54", features = ["derive"] }
+log = "0.4.29"

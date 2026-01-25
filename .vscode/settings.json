@@ -1,0 +1,25 @@
+{
+    "cSpell.words": [
+        "CMPS",
+        "IRET",
+        "JCXZ",
+        "LAHF",
+        "LODS",
+        "LOOPE",
+        "LOOPNE",
+        "LOOPNZ",
+        "LOOPZ",
+        "modrm",
+        "moffs",
+        "MOVS",
+        "POPF",
+        "PUSHF",
+        "retf",
+        "SAHF",
+        "SCAS",
+        "segreg",
+        "STOS",
+        "XCHG",
+        "XLAT"
+    ]
+}

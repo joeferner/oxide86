@@ -5,9 +5,10 @@ edition = "2024"
 
 [dependencies]
 anyhow = { workspace = true }
+log = { workspace = true }
 
 [dev-dependencies]
-criterion = { version = "0.5", features = ["html_reports"] }
+criterion = { version = "0.8.1", features = ["html_reports"] }
 
 [[bench]]
 name = "instruction_benchmarks"

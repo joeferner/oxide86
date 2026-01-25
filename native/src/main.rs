@@ -2,6 +2,9 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::Computer;
 
+mod stdio_bios;
+use stdio_bios::StdioBios;
+
 #[derive(Parser)]
 #[command(name = "emu86")]
 #[command(about = "Intel 8086 CPU Emulator", long_about = None)]
@@ -19,9 +22,11 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
+    env_logger::init();
+
     let cli = Cli::parse();
 
-    let mut computer = Computer::new();
+    let mut computer = Computer::new(StdioBios);
 
     // Load the program binary
     let program_data = std::fs::read(&cli.program)

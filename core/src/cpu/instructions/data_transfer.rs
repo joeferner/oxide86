@@ -337,7 +337,7 @@ impl Cpu {
     /// Loads far pointer from memory into register and DS
     pub(in crate::cpu) fn lds(&mut self, memory: &Memory) {
         let modrm = self.fetch_byte(memory);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
         // LDS only works with memory operands
         if mode == 0b11 {
@@ -356,7 +356,7 @@ impl Cpu {
     /// Loads far pointer from memory into register and ES
     pub(in crate::cpu) fn les(&mut self, memory: &Memory) {
         let modrm = self.fetch_byte(memory);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, memory);
 
         // LES only works with memory operands
         if mode == 0b11 {

@@ -1,6 +1,7 @@
 use crate::memory::Memory;
 
 mod instructions;
+pub mod bios;
 
 pub struct Cpu {
     // General purpose registers
@@ -82,7 +83,7 @@ impl Cpu {
     }
 
     // Fetch a byte from memory at CS:IP and increment IP
-    pub(super) fn fetch_byte(&mut self, memory: &Memory) -> u8 {
+    pub(crate) fn fetch_byte(&mut self, memory: &Memory) -> u8 {
         let addr = Self::physical_address(self.cs, self.ip);
         let byte = memory.read_byte(addr);
         self.ip = self.ip.wrapping_add(1);
@@ -103,6 +104,40 @@ impl Cpu {
         }
     }
 
+    // Check if CPU is halted
+    pub fn is_halted(&self) -> bool {
+        self.halted
+    }
+
+    // Execute an INT instruction with BIOS I/O handler
+    pub fn execute_int_with_io<T: crate::cpu::bios::Bios>(
+        &mut self,
+        int_num: u8,
+        memory: &mut Memory,
+        io: &mut T,
+    ) {
+        // Try to handle with BIOS I/O first
+        if self.handle_bios_interrupt(int_num, memory, io) {
+            // Handled by BIOS, don't do the normal INT
+            return;
+        }
+
+        // Not handled, do normal INT
+        // Push flags, CS, and IP
+        self.push(self.flags, memory);
+        self.push(self.cs, memory);
+        self.push(self.ip, memory);
+        // Clear IF and TF
+        self.set_flag(FLAG_INTERRUPT, false);
+        self.set_flag(FLAG_TRAP, false);
+        // Load interrupt vector from IVT
+        let ivt_addr = (int_num as usize) * 4;
+        let offset = memory.read_word(ivt_addr);
+        let segment = memory.read_word(ivt_addr + 2);
+        self.ip = offset;
+        self.cs = segment;
+    }
+
     // Execute a single instruction
     fn step(&mut self, memory: &mut Memory) {
         let opcode = self.fetch_byte(memory);
@@ -110,7 +145,7 @@ impl Cpu {
     }
 
     // Decode and execute instruction
-    fn execute(&mut self, opcode: u8, memory: &mut Memory) {
+    pub(crate) fn execute(&mut self, opcode: u8, memory: &mut Memory) {
         match opcode {
             // ADD r/m to register
             0x00..=0x03 => self.add_rm_reg(opcode, memory),
@@ -243,7 +278,7 @@ impl Cpu {
             // CBW - Convert Byte to Word (98)
             0x98 => self.cbw(),
 
-            // CWD - Convert Word to Doubleword (99)
+            // CWD - Convert Word to Double word (99)
             0x99 => self.cwd(),
 
             // CALL far (9A)

@@ -3,6 +3,14 @@ use anyhow::{Result, anyhow};
 // 1MB = 0x100000 bytes
 pub const MEMORY_SIZE: usize = 0x100000;
 
+// IVT (Interrupt Vector Table) constants
+pub const IVT_START: usize = 0x0000;
+pub const IVT_END: usize = 0x03FF;
+pub const IVT_ENTRY_SIZE: usize = 4; // Each entry is 4 bytes (offset, segment)
+
+// BIOS data area and interrupt handler locations
+pub const BIOS_INTERRUPT_HANDLERS: usize = 0xF000; // Segment where BIOS handlers are located
+
 pub struct Memory {
     data: Vec<u8>,
 }
@@ -57,5 +65,72 @@ impl Memory {
     pub fn write_word(&mut self, address: usize, value: u16) {
         self.write_byte(address, (value & 0xFF) as u8);
         self.write_byte(address + 1, (value >> 8) as u8);
+    }
+
+    /// Initialize the Interrupt Vector Table (IVT)
+    /// Sets up interrupt handlers for BIOS and DOS-like services
+    pub fn initialize_ivt(&mut self) {
+        // IVT is at 0x0000-0x03FF (256 entries * 4 bytes each)
+        // Each entry contains: [offset_low, offset_high, segment_low, segment_high]
+
+        // Default handler for unimplemented interrupts (points to IRET)
+        // We'll place a simple IRET handler at F000:0000
+        let default_offset = 0x0000;
+        let default_segment = 0xF000;
+
+        // Initialize all 256 interrupt vectors to default handler
+        for int_num in 0..256 {
+            let ivt_addr = int_num * IVT_ENTRY_SIZE;
+            self.write_word(ivt_addr, default_offset);
+            self.write_word(ivt_addr + 2, default_segment);
+        }
+
+        // Set up specific interrupt handlers
+        // INT 0x21: DOS-like services (at F000:0100)
+        self.set_interrupt_vector(0x21, 0xF000, 0x0100);
+
+        // Write the default IRET handler at F000:0000
+        let iret_addr = ((default_segment as usize) << 4) + (default_offset as usize);
+        self.write_byte(iret_addr, 0xCF); // IRET instruction
+    }
+
+    /// Set an interrupt vector in the IVT
+    pub fn set_interrupt_vector(&mut self, int_num: u8, segment: u16, offset: u16) {
+        let ivt_addr = (int_num as usize) * IVT_ENTRY_SIZE;
+        self.write_word(ivt_addr, offset);
+        self.write_word(ivt_addr + 2, segment);
+    }
+
+    /// Install BIOS interrupt handlers
+    /// This writes the actual interrupt handler code into memory
+    pub fn install_bios_handlers(&mut self) {
+        // Install INT 0x21 handler at F000:0100
+        self.install_int21_handler();
+    }
+
+    /// Install INT 0x21 (DOS services) handler
+    /// This is a minimal implementation that handles common DOS functions
+    fn install_int21_handler(&mut self) {
+        let handler_segment = 0xF000;
+        let handler_offset = 0x0100;
+        let handler_addr = ((handler_segment as usize) << 4) + (handler_offset as usize);
+
+        // INT 0x21 handler code
+        // We'll implement a simple handler that checks AH register for function number
+        let mut code_offset = 0;
+
+        // For now, we'll just implement a simple stub that returns with IRET
+        // A full implementation would check AH and dispatch to different functions
+
+        // Simple handler that just returns:
+        // IRET (CF)
+        self.write_byte(handler_addr + code_offset, 0xCF);
+        code_offset += 1;
+
+        // Note: A real implementation would:
+        // 1. Check AH register value
+        // 2. Dispatch to appropriate handler (e.g., character I/O, file operations)
+        // 3. Perform the requested operation
+        // 4. Return with IRET
     }
 }

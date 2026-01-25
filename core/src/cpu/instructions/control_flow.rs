@@ -269,12 +269,6 @@ impl Cpu {
         self.flags = self.pop(memory);
     }
 
-    /// NOP - No Operation (opcode 90)
-    /// Does nothing (actually XCHG AX, AX)
-    pub(in crate::cpu) fn nop(&mut self) {
-        // Do nothing
-    }
-
     /// CBW - Convert Byte to Word (opcode 98)
     /// Sign-extends AL into AX
     pub(in crate::cpu) fn cbw(&mut self) {
