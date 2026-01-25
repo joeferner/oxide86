@@ -44,6 +44,19 @@ pub struct KeyPress {
     pub ascii_code: u8,
 }
 
+/// RTC (Real Time Clock) time data returned by INT 1Ah, AH=02h
+#[derive(Debug, Clone, Copy)]
+pub struct RtcTime {
+    /// Hours (0-23, decimal not BCD)
+    pub hours: u8,
+    /// Minutes (0-59, decimal not BCD)
+    pub minutes: u8,
+    /// Seconds (0-59, decimal not BCD)
+    pub seconds: u8,
+    /// Daylight saving time flag (0 = standard time, 1 = daylight time)
+    pub dst_flag: u8,
+}
+
 /// INT 13h error codes
 pub mod disk_errors {
     pub const SUCCESS: u8 = 0x00;
@@ -294,6 +307,11 @@ pub trait Bios {
     /// Returns the current time in ticks (18.2 Hz timer)
     /// Platform implementations should read the host system time
     fn get_system_ticks(&self) -> u32;
+
+    /// Get Real Time Clock time (INT 1Ah, AH=02h)
+    /// Returns current time in decimal format (not BCD - conversion is done by caller)
+    /// Returns None if RTC is not available (e.g., on original 8086 systems)
+    fn get_rtc_time(&self) -> Option<RtcTime>;
 }
 
 impl Cpu {

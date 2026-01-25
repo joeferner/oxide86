@@ -59,6 +59,19 @@ The `emu86-wasm` crate provides WebAssembly bindings:
 - **Instruction Pointer**: IP
 - **Flags Register**: Carry, Parity, Auxiliary, Zero, Sign, Trap, Interrupt, Direction, Overflow
 
+**Flag Manipulation:**
+
+The CPU provides a `set_flag` method for manipulating individual flags:
+```rust
+pub(super) fn set_flag(&mut self, flag: u16, value: bool)
+```
+
+Usage:
+- To set a flag: `self.set_flag(cpu_flag::CARRY, true);`
+- To clear a flag: `self.set_flag(cpu_flag::CARRY, false);`
+
+**Important:** There is no `clear_flag` method. Always use `set_flag` with `false` to clear a flag.
+
 ### Memory Addressing
 - Segmented memory model: Physical Address = (Segment × 16) + Offset
 - 20-bit address bus (1MB addressable memory)
@@ -280,6 +293,53 @@ int 0x1A               ; Call time service
 
 **Example:** See [examples/time_test.asm](examples/time_test.asm) for a complete timer test example.
 
+**Real Time Clock (RTC):**
+
+The emulator supports reading the real-time clock via INT 1Ah AH=02h:
+- **Platform Support**: Available on AT-class systems (286+), not available on original 8086/XT
+  - Native implementation reads the host system time and returns current time
+  - NullBios implementation returns error (CF=1) to indicate RTC not present
+- **BCD Format**: Time values are returned in Binary Coded Decimal format
+  - Each decimal digit is stored in 4 bits: 23 decimal = 0x23 BCD
+  - Hours: 0-23, Minutes: 0-59, Seconds: 0-59
+- **Daylight Saving Time**: DL register contains DST flag (0 = standard time, 1 = daylight time)
+  - Native implementation currently returns 0 (no DST support)
+
+**Reading RTC in Assembly:**
+```asm
+; Read current time from RTC using INT 1Ah AH=02h
+mov ah, 0x02           ; Function 02h - Read RTC time
+int 0x1A               ; Call time service
+jc rtc_not_available   ; CF=1 if RTC not present or not operating
+
+; Success - time is returned in BCD format
+; CH = hours (BCD, 0-23)
+; CL = minutes (BCD, 0-59)
+; DH = seconds (BCD, 0-59)
+; DL = daylight saving time flag
+
+; Convert BCD hours to decimal (if needed)
+mov al, ch             ; AL = hours in BCD (e.g., 0x23 = 23)
+mov bl, al
+and al, 0x0F           ; AL = low digit (ones)
+shr bl, 4              ; BL = high digit (tens)
+mov cl, 10
+mul cl                 ; AX = tens * 10
+add al, bl             ; AL = decimal hours
+
+rtc_not_available:
+; Handle RTC not available (8086/XT systems)
+```
+
+**Implementation Details:**
+
+The RTC is implemented through the `Bios` trait:
+- `get_rtc_time() -> Option<RtcTime>`: Platform implementations return current time or None
+  - Returns `RtcTime` struct with hours, minutes, seconds, dst_flag in decimal format
+  - INT 1Ah handler converts decimal to BCD before returning to caller
+- **Native Platform**: Reads host system time via `SystemTime::now()` and extracts time of day
+- **Null BIOS**: Returns None to indicate RTC not available (simulates 8086/XT behavior)
+
 ### Interrupt Handling Architecture
 
 **BIOS Interrupt Implementation**
@@ -341,6 +401,7 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
 - **INT 1Ah - Time Services** ([core/src/cpu/bios/int1a.rs](core/src/cpu/bios/int1a.rs))
   - AH=00h: Get system time - Returns CX:DX = tick count since midnight, AL = midnight flag
   - AH=01h: Set system time - Sets timer counter to CX:DX (ticks since midnight)
+  - AH=02h: Read RTC time - Returns CH = hours (BCD), CL = minutes (BCD), DH = seconds (BCD), DL = DST flag, CF = 0 on success
 
 - **INT 21h - DOS Services** ([core/src/cpu/bios/int21.rs](core/src/cpu/bios/int21.rs))
   - **Console I/O:**

@@ -1,5 +1,7 @@
 use log::warn;
 
+use crate::Bios;
+use crate::cpu::cpu_flag;
 use crate::{cpu::Cpu, memory::Memory};
 use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW};
 
@@ -12,12 +14,13 @@ pub const TIMER_TICKS_PER_DAY: u32 = 0x001800B0;
 impl Cpu {
     /// INT 0x1A - Time Services
     /// AH register contains the function number
-    pub(super) fn handle_int1a<T: super::Bios>(&mut self, memory: &mut Memory, _io: &mut T) {
+    pub(super) fn handle_int1a<T: super::Bios>(&mut self, memory: &mut Memory, io: &mut T) {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
             0x00 => self.int1a_get_system_time(memory),
             0x01 => self.int1a_set_system_time(memory),
+            0x02 => self.int1a_read_rtc_time(io),
             _ => {
                 warn!("Unhandled INT 0x1A function: AH=0x{:02X}", function);
             }
@@ -64,5 +67,43 @@ impl Cpu {
         // Clear midnight overflow flag when setting time
         let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
         memory.write_byte(overflow_addr, 0);
+    }
+
+    /// INT 1Ah, AH=02h - Read Real Time Clock Time
+    /// Reads the current time from the RTC (AT systems only, not available on original 8086/XT)
+    /// Input: None
+    /// Output:
+    ///   CF = 0 if successful
+    ///   CF = 1 if RTC not operating or not present
+    ///   CH = hours (BCD format, 0-23)
+    ///   CL = minutes (BCD format, 0-59)
+    ///   DH = seconds (BCD format, 0-59)
+    ///   DL = daylight saving time flag (0 = standard time, 1 = daylight time)
+    fn int1a_read_rtc_time<T: Bios>(&mut self, io: &T) {
+        match io.get_rtc_time() {
+            Some(time) => {
+                // Convert decimal values to BCD format
+                let hours_bcd = Self::decimal_to_bcd(time.hours);
+                let minutes_bcd = Self::decimal_to_bcd(time.minutes);
+                let seconds_bcd = Self::decimal_to_bcd(time.seconds);
+
+                // Set output registers
+                self.cx = ((hours_bcd as u16) << 8) | (minutes_bcd as u16); // CH = hours, CL = minutes
+                self.dx = ((seconds_bcd as u16) << 8) | (time.dst_flag as u16); // DH = seconds, DL = DST flag
+
+                // Clear CF to indicate success
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            None => {
+                // RTC not available - set CF to indicate failure
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// Convert a decimal value (0-99) to BCD format
+    /// BCD stores each decimal digit in 4 bits: 23 decimal = 0x23 BCD
+    fn decimal_to_bcd(value: u8) -> u8 {
+        ((value / 10) << 4) | (value % 10)
     }
 }

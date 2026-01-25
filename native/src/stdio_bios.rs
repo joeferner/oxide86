@@ -1,5 +1,5 @@
 use emu86_core::cpu::bios::{
-    DriveParams, FindData, KeyPress, SeekMethod, SerialParams, SerialStatus, PrinterStatus, disk_errors, dos_errors, file_access, file_attributes,
+    DriveParams, FindData, KeyPress, RtcTime, SeekMethod, SerialParams, SerialStatus, PrinterStatus, disk_errors, dos_errors, file_access, file_attributes,
 };
 use emu86_core::cpu::bios::int14::line_status;
 use emu86_core::cpu::bios::int17::printer_status;
@@ -699,6 +699,36 @@ impl<D: DiskController> Bios for StdioBios<D> {
 
         // Ensure we don't exceed the maximum tick count for a day
         ticks.min(0x001800B0)
+    }
+
+    fn get_rtc_time(&self) -> Option<RtcTime> {
+        use std::time::SystemTime;
+
+        // Get current system time
+        let now = SystemTime::now();
+        let duration = now
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default();
+
+        // Get total seconds since Unix epoch
+        let total_seconds = duration.as_secs();
+
+        // Calculate time of day (simplified, doesn't account for timezone)
+        let seconds_in_day = 24 * 60 * 60;
+        let seconds_since_midnight = (total_seconds % seconds_in_day) as u32;
+
+        // Convert to hours, minutes, seconds
+        let hours = (seconds_since_midnight / 3600) as u8;
+        let minutes = ((seconds_since_midnight % 3600) / 60) as u8;
+        let seconds = (seconds_since_midnight % 60) as u8;
+
+        // Return RTC time (DST flag set to 0 for standard time)
+        Some(RtcTime {
+            hours,
+            minutes,
+            seconds,
+            dst_flag: 0, // Standard time (no DST support in this simple implementation)
+        })
     }
 }
 
