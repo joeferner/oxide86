@@ -1,5 +1,6 @@
 use super::super::Cpu;
 use crate::memory::Memory;
+use crate::io_port::{IoDevice, IoPort};
 
 // Flag constant from parent module
 const FLAG_DIRECTION: u16 = 1 << 10;
@@ -216,6 +217,88 @@ impl Cpu {
                 self.di = self.di.wrapping_sub(1);
             } else {
                 self.di = self.di.wrapping_add(1);
+            }
+        }
+    }
+
+    /// INS - Input String from Port (opcodes 6C-6D)
+    /// 6C: INSB - Input byte from port DX to ES:DI
+    /// 6D: INSW - Input word from port DX to ES:DI
+    ///
+    /// Reads data from I/O port DX into ES:DI, then increments/decrements DI based on DF.
+    pub(in crate::cpu) fn ins<I: IoDevice>(
+        &mut self,
+        opcode: u8,
+        memory: &mut Memory,
+        io_port: &mut IoPort<I>,
+    ) {
+        let is_word = opcode & 0x01 != 0;
+        let port = self.dx;
+
+        if is_word {
+            // INSW - Input word
+            let value = io_port.read_word(port);
+            let addr = Self::physical_address(self.es, self.di);
+            memory.write_word(addr, value);
+
+            // Update DI based on direction flag
+            if self.get_flag(FLAG_DIRECTION) {
+                self.di = self.di.wrapping_sub(2);
+            } else {
+                self.di = self.di.wrapping_add(2);
+            }
+        } else {
+            // INSB - Input byte
+            let value = io_port.read_byte(port);
+            let addr = Self::physical_address(self.es, self.di);
+            memory.write_byte(addr, value);
+
+            // Update DI based on direction flag
+            if self.get_flag(FLAG_DIRECTION) {
+                self.di = self.di.wrapping_sub(1);
+            } else {
+                self.di = self.di.wrapping_add(1);
+            }
+        }
+    }
+
+    /// OUTS - Output String to Port (opcodes 6E-6F)
+    /// 6E: OUTSB - Output byte from DS:SI to port DX
+    /// 6F: OUTSW - Output word from DS:SI to port DX
+    ///
+    /// Writes data from DS:SI to I/O port DX, then increments/decrements SI based on DF.
+    pub(in crate::cpu) fn outs<I: IoDevice>(
+        &mut self,
+        opcode: u8,
+        memory: &Memory,
+        io_port: &mut IoPort<I>,
+    ) {
+        let is_word = opcode & 0x01 != 0;
+        let port = self.dx;
+
+        if is_word {
+            // OUTSW - Output word
+            let addr = Self::physical_address(self.ds, self.si);
+            let value = memory.read_word(addr);
+            io_port.write_word(port, value);
+
+            // Update SI based on direction flag
+            if self.get_flag(FLAG_DIRECTION) {
+                self.si = self.si.wrapping_sub(2);
+            } else {
+                self.si = self.si.wrapping_add(2);
+            }
+        } else {
+            // OUTSB - Output byte
+            let addr = Self::physical_address(self.ds, self.si);
+            let value = memory.read_byte(addr);
+            io_port.write_byte(port, value);
+
+            // Update SI based on direction flag
+            if self.get_flag(FLAG_DIRECTION) {
+                self.si = self.si.wrapping_sub(1);
+            } else {
+                self.si = self.si.wrapping_add(1);
             }
         }
     }

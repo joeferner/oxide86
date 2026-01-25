@@ -235,6 +235,12 @@ impl Cpu {
             // PUSH immediate (68: imm16, 6A: imm8 sign-extended)
             0x68 | 0x6A => self.push_imm(opcode, memory),
 
+            // INS - Input String from Port (6C-6D)
+            0x6C..=0x6D => self.ins(opcode, memory, io_port),
+
+            // OUTS - Output String to Port (6E-6F)
+            0x6E..=0x6F => self.outs(opcode, memory, io_port),
+
             // Conditional jumps (70-7F)
             0x70..=0x7F => self.jmp_conditional(opcode, memory),
 
