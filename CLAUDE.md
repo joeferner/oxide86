@@ -6,6 +6,10 @@ An Intel 8086 CPU emulator written in Rust with support for both native executio
 
 emu86 is a software emulator for the Intel 8086 microprocessor, the 16-bit CPU that powered the original IBM PC. This project aims to accurately emulate the 8086's instruction set, registers, memory model, and behavior.
 
+## Coding Rules
+
+Examples should be written in x86 assembly language. nasm should be assumed to be installed so no need to write special python assemblers.
+
 ## Architecture
 
 The project is organized as a Rust workspace with three main components:
@@ -87,14 +91,9 @@ cargo run -p emu86-native -- <args>
 ```
 emu86/
 ├── core/           # Platform-independent emulator core
-│   └── src/
-│       └── lib.rs
+├── examples/       # Example programs to run
 ├── native/         # Native CLI application
-│   └── src/
-│       └── main.rs
 ├── wasm/           # WebAssembly bindings
-│   └── src/
-│       └── lib.rs
 └── Cargo.toml      # Workspace configuration
 ```
 
@@ -136,11 +135,3 @@ When implementing the emulator, consider this order:
 - [Intel 8086 Family User's Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
 - [x86 Instruction Set Reference](https://www.felixcloutier.com/x86/)
 - [8086 Opcode Table](http://www.mlsite.net/8086/)
-
-## License
-
-[Specify your license here]
-
-## Contributing
-
-[Specify contribution guidelines here]

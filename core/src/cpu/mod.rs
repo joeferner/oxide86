@@ -31,6 +31,17 @@ pub struct Cpu {
     halted: bool,
 }
 
+// Flag bit positions
+const FLAG_CARRY: u16 = 1 << 0;
+const FLAG_PARITY: u16 = 1 << 2;
+const FLAG_AUXILIARY: u16 = 1 << 4;
+const FLAG_ZERO: u16 = 1 << 6;
+const FLAG_SIGN: u16 = 1 << 7;
+const FLAG_TRAP: u16 = 1 << 8;
+const FLAG_INTERRUPT: u16 = 1 << 9;
+const FLAG_DIRECTION: u16 = 1 << 10;
+const FLAG_OVERFLOW: u16 = 1 << 11;
+
 impl Cpu {
     pub fn new() -> Self {
         Self {
@@ -101,6 +112,19 @@ impl Cpu {
     // Decode and execute instruction
     fn execute(&mut self, opcode: u8, memory: &mut Memory) {
         match opcode {
+            // ADD r/m to register
+            0x00..=0x03 => self.add_rm_reg(opcode, memory),
+
+            // ADD immediate to AL/AX
+            0x04..=0x05 => self.add_imm_acc(opcode, memory),
+
+            // Arithmetic immediate to r/m16 (81: full 16-bit imm, 83: sign-extended 8-bit imm)
+            0x81 => self.arith_imm16_rm(memory),
+            0x83 => self.arith_imm8_rm(memory),
+
+            // MOV register to/from r/m (88-8B)
+            0x88..=0x8B => self.mov_reg_rm(opcode, memory),
+
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
 
@@ -116,10 +140,10 @@ impl Cpu {
     // Set 8-bit register
     pub(super) fn set_reg8(&mut self, reg: u8, value: u8) {
         match reg {
-            0 => self.ax = (self.ax & 0xFF00) | value as u16,        // AL
-            1 => self.cx = (self.cx & 0xFF00) | value as u16,        // CL
-            2 => self.dx = (self.dx & 0xFF00) | value as u16,        // DL
-            3 => self.bx = (self.bx & 0xFF00) | value as u16,        // BL
+            0 => self.ax = (self.ax & 0xFF00) | value as u16, // AL
+            1 => self.cx = (self.cx & 0xFF00) | value as u16, // CL
+            2 => self.dx = (self.dx & 0xFF00) | value as u16, // DL
+            3 => self.bx = (self.bx & 0xFF00) | value as u16, // BL
             4 => self.ax = (self.ax & 0x00FF) | ((value as u16) << 8), // AH
             5 => self.cx = (self.cx & 0x00FF) | ((value as u16) << 8), // CH
             6 => self.dx = (self.dx & 0x00FF) | ((value as u16) << 8), // DH
@@ -143,11 +167,80 @@ impl Cpu {
         }
     }
 
+    // Get 8-bit register value
+    pub(super) fn get_reg8(&self, reg: u8) -> u8 {
+        match reg {
+            0 => (self.ax & 0xFF) as u8, // AL
+            1 => (self.cx & 0xFF) as u8, // CL
+            2 => (self.dx & 0xFF) as u8, // DL
+            3 => (self.bx & 0xFF) as u8, // BL
+            4 => (self.ax >> 8) as u8, // AH
+            5 => (self.cx >> 8) as u8, // CH
+            6 => (self.dx >> 8) as u8, // DH
+            7 => (self.bx >> 8) as u8, // BH
+            _ => unreachable!(),
+        }
+    }
+
+    // Get 16-bit register value
+    pub(super) fn get_reg16(&self, reg: u8) -> u16 {
+        match reg & 0x07 {
+            0 => self.ax,
+            1 => self.cx,
+            2 => self.dx,
+            3 => self.bx,
+            4 => self.sp,
+            5 => self.bp,
+            6 => self.si,
+            7 => self.di,
+            _ => unreachable!(),
+        }
+    }
+
+    // Set a specific flag
+    pub(super) fn set_flag(&mut self, flag: u16, value: bool) {
+        if value {
+            self.flags |= flag;
+        } else {
+            self.flags &= !flag;
+        }
+    }
+
+    // Get a specific flag
+    pub(super) fn get_flag(&self, flag: u16) -> bool {
+        (self.flags & flag) != 0
+    }
+
+    // Calculate and set flags for 8-bit result
+    pub(super) fn set_flags_8(&mut self, result: u8) {
+        self.set_flag(FLAG_ZERO, result == 0);
+        self.set_flag(FLAG_SIGN, (result & 0x80) != 0);
+        self.set_flag(FLAG_PARITY, result.count_ones() % 2 == 0);
+    }
+
+    // Calculate and set flags for 16-bit result
+    pub(super) fn set_flags_16(&mut self, result: u16) {
+        self.set_flag(FLAG_ZERO, result == 0);
+        self.set_flag(FLAG_SIGN, (result & 0x8000) != 0);
+        self.set_flag(FLAG_PARITY, (result as u8).count_ones() % 2 == 0);
+    }
+
     // Dump register state
     pub fn dump_registers(&self) {
         println!("AX={:04X}  BX={:04X}  CX={:04X}  DX={:04X}", self.ax, self.bx, self.cx, self.dx);
         println!("SI={:04X}  DI={:04X}  BP={:04X}  SP={:04X}", self.si, self.di, self.bp, self.sp);
         println!("CS={:04X}  DS={:04X}  SS={:04X}  ES={:04X}", self.cs, self.ds, self.ss, self.es);
         println!("IP={:04X}  FLAGS={:04X}", self.ip, self.flags);
+        println!("CF={}  PF={}  AF={}  ZF={}  SF={}  TF={}  IF={}  DF={}  OF={}",
+            if self.get_flag(FLAG_CARRY) { 1 } else { 0 },
+            if self.get_flag(FLAG_PARITY) { 1 } else { 0 },
+            if self.get_flag(FLAG_AUXILIARY) { 1 } else { 0 },
+            if self.get_flag(FLAG_ZERO) { 1 } else { 0 },
+            if self.get_flag(FLAG_SIGN) { 1 } else { 0 },
+            if self.get_flag(FLAG_TRAP) { 1 } else { 0 },
+            if self.get_flag(FLAG_INTERRUPT) { 1 } else { 0 },
+            if self.get_flag(FLAG_DIRECTION) { 1 } else { 0 },
+            if self.get_flag(FLAG_OVERFLOW) { 1 } else { 0 },
+        );
     }
 }
