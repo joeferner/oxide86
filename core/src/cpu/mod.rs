@@ -35,6 +35,16 @@ pub struct Cpu {
 
     // Segment override prefix (for next instruction only)
     segment_override: Option<u16>,
+
+    // Repeat prefix for string instructions
+    repeat_prefix: Option<RepeatPrefix>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(super) enum RepeatPrefix {
+    Rep,      // 0xF3 - Repeat while CX != 0
+    Repe,     // 0xF3 - Repeat while CX != 0 and ZF = 1
+    Repne,    // 0xF2 - Repeat while CX != 0 and ZF = 0
 }
 
 // Flag bit positions
@@ -67,6 +77,7 @@ impl Cpu {
             flags: 0,
             halted: false,
             segment_override: None,
+            repeat_prefix: None,
         }
     }
 
@@ -81,6 +92,7 @@ impl Cpu {
         self.sp = 0;
         self.halted = false;
         self.segment_override = None;
+        self.repeat_prefix = None;
         // Other registers are undefined on reset
     }
 
@@ -448,6 +460,22 @@ impl Cpu {
             // OUT DX, AX (EF)
             0xEF => self.out_dx_ax(io_port),
 
+            // REPNE/REPNZ prefix (F2)
+            0xF2 => {
+                self.repeat_prefix = Some(RepeatPrefix::Repne);
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+                self.repeat_prefix = None;
+            }
+
+            // REP/REPE/REPZ prefix (F3)
+            0xF3 => {
+                self.repeat_prefix = Some(RepeatPrefix::Rep);
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+                self.repeat_prefix = None;
+            }
+
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
 
@@ -482,10 +510,10 @@ impl Cpu {
                 let modrm_peek = memory.read_byte(Self::physical_address(self.cs, self.ip));
                 let reg_field = (modrm_peek >> 3) & 0x07;
                 match reg_field {
-                    0 | 1 => self.inc_dec_rm(opcode, memory),  // INC/DEC
-                    2 | 3 => self.call_indirect(memory),        // CALL near/far
-                    4 | 5 => self.jmp_indirect(memory),         // JMP near/far
-                    6 => panic!("PUSH r/m16 not implemented"),
+                    0 | 1 => self.inc_dec_rm(opcode, memory), // INC/DEC
+                    2 | 3 => self.call_indirect(memory), // CALL near/far
+                    4 | 5 => self.jmp_indirect(memory), // JMP near/far
+                    6 => self.push_rm16(memory), // PUSH r/m16
                     _ => panic!("Invalid FF operation: {}", reg_field),
                 }
             }

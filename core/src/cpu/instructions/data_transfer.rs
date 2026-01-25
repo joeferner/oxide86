@@ -236,6 +236,25 @@ impl Cpu {
         self.write_rm16(mode, rm, addr, value, memory);
     }
 
+    /// PUSH r/m16 (opcode FF /6) - Group 5
+    /// FF /6: PUSH r/m16
+    /// Pushes a word from register or memory location onto stack
+    pub(in crate::cpu) fn push_rm16(&mut self, memory: &mut Memory) {
+        let modrm = self.fetch_byte(memory);
+        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+
+        // The reg field should be 6 for PUSH (it's an opcode extension)
+        if reg_field != 6 {
+            panic!(
+                "Invalid opcode extension for FF /6: expected /6, got /{}",
+                reg_field
+            );
+        }
+
+        let value = self.read_rm16(mode, rm, addr, memory);
+        self.push(value, memory);
+    }
+
     /// XCHG register with accumulator (opcodes 90-97)
     /// 90: NOP (XCHG AX, AX) - special case
     /// 91-97: XCHG AX, reg16

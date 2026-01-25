@@ -1,4 +1,4 @@
-use super::super::Cpu;
+use super::super::{Cpu, RepeatPrefix};
 use crate::memory::Memory;
 use crate::io_port::{IoDevice, IoPort};
 
@@ -23,6 +23,18 @@ impl Cpu {
     pub(in crate::cpu) fn movs(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
 
+        // Handle repeat prefix
+        if self.repeat_prefix.is_some() {
+            while self.cx != 0 {
+                self.movs_once(is_word, memory);
+                self.cx = self.cx.wrapping_sub(1);
+            }
+        } else {
+            self.movs_once(is_word, memory);
+        }
+    }
+
+    fn movs_once(&mut self, is_word: bool, memory: &mut Memory) {
         if is_word {
             // MOVSW - Move word
             let src_seg = self.segment_override.unwrap_or(self.ds);
@@ -73,6 +85,35 @@ impl Cpu {
     pub(in crate::cpu) fn cmps(&mut self, opcode: u8, memory: &Memory) {
         let is_word = opcode & 0x01 != 0;
 
+        // Handle repeat prefix
+        match self.repeat_prefix {
+            Some(RepeatPrefix::Rep) | Some(RepeatPrefix::Repe) => {
+                // REPE/REPZ: Repeat while CX != 0 and ZF = 1
+                while self.cx != 0 {
+                    self.cmps_once(is_word, memory);
+                    self.cx = self.cx.wrapping_sub(1);
+                    if !self.get_flag(FLAG_ZERO) {
+                        break; // Stop if not equal (ZF=0)
+                    }
+                }
+            }
+            Some(RepeatPrefix::Repne) => {
+                // REPNE/REPNZ: Repeat while CX != 0 and ZF = 0
+                while self.cx != 0 {
+                    self.cmps_once(is_word, memory);
+                    self.cx = self.cx.wrapping_sub(1);
+                    if self.get_flag(FLAG_ZERO) {
+                        break; // Stop if equal (ZF=1)
+                    }
+                }
+            }
+            None => {
+                self.cmps_once(is_word, memory);
+            }
+        }
+    }
+
+    fn cmps_once(&mut self, is_word: bool, memory: &Memory) {
         if is_word {
             // CMPSW - Compare word
             let src_seg = self.segment_override.unwrap_or(self.ds);
@@ -125,6 +166,35 @@ impl Cpu {
     pub(in crate::cpu) fn scas(&mut self, opcode: u8, memory: &Memory) {
         let is_word = opcode & 0x01 != 0;
 
+        // Handle repeat prefix
+        match self.repeat_prefix {
+            Some(RepeatPrefix::Rep) | Some(RepeatPrefix::Repe) => {
+                // REPE/REPZ: Repeat while CX != 0 and ZF = 1
+                while self.cx != 0 {
+                    self.scas_once(is_word, memory);
+                    self.cx = self.cx.wrapping_sub(1);
+                    if !self.get_flag(FLAG_ZERO) {
+                        break; // Stop if not equal (ZF=0)
+                    }
+                }
+            }
+            Some(RepeatPrefix::Repne) => {
+                // REPNE/REPNZ: Repeat while CX != 0 and ZF = 0
+                while self.cx != 0 {
+                    self.scas_once(is_word, memory);
+                    self.cx = self.cx.wrapping_sub(1);
+                    if self.get_flag(FLAG_ZERO) {
+                        break; // Stop if equal (ZF=1)
+                    }
+                }
+            }
+            None => {
+                self.scas_once(is_word, memory);
+            }
+        }
+    }
+
+    fn scas_once(&mut self, is_word: bool, memory: &Memory) {
         if is_word {
             // SCASW - Scan word
             let addr = Self::physical_address(self.es, self.di);
@@ -168,6 +238,18 @@ impl Cpu {
     pub(in crate::cpu) fn lods(&mut self, opcode: u8, memory: &Memory) {
         let is_word = opcode & 0x01 != 0;
 
+        // Handle repeat prefix
+        if self.repeat_prefix.is_some() {
+            while self.cx != 0 {
+                self.lods_once(is_word, memory);
+                self.cx = self.cx.wrapping_sub(1);
+            }
+        } else {
+            self.lods_once(is_word, memory);
+        }
+    }
+
+    fn lods_once(&mut self, is_word: bool, memory: &Memory) {
         if is_word {
             // LODSW - Load word
             let src_seg = self.segment_override.unwrap_or(self.ds);
@@ -204,6 +286,18 @@ impl Cpu {
     pub(in crate::cpu) fn stos(&mut self, opcode: u8, memory: &mut Memory) {
         let is_word = opcode & 0x01 != 0;
 
+        // Handle repeat prefix
+        if self.repeat_prefix.is_some() {
+            while self.cx != 0 {
+                self.stos_once(is_word, memory);
+                self.cx = self.cx.wrapping_sub(1);
+            }
+        } else {
+            self.stos_once(is_word, memory);
+        }
+    }
+
+    fn stos_once(&mut self, is_word: bool, memory: &mut Memory) {
         if is_word {
             // STOSW - Store word
             let addr = Self::physical_address(self.es, self.di);
@@ -242,6 +336,24 @@ impl Cpu {
         io_port: &mut IoPort<I>,
     ) {
         let is_word = opcode & 0x01 != 0;
+
+        // Handle repeat prefix
+        if self.repeat_prefix.is_some() {
+            while self.cx != 0 {
+                self.ins_once(is_word, memory, io_port);
+                self.cx = self.cx.wrapping_sub(1);
+            }
+        } else {
+            self.ins_once(is_word, memory, io_port);
+        }
+    }
+
+    fn ins_once<I: IoDevice>(
+        &mut self,
+        is_word: bool,
+        memory: &mut Memory,
+        io_port: &mut IoPort<I>,
+    ) {
         let port = self.dx;
 
         if is_word {
@@ -283,6 +395,24 @@ impl Cpu {
         io_port: &mut IoPort<I>,
     ) {
         let is_word = opcode & 0x01 != 0;
+
+        // Handle repeat prefix
+        if self.repeat_prefix.is_some() {
+            while self.cx != 0 {
+                self.outs_once(is_word, memory, io_port);
+                self.cx = self.cx.wrapping_sub(1);
+            }
+        } else {
+            self.outs_once(is_word, memory, io_port);
+        }
+    }
+
+    fn outs_once<I: IoDevice>(
+        &mut self,
+        is_word: bool,
+        memory: &Memory,
+        io_port: &mut IoPort<I>,
+    ) {
         let port = self.dx;
 
         if is_word {

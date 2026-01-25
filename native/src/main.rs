@@ -16,8 +16,17 @@ use terminal_video::TerminalVideo;
 #[command(name = "emu86")]
 #[command(about = "Intel 8086 CPU Emulator", long_about = None)]
 struct Cli {
-    /// Path to the program binary to load and execute
-    program: String,
+    /// Path to the program binary to load and execute (not used with --boot)
+    #[arg(required_unless_present = "boot")]
+    program: Option<String>,
+
+    /// Boot from disk image instead of loading a program
+    #[arg(long)]
+    boot: bool,
+
+    /// Boot drive number (0x00 for floppy, 0x80 for hard disk)
+    #[arg(long, default_value = "0x00")]
+    boot_drive: String,
 
     /// Starting segment address (default: 0x0000)
     #[arg(long, default_value = "0x0000")]
@@ -65,18 +74,34 @@ fn main() -> Result<()> {
     let video = TerminalVideo::new();
     let mut computer = Computer::new(bios, io_device, video);
 
-    // Load the program binary
-    let program_data = std::fs::read(&cli.program)
-        .with_context(|| format!("Failed to read program file: {}", cli.program))?;
+    if cli.boot {
+        // Boot from disk
+        let boot_drive = parse_hex_or_dec(&cli.boot_drive)?;
+        if boot_drive > 0xFF {
+            return Err(anyhow::anyhow!("Boot drive must be 0x00-0xFF, got 0x{:04X}", boot_drive));
+        }
 
-    let segment = parse_hex_or_dec(&cli.segment)?;
-    let offset = parse_hex_or_dec(&cli.offset)?;
+        info!("Booting from drive 0x{:02X}...", boot_drive);
+        computer.boot(boot_drive as u8)
+            .context("Failed to boot from disk")?;
 
-    computer.load_program(&program_data, segment, offset)
-        .context("Failed to load program")?;
+        info!("Boot sector loaded at 0x0000:0x7C00");
+        info!("Starting execution...\n");
+    } else {
+        // Load program from file
+        let program_path = cli.program.as_ref().unwrap(); // Safe because of required_unless_present
+        let program_data = std::fs::read(program_path)
+            .with_context(|| format!("Failed to read program file: {}", program_path))?;
 
-    info!("Loaded {} bytes at {:04X}:{:04X}", program_data.len(), segment, offset);
-    info!("Starting execution...\n");
+        let segment = parse_hex_or_dec(&cli.segment)?;
+        let offset = parse_hex_or_dec(&cli.offset)?;
+
+        computer.load_program(&program_data, segment, offset)
+            .context("Failed to load program")?;
+
+        info!("Loaded {} bytes at {:04X}:{:04X}", program_data.len(), segment, offset);
+        info!("Starting execution...\n");
+    }
 
     // Run the program
     computer.run();

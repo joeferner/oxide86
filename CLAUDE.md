@@ -106,6 +106,64 @@ lodsb              ; Normally loads from DS:SI
 es lodsb           ; With override, loads from ES:SI
 ```
 
+### String Instruction Repeat Prefixes
+
+The emulator supports repeat prefixes for string instructions:
+- **0xF2**: REPNE/REPNZ - Repeat while CX ≠ 0 and ZF = 0 (not equal)
+- **0xF3**: REP/REPE/REPZ - Repeat while CX ≠ 0 (and ZF = 1 for conditional variants)
+
+**Implementation** ([core/src/cpu/mod.rs](core/src/cpu/mod.rs), [core/src/cpu/instructions/string.rs](core/src/cpu/instructions/string.rs)):
+- The CPU maintains a `repeat_prefix: Option<RepeatPrefix>` field
+- When a repeat prefix is encountered, it sets `repeat_prefix` and executes the next instruction
+- After execution, `repeat_prefix` is cleared
+- String instructions check for the repeat prefix and loop accordingly:
+  - **Simple REP** (MOVS, STOS, LODS, INS, OUTS): Repeat while CX ≠ 0
+  - **REPE/REPZ** (CMPS, SCAS): Repeat while CX ≠ 0 and ZF = 1, stop when ZF = 0
+  - **REPNE/REPNZ** (CMPS, SCAS): Repeat while CX ≠ 0 and ZF = 0, stop when ZF = 1
+- Each iteration decrements CX
+
+**Supported String Instructions:**
+- `MOVS` (A4-A5) - Move String
+- `CMPS` (A6-A7) - Compare String (with REPE/REPNE)
+- `SCAS` (AE-AF) - Scan String (with REPE/REPNE)
+- `LODS` (AC-AD) - Load String
+- `STOS` (AA-AB) - Store String
+- `INS` (6C-6D) - Input String from Port
+- `OUTS` (6E-6F) - Output String to Port
+
+**Example Usage:**
+```asm
+; Fill 100 bytes with 0x00
+mov cx, 100
+mov di, 0x1000
+xor al, al
+cld                ; Direction = forward
+rep stosb          ; Repeat STOSB while CX != 0
+
+; Copy 50 words from DS:SI to ES:DI
+mov cx, 50
+mov si, 0x2000
+mov di, 0x3000
+cld
+rep movsw          ; Repeat MOVSW while CX != 0
+
+; Find first non-zero byte in buffer
+mov cx, 1000
+mov di, 0x4000
+xor al, al
+cld
+repe scasb         ; Repeat while CX != 0 and byte == 0
+; DI now points to first non-zero byte (or end if all zero)
+
+; Find null terminator in string
+mov di, string_offset
+mov al, 0
+mov cx, 0xFFFF     ; Max length
+cld
+repne scasb        ; Repeat while CX != 0 and byte != 0
+; DI now points past the null terminator
+```
+
 ### BIOS Data Area (BDA)
 
 The emulator initializes a BIOS Data Area at segment 0x0040 (physical address 0x0400) containing system configuration information, compatible with IBM PC BIOS.
@@ -492,6 +550,106 @@ The IVT is located at memory address 0000:0000 and contains 256 entries (one for
 - [core/src/cpu/mod.rs](core/src/cpu/mod.rs) - CPU and interrupt dispatch (`execute_int_with_io`)
 - [core/src/lib.rs](core/src/lib.rs) - Computer integration (INT opcode detection)
 - [core/src/cpu/instructions/control_flow.rs](core/src/cpu/instructions/control_flow.rs) - INT instruction implementation
+
+### Boot Process
+
+The emulator supports booting from disk images, simulating the BIOS boot process for the Intel 8086. This allows running bootable disk images including operating systems like MS-DOS.
+
+**Boot Sequence:**
+
+1. **Load Boot Sector**: Read sector 0 (cylinder 0, head 0, sector 1) from disk using INT 13h services
+2. **Verify Boot Signature**: Check for 0x55AA signature at bytes 510-511
+3. **Load to Memory**: Copy 512-byte boot sector to physical address 0x7C00 (segment 0x0000, offset 0x7C00)
+4. **Initialize Registers**: Set up CPU registers as BIOS would:
+   - CS:IP = 0x0000:0x7C00 (boot sector entry point)
+   - DL = boot drive number (0x00 for floppy A:, 0x80 for first hard disk)
+   - SS:SP = 0x0000:0x7C00 (stack just below boot sector)
+   - DS = ES = 0x0000
+5. **Transfer Control**: CPU begins executing boot sector code
+
+**Implementation** ([core/src/lib.rs](core/src/lib.rs)):
+
+The `Computer::boot()` method handles the boot process:
+
+```rust
+pub fn boot(&mut self, drive: u8) -> Result<()>
+```
+
+**Parameters:**
+- `drive`: Boot drive number (0x00 for floppy A:, 0x80 for first hard disk)
+
+**Returns:**
+- `Ok(())` if boot sector loaded successfully
+- `Err` if boot sector read fails, is not 512 bytes, or has invalid signature
+
+**Usage with Native CLI:**
+
+Boot from a disk image:
+```bash
+cargo run -p emu86-native -- --boot --disk <disk_image.img>
+```
+
+Options:
+- `--boot`: Enable boot mode (required)
+- `--disk <path>`: Path to disk image file (optional, creates empty 1.44MB floppy if not specified)
+- `--boot-drive <0xNN>`: Boot drive number (default: 0x00 for floppy)
+
+**Creating a Boot Disk:**
+
+1. Write a boot sector in assembly ([examples/boot_test.asm](examples/boot_test.asm)):
+   ```nasm
+   [BITS 16]
+   [ORG 0x7C00]
+
+   start:
+       ; Your boot sector code here
+       ; ...
+       hlt
+
+   ; Boot signature (must be at offset 510-511)
+   times 510-($-$$) db 0
+   dw 0xAA55  ; Little-endian: 0x55 0xAA
+   ```
+
+2. Assemble the boot sector:
+   ```bash
+   nasm -f bin boot_test.asm -o boot_test.bin
+   ```
+
+3. Create disk image and copy boot sector:
+   ```bash
+   # Create 1.44MB floppy disk image
+   dd if=/dev/zero of=boot_disk.img bs=512 count=2880
+
+   # Copy boot sector to first sector
+   dd if=boot_test.bin of=boot_disk.img bs=512 count=1 conv=notrunc
+   ```
+
+4. Boot from the disk:
+   ```bash
+   cargo run -p emu86-native -- --boot --disk boot_disk.img
+   ```
+
+**Boot Sector Requirements:**
+
+- Exactly 512 bytes in size
+- Boot signature 0x55AA at bytes 510-511 (little-endian)
+- Code starts at offset 0 (will be loaded at 0x7C00)
+- Can use BIOS interrupts (INT 10h, INT 13h, INT 16h, etc.)
+- DL register contains boot drive number on entry
+
+**Example:**
+
+See [examples/boot_test.asm](examples/boot_test.asm) for a complete working boot sector example.
+
+**MS-DOS Boot:**
+
+To boot MS-DOS or other operating systems:
+1. Create a disk image with MS-DOS boot sector
+2. Ensure the boot sector loads the DOS kernel (IO.SYS, MSDOS.SYS)
+3. Boot using `--boot --disk dos_disk.img`
+
+The boot sector is responsible for loading the operating system from disk into memory and transferring control to it.
 
 ## Development
 

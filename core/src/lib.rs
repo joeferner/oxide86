@@ -75,6 +75,53 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         Ok(())
     }
 
+    /// Boot from disk by loading boot sector to 0x0000:0x7C00
+    /// This simulates the BIOS boot process:
+    /// 1. Read sector 0 (cylinder 0, head 0, sector 1) from the specified drive
+    /// 2. Load it to physical address 0x7C00
+    /// 3. Set CS:IP to 0x0000:0x7C00
+    /// 4. Set DL to boot drive number
+    pub fn boot(&mut self, drive: u8) -> Result<()> {
+        // Read boot sector using BIOS disk services
+        // Boot sector is at cylinder 0, head 0, sector 1
+        let boot_sector = self.bios.disk_read_sectors(drive, 0, 0, 1, 1)
+            .map_err(|error_code| anyhow::anyhow!("Failed to read boot sector: error code 0x{:02X}", error_code))?;
+
+        if boot_sector.len() != 512 {
+            return Err(anyhow::anyhow!("Boot sector must be exactly 512 bytes, got {}", boot_sector.len()));
+        }
+
+        // Verify boot signature (0x55AA at offset 510-511)
+        if boot_sector[510] != 0x55 || boot_sector[511] != 0xAA {
+            return Err(anyhow::anyhow!("Invalid boot sector signature: expected 0x55AA, got 0x{:02X}{:02X}",
+                boot_sector[511], boot_sector[510]));
+        }
+
+        // Load boot sector to 0x0000:0x7C00 (physical address 0x7C00)
+        const BOOT_SEGMENT: u16 = 0x0000;
+        const BOOT_OFFSET: u16 = 0x7C00;
+        let boot_addr = Cpu::physical_address(BOOT_SEGMENT, BOOT_OFFSET);
+        self.memory.load_at(boot_addr, &boot_sector)?;
+
+        // Set up CPU registers as BIOS would
+        self.cpu.cs = BOOT_SEGMENT;
+        self.cpu.ip = BOOT_OFFSET;
+
+        // DL contains boot drive number (0x00 for floppy A:, 0x80 for first hard disk)
+        self.cpu.dx = (self.cpu.dx & 0xFF00) | (drive as u16);
+
+        // Set up stack at 0x0000:0x7C00 (just below boot sector)
+        // Some boot loaders expect this, others set up their own stack
+        self.cpu.ss = 0x0000;
+        self.cpu.sp = 0x7C00;
+
+        // Initialize data segments
+        self.cpu.ds = 0x0000;
+        self.cpu.es = 0x0000;
+
+        Ok(())
+    }
+
     pub fn reset(&mut self) {
         self.cpu.reset();
     }
