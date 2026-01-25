@@ -282,6 +282,7 @@ dependencies = [
  "clap",
  "emu86-core",
  "env_logger",
+ "log",
 ]
 
 [[package]]

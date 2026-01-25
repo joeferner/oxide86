@@ -3,6 +3,7 @@ use clap::Parser;
 use emu86_core::{Computer, DiskImage, DiskGeometry};
 
 mod stdio_bios;
+use log::info;
 use stdio_bios::StdioBios;
 
 mod simple_io_device;
@@ -62,13 +63,13 @@ fn main() -> Result<()> {
     computer.load_program(&program_data, segment, offset)
         .context("Failed to load program")?;
 
-    println!("Loaded {} bytes at {:04X}:{:04X}", program_data.len(), segment, offset);
-    println!("Starting execution...\n");
+    info!("Loaded {} bytes at {:04X}:{:04X}", program_data.len(), segment, offset);
+    info!("Starting execution...\n");
 
     // Run the program
     computer.run();
 
-    println!("\n=== Execution complete ===");
+    info!("\n=== Execution complete ===");
     computer.dump_registers();
 
     Ok(())

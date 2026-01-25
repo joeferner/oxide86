@@ -1,3 +1,5 @@
+use log::info;
+
 use crate::{IoDevice, io_port::IoPort, memory::Memory};
 
 mod instructions;
@@ -682,11 +684,11 @@ impl Cpu {
 
     // Dump register state
     pub fn dump_registers(&self) {
-        println!("AX={:04X}  BX={:04X}  CX={:04X}  DX={:04X}", self.ax, self.bx, self.cx, self.dx);
-        println!("SI={:04X}  DI={:04X}  BP={:04X}  SP={:04X}", self.si, self.di, self.bp, self.sp);
-        println!("CS={:04X}  DS={:04X}  SS={:04X}  ES={:04X}", self.cs, self.ds, self.ss, self.es);
-        println!("IP={:04X}  FLAGS={:04X}", self.ip, self.flags);
-        println!("CF={}  PF={}  AF={}  ZF={}  SF={}  TF={}  IF={}  DF={}  OF={}",
+        info!("AX={:04X}  BX={:04X}  CX={:04X}  DX={:04X}", self.ax, self.bx, self.cx, self.dx);
+        info!("SI={:04X}  DI={:04X}  BP={:04X}  SP={:04X}", self.si, self.di, self.bp, self.sp);
+        info!("CS={:04X}  DS={:04X}  SS={:04X}  ES={:04X}", self.cs, self.ds, self.ss, self.es);
+        info!("IP={:04X}  FLAGS={:04X}", self.ip, self.flags);
+        info!("CF={}  PF={}  AF={}  ZF={}  SF={}  TF={}  IF={}  DF={}  OF={}",
             if self.get_flag(FLAG_CARRY) { 1 } else { 0 },
             if self.get_flag(FLAG_PARITY) { 1 } else { 0 },
             if self.get_flag(FLAG_AUXILIARY) { 1 } else { 0 },

@@ -200,9 +200,9 @@ fn benchmark_programs(c: &mut Criterion) {
         );
 
         // After the benchmark, we'll print estimated performance in the summary
-        println!("\n{} stats:", name);
-        println!("  Instructions: {}", instruction_count);
-        println!("  Est. 8086 cycles: {}", estimated_cycles);
+        info!("\n{} stats:", name);
+        info!("  Instructions: {}", instruction_count);
+        info!("  Est. 8086 cycles: {}", estimated_cycles);
 
         // Store for later analysis - we'll manually time a run
         let start = std::time::Instant::now();
@@ -215,10 +215,10 @@ fn benchmark_programs(c: &mut Criterion) {
     group.finish();
 
     // Print performance summary
-    println!("\n{}", "=".repeat(80));
-    println!("EMU86 PERFORMANCE ANALYSIS");
-    println!("{}", "=".repeat(80));
-    println!();
+    info!("\n{}", "=".repeat(80));
+    info!("EMU86 PERFORMANCE ANALYSIS");
+    info!("{}", "=".repeat(80));
+    info!();
 
     let mut total_weighted_mhz = 0.0;
     let mut total_weight = 0u64;
@@ -229,15 +229,15 @@ fn benchmark_programs(c: &mut Criterion) {
         let mhz = cycles_per_sec / 1_000_000.0;
         let avg_cycles_per_inst = *cycles as f64 / *instructions as f64;
 
-        println!("{}:", name);
-        println!("  Time:                    {:.2} µs", time_s * 1_000_000.0);
-        println!("  Instructions:            {}", instructions);
-        println!("  Est. 8086 cycles:        {}", cycles);
-        println!("  Avg cycles/instruction:  {:.1}", avg_cycles_per_inst);
-        println!("  Instructions/sec:        {:.0}", instructions_per_sec);
-        println!("  Cycles/sec:              {:.0}", cycles_per_sec);
-        println!("  Effective MHz:           {:.2}", mhz);
-        println!();
+        info!("{}:", name);
+        info!("  Time:                    {:.2} µs", time_s * 1_000_000.0);
+        info!("  Instructions:            {}", instructions);
+        info!("  Est. 8086 cycles:        {}", cycles);
+        info!("  Avg cycles/instruction:  {:.1}", avg_cycles_per_inst);
+        info!("  Instructions/sec:        {:.0}", instructions_per_sec);
+        info!("  Cycles/sec:              {:.0}", cycles_per_sec);
+        info!("  Effective MHz:           {:.2}", mhz);
+        info!();
 
         total_weighted_mhz += mhz * (*instructions as f64);
         total_weight += instructions;
@@ -245,27 +245,27 @@ fn benchmark_programs(c: &mut Criterion) {
 
     let average_mhz = total_weighted_mhz / total_weight as f64;
 
-    println!("{}", "=".repeat(80));
-    println!("WEIGHTED AVERAGE EFFECTIVE SPEED: {:.2} MHz", average_mhz);
-    println!("{}", "=".repeat(80));
-    println!();
+    info!("{}", "=".repeat(80));
+    info!("WEIGHTED AVERAGE EFFECTIVE SPEED: {:.2} MHz", average_mhz);
+    info!("{}", "=".repeat(80));
+    info!();
 
     // Compare to real 8086
     let real_8086_mhz = 4.77;  // Original IBM PC
     let speedup = average_mhz / real_8086_mhz;
 
-    println!("Real 8086 (IBM PC):           {} MHz", real_8086_mhz);
-    println!("Emulator effective speed:     {:.2} MHz", average_mhz);
-    println!("Speedup vs real hardware:     {:.1}x", speedup);
-    println!();
+    info!("Real 8086 (IBM PC):           {} MHz", real_8086_mhz);
+    info!("Emulator effective speed:     {:.2} MHz", average_mhz);
+    info!("Speedup vs real hardware:     {:.1}x", speedup);
+    info!();
 
-    println!("NOTES:");
-    println!("- These estimates are based on 8086 cycle counts for instructions");
-    println!("- Real 8086 had variable timing based on memory access patterns");
-    println!("- Emulator overhead includes instruction decoding and Rust function calls");
-    println!("- The emulator is running interpreted code, not JIT compiled");
-    println!("- Performance will vary based on CPU, compiler optimizations, etc.");
-    println!();
+    info!("NOTES:");
+    info!("- These estimates are based on 8086 cycle counts for instructions");
+    info!("- Real 8086 had variable timing based on memory access patterns");
+    info!("- Emulator overhead includes instruction decoding and Rust function calls");
+    info!("- The emulator is running interpreted code, not JIT compiled");
+    info!("- Performance will vary based on CPU, compiler optimizations, etc.");
+    info!();
 }
 
 fn single_instruction_overhead(c: &mut Criterion) {
