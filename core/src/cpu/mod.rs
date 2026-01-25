@@ -118,7 +118,23 @@ impl Cpu {
             // ADD immediate to AL/AX
             0x04..=0x05 => self.add_imm_acc(opcode, memory),
 
-            // Arithmetic immediate to r/m16 (81: full 16-bit imm, 83: sign-extended 8-bit imm)
+            // SUB r/m to register
+            0x28..=0x2B => self.sub_rm_reg(opcode, memory),
+
+            // SUB immediate to AL/AX
+            0x2C..=0x2D => self.sub_imm_acc(opcode, memory),
+
+            // CMP r/m to register
+            0x38..=0x3B => self.cmp_rm_reg(opcode, memory),
+
+            // CMP immediate to AL/AX
+            0x3C..=0x3D => self.cmp_imm_acc(opcode, memory),
+
+            // Conditional jumps (70-7F)
+            0x70..=0x7F => self.jmp_conditional(opcode, memory),
+
+            // Arithmetic immediate to r/m (80: 8-bit, 81: 16-bit, 83: sign-extended 8-bit to 16-bit)
+            0x80 => self.arith_imm8_rm8(memory),
             0x81 => self.arith_imm16_rm(memory),
             0x83 => self.arith_imm8_rm(memory),
 
@@ -127,6 +143,12 @@ impl Cpu {
 
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
+
+            // JMP near relative (E9)
+            0xE9 => self.jmp_near(memory),
+
+            // JMP short relative (EB)
+            0xEB => self.jmp_short(memory),
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),

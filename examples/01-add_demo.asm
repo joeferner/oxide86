@@ -22,7 +22,7 @@ ADD AX, 0x10       ; Add 16 to AX (AX = 0x0208 + 0x0010 = 0x0218)
 HLT
 
 ; Expected final register state:
-;   AL = 0x08 (8 decimal)
+;   AL = 0x18 (24 decimal)
 ;   AH = 0x02 (2 decimal)
 ;   AX = 0x0218 (536 decimal)
 ;   BL = 0x03 (3 decimal)
