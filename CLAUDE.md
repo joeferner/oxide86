@@ -315,6 +315,11 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=03h: Write sectors
   - AH=08h: Get drive parameters
 
+- **INT 15h - Miscellaneous System Services** ([core/src/cpu/bios/int15.rs](core/src/cpu/bios/int15.rs))
+  - AH=86h: Wait - Microsecond delay (returns immediately in emulator)
+  - AH=88h: Get extended memory size - Returns 0 KB for 8086 (no extended memory)
+  - AH=C0h: Get system configuration - Returns pointer to system descriptor table
+
 - **INT 16h - Keyboard Services** ([core/src/cpu/bios/int16.rs](core/src/cpu/bios/int16.rs))
   - AH=00h: Read character - Waits for a keypress and returns scan code in AH and ASCII in AL
   - AH=01h: Check for keystroke - Checks if a key is available without removing it (sets ZF if none)

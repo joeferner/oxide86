@@ -2,8 +2,10 @@
 // The core provides the interrupt dispatch mechanism, but I/O is handled via callbacks
 
 mod int10;
+mod int11;
 mod int12;
 mod int13;
+mod int15;
 mod int16;
 mod int1a;
 mod int21;
@@ -265,12 +267,20 @@ impl Cpu {
                 self.handle_int10(memory, video);
                 true
             }
+            0x11 => {
+                self.handle_int11(memory);
+                true
+            }
             0x12 => {
                 self.handle_int12(memory);
                 true
             }
             0x13 => {
                 self.handle_int13(memory, io);
+                true
+            }
+            0x15 => {
+                self.handle_int15(memory, io);
                 true
             }
             0x16 => {
