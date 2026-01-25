@@ -580,6 +580,12 @@ impl<D: DiskController> Bios for StdioBios<D> {
 
         Self::find_next_matching(search_state)
     }
+
+    fn get_current_drive(&self) -> u8 {
+        // For Unix-like systems, we don't have drive letters
+        // Always return drive A (0)
+        0
+    }
 }
 
 impl<D: DiskController> StdioBios<D> {

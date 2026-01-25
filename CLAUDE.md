@@ -116,6 +116,11 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
     - AH=42h: Seek (LSEEK)
   - **Process Control:**
     - AH=4Ch: Exit program
+  - **System Functions:**
+    - AH=19h: Get current default drive
+    - AH=25h: Set interrupt vector
+    - AH=30h: Get DOS version
+    - AH=35h: Get interrupt vector
 
 **Adding New BIOS Interrupts:**
 
@@ -267,6 +272,39 @@ The native implementation supports a working directory for file operations:
 - Default working directory is the current directory
 - The `examples/run.sh` script automatically creates and uses `examples/workdir/`
 - `examples/workdir/` is ignored by git to avoid polluting the repository
+
+**DOS System Functions (INT 21h):**
+
+The emulator implements additional DOS system functions for compatibility with DOS programs:
+
+- **AH=19h - Get Current Default Drive:**
+  - Output: AL = current drive number (0=A, 1=B, etc.)
+  - In the native implementation, always returns 0 (drive A) as Unix-like systems don't have drive letters
+
+- **AH=25h - Set Interrupt Vector:**
+  - Input: AL = interrupt number, DS:DX = new interrupt handler address
+  - Updates the interrupt vector table (IVT) at address 0000:0000
+  - Each IVT entry is 4 bytes: offset (2 bytes) + segment (2 bytes)
+  - Used by programs to install custom interrupt handlers
+
+- **AH=30h - Get DOS Version:**
+  - Output: AL = major version, AH = minor version, BL:CX = serial number (usually 0)
+  - Returns DOS 3.30 for compatibility with most DOS programs
+  - DOS 3.30 is a well-supported version with good compatibility
+
+- **AH=35h - Get Interrupt Vector:**
+  - Input: AL = interrupt number
+  - Output: ES:BX = current interrupt handler address
+  - Reads the interrupt vector table (IVT) at address 0000:0000
+  - Used by programs to save and restore interrupt vectors
+
+**Interrupt Vector Table (IVT):**
+
+The IVT is located at memory address 0000:0000 and contains 256 entries (one for each possible interrupt):
+- Each entry is 4 bytes: 2-byte offset followed by 2-byte segment
+- Entry for interrupt N is at address N * 4
+- The IVT occupies the first 1KB of memory (0x0000-0x03FF)
+- Programs can read and modify interrupt vectors using INT 21h functions 25h and 35h
 
 **Critical Files:**
 - [core/src/cpu/bios.rs](core/src/cpu/bios.rs) - BIOS interrupt handlers

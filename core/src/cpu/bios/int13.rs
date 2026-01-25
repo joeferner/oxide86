@@ -1,0 +1,173 @@
+use log::warn;
+
+use crate::{Bios, cpu::{Cpu, FLAG_CARRY}, disk_errors, memory::Memory};
+
+impl Cpu {
+    /// INT 0x13 - BIOS Disk Services
+    /// AH register contains the function number
+    pub(super) fn handle_int13<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+        let function = (self.ax >> 8) as u8; // Get AH
+
+        match function {
+            0x00 => self.int13_reset_disk(io),
+            0x02 => self.int13_read_sectors(memory, io),
+            0x03 => self.int13_write_sectors(memory, io),
+            0x08 => self.int13_get_drive_params(io),
+            _ => {
+                warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
+                // Set error: invalid command
+                self.ax = (self.ax & 0x00FF) | ((disk_errors::INVALID_COMMAND as u16) << 8);
+                self.set_flag(FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 13h, AH=00h - Reset Disk System
+    /// Input:
+    ///   DL = drive number (0x00-0x7F for floppies, 0x80-0xFF for hard disks)
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   CF = clear if success, set if error
+    fn int13_reset_disk<T: Bios>(&mut self, io: &mut T) {
+        let drive = (self.dx & 0xFF) as u8; // Get DL
+
+        let success = io.disk_reset(drive);
+
+        if success {
+            self.ax &= 0x00FF; // AH = 0 (success)
+            self.set_flag(FLAG_CARRY, false);
+        } else {
+            self.ax = (self.ax & 0x00FF) | ((disk_errors::RESET_FAILED as u16) << 8);
+            self.set_flag(FLAG_CARRY, true);
+        }
+    }
+
+    /// INT 13h, AH=02h - Read Sectors into Memory
+    /// Input:
+    ///   AL = number of sectors to read (1-128)
+    ///   CH = cylinder number (0-1023, low 8 bits)
+    ///   CL = sector number (1-63, bits 0-5) + high 2 bits of cylinder (bits 6-7)
+    ///   DH = head number (0-255)
+    ///   DL = drive number
+    ///   ES:BX = buffer address
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   AL = number of sectors read
+    ///   CF = clear if success, set if error
+    fn int13_read_sectors<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+        let count = (self.ax & 0xFF) as u8; // AL
+        let cylinder_low = (self.cx >> 8) as u8; // CH
+        let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
+        let head = (self.dx >> 8) as u8; // DH
+        let drive = (self.dx & 0xFF) as u8; // DL
+
+        // Extract cylinder and sector from CL
+        let sector = sector_and_cyl_high & 0x3F; // Bits 0-5
+        // For 8086, we only support 8-bit cylinders (compatibility mode)
+        let cylinder_8bit = cylinder_low;
+
+        match io.disk_read_sectors(drive, cylinder_8bit, head, sector, count) {
+            Ok(data) => {
+                // Write data to ES:BX
+                let buffer_addr = Self::physical_address(self.es, self.bx);
+                for (i, &byte) in data.iter().enumerate() {
+                    memory.write_byte(buffer_addr + i, byte);
+                }
+
+                // Calculate actual sectors read
+                let sectors_read = (data.len() / 512).min(count as usize) as u8;
+
+                self.ax = (self.ax & 0xFF00) | (sectors_read as u16); // AL = sectors read
+                self.ax &= 0x00FF; // AH = 0 (success)
+                self.set_flag(FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
+                self.ax &= 0xFF00; // AL = 0 (no sectors read)
+                self.set_flag(FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 13h, AH=03h - Write Sectors from Memory
+    /// Input:
+    ///   AL = number of sectors to write (1-128)
+    ///   CH = cylinder number (0-1023, low 8 bits)
+    ///   CL = sector number (1-63, bits 0-5) + high 2 bits of cylinder (bits 6-7)
+    ///   DH = head number (0-255)
+    ///   DL = drive number
+    ///   ES:BX = buffer address
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   AL = number of sectors written
+    ///   CF = clear if success, set if error
+    fn int13_write_sectors<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+        let count = (self.ax & 0xFF) as u8; // AL
+        let cylinder_low = (self.cx >> 8) as u8; // CH
+        let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
+        let head = (self.dx >> 8) as u8; // DH
+        let drive = (self.dx & 0xFF) as u8; // DL
+
+        // Extract cylinder and sector from CL
+        let sector = sector_and_cyl_high & 0x3F; // Bits 0-5
+        // For 8086, we only support 8-bit cylinders (compatibility mode)
+        let cylinder_8bit = cylinder_low;
+
+        // Read data from ES:BX
+        let buffer_addr = Self::physical_address(self.es, self.bx);
+        let data_len = count as usize * 512;
+        let mut data = Vec::with_capacity(data_len);
+        for i in 0..data_len {
+            data.push(memory.read_byte(buffer_addr + i));
+        }
+
+        match io.disk_write_sectors(drive, cylinder_8bit, head, sector, count, &data) {
+            Ok(sectors_written) => {
+                self.ax = (self.ax & 0xFF00) | (sectors_written as u16); // AL = sectors written
+                self.ax &= 0x00FF; // AH = 0 (success)
+                self.set_flag(FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
+                self.ax &= 0xFF00; // AL = 0 (no sectors written)
+                self.set_flag(FLAG_CARRY, true);
+            }
+        }
+    }
+
+    /// INT 13h, AH=08h - Get Drive Parameters
+    /// Input:
+    ///   DL = drive number
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   CF = clear if success, set if error
+    ///   On success:
+    ///     CH = maximum cylinder number (low 8 bits)
+    ///     CL = maximum sector number (bits 0-5) + high 2 bits of max cylinder (bits 6-7)
+    ///     DH = maximum head number
+    ///     DL = number of drives
+    fn int13_get_drive_params<T: Bios>(&mut self, io: &T) {
+        let drive = (self.dx & 0xFF) as u8; // Get DL
+
+        match io.disk_get_params(drive) {
+            Ok(params) => {
+                // Pack cylinder into CH and CL
+                let cylinder = params.max_cylinder as u16;
+                let cylinder_low = (cylinder & 0xFF) as u8;
+                let cylinder_high = ((cylinder >> 8) & 0x03) as u8;
+
+                // Pack sector and cylinder high bits into CL
+                let cl = (params.max_sector & 0x3F) | (cylinder_high << 6);
+
+                self.cx = ((cylinder_low as u16) << 8) | (cl as u16); // CH:CL
+                self.dx = ((params.max_head as u16) << 8) | (params.drive_count as u16); // DH:DL
+                self.ax &= 0x00FF; // AH = 0 (success)
+                self.set_flag(FLAG_CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
+                self.set_flag(FLAG_CARRY, true);
+            }
+        }
+    }
+}
