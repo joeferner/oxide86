@@ -1,25 +1,30 @@
 use anyhow::Result;
 
 use crate::{cpu::Cpu, memory::Memory};
+use crate::io_port::IoPort;
 pub use crate::cpu::bios::{Bios, NullBios};
+pub use crate::io_port::{IoDevice, NullIoDevice};
 
 pub mod cpu;
 pub mod memory;
+pub mod io_port;
 
-pub struct Computer<T: Bios = NullBios> {
+pub struct Computer<B: Bios = NullBios, I: IoDevice = NullIoDevice> {
     cpu: Cpu,
     memory: Memory,
-    bios: T,
+    bios: B,
+    io_port: IoPort<I>,
 }
 
-impl<T: Bios> Computer<T> {
-    pub fn new(bios: T) -> Self {
+impl<B: Bios, I: IoDevice> Computer<B, I> {
+    pub fn new(bios: B, io_device: I) -> Self {
         let mut memory = Memory::new();
         memory.initialize_ivt();
         Self {
             cpu: Cpu::new(),
             memory,
             bios,
+            io_port: IoPort::new(io_device),
         }
     }
 
@@ -80,9 +85,9 @@ impl<T: Bios> Computer<T> {
                 self.cpu.execute_int_with_io(3, &mut self.memory, &mut self.bios);
             }
             _ => {
-                // Normal instruction - just use the regular step
+                // Normal instruction - use execute_with_io
                 let opcode = self.cpu.fetch_byte(&self.memory);
-                self.cpu.execute(opcode, &mut self.memory);
+                self.cpu.execute_with_io(opcode, &mut self.memory, &mut self.io_port);
             }
         }
     }

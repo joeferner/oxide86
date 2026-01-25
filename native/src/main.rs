@@ -5,6 +5,9 @@ use emu86_core::Computer;
 mod stdio_bios;
 use stdio_bios::StdioBios;
 
+mod simple_io_device;
+use simple_io_device::SimpleIoDevice;
+
 #[derive(Parser)]
 #[command(name = "emu86")]
 #[command(about = "Intel 8086 CPU Emulator", long_about = None)]
@@ -19,6 +22,10 @@ struct Cli {
     /// Starting offset address (default: 0x0100, like .COM files)
     #[arg(long, default_value = "0x0100")]
     offset: String,
+
+    /// Enable verbose I/O port logging
+    #[arg(long)]
+    verbose_io: bool,
 }
 
 fn main() -> Result<()> {
@@ -26,7 +33,8 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    let mut computer = Computer::new(StdioBios);
+    let io_device = SimpleIoDevice::new(cli.verbose_io);
+    let mut computer = Computer::new(StdioBios, io_device);
 
     // Load the program binary
     let program_data = std::fs::read(&cli.program)

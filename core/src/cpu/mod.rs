@@ -1,4 +1,4 @@
-use crate::memory::Memory;
+use crate::{IoDevice, io_port::IoPort, memory::Memory};
 
 mod instructions;
 pub mod bios;
@@ -97,13 +97,6 @@ impl Cpu {
         (high << 8) | low
     }
 
-    // Main execution loop
-    pub fn run(&mut self, memory: &mut Memory) {
-        while !self.halted {
-            self.step(memory);
-        }
-    }
-
     // Check if CPU is halted
     pub fn is_halted(&self) -> bool {
         self.halted
@@ -138,14 +131,13 @@ impl Cpu {
         self.cs = segment;
     }
 
-    // Execute a single instruction
-    fn step(&mut self, memory: &mut Memory) {
-        let opcode = self.fetch_byte(memory);
-        self.execute(opcode, memory);
-    }
-
-    // Decode and execute instruction
-    pub(crate) fn execute(&mut self, opcode: u8, memory: &mut Memory) {
+    // Decode and execute instruction with I/O port support
+    pub(crate) fn execute_with_io<I: IoDevice>(
+        &mut self,
+        opcode: u8,
+        memory: &mut Memory,
+        io_port: &mut IoPort<I>,
+    ) {
         match opcode {
             // ADD r/m to register
             0x00..=0x03 => self.add_rm_reg(opcode, memory),
@@ -374,6 +366,18 @@ impl Cpu {
             // JCXZ (E3)
             0xE3 => self.jcxz(memory),
 
+            // IN AL, imm8 (E4)
+            0xE4 => self.in_al_imm8(memory, io_port),
+
+            // IN AX, imm8 (E5)
+            0xE5 => self.in_ax_imm8(memory, io_port),
+
+            // OUT imm8, AL (E6)
+            0xE6 => self.out_imm8_al(memory, io_port),
+
+            // OUT imm8, AX (E7)
+            0xE7 => self.out_imm8_ax(memory, io_port),
+
             // CALL near relative (E8)
             0xE8 => self.call_near(memory),
 
@@ -385,6 +389,18 @@ impl Cpu {
 
             // JMP short relative (EB)
             0xEB => self.jmp_short(memory),
+
+            // IN AL, DX (EC)
+            0xEC => self.in_al_dx(io_port),
+
+            // IN AX, DX (ED)
+            0xED => self.in_ax_dx(io_port),
+
+            // OUT DX, AL (EE)
+            0xEE => self.out_dx_al(io_port),
+
+            // OUT DX, AX (EF)
+            0xEF => self.out_dx_ax(io_port),
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
