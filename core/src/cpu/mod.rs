@@ -180,8 +180,23 @@ impl Cpu {
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
             0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory),
 
+            // MOVS - Move String (A4-A5)
+            0xA4..=0xA5 => self.movs(opcode, memory),
+
+            // CMPS - Compare String (A6-A7)
+            0xA6..=0xA7 => self.cmps(opcode, memory),
+
             // TEST immediate to AL/AX (A8-A9)
             0xA8..=0xA9 => self.test_imm_acc(opcode, memory),
+
+            // STOS - Store String (AA-AB)
+            0xAA..=0xAB => self.stos(opcode, memory),
+
+            // LODS - Load String (AC-AD)
+            0xAC..=0xAD => self.lods(opcode, memory),
+
+            // SCAS - Scan String (AE-AF)
+            0xAE..=0xAF => self.scas(opcode, memory),
 
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
@@ -212,6 +227,12 @@ impl Cpu {
 
             // NOT/NEG/MUL/DIV Group 3 (F6: 8-bit, F7: 16-bit)
             0xF6..=0xF7 => self.unary_group3(opcode, memory),
+
+            // CLD - Clear Direction Flag (FC)
+            0xFC => self.cld(),
+
+            // STD - Set Direction Flag (FD)
+            0xFD => self.std_flag(),
 
             // INC/DEC r/m (FE: 8-bit, FF: 16-bit)
             0xFE..=0xFF => self.inc_dec_rm(opcode, memory),
