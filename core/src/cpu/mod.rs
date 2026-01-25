@@ -118,11 +118,29 @@ impl Cpu {
             // ADD immediate to AL/AX
             0x04..=0x05 => self.add_imm_acc(opcode, memory),
 
+            // OR r/m to register
+            0x08..=0x0B => self.or_rm_reg(opcode, memory),
+
+            // OR immediate to AL/AX
+            0x0C..=0x0D => self.or_imm_acc(opcode, memory),
+
+            // AND r/m to register
+            0x20..=0x23 => self.and_rm_reg(opcode, memory),
+
+            // AND immediate to AL/AX
+            0x24..=0x25 => self.and_imm_acc(opcode, memory),
+
             // SUB r/m to register
             0x28..=0x2B => self.sub_rm_reg(opcode, memory),
 
             // SUB immediate to AL/AX
             0x2C..=0x2D => self.sub_imm_acc(opcode, memory),
+
+            // XOR r/m to register
+            0x30..=0x33 => self.xor_rm_reg(opcode, memory),
+
+            // XOR immediate to AL/AX
+            0x34..=0x35 => self.xor_imm_acc(opcode, memory),
 
             // CMP r/m to register
             0x38..=0x3B => self.cmp_rm_reg(opcode, memory),
@@ -148,13 +166,19 @@ impl Cpu {
             // Conditional jumps (70-7F)
             0x70..=0x7F => self.jmp_conditional(opcode, memory),
 
-            // Arithmetic immediate to r/m (80: 8-bit, 81: 16-bit, 83: sign-extended 8-bit to 16-bit)
+            // Arithmetic/logical immediate to r/m (80: 8-bit, 81: 16-bit, 83: sign-extended 8-bit to 16-bit)
             0x80 => self.arith_imm8_rm8(memory),
             0x81 => self.arith_imm16_rm(memory),
             0x83 => self.arith_imm8_rm(memory),
 
+            // TEST r/m and register (84-85)
+            0x84..=0x85 => self.test_rm_reg(opcode, memory),
+
             // MOV register to/from r/m (88-8B)
             0x88..=0x8B => self.mov_reg_rm(opcode, memory),
+
+            // TEST immediate to AL/AX (A8-A9)
+            0xA8..=0xA9 => self.test_imm_acc(opcode, memory),
 
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
@@ -173,6 +197,9 @@ impl Cpu {
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
+
+            // NOT/NEG/MUL/DIV Group 3 (F6: 8-bit, F7: 16-bit)
+            0xF6..=0xF7 => self.unary_group3(opcode, memory),
 
             // INC/DEC r/m (FE: 8-bit, FF: 16-bit)
             0xFE..=0xFF => self.inc_dec_rm(opcode, memory),
