@@ -164,6 +164,17 @@ mov al, [es:0x49]
 
 **Example:** See [examples/bda_test.asm](examples/bda_test.asm) for a complete BDA reading example.
 
+**Keyboard Buffer:**
+
+The keyboard buffer (offset 0x1E, 32 bytes) is used by INT 16h keyboard services:
+- Stores up to 16 keystrokes as scan code/ASCII pairs (2 bytes each)
+- Head pointer (0x1A) indicates next keystroke to read
+- Tail pointer (0x1C) indicates next free slot to write
+- When head == tail, buffer is empty
+- Buffer operates as a circular queue (wraps from 0x003D to 0x001E)
+- INT 16h AH=00h reads and removes from buffer
+- INT 16h AH=01h peeks without removing
+
 ### Interrupt Handling Architecture
 
 **BIOS Interrupt Implementation**
@@ -181,7 +192,7 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
 
 **Implemented Interrupts:**
 
-- **INT 10h - Video Services** ([core/src/cpu/bios.rs](core/src/cpu/bios.rs))
+- **INT 10h - Video Services** ([core/src/cpu/bios/int10.rs](core/src/cpu/bios/int10.rs))
   - AH=00h: Set video mode
   - AH=02h: Set cursor position
   - AH=06h/07h: Scroll up/down
@@ -189,13 +200,18 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=0Eh: Teletype output
   - AH=13h: Write string
 
-- **INT 13h - Disk Services** ([core/src/cpu/bios.rs](core/src/cpu/bios.rs))
+- **INT 13h - Disk Services** ([core/src/cpu/bios/int13.rs](core/src/cpu/bios/int13.rs))
   - AH=00h: Reset disk system
   - AH=02h: Read sectors
   - AH=03h: Write sectors
   - AH=08h: Get drive parameters
 
-- **INT 21h - DOS Services** ([core/src/cpu/bios.rs](core/src/cpu/bios.rs))
+- **INT 16h - Keyboard Services** ([core/src/cpu/bios/int16.rs](core/src/cpu/bios/int16.rs))
+  - AH=00h: Read character - Waits for a keypress and returns scan code in AH and ASCII in AL
+  - AH=01h: Check for keystroke - Checks if a key is available without removing it (sets ZF if none)
+  - AH=02h: Get shift flags - Returns keyboard shift/lock state in AL
+
+- **INT 21h - DOS Services** ([core/src/cpu/bios/int21.rs](core/src/cpu/bios/int21.rs))
   - **Console I/O:**
     - AH=01h: Read character with echo
     - AH=02h: Write character
@@ -226,18 +242,28 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
 
 To add a new BIOS interrupt handler:
 
-1. Add interrupt handler method in [core/src/cpu/bios.rs](core/src/cpu/bios.rs):
+1. Create a new file [core/src/cpu/bios/intXX.rs](core/src/cpu/bios/intXX.rs) with interrupt handler methods:
    ```rust
-   fn handle_intXX(&mut self, memory: &mut Memory, io: &mut T, video: &mut Video) {
-       let function = (self.ax >> 8) as u8; // Get AH
-       match function {
-           0x00 => self.intXX_function_00(...),
-           _ => warn!("Unhandled INT 0xXX function: AH=0x{:02X}", function),
+   use log::warn;
+   use crate::{cpu::Cpu, memory::Memory};
+
+   impl Cpu {
+       pub(super) fn handle_intXX<T: super::Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+           let function = (self.ax >> 8) as u8; // Get AH
+           match function {
+               0x00 => self.intXX_function_00(...),
+               _ => warn!("Unhandled INT 0xXX function: AH=0x{:02X}", function),
+           }
        }
    }
    ```
 
-2. Add case to `handle_bios_interrupt()` dispatch in the same file:
+2. Add module declaration in [core/src/cpu/bios/mod.rs](core/src/cpu/bios/mod.rs):
+   ```rust
+   mod intXX;
+   ```
+
+3. Add case to `handle_bios_interrupt()` dispatch in [core/src/cpu/bios/mod.rs](core/src/cpu/bios/mod.rs):
    ```rust
    match int_num {
        0xXX => {
@@ -407,8 +433,12 @@ The IVT is located at memory address 0000:0000 and contains 256 entries (one for
 - Programs can read and modify interrupt vectors using INT 21h functions 25h and 35h
 
 **Critical Files:**
-- [core/src/cpu/bios.rs](core/src/cpu/bios.rs) - BIOS interrupt handlers
-- [core/src/cpu/mod.rs](core/src/cpu/mod.rs) - Interrupt dispatch (`execute_int_with_io`)
+- [core/src/cpu/bios/mod.rs](core/src/cpu/bios/mod.rs) - BIOS trait definition and interrupt dispatch
+- [core/src/cpu/bios/int10.rs](core/src/cpu/bios/int10.rs) - Video services (INT 10h)
+- [core/src/cpu/bios/int13.rs](core/src/cpu/bios/int13.rs) - Disk services (INT 13h)
+- [core/src/cpu/bios/int16.rs](core/src/cpu/bios/int16.rs) - Keyboard services (INT 16h)
+- [core/src/cpu/bios/int21.rs](core/src/cpu/bios/int21.rs) - DOS services (INT 21h)
+- [core/src/cpu/mod.rs](core/src/cpu/mod.rs) - CPU and interrupt dispatch (`execute_int_with_io`)
 - [core/src/lib.rs](core/src/lib.rs) - Computer integration (INT opcode detection)
 - [core/src/cpu/instructions/control_flow.rs](core/src/cpu/instructions/control_flow.rs) - INT instruction implementation
 

@@ -3,6 +3,7 @@
 
 mod int10;
 mod int13;
+mod int16;
 mod int21;
 pub mod null_bios;
 
@@ -22,6 +23,15 @@ pub struct DriveParams {
     pub max_sector: u8,
     /// Number of drives
     pub drive_count: u8,
+}
+
+/// Key press data returned by INT 16h keyboard services
+#[derive(Debug, Clone, Copy)]
+pub struct KeyPress {
+    /// BIOS scan code
+    pub scan_code: u8,
+    /// ASCII character code
+    pub ascii_code: u8,
 }
 
 /// INT 13h error codes
@@ -130,6 +140,12 @@ pub trait Bios {
 
     /// Write a string to standard output
     fn write_str(&mut self, s: &str);
+
+    // --- INT 16h - Keyboard Services ---
+
+    /// Read a keystroke (INT 16h, AH=00h)
+    /// Returns key press data if available, None otherwise
+    fn read_key(&mut self) -> Option<KeyPress>;
 
     // --- INT 13h - Disk Services ---
 
@@ -243,13 +259,15 @@ impl Cpu {
                 self.handle_int13(memory, io);
                 true
             }
+            0x16 => {
+                self.handle_int16(memory, io);
+                true
+            }
             0x21 => {
                 self.handle_int21(memory, io);
                 true
             }
             // Other BIOS interrupts can be added here
-            // 0x16 => Keyboard services
-            // etc.
             _ => {
                 warn!("Unhandled BIOS interrupt: 0x{:02X}", int_num);
                 false // Not handled, proceed with normal interrupt mechanism

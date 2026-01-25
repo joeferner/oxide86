@@ -1,4 +1,4 @@
-use crate::{Bios, DriveParams, cpu::bios::{FindData, SeekMethod, dos_errors}, disk_errors};
+use crate::{Bios, DriveParams, cpu::bios::{FindData, KeyPress, SeekMethod, dos_errors}, disk_errors};
 
 /// A null I/O handler that does nothing (for testing or headless operation)
 pub struct NullBios;
@@ -18,6 +18,10 @@ impl Bios for NullBios {
 
     fn write_str(&mut self, _s: &str) {
         // Do nothing
+    }
+
+    fn read_key(&mut self) -> Option<KeyPress> {
+        None
     }
 
     fn disk_reset(&mut self, _drive: u8) -> bool {

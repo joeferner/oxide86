@@ -1,5 +1,5 @@
 use emu86_core::cpu::bios::{
-    DriveParams, FindData, SeekMethod, disk_errors, dos_errors, file_access, file_attributes,
+    DriveParams, FindData, KeyPress, SeekMethod, disk_errors, dos_errors, file_access, file_attributes,
 };
 /// Standard I/O implementation of Bios for native platform
 use emu86_core::{Bios, DiskController, SECTOR_SIZE};
@@ -210,6 +210,26 @@ impl<D: DiskController> Bios for StdioBios<D> {
     fn write_str(&mut self, s: &str) {
         print!("{}", s);
         let _ = io::stdout().flush();
+    }
+
+    fn read_key(&mut self) -> Option<KeyPress> {
+        // Read a character from stdin
+        let mut buffer = [0u8; 1];
+        match io::stdin().read_exact(&mut buffer) {
+            Ok(_) => {
+                let ascii_code = buffer[0];
+                // For simple implementation, use ASCII code as scan code
+                // In a real implementation, we'd need to map special keys to proper scan codes
+                let scan_code = match ascii_code {
+                    0x0D => 0x1C, // Enter key
+                    0x08 => 0x0E, // Backspace
+                    0x1B => 0x01, // Escape
+                    _ => ascii_code, // Use ASCII as scan code for regular keys
+                };
+                Some(KeyPress { scan_code, ascii_code })
+            }
+            Err(_) => None,
+        }
     }
 
     fn disk_reset(&mut self, _drive: u8) -> bool {

@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::{cpu::Cpu, memory::Memory};
 use crate::io_port::IoPort;
-pub use crate::cpu::bios::{Bios, NullBios, DriveParams, disk_errors};
+pub use crate::cpu::bios::{Bios, NullBios, DriveParams, KeyPress, disk_errors};
 pub use crate::io_port::{IoDevice, NullIoDevice};
 pub use crate::disk::{DiskController, DiskGeometry, DiskImage, SECTOR_SIZE};
 pub use crate::video::{VideoController, NullVideoController, Video, TextCell, TextAttribute, CursorPosition, colors};
