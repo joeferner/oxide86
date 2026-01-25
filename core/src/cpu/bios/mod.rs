@@ -6,6 +6,7 @@ mod int13;
 mod int16;
 mod int1a;
 mod int21;
+mod int29;
 pub mod null_bios;
 
 use super::Cpu;
@@ -277,6 +278,10 @@ impl Cpu {
             }
             0x21 => {
                 self.handle_int21(memory, io);
+                true
+            }
+            0x29 => {
+                self.handle_int29(memory, io);
                 true
             }
             // Other BIOS interrupts can be added here

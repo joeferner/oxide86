@@ -347,6 +347,12 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
     - AH=30h: Get DOS version
     - AH=35h: Get interrupt vector
 
+- **INT 29h - Fast Console Output** ([core/src/cpu/bios/int29.rs](core/src/cpu/bios/int29.rs))
+  - Faster character output for DOS
+  - Input: AL = character to output
+  - No function codes - directly outputs the character in AL
+  - Used by DOS internally for console output
+
 **Adding New BIOS Interrupts:**
 
 To add a new BIOS interrupt handler:
