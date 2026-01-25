@@ -38,6 +38,8 @@ pub const BDA_ACTIVE_PAGE: usize = 0x62;     // Active display page
 pub const BDA_CRTC_PORT: usize = 0x63;       // CRT controller base port address
 pub const BDA_CRT_MODE_CONTROL: usize = 0x65; // CRT mode control register
 pub const BDA_CRT_PALETTE: usize = 0x66;     // CRT palette register
+pub const BDA_TIMER_COUNTER: usize = 0x6C;   // Timer counter (dword) - ticks since midnight
+pub const BDA_TIMER_OVERFLOW: usize = 0x70;  // Timer midnight rollover flag (byte)
 
 // Equipment list bits
 pub const EQUIPMENT_FLOPPY_INSTALLED: u16 = 0x0001;
@@ -269,5 +271,13 @@ impl Memory {
 
         // CRT palette register (0x0040:0066)
         self.write_byte(BDA_START + BDA_CRT_PALETTE, 0x00); // Default palette
+
+        // Timer counter (0x0040:006C) - 4 bytes
+        // Initialize to 0 ticks since midnight
+        self.write_word(BDA_START + BDA_TIMER_COUNTER, 0); // Low word
+        self.write_word(BDA_START + BDA_TIMER_COUNTER + 2, 0); // High word
+
+        // Timer overflow flag (0x0040:0070)
+        self.write_byte(BDA_START + BDA_TIMER_OVERFLOW, 0); // No midnight rollover yet
     }
 }

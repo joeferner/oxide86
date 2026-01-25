@@ -138,6 +138,8 @@ The emulator initializes a BIOS Data Area at segment 0x0040 (physical address 0x
 | 0x63 | 2 bytes | CRT controller base port | 0x03D4 (color) |
 | 0x65 | 1 byte | CRT mode control register | 0x09 |
 | 0x66 | 1 byte | CRT palette register | 0x00 |
+| 0x6C | 4 bytes | Timer counter (ticks since midnight) | 0x00000000 |
+| 0x70 | 1 byte | Timer midnight rollover flag | 0x00 |
 
 **Equipment List Bits** (offset 0x10):
 - Bit 0: Floppy drive installed
@@ -175,6 +177,33 @@ The keyboard buffer (offset 0x1E, 32 bytes) is used by INT 16h keyboard services
 - INT 16h AH=00h reads and removes from buffer
 - INT 16h AH=01h peeks without removing
 
+**System Timer:**
+
+The system timer counter (offset 0x6C, 4 bytes) tracks time using the PIT (Programmable Interval Timer):
+- Counts clock ticks since midnight at 18.2 Hz (approximately every 54.925 ms)
+- Maximum value: 0x001800B0 (1,573,040 ticks = 24 hours)
+- Timer overflow flag (offset 0x70) indicates if midnight has passed since last read
+- INT 1Ah AH=00h reads the tick count and returns the midnight flag (then clears it)
+- INT 1Ah AH=01h sets the tick count and clears the midnight flag
+- The timer counter is a 32-bit value stored in little-endian format (low word at 0x6C, high word at 0x6E)
+
+**Reading Timer in Assembly:**
+```asm
+; Get system time using INT 1Ah
+mov ah, 0x00           ; Function 00h - Get system time
+int 0x1A               ; Call time service
+; CX:DX now contains tick count
+; AL contains midnight flag (non-zero if midnight passed)
+
+; Set system time
+mov cx, 0x0001         ; High word of tick count
+mov dx, 0x2345         ; Low word of tick count
+mov ah, 0x01           ; Function 01h - Set system time
+int 0x1A               ; Call time service
+```
+
+**Example:** See [examples/time_test.asm](examples/time_test.asm) for a complete timer test example.
+
 ### Interrupt Handling Architecture
 
 **BIOS Interrupt Implementation**
@@ -210,6 +239,10 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=00h: Read character - Waits for a keypress and returns scan code in AH and ASCII in AL
   - AH=01h: Check for keystroke - Checks if a key is available without removing it (sets ZF if none)
   - AH=02h: Get shift flags - Returns keyboard shift/lock state in AL
+
+- **INT 1Ah - Time Services** ([core/src/cpu/bios/int1a.rs](core/src/cpu/bios/int1a.rs))
+  - AH=00h: Get system time - Returns CX:DX = tick count since midnight, AL = midnight flag
+  - AH=01h: Set system time - Sets timer counter to CX:DX (ticks since midnight)
 
 - **INT 21h - DOS Services** ([core/src/cpu/bios/int21.rs](core/src/cpu/bios/int21.rs))
   - **Console I/O:**

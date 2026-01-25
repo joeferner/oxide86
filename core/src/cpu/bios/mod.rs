@@ -4,6 +4,7 @@
 mod int10;
 mod int13;
 mod int16;
+mod int1a;
 mod int21;
 pub mod null_bios;
 
@@ -261,6 +262,10 @@ impl Cpu {
             }
             0x16 => {
                 self.handle_int16(memory, io);
+                true
+            }
+            0x1A => {
+                self.handle_int1a(memory, io);
                 true
             }
             0x21 => {
