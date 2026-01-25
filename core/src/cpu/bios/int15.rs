@@ -1,5 +1,5 @@
 use log::warn;
-use crate::{cpu::{Cpu, FLAG_CARRY}, memory::Memory};
+use crate::{cpu::{Cpu, cpu_flag}, memory::Memory};
 
 impl Cpu {
     pub(super) fn handle_int15<T: super::Bios>(
@@ -15,7 +15,7 @@ impl Cpu {
             _ => {
                 warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -35,7 +35,7 @@ impl Cpu {
 
         // In a real system, this would wait for CX:DX microseconds
         // For emulation purposes, we just return success immediately
-        self.set_flag(FLAG_CARRY, false);
+        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// INT 15h AH=88h - Get Extended Memory Size
@@ -49,7 +49,7 @@ impl Cpu {
         // 8086 systems don't have extended memory (that's a 286+ feature)
         // Return 0 KB of extended memory
         self.ax = 0;
-        self.set_flag(FLAG_CARRY, false);
+        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// INT 15h AH=C0h - Get System Configuration Parameters
@@ -96,6 +96,6 @@ impl Cpu {
         // Return pointer in ES:BX
         self.es = table_segment;
         self.bx = table_offset;
-        self.set_flag(FLAG_CARRY, false);
+        self.set_flag(cpu_flag::CARRY, false);
     }
 }

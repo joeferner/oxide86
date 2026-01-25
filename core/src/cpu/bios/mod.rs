@@ -8,6 +8,7 @@ mod int13;
 pub mod int14;
 mod int15;
 mod int16;
+pub mod int17;
 mod int1a;
 mod int21;
 mod int29;
@@ -18,6 +19,7 @@ use crate::memory::Memory;
 use log::warn;
 pub use null_bios::NullBios;
 pub use int14::{SerialParams, SerialStatus};
+pub use int17::PrinterStatus;
 
 /// Drive parameters returned by INT 13h, AH=08h
 #[derive(Debug, Clone, Copy)]
@@ -264,6 +266,20 @@ pub trait Bios {
     /// Returns line and modem status
     fn serial_status(&self, port: u8) -> SerialStatus;
 
+    // --- INT 17h - Printer Services ---
+
+    /// Initialize printer port (INT 17h, AH=01h)
+    /// Returns the printer status after initialization
+    fn printer_init(&mut self, printer: u8) -> PrinterStatus;
+
+    /// Write character to printer (INT 17h, AH=00h)
+    /// Returns printer status
+    fn printer_write(&mut self, printer: u8, ch: u8) -> PrinterStatus;
+
+    /// Get printer status (INT 17h, AH=02h)
+    /// Returns printer status
+    fn printer_status(&self, printer: u8) -> PrinterStatus;
+
     // --- INT 1Ah - Time Services ---
 
     /// Get system time in BIOS ticks since midnight (INT 1Ah, AH=00h)
@@ -309,6 +325,10 @@ impl Cpu {
             }
             0x16 => {
                 self.handle_int16(memory, io);
+                true
+            }
+            0x17 => {
+                self.handle_int17(memory, io);
                 true
             }
             0x1A => {

@@ -1,6 +1,6 @@
 use log::warn;
 
-use crate::{Bios, cpu::{Cpu, FLAG_CARRY}, disk_errors, memory::Memory};
+use crate::{Bios, cpu::{Cpu, cpu_flag}, disk_errors, memory::Memory};
 
 impl Cpu {
     /// INT 0x13 - BIOS Disk Services
@@ -17,7 +17,7 @@ impl Cpu {
                 warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
                 self.ax = (self.ax & 0x00FF) | ((disk_errors::INVALID_COMMAND as u16) << 8);
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -35,10 +35,10 @@ impl Cpu {
 
         if success {
             self.ax &= 0x00FF; // AH = 0 (success)
-            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(cpu_flag::CARRY, false);
         } else {
             self.ax = (self.ax & 0x00FF) | ((disk_errors::RESET_FAILED as u16) << 8);
-            self.set_flag(FLAG_CARRY, true);
+            self.set_flag(cpu_flag::CARRY, true);
         }
     }
 
@@ -79,12 +79,12 @@ impl Cpu {
 
                 self.ax = (self.ax & 0xFF00) | (sectors_read as u16); // AL = sectors read
                 self.ax &= 0x00FF; // AH = 0 (success)
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.ax &= 0xFF00; // AL = 0 (no sectors read)
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -125,12 +125,12 @@ impl Cpu {
             Ok(sectors_written) => {
                 self.ax = (self.ax & 0xFF00) | (sectors_written as u16); // AL = sectors written
                 self.ax &= 0x00FF; // AH = 0 (success)
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.ax &= 0xFF00; // AL = 0 (no sectors written)
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -162,11 +162,11 @@ impl Cpu {
                 self.cx = ((cylinder_low as u16) << 8) | (cl as u16); // CH:CL
                 self.dx = ((params.max_head as u16) << 8) | (params.drive_count as u16); // DH:DL
                 self.ax &= 0x00FF; // AH = 0 (success)
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }

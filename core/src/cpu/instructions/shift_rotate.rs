@@ -1,4 +1,4 @@
-use super::super::{Cpu, FLAG_CARRY, FLAG_OVERFLOW};
+use super::super::{Cpu, cpu_flag};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -64,9 +64,9 @@ impl Cpu {
         let count = count & 0x1F; // Mask to 5 bits
         if count > 8 {
             // All bits shifted out
-            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(cpu_flag::CARRY, false);
             self.set_flags_8(0);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
             return 0;
         }
 
@@ -79,14 +79,14 @@ impl Cpu {
             false
         };
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
         self.set_flags_8(result);
 
         // Overflow is defined only for single-bit shifts
         if count == 1 {
             // OF = MSB changed (XOR of original and result MSB)
             let overflow = ((value ^ result) & 0x80) != 0;
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -101,9 +101,9 @@ impl Cpu {
         let count = count & 0x1F; // Mask to 5 bits
         if count > 8 {
             // All bits shifted out
-            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(cpu_flag::CARRY, false);
             self.set_flags_8(0);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
             return 0;
         }
 
@@ -116,14 +116,14 @@ impl Cpu {
             false
         };
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
         self.set_flags_8(result);
 
         // Overflow is defined only for single-bit shifts
         if count == 1 {
             // OF = MSB of original value
             let overflow = (value & 0x80) != 0;
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -141,9 +141,9 @@ impl Cpu {
         // For counts >= 8, result is all sign bits
         if count >= 8 {
             let result = if sign_bit != 0 { 0xFF } else { 0 };
-            self.set_flag(FLAG_CARRY, sign_bit != 0);
+            self.set_flag(cpu_flag::CARRY, sign_bit != 0);
             self.set_flags_8(result);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
             return result;
         }
 
@@ -152,12 +152,12 @@ impl Cpu {
         // Carry is the last bit shifted out
         let carry = (value >> (count - 1)) & 1 != 0;
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
         self.set_flags_8(result);
 
         // Overflow is always 0 for SAR
         if count == 1 {
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
 
         result
@@ -178,13 +178,13 @@ impl Cpu {
 
         // Carry is the LSB of result (bit that was rotated from MSB)
         let carry = (result & 1) != 0;
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
 
         // Overflow is defined only for single-bit rotates
         if count == 1 {
             // OF = MSB XOR CF
             let overflow = ((result >> 7) & 1) != (result & 1);
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -205,13 +205,13 @@ impl Cpu {
 
         // Carry is the MSB of result (bit that was rotated from LSB)
         let carry = (result & 0x80) != 0;
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
 
         // Overflow is defined only for single-bit rotates
         if count == 1 {
             // OF = MSB XOR (MSB-1)
             let overflow = ((result >> 7) ^ (result >> 6)) & 1 != 0;
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -229,7 +229,7 @@ impl Cpu {
         }
 
         let mut result = value;
-        let mut carry = self.get_flag(FLAG_CARRY);
+        let mut carry = self.get_flag(cpu_flag::CARRY);
 
         for _ in 0..count {
             let new_carry = (result & 0x80) != 0;
@@ -237,13 +237,13 @@ impl Cpu {
             carry = new_carry;
         }
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
 
         // Overflow is defined only for single-bit rotates
         if count == 1 {
             // OF = MSB XOR CF
             let overflow = ((result >> 7) & 1) != (if carry { 1 } else { 0 });
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -261,7 +261,7 @@ impl Cpu {
         }
 
         let mut result = value;
-        let mut carry = self.get_flag(FLAG_CARRY);
+        let mut carry = self.get_flag(cpu_flag::CARRY);
 
         for _ in 0..count {
             let new_carry = (result & 1) != 0;
@@ -269,13 +269,13 @@ impl Cpu {
             carry = new_carry;
         }
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
 
         // Overflow is defined only for single-bit rotates
         if count == 1 {
             // OF = MSB XOR (MSB-1)
             let overflow = ((result >> 7) ^ (result >> 6)) & 1 != 0;
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -292,9 +292,9 @@ impl Cpu {
         let count = count & 0x1F; // Mask to 5 bits
         if count > 16 {
             // All bits shifted out
-            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(cpu_flag::CARRY, false);
             self.set_flags_16(0);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
             return 0;
         }
 
@@ -307,14 +307,14 @@ impl Cpu {
             false
         };
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
         self.set_flags_16(result);
 
         // Overflow is defined only for single-bit shifts
         if count == 1 {
             // OF = MSB changed (XOR of original and result MSB)
             let overflow = ((value ^ result) & 0x8000) != 0;
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -329,9 +329,9 @@ impl Cpu {
         let count = count & 0x1F; // Mask to 5 bits
         if count > 16 {
             // All bits shifted out
-            self.set_flag(FLAG_CARRY, false);
+            self.set_flag(cpu_flag::CARRY, false);
             self.set_flags_16(0);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
             return 0;
         }
 
@@ -344,14 +344,14 @@ impl Cpu {
             false
         };
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
         self.set_flags_16(result);
 
         // Overflow is defined only for single-bit shifts
         if count == 1 {
             // OF = MSB of original value
             let overflow = (value & 0x8000) != 0;
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -369,9 +369,9 @@ impl Cpu {
         // For counts >= 16, result is all sign bits
         if count >= 16 {
             let result = if sign_bit != 0 { 0xFFFF } else { 0 };
-            self.set_flag(FLAG_CARRY, sign_bit != 0);
+            self.set_flag(cpu_flag::CARRY, sign_bit != 0);
             self.set_flags_16(result);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
             return result;
         }
 
@@ -380,12 +380,12 @@ impl Cpu {
         // Carry is the last bit shifted out
         let carry = (value >> (count - 1)) & 1 != 0;
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
         self.set_flags_16(result);
 
         // Overflow is always 0 for SAR
         if count == 1 {
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
 
         result
@@ -406,13 +406,13 @@ impl Cpu {
 
         // Carry is the LSB of result (bit that was rotated from MSB)
         let carry = (result & 1) != 0;
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
 
         // Overflow is defined only for single-bit rotates
         if count == 1 {
             // OF = MSB XOR CF
             let overflow = ((result >> 15) & 1) != (result & 1);
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -433,13 +433,13 @@ impl Cpu {
 
         // Carry is the MSB of result (bit that was rotated from LSB)
         let carry = (result & 0x8000) != 0;
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
 
         // Overflow is defined only for single-bit rotates
         if count == 1 {
             // OF = MSB XOR (MSB-1)
             let overflow = ((result >> 15) ^ (result >> 14)) & 1 != 0;
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -457,7 +457,7 @@ impl Cpu {
         }
 
         let mut result = value;
-        let mut carry = self.get_flag(FLAG_CARRY);
+        let mut carry = self.get_flag(cpu_flag::CARRY);
 
         for _ in 0..count {
             let new_carry = (result & 0x8000) != 0;
@@ -465,13 +465,13 @@ impl Cpu {
             carry = new_carry;
         }
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
 
         // Overflow is defined only for single-bit rotates
         if count == 1 {
             // OF = MSB XOR CF
             let overflow = ((result >> 15) & 1) != (if carry { 1 } else { 0 });
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result
@@ -489,7 +489,7 @@ impl Cpu {
         }
 
         let mut result = value;
-        let mut carry = self.get_flag(FLAG_CARRY);
+        let mut carry = self.get_flag(cpu_flag::CARRY);
 
         for _ in 0..count {
             let new_carry = (result & 1) != 0;
@@ -497,13 +497,13 @@ impl Cpu {
             carry = new_carry;
         }
 
-        self.set_flag(FLAG_CARRY, carry);
+        self.set_flag(cpu_flag::CARRY, carry);
 
         // Overflow is defined only for single-bit rotates
         if count == 1 {
             // OF = MSB XOR (MSB-1)
             let overflow = ((result >> 15) ^ (result >> 14)) & 1 != 0;
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         }
 
         result

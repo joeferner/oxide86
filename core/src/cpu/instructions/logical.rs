@@ -1,4 +1,4 @@
-use super::super::{Cpu, FLAG_AUXILIARY, FLAG_CARRY, FLAG_INTERRUPT, FLAG_OVERFLOW};
+use super::super::{Cpu, cpu_flag};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -34,8 +34,8 @@ impl Cpu {
             }
 
             self.set_flags_16(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         } else {
             let src = if dir {
                 self.read_rm8(mode, rm, addr, memory)
@@ -56,8 +56,8 @@ impl Cpu {
             }
 
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
     }
 
@@ -71,16 +71,16 @@ impl Cpu {
             let imm = self.fetch_word(memory);
             self.ax &= imm;
             self.set_flags_16(self.ax);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         } else {
             let imm = self.fetch_byte(memory);
             let al = (self.ax & 0xFF) as u8;
             let result = al & imm;
             self.ax = (self.ax & 0xFF00) | result as u16;
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
     }
 
@@ -116,8 +116,8 @@ impl Cpu {
             }
 
             self.set_flags_16(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         } else {
             let src = if dir {
                 self.read_rm8(mode, rm, addr, memory)
@@ -138,8 +138,8 @@ impl Cpu {
             }
 
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
     }
 
@@ -153,16 +153,16 @@ impl Cpu {
             let imm = self.fetch_word(memory);
             self.ax |= imm;
             self.set_flags_16(self.ax);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         } else {
             let imm = self.fetch_byte(memory);
             let al = (self.ax & 0xFF) as u8;
             let result = al | imm;
             self.ax = (self.ax & 0xFF00) | result as u16;
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
     }
 
@@ -198,8 +198,8 @@ impl Cpu {
             }
 
             self.set_flags_16(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         } else {
             let src = if dir {
                 self.read_rm8(mode, rm, addr, memory)
@@ -220,8 +220,8 @@ impl Cpu {
             }
 
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
     }
 
@@ -235,16 +235,16 @@ impl Cpu {
             let imm = self.fetch_word(memory);
             self.ax ^= imm;
             self.set_flags_16(self.ax);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         } else {
             let imm = self.fetch_byte(memory);
             let al = (self.ax & 0xFF) as u8;
             let result = al ^ imm;
             self.ax = (self.ax & 0xFF00) | result as u16;
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
     }
 
@@ -263,16 +263,16 @@ impl Cpu {
             let result = dst & src;
 
             self.set_flags_16(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         } else {
             let src = self.get_reg8(reg);
             let dst = self.read_rm8(mode, rm, addr, memory);
             let result = dst & src;
 
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
     }
 
@@ -286,15 +286,15 @@ impl Cpu {
             let imm = self.fetch_word(memory);
             let result = self.ax & imm;
             self.set_flags_16(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         } else {
             let imm = self.fetch_byte(memory);
             let al = (self.ax & 0xFF) as u8;
             let result = al & imm;
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, false);
-            self.set_flag(FLAG_OVERFLOW, false);
+            self.set_flag(cpu_flag::CARRY, false);
+            self.set_flag(cpu_flag::OVERFLOW, false);
         }
     }
 
@@ -326,15 +326,15 @@ impl Cpu {
                     let value = self.read_rm16(mode, rm, addr, memory);
                     let result = value & imm;
                     self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, false);
-                    self.set_flag(FLAG_OVERFLOW, false);
+                    self.set_flag(cpu_flag::CARRY, false);
+                    self.set_flag(cpu_flag::OVERFLOW, false);
                 } else {
                     let imm = self.fetch_byte(memory);
                     let value = self.read_rm8(mode, rm, addr, memory);
                     let result = value & imm;
                     self.set_flags_8(result);
-                    self.set_flag(FLAG_CARRY, false);
-                    self.set_flag(FLAG_OVERFLOW, false);
+                    self.set_flag(cpu_flag::CARRY, false);
+                    self.set_flag(cpu_flag::OVERFLOW, false);
                 }
             }
             2 => {
@@ -355,19 +355,19 @@ impl Cpu {
                     let result = value.wrapping_neg();
                     self.write_rm16(mode, rm, addr, result, memory);
                     self.set_flags_16(result);
-                    self.set_flag(FLAG_CARRY, value != 0);
-                    self.set_flag(FLAG_OVERFLOW, value == 0x8000);
+                    self.set_flag(cpu_flag::CARRY, value != 0);
+                    self.set_flag(cpu_flag::OVERFLOW, value == 0x8000);
                     // Auxiliary carry for lower nibble
-                    self.set_flag(FLAG_AUXILIARY, (value & 0x0F) != 0);
+                    self.set_flag(cpu_flag::AUXILIARY, (value & 0x0F) != 0);
                 } else {
                     let value = self.read_rm8(mode, rm, addr, memory);
                     let result = value.wrapping_neg();
                     self.write_rm8(mode, rm, addr, result, memory);
                     self.set_flags_8(result);
-                    self.set_flag(FLAG_CARRY, value != 0);
-                    self.set_flag(FLAG_OVERFLOW, value == 0x80);
+                    self.set_flag(cpu_flag::CARRY, value != 0);
+                    self.set_flag(cpu_flag::OVERFLOW, value == 0x80);
                     // Auxiliary carry for lower nibble
-                    self.set_flag(FLAG_AUXILIARY, (value & 0x0F) != 0);
+                    self.set_flag(cpu_flag::AUXILIARY, (value & 0x0F) != 0);
                 }
             }
             4 => {
@@ -379,8 +379,8 @@ impl Cpu {
                     self.dx = (result >> 16) as u16;
                     // CF and OF are set if upper half (DX) is non-zero
                     let upper_non_zero = self.dx != 0;
-                    self.set_flag(FLAG_CARRY, upper_non_zero);
-                    self.set_flag(FLAG_OVERFLOW, upper_non_zero);
+                    self.set_flag(cpu_flag::CARRY, upper_non_zero);
+                    self.set_flag(cpu_flag::OVERFLOW, upper_non_zero);
                     // Other flags are undefined, but we'll leave them as is
                 } else {
                     let value = self.read_rm8(mode, rm, addr, memory);
@@ -389,8 +389,8 @@ impl Cpu {
                     self.ax = result;
                     // CF and OF are set if upper half (AH) is non-zero
                     let upper_non_zero = (result >> 8) != 0;
-                    self.set_flag(FLAG_CARRY, upper_non_zero);
-                    self.set_flag(FLAG_OVERFLOW, upper_non_zero);
+                    self.set_flag(cpu_flag::CARRY, upper_non_zero);
+                    self.set_flag(cpu_flag::OVERFLOW, upper_non_zero);
                 }
             }
             5 => {
@@ -404,8 +404,8 @@ impl Cpu {
                     // i.e., if sign extension of AX != DX:AX
                     let sign_extended = (self.ax as i16) as i32;
                     let overflow = sign_extended != result;
-                    self.set_flag(FLAG_CARRY, overflow);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
+                    self.set_flag(cpu_flag::CARRY, overflow);
+                    self.set_flag(cpu_flag::OVERFLOW, overflow);
                 } else {
                     let value = self.read_rm8(mode, rm, addr, memory) as i8;
                     let al = (self.ax & 0xFF) as i8;
@@ -414,8 +414,8 @@ impl Cpu {
                     // CF and OF are set if result can't fit in AL
                     let sign_extended = ((self.ax & 0xFF) as i8) as i16;
                     let overflow = sign_extended != result;
-                    self.set_flag(FLAG_CARRY, overflow);
-                    self.set_flag(FLAG_OVERFLOW, overflow);
+                    self.set_flag(cpu_flag::CARRY, overflow);
+                    self.set_flag(cpu_flag::OVERFLOW, overflow);
                 }
             }
             6 => {
@@ -488,27 +488,27 @@ impl Cpu {
 
     /// CLC - Clear Carry Flag (opcode 0xF8)
     pub(in crate::cpu) fn clc(&mut self) {
-        self.set_flag(FLAG_CARRY, false);
+        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// STC - Set Carry Flag (opcode 0xF9)
     pub(in crate::cpu) fn stc(&mut self) {
-        self.set_flag(FLAG_CARRY, true);
+        self.set_flag(cpu_flag::CARRY, true);
     }
 
     /// CMC - Complement Carry Flag (opcode 0xF5)
     pub(in crate::cpu) fn cmc(&mut self) {
-        let carry = self.get_flag(FLAG_CARRY);
-        self.set_flag(FLAG_CARRY, !carry);
+        let carry = self.get_flag(cpu_flag::CARRY);
+        self.set_flag(cpu_flag::CARRY, !carry);
     }
 
     /// CLI - Clear Interrupt Flag (opcode 0xFA)
     pub(in crate::cpu) fn cli(&mut self) {
-        self.set_flag(FLAG_INTERRUPT, false);
+        self.set_flag(cpu_flag::INTERRUPT, false);
     }
 
     /// STI - Set Interrupt Flag (opcode 0xFB)
     pub(in crate::cpu) fn sti(&mut self) {
-        self.set_flag(FLAG_INTERRUPT, true);
+        self.set_flag(cpu_flag::INTERRUPT, true);
     }
 }

@@ -1,5 +1,6 @@
 use log::warn;
 
+use crate::cpu::cpu_flag;
 use crate::{cpu::Cpu, memory::Memory};
 use crate::memory::{BDA_START, BDA_KEYBOARD_FLAGS1, BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL};
 
@@ -86,10 +87,10 @@ impl Cpu {
             self.ax = ((scan_code as u16) << 8) | (ascii_code as u16);
 
             // Clear ZF to indicate keystroke available
-            self.set_flag(super::super::FLAG_ZERO, false);
+            self.set_flag(cpu_flag::ZERO, false);
         } else {
             // No keystroke available - set ZF
-            self.set_flag(super::super::FLAG_ZERO, true);
+            self.set_flag(cpu_flag::ZERO, true);
         }
     }
 

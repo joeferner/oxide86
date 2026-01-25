@@ -1,4 +1,4 @@
-use super::super::{Cpu, FLAG_CARRY, FLAG_OVERFLOW, FLAG_ZERO, FLAG_SIGN, FLAG_PARITY, FLAG_INTERRUPT, FLAG_TRAP};
+use super::super::{Cpu, cpu_flag};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -50,22 +50,22 @@ impl Cpu {
         let offset = self.fetch_byte(memory) as i8;
 
         let condition = match opcode {
-            0x70 => self.get_flag(FLAG_OVERFLOW),                    // JO - Jump if overflow
-            0x71 => !self.get_flag(FLAG_OVERFLOW),                   // JNO - Jump if not overflow
-            0x72 => self.get_flag(FLAG_CARRY),                       // JB/JC/JNAE - Jump if below/carry
-            0x73 => !self.get_flag(FLAG_CARRY),                      // JAE/JNB/JNC - Jump if above or equal/not below/not carry
-            0x74 => self.get_flag(FLAG_ZERO),                        // JE/JZ - Jump if equal/zero
-            0x75 => !self.get_flag(FLAG_ZERO),                       // JNE/JNZ - Jump if not equal/not zero
-            0x76 => self.get_flag(FLAG_CARRY) || self.get_flag(FLAG_ZERO),  // JBE/JNA - Jump if below or equal/not above
-            0x77 => !self.get_flag(FLAG_CARRY) && !self.get_flag(FLAG_ZERO), // JA/JNBE - Jump if above/not below or equal
-            0x78 => self.get_flag(FLAG_SIGN),                        // JS - Jump if sign
-            0x79 => !self.get_flag(FLAG_SIGN),                       // JNS - Jump if not sign
-            0x7A => self.get_flag(FLAG_PARITY),                      // JP/JPE - Jump if parity/parity even
-            0x7B => !self.get_flag(FLAG_PARITY),                     // JNP/JPO - Jump if not parity/parity odd
-            0x7C => self.get_flag(FLAG_SIGN) != self.get_flag(FLAG_OVERFLOW),  // JL/JNGE - Jump if less/not greater or equal
-            0x7D => self.get_flag(FLAG_SIGN) == self.get_flag(FLAG_OVERFLOW),  // JGE/JNL - Jump if greater or equal/not less
-            0x7E => self.get_flag(FLAG_ZERO) || (self.get_flag(FLAG_SIGN) != self.get_flag(FLAG_OVERFLOW)),  // JLE/JNG - Jump if less or equal/not greater
-            0x7F => !self.get_flag(FLAG_ZERO) && (self.get_flag(FLAG_SIGN) == self.get_flag(FLAG_OVERFLOW)), // JG/JNLE - Jump if greater/not less or equal
+            0x70 => self.get_flag(cpu_flag::OVERFLOW),                    // JO - Jump if overflow
+            0x71 => !self.get_flag(cpu_flag::OVERFLOW),                   // JNO - Jump if not overflow
+            0x72 => self.get_flag(cpu_flag::CARRY),                       // JB/JC/JNAE - Jump if below/carry
+            0x73 => !self.get_flag(cpu_flag::CARRY),                      // JAE/JNB/JNC - Jump if above or equal/not below/not carry
+            0x74 => self.get_flag(cpu_flag::ZERO),                        // JE/JZ - Jump if equal/zero
+            0x75 => !self.get_flag(cpu_flag::ZERO),                       // JNE/JNZ - Jump if not equal/not zero
+            0x76 => self.get_flag(cpu_flag::CARRY) || self.get_flag(cpu_flag::ZERO),  // JBE/JNA - Jump if below or equal/not above
+            0x77 => !self.get_flag(cpu_flag::CARRY) && !self.get_flag(cpu_flag::ZERO), // JA/JNBE - Jump if above/not below or equal
+            0x78 => self.get_flag(cpu_flag::SIGN),                        // JS - Jump if sign
+            0x79 => !self.get_flag(cpu_flag::SIGN),                       // JNS - Jump if not sign
+            0x7A => self.get_flag(cpu_flag::PARITY),                      // JP/JPE - Jump if parity/parity even
+            0x7B => !self.get_flag(cpu_flag::PARITY),                     // JNP/JPO - Jump if not parity/parity odd
+            0x7C => self.get_flag(cpu_flag::SIGN) != self.get_flag(cpu_flag::OVERFLOW),  // JL/JNGE - Jump if less/not greater or equal
+            0x7D => self.get_flag(cpu_flag::SIGN) == self.get_flag(cpu_flag::OVERFLOW),  // JGE/JNL - Jump if greater or equal/not less
+            0x7E => self.get_flag(cpu_flag::ZERO) || (self.get_flag(cpu_flag::SIGN) != self.get_flag(cpu_flag::OVERFLOW)),  // JLE/JNG - Jump if less or equal/not greater
+            0x7F => !self.get_flag(cpu_flag::ZERO) && (self.get_flag(cpu_flag::SIGN) == self.get_flag(cpu_flag::OVERFLOW)), // JG/JNLE - Jump if greater/not less or equal
             _ => unreachable!(),
         };
 
@@ -89,7 +89,7 @@ impl Cpu {
     pub(in crate::cpu) fn loope(&mut self, memory: &Memory) {
         let offset = self.fetch_byte(memory) as i8;
         self.cx = self.cx.wrapping_sub(1);
-        if self.cx != 0 && self.get_flag(FLAG_ZERO) {
+        if self.cx != 0 && self.get_flag(cpu_flag::ZERO) {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
         }
     }
@@ -99,7 +99,7 @@ impl Cpu {
     pub(in crate::cpu) fn loopne(&mut self, memory: &Memory) {
         let offset = self.fetch_byte(memory) as i8;
         self.cx = self.cx.wrapping_sub(1);
-        if self.cx != 0 && !self.get_flag(FLAG_ZERO) {
+        if self.cx != 0 && !self.get_flag(cpu_flag::ZERO) {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
         }
     }
@@ -216,8 +216,8 @@ impl Cpu {
         self.push(self.cs, memory);
         self.push(self.ip, memory);
         // Clear IF and TF
-        self.set_flag(FLAG_INTERRUPT, false);
-        self.set_flag(FLAG_TRAP, false);
+        self.set_flag(cpu_flag::INTERRUPT, false);
+        self.set_flag(cpu_flag::TRAP, false);
         // Load interrupt vector from interrupt vector table (IVT)
         // IVT starts at 0x00000, each entry is 4 bytes (offset, segment)
         let ivt_addr = (int_num as usize) * 4;
@@ -234,8 +234,8 @@ impl Cpu {
         self.push(self.flags, memory);
         self.push(self.cs, memory);
         self.push(self.ip, memory);
-        self.set_flag(FLAG_INTERRUPT, false);
-        self.set_flag(FLAG_TRAP, false);
+        self.set_flag(cpu_flag::INTERRUPT, false);
+        self.set_flag(cpu_flag::TRAP, false);
         let ivt_addr = 3 * 4;
         let offset = memory.read_word(ivt_addr);
         let segment = memory.read_word(ivt_addr + 2);
@@ -246,12 +246,12 @@ impl Cpu {
     /// INTO - Interrupt on Overflow (opcode CE)
     /// Calls interrupt 4 if OF is set
     pub(in crate::cpu) fn into(&mut self, memory: &mut Memory) {
-        if self.get_flag(FLAG_OVERFLOW) {
+        if self.get_flag(cpu_flag::OVERFLOW) {
             self.push(self.flags, memory);
             self.push(self.cs, memory);
             self.push(self.ip, memory);
-            self.set_flag(FLAG_INTERRUPT, false);
-            self.set_flag(FLAG_TRAP, false);
+            self.set_flag(cpu_flag::INTERRUPT, false);
+            self.set_flag(cpu_flag::TRAP, false);
             let ivt_addr = 4 * 4;
             let offset = memory.read_word(ivt_addr);
             let segment = memory.read_word(ivt_addr + 2);
@@ -276,7 +276,7 @@ impl Cpu {
         self.ax = al as i16 as u16;
     }
 
-    /// CWD - Convert Word to Doubleword (opcode 99)
+    /// CWD - Convert Word to Double word (opcode 99)
     /// Sign-extends AX into DX:AX
     pub(in crate::cpu) fn cwd(&mut self) {
         if (self.ax & 0x8000) != 0 {

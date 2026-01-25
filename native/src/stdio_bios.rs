@@ -1,7 +1,8 @@
 use emu86_core::cpu::bios::{
-    DriveParams, FindData, KeyPress, SeekMethod, SerialParams, SerialStatus, disk_errors, dos_errors, file_access, file_attributes,
+    DriveParams, FindData, KeyPress, SeekMethod, SerialParams, SerialStatus, PrinterStatus, disk_errors, dos_errors, file_access, file_attributes,
 };
 use emu86_core::cpu::bios::int14::line_status;
+use emu86_core::cpu::bios::int17::printer_status;
 /// Standard I/O implementation of Bios for native platform
 use emu86_core::{Bios, DiskController, SECTOR_SIZE};
 use std::collections::HashMap;
@@ -631,6 +632,27 @@ impl<D: DiskController> Bios for StdioBios<D> {
         SerialStatus {
             line_status: line_status::TIMEOUT,
             modem_status: 0,
+        }
+    }
+
+    fn printer_init(&mut self, _printer: u8) -> PrinterStatus {
+        // No printer available - return timeout status
+        PrinterStatus {
+            status: printer_status::TIMEOUT,
+        }
+    }
+
+    fn printer_write(&mut self, _printer: u8, _ch: u8) -> PrinterStatus {
+        // No printer available - return timeout status
+        PrinterStatus {
+            status: printer_status::TIMEOUT,
+        }
+    }
+
+    fn printer_status(&self, _printer: u8) -> PrinterStatus {
+        // No printer available - return timeout status
+        PrinterStatus {
+            status: printer_status::TIMEOUT,
         }
     }
 

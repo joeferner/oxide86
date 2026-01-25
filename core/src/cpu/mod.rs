@@ -2,8 +2,8 @@ use log::info;
 
 use crate::{IoDevice, io_port::IoPort, memory::Memory};
 
-mod instructions;
 pub mod bios;
+mod instructions;
 
 pub struct Cpu {
     // General purpose registers
@@ -43,21 +43,23 @@ pub struct Cpu {
 #[derive(Debug, Clone, Copy, PartialEq)]
 #[allow(dead_code)]
 pub(super) enum RepeatPrefix {
-    Rep,      // 0xF3 - Repeat while CX != 0
-    Repe,     // 0xF3 - Repeat while CX != 0 and ZF = 1
-    Repne,    // 0xF2 - Repeat while CX != 0 and ZF = 0
+    Rep,   // 0xF3 - Repeat while CX != 0
+    Repe,  // 0xF3 - Repeat while CX != 0 and ZF = 1
+    Repne, // 0xF2 - Repeat while CX != 0 and ZF = 0
 }
 
 // Flag bit positions
-pub(super) const FLAG_CARRY: u16 = 1 << 0;
-pub(super) const FLAG_PARITY: u16 = 1 << 2;
-pub(super) const FLAG_AUXILIARY: u16 = 1 << 4;
-pub(super) const FLAG_ZERO: u16 = 1 << 6;
-pub(super) const FLAG_SIGN: u16 = 1 << 7;
-pub(super) const FLAG_TRAP: u16 = 1 << 8;
-pub(super) const FLAG_INTERRUPT: u16 = 1 << 9;
-pub(super) const FLAG_DIRECTION: u16 = 1 << 10;
-pub(super) const FLAG_OVERFLOW: u16 = 1 << 11;
+pub mod cpu_flag {
+    pub const CARRY: u16 = 1 << 0;
+    pub const PARITY: u16 = 1 << 2;
+    pub const AUXILIARY: u16 = 1 << 4;
+    pub const ZERO: u16 = 1 << 6;
+    pub const SIGN: u16 = 1 << 7;
+    pub const TRAP: u16 = 1 << 8;
+    pub const INTERRUPT: u16 = 1 << 9;
+    pub const DIRECTION: u16 = 1 << 10;
+    pub const OVERFLOW: u16 = 1 << 11;
+}
 
 impl Cpu {
     pub fn new() -> Self {
@@ -142,8 +144,8 @@ impl Cpu {
         self.push(self.cs, memory);
         self.push(self.ip, memory);
         // Clear IF and TF
-        self.set_flag(FLAG_INTERRUPT, false);
-        self.set_flag(FLAG_TRAP, false);
+        self.set_flag(cpu_flag::INTERRUPT, false);
+        self.set_flag(cpu_flag::TRAP, false);
         // Load interrupt vector from IVT
         let ivt_addr = (int_num as usize) * 4;
         let offset = memory.read_word(ivt_addr);
@@ -512,15 +514,20 @@ impl Cpu {
                 let reg_field = (modrm_peek >> 3) & 0x07;
                 match reg_field {
                     0 | 1 => self.inc_dec_rm(opcode, memory), // INC/DEC
-                    2 | 3 => self.call_indirect(memory), // CALL near/far
-                    4 | 5 => self.jmp_indirect(memory), // JMP near/far
-                    6 => self.push_rm16(memory), // PUSH r/m16
+                    2 | 3 => self.call_indirect(memory),      // CALL near/far
+                    4 | 5 => self.jmp_indirect(memory),       // JMP near/far
+                    6 => self.push_rm16(memory),              // PUSH r/m16
                     _ => panic!("Invalid FF operation: {}", reg_field),
                 }
             }
 
             _ => {
-                panic!("Unknown opcode: {:#04X} at {:04X}:{:04X}", opcode, self.cs, self.ip.wrapping_sub(1));
+                panic!(
+                    "Unknown opcode: {:#04X} at {:04X}:{:04X}",
+                    opcode,
+                    self.cs,
+                    self.ip.wrapping_sub(1)
+                );
             }
         }
     }
@@ -562,10 +569,10 @@ impl Cpu {
             1 => (self.cx & 0xFF) as u8, // CL
             2 => (self.dx & 0xFF) as u8, // DL
             3 => (self.bx & 0xFF) as u8, // BL
-            4 => (self.ax >> 8) as u8, // AH
-            5 => (self.cx >> 8) as u8, // CH
-            6 => (self.dx >> 8) as u8, // DH
-            7 => (self.bx >> 8) as u8, // BH
+            4 => (self.ax >> 8) as u8,   // AH
+            5 => (self.cx >> 8) as u8,   // CH
+            6 => (self.dx >> 8) as u8,   // DH
+            7 => (self.bx >> 8) as u8,   // BH
             _ => unreachable!(),
         }
     }
@@ -652,12 +659,12 @@ impl Cpu {
 
         // Calculate base address from r/m field
         let (base_addr, default_seg) = match rm {
-            0b000 => (self.bx.wrapping_add(self.si), self.ds),  // [BX + SI]
-            0b001 => (self.bx.wrapping_add(self.di), self.ds),  // [BX + DI]
-            0b010 => (self.bp.wrapping_add(self.si), self.ss),  // [BP + SI]
-            0b011 => (self.bp.wrapping_add(self.di), self.ss),  // [BP + DI]
-            0b100 => (self.si, self.ds),                         // [SI]
-            0b101 => (self.di, self.ds),                         // [DI]
+            0b000 => (self.bx.wrapping_add(self.si), self.ds), // [BX + SI]
+            0b001 => (self.bx.wrapping_add(self.di), self.ds), // [BX + DI]
+            0b010 => (self.bp.wrapping_add(self.si), self.ss), // [BP + SI]
+            0b011 => (self.bp.wrapping_add(self.di), self.ss), // [BP + DI]
+            0b100 => (self.si, self.ds),                       // [SI]
+            0b101 => (self.di, self.ds),                       // [DI]
             0b110 => {
                 if mode == 0b00 {
                     // Special case: direct address (16-bit displacement, no base)
@@ -665,16 +672,16 @@ impl Cpu {
                     let seg = self.segment_override.unwrap_or(self.ds);
                     return (mode, reg, rm, Self::physical_address(seg, disp), seg);
                 } else {
-                    (self.bp, self.ss)  // [BP]
+                    (self.bp, self.ss) // [BP]
                 }
             }
-            0b111 => (self.bx, self.ds),                         // [BX]
+            0b111 => (self.bx, self.ds), // [BX]
             _ => unreachable!(),
         };
 
         // Add displacement based on mode
         let effective_offset = match mode {
-            0b00 => base_addr,  // No displacement
+            0b00 => base_addr, // No displacement
             0b01 => {
                 // 8-bit signed displacement
                 let disp = self.fetch_byte(memory) as i8;
@@ -717,7 +724,14 @@ impl Cpu {
     }
 
     // Write 8-bit value to register or memory based on mod field
-    pub(super) fn write_rm8(&mut self, mode: u8, rm: u8, addr: usize, value: u8, memory: &mut Memory) {
+    pub(super) fn write_rm8(
+        &mut self,
+        mode: u8,
+        rm: u8,
+        addr: usize,
+        value: u8,
+        memory: &mut Memory,
+    ) {
         if mode == 0b11 {
             // Register mode
             self.set_reg8(rm, value);
@@ -728,7 +742,14 @@ impl Cpu {
     }
 
     // Write 16-bit value to register or memory based on mod field
-    pub(super) fn write_rm16(&mut self, mode: u8, rm: u8, addr: usize, value: u16, memory: &mut Memory) {
+    pub(super) fn write_rm16(
+        &mut self,
+        mode: u8,
+        rm: u8,
+        addr: usize,
+        value: u16,
+        memory: &mut Memory,
+    ) {
         if mode == 0b11 {
             // Register mode
             self.set_reg16(rm, value);
@@ -740,34 +761,44 @@ impl Cpu {
 
     // Calculate and set flags for 8-bit result
     pub(super) fn set_flags_8(&mut self, result: u8) {
-        self.set_flag(FLAG_ZERO, result == 0);
-        self.set_flag(FLAG_SIGN, (result & 0x80) != 0);
-        self.set_flag(FLAG_PARITY, result.count_ones().is_multiple_of(2));
+        self.set_flag(cpu_flag::ZERO, result == 0);
+        self.set_flag(cpu_flag::SIGN, (result & 0x80) != 0);
+        self.set_flag(cpu_flag::PARITY, result.count_ones().is_multiple_of(2));
     }
 
     // Calculate and set flags for 16-bit result
     pub(super) fn set_flags_16(&mut self, result: u16) {
-        self.set_flag(FLAG_ZERO, result == 0);
-        self.set_flag(FLAG_SIGN, (result & 0x8000) != 0);
-        self.set_flag(FLAG_PARITY, (result as u8).count_ones().is_multiple_of(2));
+        self.set_flag(cpu_flag::ZERO, result == 0);
+        self.set_flag(cpu_flag::SIGN, (result & 0x8000) != 0);
+        self.set_flag(cpu_flag::PARITY, (result as u8).count_ones().is_multiple_of(2));
     }
 
     // Dump register state
     pub fn dump_registers(&self) {
-        info!("AX={:04X}  BX={:04X}  CX={:04X}  DX={:04X}", self.ax, self.bx, self.cx, self.dx);
-        info!("SI={:04X}  DI={:04X}  BP={:04X}  SP={:04X}", self.si, self.di, self.bp, self.sp);
-        info!("CS={:04X}  DS={:04X}  SS={:04X}  ES={:04X}", self.cs, self.ds, self.ss, self.es);
+        info!(
+            "AX={:04X}  BX={:04X}  CX={:04X}  DX={:04X}",
+            self.ax, self.bx, self.cx, self.dx
+        );
+        info!(
+            "SI={:04X}  DI={:04X}  BP={:04X}  SP={:04X}",
+            self.si, self.di, self.bp, self.sp
+        );
+        info!(
+            "CS={:04X}  DS={:04X}  SS={:04X}  ES={:04X}",
+            self.cs, self.ds, self.ss, self.es
+        );
         info!("IP={:04X}  FLAGS={:04X}", self.ip, self.flags);
-        info!("CF={}  PF={}  AF={}  ZF={}  SF={}  TF={}  IF={}  DF={}  OF={}",
-            if self.get_flag(FLAG_CARRY) { 1 } else { 0 },
-            if self.get_flag(FLAG_PARITY) { 1 } else { 0 },
-            if self.get_flag(FLAG_AUXILIARY) { 1 } else { 0 },
-            if self.get_flag(FLAG_ZERO) { 1 } else { 0 },
-            if self.get_flag(FLAG_SIGN) { 1 } else { 0 },
-            if self.get_flag(FLAG_TRAP) { 1 } else { 0 },
-            if self.get_flag(FLAG_INTERRUPT) { 1 } else { 0 },
-            if self.get_flag(FLAG_DIRECTION) { 1 } else { 0 },
-            if self.get_flag(FLAG_OVERFLOW) { 1 } else { 0 },
+        info!(
+            "CF={}  PF={}  AF={}  ZF={}  SF={}  TF={}  IF={}  DF={}  OF={}",
+            if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::PARITY) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::AUXILIARY) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::ZERO) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::SIGN) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::TRAP) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::INTERRUPT) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::DIRECTION) { 1 } else { 0 },
+            if self.get_flag(cpu_flag::OVERFLOW) { 1 } else { 0 },
         );
     }
 }

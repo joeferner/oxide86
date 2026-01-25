@@ -3,8 +3,9 @@ use log::warn;
 use crate::{
     Bios,
     cpu::{
-        Cpu, FLAG_CARRY,
+        Cpu,
         bios::{FindData, SeekMethod, dos_errors},
+        cpu_flag,
     },
     memory::Memory,
 };
@@ -171,11 +172,11 @@ impl Cpu {
         match io.file_create(&filename, attributes) {
             Ok(handle) => {
                 self.ax = handle;
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -194,11 +195,11 @@ impl Cpu {
         match io.file_open(&filename, access_mode) {
             Ok(handle) => {
                 self.ax = handle;
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -214,11 +215,11 @@ impl Cpu {
 
         match io.file_close(handle) {
             Ok(()) => {
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -243,11 +244,11 @@ impl Cpu {
                     memory.write_byte(buffer_addr + i, byte);
                 }
                 self.ax = data.len() as u16;
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -274,11 +275,11 @@ impl Cpu {
         match io.file_write(handle, &data) {
             Ok(bytes_written) => {
                 self.ax = bytes_written;
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -305,7 +306,7 @@ impl Cpu {
             2 => SeekMethod::FromEnd,
             _ => {
                 self.ax = dos_errors::INVALID_FUNCTION as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
                 return;
             }
         };
@@ -315,11 +316,11 @@ impl Cpu {
                 // Return new position in DX:AX
                 self.dx = (new_position >> 16) as u16;
                 self.ax = (new_position & 0xFFFF) as u16;
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -335,11 +336,11 @@ impl Cpu {
 
         match io.dir_create(&dirname) {
             Ok(()) => {
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -355,11 +356,11 @@ impl Cpu {
 
         match io.dir_remove(&dirname) {
             Ok(()) => {
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -375,11 +376,11 @@ impl Cpu {
 
         match io.dir_change(&dirname) {
             Ok(()) => {
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -408,11 +409,11 @@ impl Cpu {
                 let len = path.len().min(63);
                 memory.write_byte(buffer_addr + len, 0);
 
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -448,11 +449,11 @@ impl Cpu {
                 }
 
                 self.write_find_data_to_dta(memory, dta_addr, &find_data);
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }
@@ -475,11 +476,11 @@ impl Cpu {
         match io.find_next(search_id) {
             Ok(find_data) => {
                 self.write_find_data_to_dta(memory, dta_addr, &find_data);
-                self.set_flag(FLAG_CARRY, false);
+                self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
                 self.ax = error_code as u16;
-                self.set_flag(FLAG_CARRY, true);
+                self.set_flag(cpu_flag::CARRY, true);
             }
         }
     }

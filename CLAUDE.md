@@ -331,6 +331,11 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
   - AH=01h: Check for keystroke - Checks if a key is available without removing it (sets ZF if none)
   - AH=02h: Get shift flags - Returns keyboard shift/lock state in AL
 
+- **INT 17h - Printer Services** ([core/src/cpu/bios/int17.rs](core/src/cpu/bios/int17.rs))
+  - AH=00h: Print character - Send a character to the printer
+  - AH=01h: Initialize printer port - Reset and initialize the printer
+  - AH=02h: Get printer status - Read the current printer status
+
 - **INT 1Ah - Time Services** ([core/src/cpu/bios/int1a.rs](core/src/cpu/bios/int1a.rs))
   - AH=00h: Get system time - Returns CX:DX = tick count since midnight, AL = midnight flag
   - AH=01h: Set system time - Sets timer counter to CX:DX (ticks since midnight)
@@ -485,6 +490,57 @@ int 0x14           ; Call serial services
 ```
 
 **Note:** The default native and WASM implementations return timeout errors for all serial port operations, as actual serial port hardware is not available. Platform-specific implementations can provide real serial port access if needed.
+
+**Printer Services (INT 17h):**
+
+The emulator implements BIOS printer services through the `Bios` trait. Printer operations allow sending output to parallel printer ports (LPT1-LPT3).
+
+**Printer Status Bits (returned in AH):**
+- Bit 0: Timeout
+- Bit 3: I/O error
+- Bit 4: Printer selected
+- Bit 5: Out of paper
+- Bit 6: Acknowledge
+- Bit 7: Not busy (0 = busy, 1 = ready)
+
+**Implementing Printer Operations in Platform Code:**
+
+To support printers, implement these `Bios` trait methods:
+
+```rust
+fn printer_init(&mut self, printer: u8) -> PrinterStatus;
+fn printer_write(&mut self, printer: u8, ch: u8) -> PrinterStatus;
+fn printer_status(&self, printer: u8) -> PrinterStatus;
+```
+
+**Printer Numbers:**
+- 0 = LPT1 (I/O base 0x0378)
+- 1 = LPT2 (I/O base 0x0278)
+- 2 = LPT3 (I/O base 0x03BC)
+
+**Example Usage in Assembly:**
+```asm
+; Initialize LPT1
+mov dx, 0          ; DX = printer number (0 = LPT1)
+mov ah, 0x01       ; AH = function 01h (initialize)
+int 0x17           ; Call printer services
+; AH = printer status
+
+; Print a character to LPT1
+mov dx, 0          ; DX = printer number
+mov al, 'A'        ; AL = character to print
+mov ah, 0x00       ; AH = function 00h (print character)
+int 0x17           ; Call printer services
+; AH = printer status
+
+; Get printer status
+mov dx, 0          ; DX = printer number
+mov ah, 0x02       ; AH = function 02h (get status)
+int 0x17           ; Call printer services
+; AH = printer status
+```
+
+**Note:** The default native and WASM implementations return timeout errors for all printer operations, as actual printer hardware is not available. Platform-specific implementations can provide real printer access if needed.
 
 **DOS File Operations (INT 21h):**
 

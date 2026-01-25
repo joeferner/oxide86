@@ -1,15 +1,7 @@
 use super::super::{Cpu, RepeatPrefix};
+use crate::cpu::cpu_flag;
 use crate::memory::Memory;
 use crate::io_port::{IoDevice, IoPort};
-
-// Flag constant from parent module
-const FLAG_DIRECTION: u16 = 1 << 10;
-const FLAG_ZERO: u16 = 1 << 6;
-const FLAG_SIGN: u16 = 1 << 7;
-const FLAG_PARITY: u16 = 1 << 2;
-const FLAG_CARRY: u16 = 1 << 0;
-const FLAG_AUXILIARY: u16 = 1 << 4;
-const FLAG_OVERFLOW: u16 = 1 << 11;
 
 impl Cpu {
     /// MOVS - Move String (opcodes A4-A5)
@@ -44,7 +36,7 @@ impl Cpu {
             memory.write_word(dst_addr, value);
 
             // Update SI and DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 // DF=1: decrement
                 self.si = self.si.wrapping_sub(2);
                 self.di = self.di.wrapping_sub(2);
@@ -62,7 +54,7 @@ impl Cpu {
             memory.write_byte(dst_addr, value);
 
             // Update SI and DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 // DF=1: decrement
                 self.si = self.si.wrapping_sub(1);
                 self.di = self.di.wrapping_sub(1);
@@ -92,7 +84,7 @@ impl Cpu {
                 while self.cx != 0 {
                     self.cmps_once(is_word, memory);
                     self.cx = self.cx.wrapping_sub(1);
-                    if !self.get_flag(FLAG_ZERO) {
+                    if !self.get_flag(cpu_flag::ZERO) {
                         break; // Stop if not equal (ZF=0)
                     }
                 }
@@ -102,7 +94,7 @@ impl Cpu {
                 while self.cx != 0 {
                     self.cmps_once(is_word, memory);
                     self.cx = self.cx.wrapping_sub(1);
-                    if self.get_flag(FLAG_ZERO) {
+                    if self.get_flag(cpu_flag::ZERO) {
                         break; // Stop if equal (ZF=1)
                     }
                 }
@@ -127,7 +119,7 @@ impl Cpu {
             self.set_flags_sub_16(src, dst, result);
 
             // Update SI and DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.si = self.si.wrapping_sub(2);
                 self.di = self.di.wrapping_sub(2);
             } else {
@@ -147,7 +139,7 @@ impl Cpu {
             self.set_flags_sub_8(src, dst, result);
 
             // Update SI and DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.si = self.si.wrapping_sub(1);
                 self.di = self.di.wrapping_sub(1);
             } else {
@@ -173,7 +165,7 @@ impl Cpu {
                 while self.cx != 0 {
                     self.scas_once(is_word, memory);
                     self.cx = self.cx.wrapping_sub(1);
-                    if !self.get_flag(FLAG_ZERO) {
+                    if !self.get_flag(cpu_flag::ZERO) {
                         break; // Stop if not equal (ZF=0)
                     }
                 }
@@ -183,7 +175,7 @@ impl Cpu {
                 while self.cx != 0 {
                     self.scas_once(is_word, memory);
                     self.cx = self.cx.wrapping_sub(1);
-                    if self.get_flag(FLAG_ZERO) {
+                    if self.get_flag(cpu_flag::ZERO) {
                         break; // Stop if equal (ZF=1)
                     }
                 }
@@ -205,7 +197,7 @@ impl Cpu {
             self.set_flags_sub_16(self.ax, value, result);
 
             // Update DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.di = self.di.wrapping_sub(2);
             } else {
                 self.di = self.di.wrapping_add(2);
@@ -221,7 +213,7 @@ impl Cpu {
             self.set_flags_sub_8(al, value, result);
 
             // Update DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.di = self.di.wrapping_sub(1);
             } else {
                 self.di = self.di.wrapping_add(1);
@@ -257,7 +249,7 @@ impl Cpu {
             self.ax = memory.read_word(addr);
 
             // Update SI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.si = self.si.wrapping_sub(2);
             } else {
                 self.si = self.si.wrapping_add(2);
@@ -270,7 +262,7 @@ impl Cpu {
             self.ax = (self.ax & 0xFF00) | (value as u16);
 
             // Update SI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.si = self.si.wrapping_sub(1);
             } else {
                 self.si = self.si.wrapping_add(1);
@@ -304,7 +296,7 @@ impl Cpu {
             memory.write_word(addr, self.ax);
 
             // Update DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.di = self.di.wrapping_sub(2);
             } else {
                 self.di = self.di.wrapping_add(2);
@@ -316,7 +308,7 @@ impl Cpu {
             memory.write_byte(addr, al);
 
             // Update DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.di = self.di.wrapping_sub(1);
             } else {
                 self.di = self.di.wrapping_add(1);
@@ -363,7 +355,7 @@ impl Cpu {
             memory.write_word(addr, value);
 
             // Update DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.di = self.di.wrapping_sub(2);
             } else {
                 self.di = self.di.wrapping_add(2);
@@ -375,7 +367,7 @@ impl Cpu {
             memory.write_byte(addr, value);
 
             // Update DI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.di = self.di.wrapping_sub(1);
             } else {
                 self.di = self.di.wrapping_add(1);
@@ -423,7 +415,7 @@ impl Cpu {
             io_port.write_word(port, value);
 
             // Update SI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.si = self.si.wrapping_sub(2);
             } else {
                 self.si = self.si.wrapping_add(2);
@@ -436,7 +428,7 @@ impl Cpu {
             io_port.write_byte(port, value);
 
             // Update SI based on direction flag
-            if self.get_flag(FLAG_DIRECTION) {
+            if self.get_flag(cpu_flag::DIRECTION) {
                 self.si = self.si.wrapping_sub(1);
             } else {
                 self.si = self.si.wrapping_add(1);
@@ -447,58 +439,58 @@ impl Cpu {
     /// CLD - Clear Direction Flag (opcode FC)
     /// Sets DF to 0, causing string operations to increment SI/DI (forward direction)
     pub(in crate::cpu) fn cld(&mut self) {
-        self.set_flag(FLAG_DIRECTION, false);
+        self.set_flag(cpu_flag::DIRECTION, false);
     }
 
     /// STD - Set Direction Flag (opcode FD)
     /// Sets DF to 1, causing string operations to decrement SI/DI (backward direction)
     pub(in crate::cpu) fn std_flag(&mut self) {
-        self.set_flag(FLAG_DIRECTION, true);
+        self.set_flag(cpu_flag::DIRECTION, true);
     }
 
     /// Helper function to set flags for 8-bit subtraction
     /// Used by CMPS and SCAS
     fn set_flags_sub_8(&mut self, left: u8, right: u8, result: u8) {
         // Zero, Sign, Parity flags
-        self.set_flag(FLAG_ZERO, result == 0);
-        self.set_flag(FLAG_SIGN, (result & 0x80) != 0);
-        self.set_flag(FLAG_PARITY, result.count_ones().is_multiple_of(2));
+        self.set_flag(cpu_flag::ZERO, result == 0);
+        self.set_flag(cpu_flag::SIGN, (result & 0x80) != 0);
+        self.set_flag(cpu_flag::PARITY, result.count_ones().is_multiple_of(2));
 
         // Carry flag (set if borrow occurred)
-        self.set_flag(FLAG_CARRY, left < right);
+        self.set_flag(cpu_flag::CARRY, left < right);
 
         // Auxiliary carry (borrow from bit 3)
         let aux_carry = (left & 0x0F) < (right & 0x0F);
-        self.set_flag(FLAG_AUXILIARY, aux_carry);
+        self.set_flag(cpu_flag::AUXILIARY, aux_carry);
 
         // Overflow flag (signed overflow)
         let left_sign = (left & 0x80) != 0;
         let right_sign = (right & 0x80) != 0;
         let result_sign = (result & 0x80) != 0;
         let overflow = left_sign != right_sign && left_sign != result_sign;
-        self.set_flag(FLAG_OVERFLOW, overflow);
+        self.set_flag(cpu_flag::OVERFLOW, overflow);
     }
 
     /// Helper function to set flags for 16-bit subtraction
     /// Used by CMPS and SCAS
     fn set_flags_sub_16(&mut self, left: u16, right: u16, result: u16) {
         // Zero, Sign, Parity flags (parity on low byte only)
-        self.set_flag(FLAG_ZERO, result == 0);
-        self.set_flag(FLAG_SIGN, (result & 0x8000) != 0);
-        self.set_flag(FLAG_PARITY, (result as u8).count_ones().is_multiple_of(2));
+        self.set_flag(cpu_flag::ZERO, result == 0);
+        self.set_flag(cpu_flag::SIGN, (result & 0x8000) != 0);
+        self.set_flag(cpu_flag::PARITY, (result as u8).count_ones().is_multiple_of(2));
 
         // Carry flag (set if borrow occurred)
-        self.set_flag(FLAG_CARRY, left < right);
+        self.set_flag(cpu_flag::CARRY, left < right);
 
         // Auxiliary carry (borrow from bit 3)
         let aux_carry = (left & 0x0F) < (right & 0x0F);
-        self.set_flag(FLAG_AUXILIARY, aux_carry);
+        self.set_flag(cpu_flag::AUXILIARY, aux_carry);
 
         // Overflow flag (signed overflow)
         let left_sign = (left & 0x8000) != 0;
         let right_sign = (right & 0x8000) != 0;
         let result_sign = (result & 0x8000) != 0;
         let overflow = left_sign != right_sign && left_sign != result_sign;
-        self.set_flag(FLAG_OVERFLOW, overflow);
+        self.set_flag(cpu_flag::OVERFLOW, overflow);
     }
 }

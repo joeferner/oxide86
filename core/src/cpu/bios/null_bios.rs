@@ -1,4 +1,4 @@
-use crate::{Bios, DriveParams, cpu::bios::{FindData, KeyPress, SeekMethod, SerialParams, SerialStatus, dos_errors, int14::line_status}, disk_errors};
+use crate::{Bios, DriveParams, cpu::bios::{FindData, KeyPress, SeekMethod, SerialParams, SerialStatus, PrinterStatus, dos_errors, int14::line_status, int17::printer_status}, disk_errors};
 
 /// A null I/O handler that does nothing (for testing or headless operation)
 pub struct NullBios;
@@ -126,6 +126,27 @@ impl Bios for NullBios {
         SerialStatus {
             line_status: line_status::TIMEOUT,
             modem_status: 0,
+        }
+    }
+
+    fn printer_init(&mut self, _printer: u8) -> PrinterStatus {
+        // No printer available - return timeout status
+        PrinterStatus {
+            status: printer_status::TIMEOUT,
+        }
+    }
+
+    fn printer_write(&mut self, _printer: u8, _ch: u8) -> PrinterStatus {
+        // No printer available - return timeout status
+        PrinterStatus {
+            status: printer_status::TIMEOUT,
+        }
+    }
+
+    fn printer_status(&self, _printer: u8) -> PrinterStatus {
+        // No printer available - return timeout status
+        PrinterStatus {
+            status: printer_status::TIMEOUT,
         }
     }
 

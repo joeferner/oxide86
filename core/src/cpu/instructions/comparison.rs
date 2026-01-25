@@ -1,4 +1,4 @@
-use super::super::{Cpu, FLAG_AUXILIARY, FLAG_CARRY, FLAG_OVERFLOW};
+use super::super::{Cpu, cpu_flag};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -31,8 +31,8 @@ impl Cpu {
             let overflow = ((dst ^ src) & (dst ^ result) & 0x8000) != 0;
 
             self.set_flags_16(result);
-            self.set_flag(FLAG_CARRY, carry);
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::CARRY, carry);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         } else {
             // 8-bit cmp
             let src = if dir {
@@ -51,9 +51,9 @@ impl Cpu {
             let aux_carry = (dst & 0x0F) < (src & 0x0F);
 
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, carry);
-            self.set_flag(FLAG_OVERFLOW, overflow);
-            self.set_flag(FLAG_AUXILIARY, aux_carry);
+            self.set_flag(cpu_flag::CARRY, carry);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
+            self.set_flag(cpu_flag::AUXILIARY, aux_carry);
         }
     }
 
@@ -70,8 +70,8 @@ impl Cpu {
             let overflow = ((self.ax ^ imm) & (self.ax ^ result) & 0x8000) != 0;
 
             self.set_flags_16(result);
-            self.set_flag(FLAG_CARRY, carry);
-            self.set_flag(FLAG_OVERFLOW, overflow);
+            self.set_flag(cpu_flag::CARRY, carry);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
         } else {
             // CMP AL, imm8
             let imm = self.fetch_byte(memory);
@@ -81,9 +81,9 @@ impl Cpu {
             let aux_carry = (al & 0x0F) < (imm & 0x0F);
 
             self.set_flags_8(result);
-            self.set_flag(FLAG_CARRY, carry);
-            self.set_flag(FLAG_OVERFLOW, overflow);
-            self.set_flag(FLAG_AUXILIARY, aux_carry);
+            self.set_flag(cpu_flag::CARRY, carry);
+            self.set_flag(cpu_flag::OVERFLOW, overflow);
+            self.set_flag(cpu_flag::AUXILIARY, aux_carry);
         }
     }
 }
