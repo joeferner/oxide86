@@ -28,8 +28,10 @@ pub struct Computer<
     io_port: IoPort<I>,
     video: Video,
     video_controller: V,
-    /// Cycle counter for timer emulation
+    /// Cycle counter for timer emulation (resets each tick)
     cycle_count: u64,
+    /// Total cycles executed (never resets)
+    total_cycles: u64,
     /// Cycles per timer tick (PIT frequency / 18.2 Hz)
     /// 8086 at 4.77 MHz: approximately 262144 cycles per tick
     cycles_per_tick: u64,
@@ -62,6 +64,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             video: Video::new(),
             video_controller,
             cycle_count: 0,
+            total_cycles: 0,
             // 8086 at 4.77 MHz with PIT at 18.2 Hz: ~262144 cycles per tick
             // This is approximate: 4770000 / 18.2 ≈ 262088
             cycles_per_tick: 262088,
@@ -279,10 +282,18 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         self.cpu.is_halted()
     }
 
+    /// Get total cycles executed
+    pub fn get_cycle_count(&self) -> u64 {
+        // Return total cycles: (cycles_per_tick * number of ticks) + remaining cycles
+        // For simplicity, we track a separate total
+        self.total_cycles
+    }
+
     /// Increment cycle counter and update system timer if needed
     /// This simulates the PIT (Programmable Interval Timer) running at 18.2 Hz
     fn increment_cycles(&mut self, cycles: u64) {
         self.cycle_count += cycles;
+        self.total_cycles += cycles;
 
         // Check if we've accumulated enough cycles for a timer tick
         if self.cycle_count >= self.cycles_per_tick {
