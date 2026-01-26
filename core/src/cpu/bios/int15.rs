@@ -11,6 +11,7 @@ impl Cpu {
             0x86 => self.int15_wait(memory),
             0x88 => self.int15_get_extended_memory(),
             0xC0 => self.int15_get_system_config(memory),
+            0xC1 => self.int15_get_ebda_segment(),
             _ => {
                 log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
@@ -115,5 +116,21 @@ impl Cpu {
         self.es = table_segment;
         self.bx = table_offset;
         self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 15h AH=C1h - Get Extended BIOS Data Area (EBDA) Segment Address
+    ///
+    /// Output:
+    ///   ES = segment of EBDA
+    ///   CF = 0 if successful, 1 if EBDA not present
+    ///
+    /// Note: The EBDA is a feature of AT-class and later machines.
+    /// Original PC/XT systems (8086) do not have an EBDA, so this function
+    /// returns CF=1 to indicate the function is not supported.
+    fn int15_get_ebda_segment(&mut self) {
+        // 8086/PC/XT systems do not have an Extended BIOS Data Area
+        // Return function not supported
+        self.set_flag(cpu_flag::CARRY, true);
+        log::info!("INT 15h AH=C1h: EBDA not present (8086/PC/XT system)");
     }
 }
