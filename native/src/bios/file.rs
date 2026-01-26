@@ -56,16 +56,28 @@ impl FileManager {
         match base_name {
             "NUL" => Some(DosDevice::Null),
             "CON" => Some(DosDevice::Console),
+            "AUX" | "COM1" | "COM2" | "COM3" | "COM4" => Some(DosDevice::Null), // Serial ports - stub as null
+            "PRN" | "LPT1" | "LPT2" | "LPT3" => Some(DosDevice::Null), // Printer ports - stub as null
             _ => None,
         }
     }
 
     /// Resolve a filename relative to the working directory
+    /// Handles DOS-style paths with backslashes and leading backslash as root
     fn resolve_path(&self, filename: &str) -> PathBuf {
-        let path = Path::new(filename);
-        if path.is_absolute() {
+        // Convert DOS backslashes to forward slashes
+        let normalized = filename.replace('\\', "/");
+
+        // Strip leading slash - DOS root path (\FOO.TXT) should map to working_dir/FOO.TXT
+        let trimmed = normalized.trim_start_matches('/');
+
+        // Check if it's a Unix absolute path (starts with /)
+        let path = Path::new(trimmed);
+        if filename.starts_with('/') && !filename.starts_with('\\') {
+            // Real Unix absolute path
             path.to_path_buf()
         } else {
+            // DOS path or relative path - resolve relative to working directory
             self.working_dir.join(path)
         }
     }
@@ -105,6 +117,9 @@ impl FileManager {
     }
 
     pub fn open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8> {
+        log::info!("FILE OPEN: filename='{}', access_mode=0x{:02X}, workdir={:?}",
+                   filename, access_mode, self.working_dir);
+
         let handle = self
             .allocate_handle()
             .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
@@ -116,6 +131,7 @@ impl FileManager {
         }
 
         let path = self.resolve_path(filename);
+        log::info!("FILE OPEN: resolved path={:?}", path);
 
         let mut options = OpenOptions::new();
         match access_mode {
@@ -133,6 +149,7 @@ impl FileManager {
 
         match options.open(&path) {
             Ok(file) => {
+                log::info!("FILE OPEN: Success, handle={}", handle);
                 self.open_files.insert(handle, file);
                 Ok(handle)
             }
@@ -142,6 +159,7 @@ impl FileManager {
                     io::ErrorKind::PermissionDenied => dos_errors::ACCESS_DENIED,
                     _ => dos_errors::FILE_NOT_FOUND,
                 };
+                log::warn!("FILE OPEN: Failed with error: {} (code=0x{:02X})", e, error_code);
                 Err(error_code)
             }
         }
@@ -198,9 +216,13 @@ impl FileManager {
             match file.read(&mut buffer) {
                 Ok(n) => {
                     buffer.truncate(n);
+                    log::debug!("FILE READ: handle={}, requested={}, read={} bytes", handle, max_bytes, n);
                     Ok(buffer)
                 }
-                Err(_) => Err(dos_errors::ACCESS_DENIED),
+                Err(e) => {
+                    log::warn!("FILE READ: handle={}, error: {}", handle, e);
+                    Err(dos_errors::ACCESS_DENIED)
+                }
             }
         } else {
             Err(dos_errors::INVALID_HANDLE)

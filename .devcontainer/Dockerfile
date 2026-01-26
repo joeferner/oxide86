@@ -4,7 +4,7 @@ RUN apt-get update
 
 # install wasm pack, flamegraph, and nasm
 RUN \
-  apt-get install -y linux-perf nasm \
+  apt-get install -y linux-perf nasm mtools \
   && rustup target add wasm32-unknown-unknown && cargo install wasm-pack \
   && cargo install flamegraph \
   && rm -rf /usr/local/cargo/registry
