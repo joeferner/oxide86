@@ -345,6 +345,15 @@ pub trait Bios {
 }
 
 impl Cpu {
+    /// Check if an interrupt vector still points to the BIOS area (F000 segment)
+    /// Returns true if the vector is in BIOS ROM area, false if DOS has installed its own handler
+    fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
+        let ivt_addr = (int_num as usize) * 4;
+        let segment = memory.read_word(ivt_addr + 2);
+        // BIOS handlers are in the F000 segment (ROM area)
+        segment == 0xF000
+    }
+
     /// Handle BIOS/DOS interrupts with provided I/O handler
     /// Returns true if the interrupt was handled, false if it should proceed normally
     pub(super) fn handle_bios_interrupt<T: Bios>(
@@ -391,23 +400,39 @@ impl Cpu {
                 self.handle_int1a(memory, io);
                 true
             }
+            // DOS interrupts: only handle if DOS hasn't installed its own handler
             0x20 => {
+                if !Self::is_bios_handler(memory, int_num) {
+                    return false; // Let DOS handle it
+                }
                 self.handle_int20();
                 true
             }
             0x21 => {
+                if !Self::is_bios_handler(memory, int_num) {
+                    return false; // Let DOS handle it
+                }
                 self.handle_int21(memory, io);
                 true
             }
             0x29 => {
+                if !Self::is_bios_handler(memory, int_num) {
+                    return false; // Let DOS handle it
+                }
                 self.handle_int29(memory, io);
                 true
             }
             0x2A => {
+                if !Self::is_bios_handler(memory, int_num) {
+                    return false; // Let DOS handle it
+                }
                 self.handle_int2a();
                 true
             }
             0x2F => {
+                if !Self::is_bios_handler(memory, int_num) {
+                    return false; // Let DOS handle it
+                }
                 self.handle_int2f(memory, io);
                 true
             }
