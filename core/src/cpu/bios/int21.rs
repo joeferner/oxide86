@@ -59,7 +59,12 @@ impl Cpu {
         match function {
             0x01 => self.int21_read_char_with_echo(io, video),
             0x02 => self.int21_write_char(video),
+            0x06 => self.int21_direct_console_io(io, video),
+            0x07 => self.int21_direct_console_input(io),
+            0x08 => self.int21_console_input_no_echo(io),
             0x09 => self.int21_write_string(memory, video),
+            0x0B => self.int21_check_input_status(io),
+            0x0C => self.int21_flush_and_input(io, video),
             0x0E => self.int21_select_disk(io),
             0x19 => self.int21_get_current_drive(io),
             0x25 => self.int21_set_interrupt_vector(memory),
@@ -117,6 +122,52 @@ impl Cpu {
         self.ax = saved_ax;
     }
 
+    /// INT 21h, AH=06h - Direct Console I/O
+    /// Input: DL = character to output (if DL != 0xFF), or 0xFF to request input
+    /// Output: If DL = 0xFF on entry:
+    ///   ZF clear: AL = character read from input
+    ///   ZF set: No character available (AL = 0)
+    fn int21_direct_console_io<T: Bios>(&mut self, io: &mut T, video: &mut crate::video::Video) {
+        let dl = (self.dx & 0xFF) as u8;
+
+        if dl == 0xFF {
+            // Input mode - check for available character
+            if let Some(ch) = io.check_char() {
+                self.ax = (self.ax & 0xFF00) | (ch as u16);
+                self.set_flag(cpu_flag::ZERO, false); // Character available
+            } else {
+                self.ax &= 0xFF00;
+                self.set_flag(cpu_flag::ZERO, true); // No character available
+            }
+        } else {
+            // Output mode - write character
+            let saved_ax = self.ax;
+            self.ax = (self.ax & 0xFF00) | (dl as u16);
+            self.int10_teletype_output(video);
+            self.ax = saved_ax;
+        }
+    }
+
+    /// INT 21h, AH=07h - Direct Console Input Without Echo
+    /// Waits for a character from stdin without echoing it
+    /// Output: AL = character read
+    fn int21_direct_console_input<T: Bios>(&mut self, io: &mut T) {
+        if let Some(ch) = io.read_char() {
+            self.ax = (self.ax & 0xFF00) | (ch as u16);
+        }
+        // If no character available, just return with whatever is in AL
+    }
+
+    /// INT 21h, AH=08h - Console Input Without Echo
+    /// Same as 07h but checks for Ctrl-Break
+    /// Output: AL = character read
+    fn int21_console_input_no_echo<T: Bios>(&mut self, io: &mut T) {
+        if let Some(ch) = io.read_char() {
+            self.ax = (self.ax & 0xFF00) | (ch as u16);
+        }
+        // If no character available, just return with whatever is in AL
+    }
+
     /// INT 21h, AH=09h - Write String to STDOUT
     /// Input: DS:DX = pointer to '$'-terminated string
     fn int21_write_string(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
@@ -135,6 +186,43 @@ impl Cpu {
         }
 
         self.ax = saved_ax;
+    }
+
+    /// INT 21h, AH=0Bh - Check Standard Input Status
+    /// Output:
+    ///   AL = 0xFF if character available
+    ///   AL = 0x00 if no character available
+    fn int21_check_input_status<T: Bios>(&mut self, io: &T) {
+        if io.has_char_available() {
+            self.ax = (self.ax & 0xFF00) | 0xFF;
+        } else {
+            self.ax &= 0xFF00;
+        }
+    }
+
+    /// INT 21h, AH=0Ch - Clear Keyboard Buffer and Invoke Keyboard Function
+    /// Input:
+    ///   AL = keyboard function to invoke (01h, 06h, 07h, 08h, or 0Ah)
+    /// Output: As per the specified function
+    fn int21_flush_and_input<T: Bios>(&mut self, io: &mut T, video: &mut crate::video::Video) {
+        // Clear the keyboard buffer (consume any pending input)
+        while io.check_char().is_some() {}
+
+        // Now invoke the specified function
+        let subfunc = (self.ax & 0xFF) as u8;
+        match subfunc {
+            0x01 => self.int21_read_char_with_echo(io, video),
+            0x06 => self.int21_direct_console_io(io, video),
+            0x07 => self.int21_direct_console_input(io),
+            0x08 => self.int21_console_input_no_echo(io),
+            _ => {
+                // Function 0x0A (buffered input) not implemented
+                log::warn!(
+                    "INT 21h AH=0Ch: Unsupported subfunction AL=0x{:02X}",
+                    subfunc
+                );
+            }
+        }
     }
 
     /// INT 21h, AH=19h - Get Current Default Drive

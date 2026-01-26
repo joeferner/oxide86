@@ -8,11 +8,17 @@ impl Cpu {
 
         match function {
             0x00 => self.int10_set_video_mode(video),
+            0x01 => self.int10_set_cursor_shape(memory),
             0x02 => self.int10_set_cursor_position(video),
+            0x03 => self.int10_get_cursor_position(memory, video),
             0x06 => self.int10_scroll_up(video),
             0x07 => self.int10_scroll_down(video),
+            0x08 => self.int10_read_char_attr(video),
             0x09 => self.int10_write_char_attr(memory, video),
             0x0E => self.int10_teletype_output(video),
+            0x0F => self.int10_get_video_mode(video),
+            0x10 => self.int10_palette_registers(),
+            0x12 => self.int10_alternate_function_select(),
             0x13 => self.int10_write_string(memory, video),
             _ => {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
@@ -162,6 +168,22 @@ impl Cpu {
         }
     }
 
+    /// INT 10h, AH=08h - Read Character and Attribute at Cursor Position
+    /// Input:
+    ///   BH = page number (0 for text mode)
+    /// Output:
+    ///   AH = attribute byte
+    ///   AL = character
+    fn int10_read_char_attr(&mut self, video: &crate::video::Video) {
+        let cursor = video.get_cursor();
+        let offset = (cursor.row * 80 + cursor.col) * 2;
+
+        let ch = video.read_byte(offset);
+        let attr = video.read_byte(offset + 1);
+
+        self.ax = ((attr as u16) << 8) | (ch as u16);
+    }
+
     /// INT 10h, AH=09h - Write Character and Attribute at Cursor
     /// Input:
     ///   AL = character to write
@@ -301,6 +323,202 @@ impl Cpu {
         // Restore cursor if mode doesn't update it
         if !update_cursor {
             video.set_cursor(row as usize, col as usize);
+        }
+    }
+
+    /// INT 10h, AH=01h - Set Cursor Shape
+    /// Input:
+    ///   CH = cursor start scan line (bits 0-4), cursor options (bits 5-6)
+    ///   CL = cursor end scan line (bits 0-4)
+    /// Output: None
+    fn int10_set_cursor_shape(&mut self, memory: &mut Memory) {
+        let start_line = (self.cx >> 8) as u8; // CH
+        let end_line = (self.cx & 0xFF) as u8; // CL
+
+        // Store cursor shape in BDA
+        memory.write_byte(
+            crate::memory::BDA_START + crate::memory::BDA_CURSOR_START_LINE,
+            start_line,
+        );
+        memory.write_byte(
+            crate::memory::BDA_START + crate::memory::BDA_CURSOR_END_LINE,
+            end_line,
+        );
+    }
+
+    /// INT 10h, AH=03h - Get Cursor Position and Shape
+    /// Input:
+    ///   BH = page number
+    /// Output:
+    ///   CH = cursor start scan line
+    ///   CL = cursor end scan line
+    ///   DH = row
+    ///   DL = column
+    fn int10_get_cursor_position(&mut self, memory: &Memory, video: &crate::video::Video) {
+        let cursor = video.get_cursor();
+
+        // Get cursor shape from BDA
+        let start_line =
+            memory.read_byte(crate::memory::BDA_START + crate::memory::BDA_CURSOR_START_LINE);
+        let end_line =
+            memory.read_byte(crate::memory::BDA_START + crate::memory::BDA_CURSOR_END_LINE);
+
+        // Return cursor shape in CX
+        self.cx = ((start_line as u16) << 8) | (end_line as u16);
+
+        // Return cursor position in DX
+        self.dx = ((cursor.row as u16) << 8) | (cursor.col as u16);
+    }
+
+    /// INT 10h, AH=0Fh - Get Current Video Mode
+    /// Input: None
+    /// Output:
+    ///   AH = number of screen columns
+    ///   AL = video mode
+    ///   BH = active display page
+    fn int10_get_video_mode(&mut self, video: &crate::video::Video) {
+        let mode = video.get_mode();
+        let columns: u8 = 80; // Standard 80-column mode
+        let page: u8 = 0; // Active page 0
+
+        self.ax = ((columns as u16) << 8) | (mode as u16);
+        self.bx = (self.bx & 0x00FF) | ((page as u16) << 8);
+    }
+
+    /// INT 10h, AH=10h - Set/Get Palette Registers
+    /// Subfunction in AL:
+    ///   00h = Set individual palette register
+    ///   01h = Set border color
+    ///   02h = Set all palette registers
+    ///   03h = Toggle intensity/blinking bit
+    ///   07h = Read individual palette register
+    ///   08h = Read overscan register
+    ///   09h = Read all palette registers
+    ///   10h = Set individual DAC register
+    ///   12h = Set block of DAC registers
+    ///   15h = Read individual DAC register
+    ///   17h = Read block of DAC registers
+    ///   1Ah = Read color page state
+    ///   1Bh = Perform gray-scale summing
+    fn int10_palette_registers(&mut self) {
+        let subfunction = (self.ax & 0xFF) as u8; // AL
+
+        match subfunction {
+            0x00 => {
+                // Set individual palette register
+                // BL = palette register number, BH = value
+                log::trace!("INT 10h/AH=10h/AL=00h: Set palette register");
+            }
+            0x01 => {
+                // Set border (overscan) color
+                // BH = border color value
+                log::trace!("INT 10h/AH=10h/AL=01h: Set border color");
+            }
+            0x02 => {
+                // Set all palette registers and border
+                // ES:DX -> 17-byte table
+                log::trace!("INT 10h/AH=10h/AL=02h: Set all palette registers");
+            }
+            0x03 => {
+                // Toggle intensity/blinking bit
+                // BL = 0 enable intensity, 1 enable blinking
+                log::trace!("INT 10h/AH=10h/AL=03h: Toggle blink/intensity");
+            }
+            0x10 => {
+                // Set individual DAC register
+                // BX = register number, CH = green, CL = blue, DH = red
+                log::trace!("INT 10h/AH=10h/AL=10h: Set DAC register");
+            }
+            0x12 => {
+                // Set block of DAC registers
+                // BX = first register, CX = count, ES:DX -> table
+                log::trace!("INT 10h/AH=10h/AL=12h: Set DAC register block");
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 10h/AH=10h palette subfunction: AL=0x{:02X}",
+                    subfunction
+                );
+            }
+        }
+    }
+
+    /// INT 10h, AH=12h - Video Alternate Function Select
+    /// BL = subfunction:
+    ///   10h = Get EGA info
+    ///   30h = Select vertical resolution
+    ///   31h = Palette loading
+    ///   32h = Video enable/disable
+    ///   33h = Summing
+    ///   34h = Cursor emulation
+    ///   35h = Display switch
+    ///   36h = Video refresh control
+    fn int10_alternate_function_select(&mut self) {
+        let subfunction = (self.bx & 0xFF) as u8; // BL
+
+        match subfunction {
+            0x10 => {
+                // Get EGA info
+                // Returns: BH = color/mono mode, BL = memory size, CH = feature bits, CL = switch setting
+                self.bx = 0x0003; // BH=0 (color mode), BL=3 (256KB video memory)
+                self.cx = 0x0000; // CH=0, CL=0
+                log::trace!("INT 10h/AH=12h/BL=10h: Get EGA info");
+            }
+            0x30 => {
+                // Select vertical resolution
+                // AL = resolution (0=200, 1=350, 2=400)
+                // Returns: AL = 12h if function supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::trace!("INT 10h/AH=12h/BL=30h: Select vertical resolution");
+            }
+            0x31 => {
+                // Palette loading (enable/disable default palette loading)
+                // AL = 0 enable, 1 disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::trace!("INT 10h/AH=12h/BL=31h: Palette loading control");
+            }
+            0x32 => {
+                // Video enable/disable
+                // AL = 0 enable, 1 disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::trace!("INT 10h/AH=12h/BL=32h: Video enable/disable");
+            }
+            0x33 => {
+                // Gray-scale summing enable/disable
+                // AL = 0 enable, 1 disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::trace!("INT 10h/AH=12h/BL=33h: Gray-scale summing");
+            }
+            0x34 => {
+                // Cursor emulation enable/disable
+                // AL = 0 enable, 1 disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::trace!("INT 10h/AH=12h/BL=34h: Cursor emulation");
+            }
+            0x35 => {
+                // Display switch interface
+                // AL = 0 initial switch, 80h adapter off, FF disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::trace!("INT 10h/AH=12h/BL=35h: Display switch");
+            }
+            0x36 => {
+                // Video refresh control
+                // AL = 0 enable refresh, 1 disable refresh
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::trace!("INT 10h/AH=12h/BL=36h: Video refresh control");
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 10h/AH=12h alternate function: BL=0x{:02X}",
+                    subfunction
+                );
+            }
         }
     }
 

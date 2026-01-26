@@ -66,6 +66,14 @@ impl Bios for NullBios {
         None
     }
 
+    fn check_char(&mut self) -> Option<u8> {
+        None
+    }
+
+    fn has_char_available(&self) -> bool {
+        false
+    }
+
     fn write_char(&mut self, _ch: u8) {
         // Do nothing
     }

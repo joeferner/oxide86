@@ -7,5 +7,8 @@ cd "${SCRIPT_DIR}/.."
 
 cargo fmt
 cargo build --all
-cargo clippy --all
+cargo clippy --all -- -D warnings
 cargo test --all
+
+echo ""
+echo "Complete!"

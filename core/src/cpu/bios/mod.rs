@@ -140,8 +140,16 @@ pub struct ExecResult {
 /// Trait for handling BIOS interrupt I/O operations
 /// Platform-specific code (native, WASM) implements this to provide actual I/O
 pub trait Bios {
-    /// Read a character from standard input
+    /// Read a character from standard input (blocking)
     fn read_char(&mut self) -> Option<u8>;
+
+    /// Check if a character is available and return it (non-blocking)
+    /// Used by INT 21h, AH=06h (Direct Console I/O)
+    fn check_char(&mut self) -> Option<u8>;
+
+    /// Check if a character is available without consuming it
+    /// Used by INT 21h, AH=0Bh (Check Input Status)
+    fn has_char_available(&self) -> bool;
 
     /// Write a character to standard output
     fn write_char(&mut self, ch: u8);

@@ -77,6 +77,14 @@ impl<D: DiskController> Bios for NativeBios<D> {
         console::read_char()
     }
 
+    fn check_char(&mut self) -> Option<u8> {
+        console::check_char()
+    }
+
+    fn has_char_available(&self) -> bool {
+        console::has_char_available()
+    }
+
     fn write_char(&mut self, ch: u8) {
         console::write_char(ch);
     }
