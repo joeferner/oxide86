@@ -12,6 +12,7 @@ pub mod int17;
 mod int1a;
 mod int20;
 mod int21;
+mod int28;
 mod int29;
 mod int2a;
 mod int2f;
@@ -422,6 +423,13 @@ impl Cpu {
                     return false; // Let DOS handle it
                 }
                 self.handle_int21(memory, io);
+                true
+            }
+            0x28 => {
+                if !Self::is_bios_handler(memory, int_num) {
+                    return false; // Let DOS handle it
+                }
+                self.handle_int28();
                 true
             }
             0x29 => {

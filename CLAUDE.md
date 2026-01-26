@@ -80,6 +80,7 @@ self.set_flag(cpu_flag::CARRY, false);  // clear
 | 1Ah | Time | 00h get ticks, 01h set, 02h RTC |
 | 20h | Terminate | Program terminate (halt CPU) |
 | 21h | DOS | Console, files, dirs, memory, exec |
+| 28h | Idle | TSR hook during keyboard wait |
 | 29h | FastCon | AL = char to output |
 | 2Ah | Network | Installation check, critical sections |
 | 2Fh | Multiplex | TSR checks (return AL=0 not installed) |
