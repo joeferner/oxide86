@@ -40,7 +40,12 @@ pub mod file_access {
 impl Cpu {
     /// INT 0x21 - DOS Services
     /// AH register contains the function number
-    pub(super) fn handle_int21<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    pub(super) fn handle_int21<T: Bios>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut T,
+        video: &mut crate::video::Video,
+    ) {
         let function = (self.ax >> 8) as u8; // Get AH directly
         log::trace!(
             "INT 21h AH=0x{:02X}, AX=0x{:04X}, BX=0x{:04X}, CX=0x{:04X}, DX=0x{:04X}",
@@ -52,9 +57,9 @@ impl Cpu {
         );
 
         match function {
-            0x01 => self.int21_read_char_with_echo(io),
-            0x02 => self.int21_write_char(io),
-            0x09 => self.int21_write_string(memory, io),
+            0x01 => self.int21_read_char_with_echo(io, video),
+            0x02 => self.int21_write_char(video),
+            0x09 => self.int21_write_string(memory, video),
             0x0E => self.int21_select_disk(io),
             0x19 => self.int21_get_current_drive(io),
             0x25 => self.int21_set_interrupt_vector(memory),
@@ -68,7 +73,7 @@ impl Cpu {
             0x3D => self.int21_open_file(memory, io),
             0x3E => self.int21_close_file(io),
             0x3F => self.int21_read_file(memory, io),
-            0x40 => self.int21_write_file(memory, io),
+            0x40 => self.int21_write_file(memory, io, video),
             0x42 => self.int21_seek_file(io),
             0x44 => self.int21_ioctl(io),
             0x45 => self.int21_duplicate_file(io),
@@ -90,38 +95,46 @@ impl Cpu {
 
     /// INT 21h, AH=01h - Read Character from STDIN with Echo
     /// Returns: AL = character read
-    fn int21_read_char_with_echo<T: Bios>(&mut self, io: &mut T) {
+    fn int21_read_char_with_echo<T: Bios>(&mut self, io: &mut T, video: &mut crate::video::Video) {
         if let Some(ch) = io.read_char() {
-            // Echo the character
-            io.write_char(ch);
-            // Store in AL
+            // Echo the character via teletype output
+            let saved_ax = self.ax;
             self.ax = (self.ax & 0xFF00) | (ch as u16);
+            self.int10_teletype_output(video);
+            // Store in AL (restore AH, keep AL as the character)
+            self.ax = (saved_ax & 0xFF00) | (ch as u16);
         }
     }
 
     /// INT 21h, AH=02h - Write Character to STDOUT
     /// Input: DL = character to write
-    fn int21_write_char<T: Bios>(&mut self, io: &mut T) {
+    fn int21_write_char(&mut self, video: &mut crate::video::Video) {
         let ch = self.get_reg8(2); // DL register
-        io.write_char(ch);
+        // Use teletype output for proper screen handling
+        let saved_ax = self.ax;
+        self.ax = (self.ax & 0xFF00) | (ch as u16);
+        self.int10_teletype_output(video);
+        self.ax = saved_ax;
     }
 
     /// INT 21h, AH=09h - Write String to STDOUT
     /// Input: DS:DX = pointer to '$'-terminated string
-    fn int21_write_string<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_write_string(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
         let mut addr = Self::physical_address(self.ds, self.dx);
-        let mut output = String::new();
+        let saved_ax = self.ax;
 
         loop {
             let ch = memory.read_byte(addr);
             if ch == b'$' {
                 break;
             }
-            output.push(ch as char);
+            // Use teletype output for each character
+            self.ax = (self.ax & 0xFF00) | (ch as u16);
+            self.int10_teletype_output(video);
             addr += 1;
         }
 
-        io.write_str(&output);
+        self.ax = saved_ax;
     }
 
     /// INT 21h, AH=19h - Get Current Default Drive
@@ -336,12 +349,34 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = number of bytes written
     ///   CF set if error: AX = error code
-    fn int21_write_file<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_write_file<T: Bios>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut T,
+        video: &mut crate::video::Video,
+    ) {
         let handle = self.bx;
         let num_bytes = self.cx;
 
         // Read data from DS:DX
         let buffer_addr = Self::physical_address(self.ds, self.dx);
+
+        // For stdout (1) and stderr (2), use video teletype output
+        if handle == 1 || handle == 2 {
+            let saved_ax = self.ax;
+            for i in 0..num_bytes {
+                let ch = memory.read_byte(buffer_addr + i as usize);
+                self.ax = (self.ax & 0xFF00) | (ch as u16);
+                self.int10_teletype_output(video);
+            }
+            self.ax = saved_ax;
+            // Report all bytes written
+            self.ax = num_bytes;
+            self.set_flag(cpu_flag::CARRY, false);
+            return;
+        }
+
+        // For other handles, use file I/O
         let mut data = Vec::with_capacity(num_bytes as usize);
         for i in 0..num_bytes {
             data.push(memory.read_byte(buffer_addr + i as usize));

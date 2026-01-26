@@ -261,9 +261,10 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         if self.video.is_dirty() {
             self.video_controller
                 .update_display(self.video.get_buffer());
-            self.video_controller.update_cursor(self.video.get_cursor());
             self.video.clear_dirty();
         }
+        // Always update cursor position (cursor moves don't dirty the buffer)
+        self.video_controller.update_cursor(self.video.get_cursor());
     }
 
     /// Get video buffer for inspection

@@ -422,7 +422,7 @@ impl Cpu {
                 if !Self::is_bios_handler(memory, int_num) {
                     return false; // Let DOS handle it
                 }
-                self.handle_int21(memory, io);
+                self.handle_int21(memory, io, video);
                 true
             }
             0x28 => {
@@ -436,7 +436,7 @@ impl Cpu {
                 if !Self::is_bios_handler(memory, int_num) {
                     return false; // Let DOS handle it
                 }
-                self.handle_int29(memory, io);
+                self.handle_int29(video);
                 true
             }
             0x2A => {

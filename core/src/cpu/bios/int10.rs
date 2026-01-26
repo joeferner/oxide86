@@ -9,10 +9,10 @@ impl Cpu {
         match function {
             0x00 => self.int10_set_video_mode(video),
             0x02 => self.int10_set_cursor_position(video),
-            0x06 => self.int10_scroll_up(memory, video),
-            0x07 => self.int10_scroll_down(memory, video),
+            0x06 => self.int10_scroll_up(video),
+            0x07 => self.int10_scroll_down(video),
             0x09 => self.int10_write_char_attr(memory, video),
-            0x0E => self.int10_teletype_output(memory, video),
+            0x0E => self.int10_teletype_output(video),
             0x13 => self.int10_write_string(memory, video),
             _ => {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
@@ -61,7 +61,7 @@ impl Cpu {
     ///   DH = row of lower-right corner
     ///   DL = column of lower-right corner
     /// Output: None
-    fn int10_scroll_up(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
+    fn int10_scroll_up(&mut self, video: &mut crate::video::Video) {
         let lines = (self.ax & 0xFF) as u8; // AL
         let attr = (self.bx >> 8) as u8; // BH
         let top = (self.cx >> 8) as u8; // CH
@@ -91,11 +91,10 @@ impl Cpu {
                     let src_row = row + lines;
 
                     if src_row <= bottom {
-                        // Copy from below
+                        // Copy from below - read from video buffer, not memory
                         let src_offset = (src_row as usize * 80 + col as usize) * 2;
-                        let src_addr = 0xB8000 + src_offset;
-                        let ch = memory.read_byte(src_addr);
-                        let at = memory.read_byte(src_addr + 1);
+                        let ch = video.read_byte(src_offset);
+                        let at = video.read_byte(src_offset + 1);
                         video.write_byte(dest_offset, ch);
                         video.write_byte(dest_offset + 1, at);
                     } else {
@@ -117,7 +116,7 @@ impl Cpu {
     ///   DH = row of lower-right corner
     ///   DL = column of lower-right corner
     /// Output: None
-    fn int10_scroll_down(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
+    fn int10_scroll_down(&mut self, video: &mut crate::video::Video) {
         let lines = (self.ax & 0xFF) as u8; // AL
         let attr = (self.bx >> 8) as u8; // BH
         let top = (self.cx >> 8) as u8; // CH
@@ -146,12 +145,11 @@ impl Cpu {
                     let dest_offset = (row as usize * 80 + col as usize) * 2;
 
                     if row >= top + lines {
-                        // Copy from above
+                        // Copy from above - read from video buffer, not memory
                         let src_row = row - lines;
                         let src_offset = (src_row as usize * 80 + col as usize) * 2;
-                        let src_addr = 0xB8000 + src_offset;
-                        let ch = memory.read_byte(src_addr);
-                        let at = memory.read_byte(src_addr + 1);
+                        let ch = video.read_byte(src_offset);
+                        let at = video.read_byte(src_offset + 1);
                         video.write_byte(dest_offset, ch);
                         video.write_byte(dest_offset + 1, at);
                     } else {
@@ -195,7 +193,7 @@ impl Cpu {
     ///   BL = foreground color (in graphics modes)
     ///   BH = page number (0 for text mode)
     /// Output: None
-    fn int10_teletype_output(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
+    pub(crate) fn int10_teletype_output(&mut self, video: &mut crate::video::Video) {
         let ch = (self.ax & 0xFF) as u8; // AL
         let cursor = video.get_cursor();
 
@@ -208,7 +206,7 @@ impl Cpu {
                 // Line feed - move to next line
                 let new_row = if cursor.row >= 24 {
                     // Need to scroll
-                    self.scroll_up_internal(memory, video, 1);
+                    self.scroll_up_internal(video, 1);
                     24
                 } else {
                     cursor.row + 1
@@ -232,7 +230,7 @@ impl Cpu {
                 if new_col >= 80 {
                     // Wrap to next line
                     let new_row = if cursor.row >= 24 {
-                        self.scroll_up_internal(memory, video, 1);
+                        self.scroll_up_internal(video, 1);
                         24
                     } else {
                         cursor.row + 1
@@ -307,12 +305,7 @@ impl Cpu {
     }
 
     /// Helper function for internal scrolling (used by teletype)
-    fn scroll_up_internal(
-        &mut self,
-        memory: &mut Memory,
-        video: &mut crate::video::Video,
-        lines: u8,
-    ) {
+    fn scroll_up_internal(&mut self, video: &mut crate::video::Video, lines: u8) {
         // Save registers
         let saved_ax = self.ax;
         let saved_bx = self.bx;
@@ -325,7 +318,7 @@ impl Cpu {
         self.cx = 0x0000; // CH=0, CL=0 (top-left)
         self.dx = 0x184F; // DH=24, DL=79 (bottom-right)
 
-        self.int10_scroll_up(memory, video);
+        self.int10_scroll_up(video);
 
         // Restore registers
         self.ax = saved_ax;

@@ -136,6 +136,26 @@ impl Video {
         }
     }
 
+    /// Read a single byte from video memory
+    pub fn read_byte(&self, offset: usize) -> u8 {
+        if offset >= TEXT_MODE_BUFFER_SIZE {
+            return 0;
+        }
+
+        let cell_index = offset / 2;
+        if cell_index >= self.buffer.len() {
+            return 0;
+        }
+
+        if offset.is_multiple_of(2) {
+            // Even offset: character
+            self.buffer[cell_index].character
+        } else {
+            // Odd offset: attribute
+            self.buffer[cell_index].attribute.to_byte()
+        }
+    }
+
     /// Update a single byte in video memory
     pub fn write_byte(&mut self, offset: usize, value: u8) {
         if offset >= TEXT_MODE_BUFFER_SIZE {
