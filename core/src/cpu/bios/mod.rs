@@ -12,10 +12,12 @@ pub mod int17;
 mod int1a;
 mod int20;
 mod int21;
+mod int25;
 mod int28;
 mod int29;
 mod int2a;
 mod int2f;
+mod int35_3f;
 pub mod null_bios;
 
 use super::Cpu;
@@ -211,6 +213,29 @@ pub trait Bios {
     /// Returns Ok(false) if disk not changed, Ok(true) if disk changed,
     /// or Err(error_code) on error
     fn disk_detect_change(&mut self, drive: u8) -> Result<bool, u8>;
+
+    /// Format track (INT 13h, AH=05h)
+    /// Formats a track by filling sectors with zeros
+    /// Returns Ok(()) on success, or Err(error_code) on failure
+    fn disk_format_track(
+        &mut self,
+        drive: u8,
+        cylinder: u8,
+        head: u8,
+        sectors_per_track: u8,
+    ) -> Result<(), u8>;
+
+    /// Read sectors using logical sector addressing (INT 25h)
+    /// drive: DOS drive number (0=A, 1=B, 2=C, etc.)
+    /// start_sector: starting logical sector number
+    /// count: number of sectors to read
+    /// Returns the read data on success, or error code on failure
+    fn disk_read_sectors_lba(
+        &mut self,
+        drive: u8,
+        start_sector: u32,
+        count: u16,
+    ) -> Result<Vec<u8>, u8>;
 
     // --- INT 21h - DOS File Services ---
 
@@ -433,6 +458,13 @@ impl Cpu {
                 self.handle_int21(memory, io, video);
                 true
             }
+            0x25 => {
+                if !Self::is_bios_handler(memory, int_num) {
+                    return false; // Let DOS handle it
+                }
+                self.handle_int25(memory, io);
+                true
+            }
             0x28 => {
                 if !Self::is_bios_handler(memory, int_num) {
                     return false; // Let DOS handle it
@@ -459,6 +491,13 @@ impl Cpu {
                     return false; // Let DOS handle it
                 }
                 self.handle_int2f(memory, io);
+                true
+            }
+            0x35..=0x3F => {
+                if !Self::is_bios_handler(memory, int_num) {
+                    return false; // Let DOS handle it
+                }
+                self.handle_int35_3f(int_num);
                 true
             }
             // Other BIOS interrupts can be added here

@@ -1,11 +1,14 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use emu86_core::{Computer, DiskGeometry, DiskImage};
+use emu86_core::{BackedDisk, Computer};
 use std::fs::File;
 use std::time::{Duration, Instant};
 
 mod bios;
 use bios::NativeBios;
+
+mod disk_backend;
+use disk_backend::FileDiskBackend;
 
 mod simple_io_device;
 use simple_io_device::SimpleIoDevice;
@@ -71,58 +74,48 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Create BIOS with no drives attached
-    let mut bios: NativeBios<DiskImage> = NativeBios::new();
+    let mut bios: NativeBios<BackedDisk<FileDiskBackend>> = NativeBios::new();
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {
-        let disk_data = std::fs::read(path)
-            .with_context(|| format!("Failed to read floppy A: image: {}", path))?;
-        let disk = DiskImage::new(disk_data)
-            .with_context(|| format!("Failed to create disk image from: {}", path))?;
+        let backend = FileDiskBackend::open(path, false)?;
+        let disk = BackedDisk::new(backend)
+            .with_context(|| format!("Failed to create disk from: {}", path))?;
         bios.insert_floppy(0, disk)
             .map_err(|e| anyhow::anyhow!("Failed to insert floppy A:: {}", e))?;
-        log::info!("Loaded floppy A: from {}", path);
+        log::info!("Opened floppy A: from {}", path);
     }
 
     // Load floppy B:
     if let Some(path) = &cli.floppy_b {
-        let disk_data = std::fs::read(path)
-            .with_context(|| format!("Failed to read floppy B: image: {}", path))?;
-        let disk = DiskImage::new(disk_data)
-            .with_context(|| format!("Failed to create disk image from: {}", path))?;
+        let backend = FileDiskBackend::open(path, false)?;
+        let disk = BackedDisk::new(backend)
+            .with_context(|| format!("Failed to create disk from: {}", path))?;
         bios.insert_floppy(1, disk)
             .map_err(|e| anyhow::anyhow!("Failed to insert floppy B:: {}", e))?;
-        log::info!("Loaded floppy B: from {}", path);
+        log::info!("Opened floppy B: from {}", path);
     }
 
     // Load hard drives (C:, D:, etc.)
     for (i, path) in cli.hard_disks.iter().enumerate() {
-        let disk_data = std::fs::read(path)
-            .with_context(|| format!("Failed to read hard disk image: {}", path))?;
-        let disk = DiskImage::new(disk_data)
-            .with_context(|| format!("Failed to create disk image from: {}", path))?;
+        let backend = FileDiskBackend::open(path, false)?;
+        let disk = BackedDisk::new(backend)
+            .with_context(|| format!("Failed to create disk from: {}", path))?;
         let drive_num = bios.add_hard_drive(disk);
         let drive_letter = (b'C' + i as u8) as char;
         log::info!(
-            "Loaded hard drive {}: (0x{:02X}) from {}",
+            "Opened hard drive {}: (0x{:02X}) from {}",
             drive_letter,
             drive_num,
             path
         );
     }
 
-    // If no drives specified and booting, create an empty floppy
-    if cli.floppy_a.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() {
-        if cli.boot {
-            return Err(anyhow::anyhow!(
-                "No disk images specified. Use --floppy-a, --floppy-b, or --hdd to specify disk images."
-            ));
-        }
-        // For non-boot mode with a program, create an empty floppy for potential file access
-        let empty_disk = DiskImage::empty(DiskGeometry::FLOPPY_1440K);
-        bios.insert_floppy(0, empty_disk)
-            .map_err(|e| anyhow::anyhow!("Failed to create empty floppy: {}", e))?;
-        log::info!("Created empty 1.44MB floppy A:");
+    // If no drives specified and booting, error out
+    if cli.floppy_a.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() && cli.boot {
+        return Err(anyhow::anyhow!(
+            "No disk images specified. Use --floppy-a, --floppy-b, or --hdd to specify disk images."
+        ));
     }
 
     let io_device = SimpleIoDevice::new(cli.verbose_io);

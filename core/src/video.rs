@@ -122,6 +122,8 @@ pub struct Video {
     buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
     /// Current video mode
     mode: u8,
+    /// Active display page (0-7 for text modes)
+    active_page: u8,
     /// Dirty flag to minimize unnecessary updates
     dirty: bool,
 }
@@ -132,6 +134,7 @@ impl Video {
             cursor: CursorPosition::default(),
             buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
             mode: 0x03, // 80x25 text mode
+            active_page: 0,
             dirty: false,
         }
     }
@@ -219,6 +222,17 @@ impl Video {
     /// Get current video mode
     pub fn get_mode(&self) -> u8 {
         self.mode
+    }
+
+    /// Set active display page
+    pub fn set_active_page(&mut self, page: u8) {
+        self.active_page = page;
+        self.dirty = true;
+    }
+
+    /// Get active display page
+    pub fn get_active_page(&self) -> u8 {
+        self.active_page
     }
 }
 

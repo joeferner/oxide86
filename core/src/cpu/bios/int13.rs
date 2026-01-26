@@ -44,6 +44,7 @@ impl Cpu {
             0x00 => self.int13_reset_disk(io),
             0x02 => self.int13_read_sectors(memory, io),
             0x03 => self.int13_write_sectors(memory, io),
+            0x05 => self.int13_format_track(io),
             0x08 => self.int13_get_drive_params(io),
             0x15 => self.int13_get_disk_type(io),
             0x16 => self.int13_detect_disk_change(io),
@@ -164,6 +165,38 @@ impl Cpu {
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.ax &= 0xFF00; // AL = 0 (no sectors written)
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 13h, AH=05h - Format Track
+    /// Input:
+    ///   AL = number of sectors per track
+    ///   CH = cylinder number (low 8 bits)
+    ///   CL = sector number (bits 0-5) + high 2 bits of cylinder (bits 6-7)
+    ///   DH = head number
+    ///   DL = drive number
+    ///   ES:BX = pointer to address field list (not used in emulation)
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   CF = clear if success, set if error
+    fn int13_format_track<T: Bios>(&mut self, io: &mut T) {
+        let sectors_per_track = (self.ax & 0xFF) as u8; // AL
+        let cylinder_low = (self.cx >> 8) as u8; // CH
+        let head = (self.dx >> 8) as u8; // DH
+        let drive = (self.dx & 0xFF) as u8; // DL
+
+        // For 8086, we only support 8-bit cylinders (compatibility mode)
+        let cylinder = cylinder_low;
+
+        match io.disk_format_track(drive, cylinder, head, sectors_per_track) {
+            Ok(()) => {
+                self.ax &= 0x00FF; // AH = 0 (success)
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }

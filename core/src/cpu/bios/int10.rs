@@ -11,6 +11,7 @@ impl Cpu {
             0x01 => self.int10_set_cursor_shape(memory),
             0x02 => self.int10_set_cursor_position(video),
             0x03 => self.int10_get_cursor_position(memory, video),
+            0x05 => self.int10_select_active_page(memory, video),
             0x06 => self.int10_scroll_up(video),
             0x07 => self.int10_scroll_down(video),
             0x08 => self.int10_read_char_attr(video),
@@ -372,6 +373,44 @@ impl Cpu {
         self.dx = ((cursor.row as u16) << 8) | (cursor.col as u16);
     }
 
+    /// INT 10h, AH=05h - Select Active Display Page
+    /// Input:
+    ///   AL = new page number (0-7 for text modes)
+    /// Output: None
+    fn int10_select_active_page(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
+        let page = (self.ax & 0xFF) as u8; // AL
+
+        // Validate page number (0-7 for standard text modes)
+        if page > 7 {
+            log::warn!("INT 10h/AH=05h: Invalid page number: {}", page);
+            return;
+        }
+
+        // Update active page in Video struct
+        video.set_active_page(page);
+
+        // Update BDA active page
+        memory.write_byte(
+            crate::memory::BDA_START + crate::memory::BDA_ACTIVE_PAGE,
+            page,
+        );
+
+        // Update BDA video page offset (page_number * page_size)
+        let page_size =
+            memory.read_word(crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_SIZE);
+        let page_offset = (page as u16) * page_size;
+        memory.write_word(
+            crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_OFFSET,
+            page_offset,
+        );
+
+        log::trace!(
+            "INT 10h/AH=05h: Selected active page {} (offset 0x{:04X})",
+            page,
+            page_offset
+        );
+    }
+
     /// INT 10h, AH=0Fh - Get Current Video Mode
     /// Input: None
     /// Output:
@@ -381,7 +420,7 @@ impl Cpu {
     fn int10_get_video_mode(&mut self, video: &crate::video::Video) {
         let mode = video.get_mode();
         let columns: u8 = 80; // Standard 80-column mode
-        let page: u8 = 0; // Active page 0
+        let page = video.get_active_page();
 
         self.ax = ((columns as u16) << 8) | (mode as u16);
         self.bx = (self.bx & 0x00FF) | ((page as u16) << 8);

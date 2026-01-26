@@ -1,7 +1,9 @@
 use anyhow::Result;
 
 pub use crate::cpu::bios::{Bios, DriveParams, KeyPress, NullBios, disk_errors};
-pub use crate::disk::{DiskController, DiskGeometry, DiskImage, SECTOR_SIZE};
+pub use crate::disk::{
+    BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, SECTOR_SIZE,
+};
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 use crate::io_port::IoPort;
 pub use crate::io_port::{IoDevice, NullIoDevice};
@@ -287,6 +289,11 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         // Return total cycles: (cycles_per_tick * number of ticks) + remaining cycles
         // For simplicity, we track a separate total
         self.total_cycles
+    }
+
+    /// Get a reference to the BIOS (for disk saving on exit, etc.)
+    pub fn bios(&self) -> &B {
+        &self.bios
     }
 
     /// Increment cycle counter and update system timer if needed

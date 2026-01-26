@@ -165,6 +165,27 @@ impl<D: DiskController> Bios for NativeBios<D> {
         self.drive_manager.disk_detect_change(drive)
     }
 
+    fn disk_format_track(
+        &mut self,
+        drive: u8,
+        cylinder: u8,
+        head: u8,
+        sectors_per_track: u8,
+    ) -> Result<(), u8> {
+        self.drive_manager
+            .disk_format_track(drive, cylinder, head, sectors_per_track)
+    }
+
+    fn disk_read_sectors_lba(
+        &mut self,
+        drive: u8,
+        start_sector: u32,
+        count: u16,
+    ) -> Result<Vec<u8>, u8> {
+        self.drive_manager
+            .disk_read_sectors_lba(drive, start_sector, count)
+    }
+
     // File operations
     fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, u8> {
         // Check if it's a DOS device

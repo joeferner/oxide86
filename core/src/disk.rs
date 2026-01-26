@@ -1,4 +1,5 @@
 use anyhow::{Result, anyhow};
+use std::cell::RefCell;
 
 /// Standard sector size for floppy disks (512 bytes)
 pub const SECTOR_SIZE: usize = 512;
@@ -164,6 +165,130 @@ pub trait DiskController {
 
     /// Check if disk is read-only
     fn is_read_only(&self) -> bool;
+}
+
+/// Backend trait for disk storage operations.
+/// Implemented by platform-specific code (native uses File, WASM uses callbacks).
+pub trait DiskBackend {
+    /// Read data at the given byte offset
+    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<usize>;
+
+    /// Write data at the given byte offset
+    fn write_at(&mut self, offset: u64, buf: &[u8]) -> Result<usize>;
+
+    /// Flush any buffered writes to underlying storage
+    fn flush(&mut self) -> Result<()>;
+
+    /// Get total size in bytes
+    fn size(&self) -> u64;
+}
+
+/// Disk backed by a DiskBackend (file, memory, callbacks, etc.)
+/// This allows direct I/O to disk image files without loading into memory.
+pub struct BackedDisk<B: DiskBackend> {
+    backend: RefCell<B>,
+    geometry: DiskGeometry,
+    read_only: bool,
+}
+
+impl<B: DiskBackend> BackedDisk<B> {
+    /// Create a new backed disk with auto-detected geometry
+    pub fn new(backend: B) -> Result<Self> {
+        let size = backend.size();
+        let geometry = DiskGeometry::from_size(size as usize)
+            .ok_or_else(|| anyhow!("Unsupported disk image size: {} bytes", size))?;
+        Ok(Self {
+            backend: RefCell::new(backend),
+            geometry,
+            read_only: false,
+        })
+    }
+
+    /// Create a new backed disk with specific geometry
+    pub fn with_geometry(backend: B, geometry: DiskGeometry) -> Result<Self> {
+        let size = backend.size();
+        if size as usize != geometry.total_size {
+            return Err(anyhow!(
+                "Backend size ({}) doesn't match geometry size ({})",
+                size,
+                geometry.total_size
+            ));
+        }
+        Ok(Self {
+            backend: RefCell::new(backend),
+            geometry,
+            read_only: false,
+        })
+    }
+
+    /// Set read-only flag
+    pub fn set_read_only(&mut self, read_only: bool) {
+        self.read_only = read_only;
+    }
+
+    /// Flush any pending writes to storage
+    pub fn flush(&self) -> Result<()> {
+        self.backend.borrow_mut().flush()
+    }
+}
+
+impl<B: DiskBackend> DiskController for BackedDisk<B> {
+    fn read_sector_chs(&self, cylinder: u16, head: u16, sector: u16) -> Result<[u8; SECTOR_SIZE]> {
+        let lba = self.geometry.chs_to_lba(cylinder, head, sector)?;
+        self.read_sector_lba(lba)
+    }
+
+    fn write_sector_chs(
+        &mut self,
+        cylinder: u16,
+        head: u16,
+        sector: u16,
+        data: &[u8; SECTOR_SIZE],
+    ) -> Result<()> {
+        let lba = self.geometry.chs_to_lba(cylinder, head, sector)?;
+        self.write_sector_lba(lba, data)
+    }
+
+    fn read_sector_lba(&self, lba: usize) -> Result<[u8; SECTOR_SIZE]> {
+        if lba >= self.geometry.total_sectors() {
+            return Err(anyhow!(
+                "Invalid LBA: {} (max: {})",
+                lba,
+                self.geometry.total_sectors() - 1
+            ));
+        }
+
+        let offset = (lba * SECTOR_SIZE) as u64;
+        let mut sector = [0u8; SECTOR_SIZE];
+        self.backend.borrow_mut().read_at(offset, &mut sector)?;
+        Ok(sector)
+    }
+
+    fn write_sector_lba(&mut self, lba: usize, data: &[u8; SECTOR_SIZE]) -> Result<()> {
+        if self.read_only {
+            return Err(anyhow!("Disk is read-only"));
+        }
+
+        if lba >= self.geometry.total_sectors() {
+            return Err(anyhow!(
+                "Invalid LBA: {} (max: {})",
+                lba,
+                self.geometry.total_sectors() - 1
+            ));
+        }
+
+        let offset = (lba * SECTOR_SIZE) as u64;
+        self.backend.borrow_mut().write_at(offset, data)?;
+        Ok(())
+    }
+
+    fn geometry(&self) -> &DiskGeometry {
+        &self.geometry
+    }
+
+    fn is_read_only(&self) -> bool {
+        self.read_only
+    }
 }
 
 /// Raw disk image stored in memory

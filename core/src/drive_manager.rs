@@ -1154,4 +1154,113 @@ impl<D: DiskController> DriveManager<D> {
         drive_state.disk_changed = false;
         Ok(changed)
     }
+
+    pub fn disk_format_track(
+        &mut self,
+        drive: u8,
+        cylinder: u8,
+        head: u8,
+        sectors_per_track: u8,
+    ) -> Result<(), u8> {
+        let drive_state = self
+            .get_drive_mut(drive)
+            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+        let adapter = drive_state
+            .adapter
+            .as_mut()
+            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+
+        if adapter.disk().is_read_only() {
+            return Err(disk_errors::WRITE_PROTECTED);
+        }
+
+        // Format track by writing zeros to each sector
+        let zero_sector = [0u8; SECTOR_SIZE];
+
+        for sector in 1..=sectors_per_track {
+            adapter
+                .disk_mut()
+                .write_sector_chs(cylinder as u16, head as u16, sector as u16, &zero_sector)
+                .map_err(|e| {
+                    log::warn!(
+                        "disk_format_track: Failed to write sector C={} H={} S={}: {:?}",
+                        cylinder,
+                        head,
+                        sector,
+                        e
+                    );
+                    disk_errors::BAD_SECTOR
+                })?;
+        }
+
+        log::debug!(
+            "disk_format_track: Formatted track C={} H={} with {} sectors",
+            cylinder,
+            head,
+            sectors_per_track
+        );
+
+        Ok(())
+    }
+
+    /// Read sectors using logical sector addressing (INT 25h)
+    /// dos_drive: DOS drive number (0=A, 1=B, 2=C, etc.)
+    /// start_sector: starting logical sector number
+    /// count: number of sectors to read
+    pub fn disk_read_sectors_lba(
+        &self,
+        dos_drive: u8,
+        start_sector: u32,
+        count: u16,
+    ) -> Result<Vec<u8>, u8> {
+        // Convert DOS drive number to internal drive number
+        // DOS: 0=A, 1=B, 2=C, 3=D, ...
+        // Internal: 0x00=A, 0x01=B, 0x80=C, 0x81=D, ...
+        let drive = Self::dos_drive_to_internal(dos_drive);
+
+        let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
+        let adapter = drive_state
+            .adapter
+            .as_ref()
+            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+
+        let mut result = Vec::with_capacity(count as usize * SECTOR_SIZE);
+
+        for i in 0..count {
+            let lba = start_sector as usize + i as usize;
+            let sector_data = adapter
+                .disk()
+                .read_sector_lba(lba)
+                .map_err(|_| disk_errors::SECTOR_NOT_FOUND)?;
+            result.extend_from_slice(&sector_data);
+        }
+
+        Ok(result)
+    }
+
+    /// Get immutable access to a floppy disk (for saving)
+    /// slot: 0 = A:, 1 = B:
+    pub fn get_floppy_disk(&self, slot: u8) -> Option<&D> {
+        if slot > 1 {
+            return None;
+        }
+        self.floppy_drives[slot as usize]
+            .adapter
+            .as_ref()
+            .map(|a| a.disk())
+    }
+
+    /// Get immutable access to a hard drive (for saving)
+    /// index: 0 = C: (0x80), 1 = D: (0x81), etc.
+    pub fn get_hard_drive_disk(&self, index: usize) -> Option<&D> {
+        self.hard_drives
+            .get(index)
+            .and_then(|d| d.adapter.as_ref())
+            .map(|a| a.disk())
+    }
+
+    /// Get the number of hard drives
+    pub fn hard_drive_count(&self) -> usize {
+        self.hard_drives.len()
+    }
 }

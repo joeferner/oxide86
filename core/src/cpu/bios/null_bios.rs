@@ -129,6 +129,25 @@ impl Bios for NullBios {
         Err(disk_errors::INVALID_COMMAND)
     }
 
+    fn disk_format_track(
+        &mut self,
+        _drive: u8,
+        _cylinder: u8,
+        _head: u8,
+        _sectors_per_track: u8,
+    ) -> Result<(), u8> {
+        Err(disk_errors::INVALID_COMMAND)
+    }
+
+    fn disk_read_sectors_lba(
+        &mut self,
+        _drive: u8,
+        _start_sector: u32,
+        _count: u16,
+    ) -> Result<Vec<u8>, u8> {
+        Err(disk_errors::INVALID_COMMAND)
+    }
+
     fn file_create(&mut self, _filename: &str, _attributes: u8) -> Result<u16, u8> {
         Err(dos_errors::ACCESS_DENIED)
     }
