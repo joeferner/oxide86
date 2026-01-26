@@ -1,5 +1,3 @@
-use log::warn;
-
 use crate::cpu::cpu_flag;
 use crate::memory::{
     BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_KEYBOARD_FLAGS1, BDA_START,
@@ -17,7 +15,7 @@ impl Cpu {
             0x01 => self.int16_check_keystroke(memory),
             0x02 => self.int16_get_shift_flags(memory),
             _ => {
-                warn!("Unhandled INT 0x16 function: AH=0x{:02X}", function);
+                log::warn!("Unhandled INT 0x16 function: AH=0x{:02X}", function);
             }
         }
     }

@@ -482,7 +482,7 @@ To add a new BIOS interrupt handler:
            let function = (self.ax >> 8) as u8; // Get AH
            match function {
                0x00 => self.intXX_function_00(...),
-               _ => warn!("Unhandled INT 0xXX function: AH=0x{:02X}", function),
+               _ => log::warn!("Unhandled INT 0xXX function: AH=0x{:02X}", function),
            }
        }
    }

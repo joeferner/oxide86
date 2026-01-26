@@ -1,5 +1,3 @@
-use log::warn;
-
 use crate::{cpu::Cpu, memory::Memory};
 
 /// Printer status bits (returned in AH)
@@ -51,7 +49,7 @@ impl Cpu {
             0x01 => self.int17_initialize_printer(printer, io),
             0x02 => self.int17_get_status(printer, io),
             _ => {
-                warn!("Unhandled INT 0x17 function: AH=0x{:02X}", function);
+                log::warn!("Unhandled INT 0x17 function: AH=0x{:02X}", function);
             }
         }
     }

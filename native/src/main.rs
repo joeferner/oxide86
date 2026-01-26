@@ -4,7 +4,6 @@ use emu86_core::{Computer, DiskGeometry, DiskImage};
 
 mod bios;
 use bios::NativeBios;
-use log::info;
 
 mod simple_io_device;
 use simple_io_device::SimpleIoDevice;
@@ -83,13 +82,13 @@ fn main() -> Result<()> {
             ));
         }
 
-        info!("Booting from drive 0x{:02X}...", boot_drive);
+        log::info!("Booting from drive 0x{:02X}...", boot_drive);
         computer
             .boot(boot_drive as u8)
             .context("Failed to boot from disk")?;
 
-        info!("Boot sector loaded at 0x0000:0x7C00");
-        info!("Starting execution...\n");
+        log::info!("Boot sector loaded at 0x0000:0x7C00");
+        log::info!("Starting execution...\n");
     } else {
         // Load program from file
         let program_path = cli.program.as_ref().unwrap(); // Safe because of required_unless_present
@@ -103,19 +102,19 @@ fn main() -> Result<()> {
             .load_program(&program_data, segment, offset)
             .context("Failed to load program")?;
 
-        info!(
+        log::info!(
             "Loaded {} bytes at {:04X}:{:04X}",
             program_data.len(),
             segment,
             offset
         );
-        info!("Starting execution...\n");
+        log::info!("Starting execution...\n");
     }
 
     // Run the program
     computer.run();
 
-    info!("\n=== Execution complete ===");
+    log::info!("\n=== Execution complete ===");
     computer.dump_registers();
 
     Ok(())

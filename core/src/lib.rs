@@ -144,6 +144,30 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         self.cpu.ds = 0x0000;
         self.cpu.es = 0x0000;
 
+        // Pre-allocate memory for DOS kernel
+        // In a real system, DOS would already be loaded in memory before
+        // the memory allocator starts. We simulate this by pre-allocating
+        // a block for DOS, reducing the amount of "free" memory available.
+        // Typically DOS + COMMAND.COM takes about 64-128KB.
+        // We'll allocate 4096 paragraphs (64KB) for DOS.
+        const DOS_PARAGRAPHS: u16 = 4096; // 64KB for DOS kernel and COMMAND.COM
+        match self.bios.memory_allocate(DOS_PARAGRAPHS) {
+            Ok(seg) => {
+                log::info!(
+                    "Pre-allocated {} KB at segment 0x{:04X} for DOS kernel",
+                    (DOS_PARAGRAPHS as u32 * 16) / 1024,
+                    seg
+                );
+            }
+            Err((error_code, available)) => {
+                log::warn!(
+                    "Failed to pre-allocate DOS memory: error 0x{:02X}, available {} paragraphs",
+                    error_code,
+                    available
+                );
+            }
+        }
+
         Ok(())
     }
 

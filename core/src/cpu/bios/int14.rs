@@ -1,5 +1,3 @@
-use log::warn;
-
 use crate::{cpu::Cpu, memory::Memory};
 
 /// Serial port line status bits (returned in AH)
@@ -80,7 +78,7 @@ impl Cpu {
             0x02 => self.int14_read_char(port, io),
             0x03 => self.int14_get_status(port, io),
             _ => {
-                warn!("Unhandled INT 0x14 function: AH=0x{:02X}", function);
+                log::warn!("Unhandled INT 0x14 function: AH=0x{:02X}", function);
             }
         }
     }

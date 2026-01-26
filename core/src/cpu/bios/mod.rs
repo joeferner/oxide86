@@ -21,7 +21,6 @@ pub use int13::disk_errors;
 pub use int14::{SerialParams, SerialStatus};
 pub use int17::PrinterStatus;
 pub use int21::{dos_errors, file_access};
-use log::warn;
 pub use null_bios::NullBios;
 
 /// Drive parameters returned by INT 13h, AH=08h
@@ -372,7 +371,7 @@ impl Cpu {
             }
             // Other BIOS interrupts can be added here
             _ => {
-                warn!("Unhandled BIOS interrupt: 0x{:02X}", int_num);
+                log::warn!("Unhandled BIOS interrupt: 0x{:02X}", int_num);
                 false // Not handled, proceed with normal interrupt mechanism
             }
         }

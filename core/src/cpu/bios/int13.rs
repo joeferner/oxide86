@@ -1,5 +1,3 @@
-use log::warn;
-
 use crate::{
     Bios,
     cpu::{Cpu, cpu_flag},
@@ -49,7 +47,7 @@ impl Cpu {
             0x08 => self.int13_get_drive_params(io),
             0x15 => self.int13_get_disk_type(io),
             _ => {
-                warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
+                log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
                 self.ax = (self.ax & 0x00FF) | ((disk_errors::INVALID_COMMAND as u16) << 8);
                 self.set_flag(cpu_flag::CARRY, true);

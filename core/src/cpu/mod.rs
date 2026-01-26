@@ -1,5 +1,3 @@
-use log::info;
-
 use crate::{IoDevice, io_port::IoPort, memory::Memory};
 
 pub mod bios;
@@ -778,20 +776,29 @@ impl Cpu {
 
     // Dump register state
     pub fn dump_registers(&self) {
-        info!(
+        log::info!(
             "AX={:04X}  BX={:04X}  CX={:04X}  DX={:04X}",
-            self.ax, self.bx, self.cx, self.dx
+            self.ax,
+            self.bx,
+            self.cx,
+            self.dx
         );
-        info!(
+        log::info!(
             "SI={:04X}  DI={:04X}  BP={:04X}  SP={:04X}",
-            self.si, self.di, self.bp, self.sp
+            self.si,
+            self.di,
+            self.bp,
+            self.sp
         );
-        info!(
+        log::info!(
             "CS={:04X}  DS={:04X}  SS={:04X}  ES={:04X}",
-            self.cs, self.ds, self.ss, self.es
+            self.cs,
+            self.ds,
+            self.ss,
+            self.es
         );
-        info!("IP={:04X}  FLAGS={:04X}", self.ip, self.flags);
-        info!(
+        log::info!("IP={:04X}  FLAGS={:04X}", self.ip, self.flags);
+        log::info!(
             "CF={}  PF={}  AF={}  ZF={}  SF={}  TF={}  IF={}  DF={}  OF={}",
             if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 },
             if self.get_flag(cpu_flag::PARITY) {

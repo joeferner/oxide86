@@ -1,5 +1,4 @@
 use emu86_core::IoDevice;
-use log::info;
 use std::collections::HashMap;
 
 /// Simple I/O device implementation for native platform.
@@ -35,7 +34,7 @@ impl IoDevice for SimpleIoDevice {
         };
 
         if self.verbose {
-            info!("I/O Read:  Port 0x{:04X} -> 0x{:02X}", port, value);
+            log::info!("I/O Read:  Port 0x{:04X} -> 0x{:02X}", port, value);
         }
 
         value
@@ -43,7 +42,7 @@ impl IoDevice for SimpleIoDevice {
 
     fn write_byte(&mut self, port: u16, value: u8) {
         if self.verbose {
-            info!("I/O Write: Port 0x{:04X} <- 0x{:02X}", port, value);
+            log::info!("I/O Write: Port 0x{:04X} <- 0x{:02X}", port, value);
         }
 
         self.last_write.insert(port, value);

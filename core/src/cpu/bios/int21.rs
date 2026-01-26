@@ -1,5 +1,3 @@
-use log::warn;
-
 use crate::{
     Bios,
     cpu::{
@@ -75,7 +73,7 @@ impl Cpu {
             0x4F => self.int21_find_next(memory, io),
             0x50 => self.int21_set_psp(io),
             _ => {
-                warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
+                log::warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
             }
         }
     }
@@ -684,7 +682,7 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, false);
             }
             _ => {
-                warn!("Unhandled IOCTL subfunction: AL=0x{:02X}", subfunction);
+                log::warn!("Unhandled IOCTL subfunction: AL=0x{:02X}", subfunction);
                 self.ax = dos_errors::INVALID_FUNCTION as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
@@ -699,13 +697,25 @@ impl Cpu {
     ///   CF set if error: AX = error code, BX = size of largest available block
     fn int21_allocate_memory<T: Bios>(&mut self, io: &mut T) {
         let paragraphs = self.bx;
+        log::info!(
+            "INT 21h AH=48h: Allocate memory request: {} paragraphs ({} bytes)",
+            paragraphs,
+            paragraphs as u32 * 16
+        );
 
         match io.memory_allocate(paragraphs) {
             Ok(segment) => {
+                log::info!("INT 21h AH=48h: Allocated at segment 0x{:04X}", segment);
                 self.ax = segment;
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err((error_code, max_available)) => {
+                log::warn!(
+                    "INT 21h AH=48h: Allocation failed - error 0x{:02X}, max available: {} paragraphs ({} bytes)",
+                    error_code,
+                    max_available,
+                    max_available as u32 * 16
+                );
                 self.ax = error_code as u16;
                 self.bx = max_available;
                 self.set_flag(cpu_flag::CARRY, true);
@@ -721,12 +731,18 @@ impl Cpu {
     ///   CF set if error: AX = error code
     fn int21_free_memory<T: Bios>(&mut self, io: &mut T) {
         let segment = self.es;
+        log::info!("INT 21h AH=49h: Free memory at segment 0x{:04X}", segment);
 
         match io.memory_free(segment) {
             Ok(()) => {
+                log::info!(
+                    "INT 21h AH=49h: Successfully freed memory at 0x{:04X}",
+                    segment
+                );
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
+                log::warn!("INT 21h AH=49h: Free failed - error 0x{:02X}", error_code);
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
@@ -743,12 +759,27 @@ impl Cpu {
     fn int21_resize_memory<T: Bios>(&mut self, io: &mut T) {
         let segment = self.es;
         let paragraphs = self.bx;
+        log::info!(
+            "INT 21h AH=4Ah: Resize memory at segment 0x{:04X} to {} paragraphs ({} bytes)",
+            segment,
+            paragraphs,
+            paragraphs as u32 * 16
+        );
 
         match io.memory_resize(segment, paragraphs) {
             Ok(()) => {
+                log::info!(
+                    "INT 21h AH=4Ah: Successfully resized to {} paragraphs",
+                    paragraphs
+                );
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err((error_code, max_available)) => {
+                log::warn!(
+                    "INT 21h AH=4Ah: Resize failed - error 0x{:02X}, max available: {} paragraphs",
+                    error_code,
+                    max_available
+                );
                 self.ax = error_code as u16;
                 self.bx = max_available;
                 self.set_flag(cpu_flag::CARRY, true);

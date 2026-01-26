@@ -1,5 +1,3 @@
-use log::warn;
-
 use crate::{cpu::Cpu, memory::Memory};
 
 impl Cpu {
@@ -17,7 +15,7 @@ impl Cpu {
             0x0E => self.int10_teletype_output(memory, video),
             0x13 => self.int10_write_string(memory, video),
             _ => {
-                warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
+                log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
             }
         }
     }
@@ -35,7 +33,7 @@ impl Cpu {
             // Reset cursor to top-left
             video.set_cursor(0, 0);
         } else {
-            warn!("Unsupported video mode: 0x{:02X}", mode);
+            log::warn!("Unsupported video mode: 0x{:02X}", mode);
         }
     }
 

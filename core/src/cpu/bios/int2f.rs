@@ -1,5 +1,3 @@
-use log::warn;
-
 use crate::{Bios, cpu::Cpu, memory::Memory};
 
 impl Cpu {
@@ -24,9 +22,10 @@ impl Cpu {
                 // For unknown multiplex numbers, return AL=0x00 (not installed)
                 // This is the standard behavior for installation checks
                 self.ax &= 0xFF00;
-                warn!(
+                log::warn!(
                     "Unhandled INT 0x2F multiplex: AH=0x{:02X}, AL=0x{:02X}",
-                    multiplex_num, subfunction
+                    multiplex_num,
+                    subfunction
                 );
             }
         }
@@ -45,7 +44,7 @@ impl Cpu {
             _ => {
                 // Unknown subfunction - return not installed
                 self.ax &= 0xFF00;
-                warn!(
+                log::warn!(
                     "Unhandled INT 0x2F AH=11h subfunction: AL=0x{:02X}",
                     subfunction
                 );
@@ -66,7 +65,7 @@ impl Cpu {
             _ => {
                 // Unknown subfunction - return not installed
                 self.ax &= 0xFF00;
-                warn!(
+                log::warn!(
                     "Unhandled INT 0x2F AH=12h subfunction: AL=0x{:02X}",
                     subfunction
                 );
@@ -87,7 +86,7 @@ impl Cpu {
             _ => {
                 // Unknown subfunction - return not running
                 self.ax &= 0xFF00;
-                warn!(
+                log::warn!(
                     "Unhandled INT 0x2F AH=16h subfunction: AL=0x{:02X}",
                     subfunction
                 );
@@ -117,7 +116,7 @@ impl Cpu {
             _ => {
                 // Unknown subfunction - return not installed
                 self.ax &= 0xFF00;
-                warn!(
+                log::warn!(
                     "Unhandled INT 0x2F AH=43h subfunction: AL=0x{:02X}",
                     subfunction
                 );
@@ -144,7 +143,7 @@ impl Cpu {
             _ => {
                 // Unknown subfunction - return not installed
                 self.ax &= 0xFF00;
-                warn!(
+                log::warn!(
                     "Unhandled INT 0x2F AH=4Ah subfunction: AL=0x{:02X}",
                     subfunction
                 );
@@ -165,7 +164,7 @@ impl Cpu {
             _ => {
                 // Unknown subfunction - return not installed
                 self.ax &= 0xFF00;
-                warn!(
+                log::warn!(
                     "Unhandled INT 0x2F AH=B7h subfunction: AL=0x{:02X}",
                     subfunction
                 );

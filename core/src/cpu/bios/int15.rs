@@ -2,7 +2,6 @@ use crate::{
     cpu::{Cpu, cpu_flag},
     memory::Memory,
 };
-use log::warn;
 
 impl Cpu {
     pub(super) fn handle_int15<T: super::Bios>(&mut self, memory: &mut Memory, _io: &mut T) {
@@ -13,7 +12,7 @@ impl Cpu {
             0x88 => self.int15_get_extended_memory(),
             0xC0 => self.int15_get_system_config(memory),
             _ => {
-                warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
+                log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
                 self.set_flag(cpu_flag::CARRY, true);
             }
@@ -66,6 +65,9 @@ impl Cpu {
         // Return 0 KB of extended memory
         self.ax = 0;
         self.set_flag(cpu_flag::CARRY, false);
+        log::info!(
+            "INT 15h AH=88h: Returning extended memory size = 0 KB (8086 has no extended memory)"
+        );
     }
 
     /// INT 15h AH=C0h - Get System Configuration Parameters

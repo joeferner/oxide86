@@ -1,5 +1,3 @@
-use log::warn;
-
 use crate::Bios;
 use crate::cpu::cpu_flag;
 use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW};
@@ -23,7 +21,7 @@ impl Cpu {
             0x02 => self.int1a_read_rtc_time(io),
             0x04 => self.int1a_read_rtc_date(io),
             _ => {
-                warn!("Unhandled INT 0x1A function: AH=0x{:02X}", function);
+                log::warn!("Unhandled INT 0x1A function: AH=0x{:02X}", function);
             }
         }
     }

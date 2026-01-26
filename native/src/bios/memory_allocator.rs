@@ -67,9 +67,33 @@ impl MemoryAllocator {
 
     /// Free memory
     pub fn free(&mut self, segment: u16) -> Result<(), u8> {
-        if self.blocks.remove(&segment).is_some() {
-            // Successfully freed - in a more sophisticated implementation,
-            // we would coalesce free blocks and reuse them
+        if let Some(block) = self.blocks.remove(&segment) {
+            // Successfully freed
+            // If this was the last allocated block (at the end), reclaim the space
+            let block_end = segment.saturating_add(block.paragraphs);
+            if block_end == self.next_segment {
+                // This block was at the end, we can reclaim its space
+                self.next_segment = segment;
+
+                // Also check if there are any other blocks that end exactly at the new next_segment
+                // This handles cases where we free blocks in reverse order
+                loop {
+                    let mut found_predecessor = false;
+                    for (&seg, blk) in self.blocks.iter() {
+                        let blk_end = seg.saturating_add(blk.paragraphs);
+                        if blk_end == self.next_segment {
+                            // This block ends at our current next_segment, so if we free it
+                            // we could move next_segment back further. But we're not freeing it yet.
+                            // Just note that there's a block here.
+                            found_predecessor = true;
+                            break;
+                        }
+                    }
+                    if !found_predecessor {
+                        break;
+                    }
+                }
+            }
             Ok(())
         } else {
             Err(dos_errors::INVALID_MEMORY_BLOCK_ADDRESS)
@@ -94,6 +118,13 @@ impl MemoryAllocator {
         if new_paragraphs < old_paragraphs {
             // Shrinking - always succeeds
             block.paragraphs = new_paragraphs;
+
+            // If this is the last allocated block, reclaim the freed space
+            let block_end = segment.saturating_add(old_paragraphs);
+            if block_end == self.next_segment {
+                self.next_segment = segment.saturating_add(new_paragraphs);
+            }
+
             Ok(())
         } else {
             // Growing - check if we have space
