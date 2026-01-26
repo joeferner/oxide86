@@ -9,6 +9,7 @@
         "CMPSW",
         "dbcs",
         "fatfs",
+        "fdisk",
         "IDIV",
         "IMUL",
         "INSB",
