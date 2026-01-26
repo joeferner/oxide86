@@ -72,7 +72,7 @@ impl Cpu {
             0x4E => self.int21_find_first(memory, io),
             0x4F => self.int21_find_next(memory, io),
             0x50 => self.int21_set_psp(io),
-            0x63 => self.int21_get_dbcs_lead_byte_table::<T>(memory),
+            0x63 => self.int21_get_dbcs_lead_byte_table(memory),
             _ => {
                 log::warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
             }
@@ -803,7 +803,7 @@ impl Cpu {
     ///   If AL=00h: DS:SI = pointer to DBCS lead byte table
     ///   Table format: pairs of lead byte ranges, terminated by 00h 00h
     ///   For no DBCS support, returns pointer to empty table (just 00h 00h)
-    fn int21_get_dbcs_lead_byte_table<T: Bios>(&mut self, memory: &mut Memory) {
+    fn int21_get_dbcs_lead_byte_table(&mut self, memory: &mut Memory) {
         let subfunction = (self.ax & 0xFF) as u8;
 
         if subfunction == 0x00 {
@@ -821,10 +821,16 @@ impl Cpu {
             self.ds = DBCS_TABLE_SEGMENT;
             self.si = DBCS_TABLE_OFFSET;
 
-            log::debug!("INT 21h AH=63h AL=00h: Returning empty DBCS table at {:04X}:{:04X}",
-                       self.ds, self.si);
+            log::debug!(
+                "INT 21h AH=63h AL=00h: Returning empty DBCS table at {:04X}:{:04X}",
+                self.ds,
+                self.si
+            );
         } else {
-            log::warn!("INT 21h AH=63h: Unhandled subfunction AL=0x{:02X}", subfunction);
+            log::warn!(
+                "INT 21h AH=63h: Unhandled subfunction AL=0x{:02X}",
+                subfunction
+            );
         }
     }
 

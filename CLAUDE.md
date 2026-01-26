@@ -37,14 +37,18 @@ The `emu86-native` crate provides a command-line interface for running 8086 prog
 
 **Native BIOS Implementation** ([native/src/bios/](native/src/bios/)):
 The native platform implements the `Bios` trait through `NativeBios`, which is organized into focused modules:
-- [native_bios.rs](native/src/bios/native_bios.rs) - Main `NativeBios` struct that implements the `Bios` trait
+- [mod.rs](native/src/bios/mod.rs) - Main `NativeBios` struct that implements the `Bios` trait, integrates `FatFileSystem` from core, and handles DOS device files (CON, NUL, etc.)
 - [console.rs](native/src/bios/console.rs) - Console I/O operations (keyboard and screen)
-- [disk.rs](native/src/bios/disk.rs) - Disk controller operations
-- [file.rs](native/src/bios/file.rs) - File operations via `FileManager`
-- [directory.rs](native/src/bios/directory.rs) - Directory operations via `DirectoryManager`
 - [memory_allocator.rs](native/src/bios/memory_allocator.rs) - DOS memory allocation
 - [time.rs](native/src/bios/time.rs) - System time and RTC operations
 - [peripheral.rs](native/src/bios/peripheral.rs) - Serial port and printer stubs
+
+**FAT Filesystem Implementation** ([core/src/fat.rs](core/src/fat.rs)):
+Platform-agnostic FAT12/16/32 filesystem support in the core library:
+- `DiskAdapter` - Adapts sector-based `DiskController` to byte-stream interface (Read + Write + Seek)
+- `FatFileSystem` - Wraps the `fatfs` crate to provide file/directory operations and disk pass-through for INT 13h
+- All file/directory operations are performed on the disk image filesystem
+- Works on both native and WASM platforms without platform-specific code
 
 ### WebAssembly Build ([wasm/](wasm/))
 The `emu86-wasm` crate provides WebAssembly bindings:
@@ -750,15 +754,16 @@ The native implementation supports DOS-style wildcards in file patterns:
 - `?` matches any single character
 - Pattern matching is case-insensitive
 
-**Working Directory:**
+**FAT Filesystem Support:**
 
-The native implementation supports a working directory for file operations:
-- All file paths are resolved relative to the working directory
-- Absolute paths are used as-is
-- The working directory can be specified with `--workdir <path>` command-line option
-- Default working directory is the current directory
-- The `examples/run.sh` script automatically creates and uses `examples/workdir/`
-- `examples/workdir/` is ignored by git to avoid polluting the repository
+The emulator uses FAT12/16/32 filesystems for all file operations:
+- All file/directory operations are performed on the disk image filesystem
+- The `fatfs` crate provides complete FAT filesystem support
+- File paths use DOS-style backslashes (`\`) which are converted to Unix-style forward slashes (`/`) internally
+- All file operations are performed relative to the current directory within the FAT filesystem
+- The FAT filesystem implementation is platform-agnostic and works on both native and WASM targets
+- DOS device files (CON, NUL, AUX, PRN, COM1-4, LPT1-3) bypass the filesystem and are handled separately
+- Standard I/O handles (0=stdin, 1=stdout, 2=stderr) are mapped to the host system's console I/O
 
 **DOS System Functions (INT 21h):**
 

@@ -26,12 +26,6 @@ fi
 BASENAME="${ASM_FILE%.asm}"
 BIN_FILE="${BASENAME}.bin"
 
-# Get the directory where this script is located
-WORK_DIR="${SCRIPT_DIR}/workdir"
-
-# Create working directory for file I/O operations
-mkdir -p "$WORK_DIR"
-
 # Assemble the program
 echo "Assembling $ASM_FILE..."
 nasm -f bin "$ASM_FILE" -o "$BIN_FILE"
@@ -43,7 +37,7 @@ if [ $? -eq 0 ]; then
     # Run the program
     echo "Running $BIN_FILE..."
     echo "================================"
-    cargo run -p emu86-native -- "$BIN_FILE" --workdir "$WORK_DIR" "$@"
+    cargo run -p emu86-native -- "$BIN_FILE" "$@"
 else
     echo "Assembly failed"
     exit 1

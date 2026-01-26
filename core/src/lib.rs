@@ -2,6 +2,7 @@ use anyhow::Result;
 
 pub use crate::cpu::bios::{Bios, DriveParams, KeyPress, NullBios, disk_errors};
 pub use crate::disk::{DiskController, DiskGeometry, DiskImage, SECTOR_SIZE};
+pub use crate::fat::FatFileSystem;
 use crate::io_port::IoPort;
 pub use crate::io_port::{IoDevice, NullIoDevice};
 pub use crate::video::{
@@ -11,6 +12,7 @@ use crate::{cpu::Cpu, memory::Memory};
 
 pub mod cpu;
 pub mod disk;
+pub mod fat;
 pub mod io_port;
 pub mod memory;
 pub mod video;

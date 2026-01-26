@@ -1,7 +1,4 @@
 mod console;
-mod directory;
-mod disk;
-mod file;
 mod memory_allocator;
 mod peripheral;
 mod time;
@@ -10,30 +7,64 @@ use emu86_core::cpu::bios::{
     DriveParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod, SerialParams,
     SerialStatus, dos_errors,
 };
-use emu86_core::{Bios, DiskController};
-use std::path::Path;
+use emu86_core::{Bios, DiskController, FatFileSystem};
+use std::collections::HashMap;
+use std::io::{self, Read, Write};
 
-use crate::bios::directory::DirectoryManager;
-use crate::bios::file::FileManager;
 use crate::bios::memory_allocator::MemoryAllocator;
+
+/// DOS device types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DosDevice {
+    Null,    // NUL device
+    Console, // CON device
+}
 
 /// Native platform implementation of BIOS
 pub struct NativeBios<D: DiskController> {
-    disk: D,
-    file_manager: FileManager,
-    directory_manager: DirectoryManager,
+    fat: FatFileSystem<D>,
     memory_allocator: MemoryAllocator,
+    device_handles: HashMap<u16, DosDevice>,
+    next_handle: u16,
 }
 
 impl<D: DiskController> NativeBios<D> {
-    pub fn new(disk: D, working_dir: impl AsRef<Path>) -> Self {
-        let working_dir = working_dir.as_ref();
-        Self {
-            disk,
-            file_manager: FileManager::new(working_dir),
-            directory_manager: DirectoryManager::new(working_dir),
+    pub fn new(disk: D) -> Result<Self, String> {
+        let fat = FatFileSystem::new(disk)?;
+        Ok(Self {
+            fat,
             memory_allocator: MemoryAllocator::new(),
+            device_handles: HashMap::new(),
+            next_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
+        })
+    }
+
+    /// Check if a filename is a DOS device name
+    fn is_dos_device(filename: &str) -> Option<DosDevice> {
+        // DOS device names are case-insensitive and may have extensions
+        let name = filename.to_uppercase();
+        let base_name = name.split('.').next().unwrap_or(&name);
+
+        match base_name {
+            "NUL" => Some(DosDevice::Null),
+            "CON" => Some(DosDevice::Console),
+            "AUX" | "COM1" | "COM2" | "COM3" | "COM4" => Some(DosDevice::Null), // Serial ports - stub as null
+            "PRN" | "LPT1" | "LPT2" | "LPT3" => Some(DosDevice::Null), // Printer ports - stub as null
+            _ => None,
         }
+    }
+
+    /// Allocate a new file handle for devices
+    fn allocate_handle(&mut self) -> Option<u16> {
+        if self.device_handles.len() >= 252 {
+            return None;
+        }
+        let handle = self.next_handle;
+        self.next_handle = self.next_handle.wrapping_add(1);
+        if self.next_handle < 3 {
+            self.next_handle = 3; // Wrap around but skip reserved handles
+        }
+        Some(handle)
     }
 }
 
@@ -55,9 +86,9 @@ impl<D: DiskController> Bios for NativeBios<D> {
         console::read_key()
     }
 
-    // Disk operations
+    // Disk operations - delegate to FatFileSystem which owns the disk
     fn disk_reset(&mut self, drive: u8) -> bool {
-        disk::disk_reset(&mut self.disk, drive)
+        self.fat.disk_reset(drive)
     }
 
     fn disk_read_sectors(
@@ -68,7 +99,8 @@ impl<D: DiskController> Bios for NativeBios<D> {
         sector: u8,
         count: u8,
     ) -> Result<Vec<u8>, u8> {
-        disk::disk_read_sectors(&mut self.disk, drive, cylinder, head, sector, count)
+        self.fat
+            .disk_read_sectors(drive, cylinder, head, sector, count)
     }
 
     fn disk_write_sectors(
@@ -80,73 +112,196 @@ impl<D: DiskController> Bios for NativeBios<D> {
         count: u8,
         data: &[u8],
     ) -> Result<u8, u8> {
-        disk::disk_write_sectors(&mut self.disk, drive, cylinder, head, sector, count, data)
+        self.fat
+            .disk_write_sectors(drive, cylinder, head, sector, count, data)
     }
 
     fn disk_get_params(&self, drive: u8) -> Result<DriveParams, u8> {
-        disk::disk_get_params(&self.disk, drive)
+        self.fat.disk_get_params(drive)
     }
 
     fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8> {
-        disk::disk_get_type(&self.disk, drive)
+        self.fat.disk_get_type(drive)
     }
 
     // File operations
     fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, u8> {
-        self.file_manager.create(filename, attributes)
+        // Check if it's a DOS device
+        if let Some(device) = Self::is_dos_device(filename) {
+            let handle = self
+                .allocate_handle()
+                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+            self.device_handles.insert(handle, device);
+            return Ok(handle);
+        }
+
+        // Delegate to FAT filesystem
+        self.fat.file_create(filename, attributes)
     }
 
     fn file_open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8> {
-        self.file_manager.open(filename, access_mode)
+        // Check if it's a DOS device
+        if let Some(device) = Self::is_dos_device(filename) {
+            let handle = self
+                .allocate_handle()
+                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+            self.device_handles.insert(handle, device);
+            return Ok(handle);
+        }
+
+        // Delegate to FAT filesystem
+        self.fat.file_open(filename, access_mode)
     }
 
     fn file_close(&mut self, handle: u16) -> Result<(), u8> {
-        self.file_manager.close(handle)
+        // Don't allow closing standard handles
+        if handle < 3 {
+            return Err(dos_errors::INVALID_HANDLE);
+        }
+
+        // Try removing from device handles first
+        if self.device_handles.remove(&handle).is_some() {
+            return Ok(());
+        }
+
+        // Delegate to FAT filesystem
+        self.fat.file_close(handle)
     }
 
     fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, u8> {
-        self.file_manager.read(handle, max_bytes)
+        // Handle stdin separately
+        if handle == 0 {
+            let mut buffer = vec![0u8; max_bytes as usize];
+            match io::stdin().read(&mut buffer) {
+                Ok(n) => {
+                    buffer.truncate(n);
+                    Ok(buffer)
+                }
+                Err(_) => Err(dos_errors::ACCESS_DENIED),
+            }
+        } else if let Some(device) = self.device_handles.get(&handle) {
+            // Handle DOS devices
+            match device {
+                DosDevice::Null => {
+                    // NUL always returns EOF (0 bytes)
+                    Ok(Vec::new())
+                }
+                DosDevice::Console => {
+                    // CON reads from stdin
+                    let mut buffer = vec![0u8; max_bytes as usize];
+                    match io::stdin().read(&mut buffer) {
+                        Ok(n) => {
+                            buffer.truncate(n);
+                            Ok(buffer)
+                        }
+                        Err(_) => Err(dos_errors::ACCESS_DENIED),
+                    }
+                }
+            }
+        } else {
+            // Delegate to FAT filesystem
+            self.fat.file_read(handle, max_bytes)
+        }
     }
 
     fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, u8> {
-        self.file_manager.write(handle, data)
+        // Handle stdout/stderr separately
+        if handle == 1 {
+            match io::stdout().write(data) {
+                Ok(n) => {
+                    let _ = io::stdout().flush();
+                    Ok(n as u16)
+                }
+                Err(_) => Err(dos_errors::ACCESS_DENIED),
+            }
+        } else if handle == 2 {
+            match io::stderr().write(data) {
+                Ok(n) => {
+                    let _ = io::stderr().flush();
+                    Ok(n as u16)
+                }
+                Err(_) => Err(dos_errors::ACCESS_DENIED),
+            }
+        } else if let Some(device) = self.device_handles.get(&handle) {
+            // Handle DOS devices
+            match device {
+                DosDevice::Null => {
+                    // NUL discards all data but reports success
+                    Ok(data.len() as u16)
+                }
+                DosDevice::Console => {
+                    // CON writes to stdout
+                    match io::stdout().write(data) {
+                        Ok(n) => {
+                            let _ = io::stdout().flush();
+                            Ok(n as u16)
+                        }
+                        Err(_) => Err(dos_errors::ACCESS_DENIED),
+                    }
+                }
+            }
+        } else {
+            // Delegate to FAT filesystem
+            self.fat.file_write(handle, data)
+        }
     }
 
     fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8> {
-        self.file_manager.seek(handle, offset, method)
+        // Standard handles and device handles don't support seeking
+        if handle < 3 || self.device_handles.contains_key(&handle) {
+            return Err(dos_errors::INVALID_HANDLE);
+        }
+
+        // Delegate to FAT filesystem
+        self.fat.file_seek(handle, offset, method)
     }
 
     fn file_duplicate(&mut self, handle: u16) -> Result<u16, u8> {
-        self.file_manager.duplicate(handle)
+        // Standard handles (0, 1, 2) can be duplicated
+        if handle < 3 {
+            let new_handle = self
+                .allocate_handle()
+                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+            // We don't actually store anything for standard handles
+            return Ok(new_handle);
+        }
+
+        // Check if it's a device handle
+        if let Some(device) = self.device_handles.get(&handle).copied() {
+            let new_handle = self
+                .allocate_handle()
+                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+            self.device_handles.insert(new_handle, device);
+            return Ok(new_handle);
+        }
+
+        // Delegate to FAT filesystem
+        self.fat.file_duplicate(handle)
     }
 
     // Directory operations
     fn dir_create(&mut self, dirname: &str) -> Result<(), u8> {
-        self.directory_manager.create(dirname)
+        self.fat.dir_create(dirname)
     }
 
     fn dir_remove(&mut self, dirname: &str) -> Result<(), u8> {
-        self.directory_manager.remove(dirname)
+        self.fat.dir_remove(dirname)
     }
 
     fn dir_change(&mut self, dirname: &str) -> Result<(), u8> {
-        // Update both file and directory managers
-        self.directory_manager.change(dirname)?;
-        let new_dir = self.directory_manager.working_dir().to_path_buf();
-        self.file_manager.set_working_dir(new_dir);
-        Ok(())
+        self.fat.dir_change(dirname)
     }
 
     fn dir_get_current(&self, drive: u8) -> Result<String, u8> {
-        self.directory_manager.get_current(drive)
+        self.fat.dir_get_current(drive)
     }
 
     fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), u8> {
-        self.directory_manager.find_first(pattern, attributes)
+        self.fat.find_first(pattern, attributes)
     }
 
     fn find_next(&mut self, search_id: usize) -> Result<FindData, u8> {
-        self.directory_manager.find_next(search_id)
+        self.fat.find_next(search_id)
     }
 
     // Drive management
@@ -199,13 +354,13 @@ impl<D: DiskController> Bios for NativeBios<D> {
             2 => Ok(0x80D2), // STDERR: device (bit 7), console output (bit 1)
             _ => {
                 // Check if it's a DOS device handle
-                if let Some(device) = self.file_manager.get_device(handle) {
+                if let Some(device) = self.device_handles.get(&handle) {
                     // Return device info based on device type
                     match device {
-                        file::DosDevice::Null => Ok(0x8004), // NUL device (bit 7), special device
-                        file::DosDevice::Console => Ok(0x80D3), // CON device (bit 7), console I/O
+                        DosDevice::Null => Ok(0x8004),    // NUL device (bit 7), special device
+                        DosDevice::Console => Ok(0x80D3), // CON device (bit 7), console I/O
                     }
-                } else if self.file_manager.contains_handle(handle) {
+                } else if self.fat.contains_handle(handle) {
                     // It's a regular file (bit 7 = 0)
                     Ok(0x0000)
                 } else {
@@ -224,8 +379,8 @@ impl<D: DiskController> Bios for NativeBios<D> {
             }
             _ => {
                 // Check if it's a valid file handle
-                if self.file_manager.contains_handle(handle) {
-                    // Allow setting but ignore for files
+                if self.fat.contains_handle(handle) || self.device_handles.contains_key(&handle) {
+                    // Allow setting but ignore for files and devices
                     Ok(())
                 } else {
                     Err(dos_errors::INVALID_HANDLE)

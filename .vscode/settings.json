@@ -4,6 +4,7 @@
         "CMPS",
         "CMPSB",
         "CMPSW",
+        "fatfs",
         "IDIV",
         "IMUL",
         "INSB",
