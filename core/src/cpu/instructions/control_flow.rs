@@ -293,4 +293,14 @@ impl Cpu {
             self.dx = 0x0000;
         }
     }
+
+    /// ESC - Escape to coprocessor (opcodes D8-DF)
+    /// Passes instruction to 8087 FPU. Without a coprocessor, this is a NOP
+    /// that reads the ModR/M byte and any displacement to maintain bus timing.
+    pub(in crate::cpu) fn esc(&mut self, memory: &Memory) {
+        let modrm = self.fetch_byte(memory);
+        // Decode ModR/M to consume any displacement bytes
+        let _ = self.decode_modrm(modrm, memory);
+        // No operation - 8087 coprocessor not emulated
+    }
 }

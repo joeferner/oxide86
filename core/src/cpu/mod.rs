@@ -413,6 +413,10 @@ impl Cpu {
             // XLAT - Table Look-up Translation (D7)
             0xD7 => self.xlat(memory),
 
+            // ESC - Escape to coprocessor (D8-DF)
+            // Passes instruction to 8087 FPU; NOP without coprocessor
+            0xD8..=0xDF => self.esc(memory),
+
             // LOOPNE/LOOPNZ (E0)
             0xE0 => self.loopne(memory),
 
