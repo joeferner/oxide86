@@ -282,4 +282,42 @@ impl FileManager {
     pub fn get_device(&self, handle: u16) -> Option<DosDevice> {
         self.device_handles.get(&handle).copied()
     }
+
+    pub fn duplicate(&mut self, handle: u16) -> Result<u16, u8> {
+        // Standard handles (0, 1, 2) can be duplicated
+        if handle < 3 {
+            let new_handle = self
+                .allocate_handle()
+                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+            // Map the new handle to the same standard handle type
+            // We don't actually store anything for standard handles
+            return Ok(new_handle);
+        }
+
+        // Allocate a new handle
+        let new_handle = self
+            .allocate_handle()
+            .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+
+        // Check if it's a device handle
+        if let Some(device) = self.device_handles.get(&handle) {
+            // For devices, just add another entry pointing to the same device
+            self.device_handles.insert(new_handle, *device);
+            return Ok(new_handle);
+        }
+
+        // Check if it's a file handle
+        if let Some(file) = self.open_files.get(&handle) {
+            // Clone the file descriptor (duplicates the underlying OS file descriptor)
+            match file.try_clone() {
+                Ok(cloned_file) => {
+                    self.open_files.insert(new_handle, cloned_file);
+                    Ok(new_handle)
+                }
+                Err(_) => Err(dos_errors::ACCESS_DENIED),
+            }
+        } else {
+            Err(dos_errors::INVALID_HANDLE)
+        }
+    }
 }

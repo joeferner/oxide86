@@ -132,6 +132,10 @@ impl Bios for NullBios {
         Err(dos_errors::INVALID_HANDLE)
     }
 
+    fn file_duplicate(&mut self, _handle: u16) -> Result<u16, u8> {
+        Err(dos_errors::INVALID_HANDLE)
+    }
+
     fn dir_create(&mut self, _dirname: &str) -> Result<(), u8> {
         Err(dos_errors::ACCESS_DENIED)
     }

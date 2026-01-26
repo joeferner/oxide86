@@ -116,6 +116,10 @@ impl<D: DiskController> Bios for NativeBios<D> {
         self.file_manager.seek(handle, offset, method)
     }
 
+    fn file_duplicate(&mut self, handle: u16) -> Result<u16, u8> {
+        self.file_manager.duplicate(handle)
+    }
+
     // Directory operations
     fn dir_create(&mut self, dirname: &str) -> Result<(), u8> {
         self.directory_manager.create(dirname)

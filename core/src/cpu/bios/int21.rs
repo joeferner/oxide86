@@ -65,6 +65,7 @@ impl Cpu {
             0x40 => self.int21_write_file(memory, io),
             0x42 => self.int21_seek_file(io),
             0x44 => self.int21_ioctl(io),
+            0x45 => self.int21_duplicate_file(io),
             0x47 => self.int21_get_current_dir(memory, io),
             0x48 => self.int21_allocate_memory(io),
             0x49 => self.int21_free_memory(io),
@@ -352,6 +353,27 @@ impl Cpu {
                 // Return new position in DX:AX
                 self.dx = (new_position >> 16) as u16;
                 self.ax = (new_position & 0xFFFF) as u16;
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=45h - Duplicate File Handle
+    /// Input:
+    ///   BX = existing file handle
+    /// Output:
+    ///   CF clear if success: AX = new file handle (duplicate of BX)
+    ///   CF set if error: AX = error code
+    fn int21_duplicate_file<T: Bios>(&mut self, io: &mut T) {
+        let handle = self.bx;
+
+        match io.file_duplicate(handle) {
+            Ok(new_handle) => {
+                self.ax = new_handle;
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {

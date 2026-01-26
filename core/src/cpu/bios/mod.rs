@@ -192,6 +192,10 @@ pub trait Bios {
     /// Returns the new file position on success, or error code on failure
     fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8>;
 
+    /// Duplicate file handle (INT 21h, AH=45h)
+    /// Returns a new file handle that refers to the same file on success, or error code on failure
+    fn file_duplicate(&mut self, handle: u16) -> Result<u16, u8>;
+
     // --- INT 21h - DOS Directory Services ---
 
     /// Create directory (INT 21h, AH=39h)

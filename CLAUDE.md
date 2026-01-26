@@ -434,6 +434,7 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
     - AH=40h: Write to file or device
     - AH=42h: Seek (LSEEK)
     - AH=44h: IOCTL (Input/Output Control)
+    - AH=45h: Duplicate file handle
   - **Memory Management:**
     - AH=48h: Allocate memory
     - AH=49h: Free memory
