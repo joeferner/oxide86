@@ -9,13 +9,13 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 - Avoid python; don't write tests unless directed
 - Code in core must support both native and wasm
 - No backwards compatibility
-- Run clippy when done; update CLAUDE.md for future edits
+- Run ./scripts/pre-commit.sh when done; update CLAUDE.md for future edits
 - logs are written to /tmp/emu86.log
 
 ## Architecture
 
 ### Workspace Structure
-- **core/** - Platform-independent emulation (CPU, memory, instructions, FAT filesystem)
+- **core/** - Platform-independent emulation (CPU, memory, instructions, drive management)
 - **native/** - CLI with NativeBios implementation
 - **wasm/** - WebAssembly bindings for browser
 
@@ -26,7 +26,8 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 | `core/src/cpu/bios/mod.rs` | Bios trait, interrupt dispatch |
 | `core/src/cpu/bios/int*.rs` | Individual interrupt handlers |
 | `core/src/memory.rs` | Memory model, BDA initialization |
-| `core/src/fat.rs` | FAT filesystem (DiskAdapter, FatFileSystem) |
+| `core/src/drive_manager.rs` | Multi-drive management (DriveManager, DiskAdapter) |
+| `core/src/disk.rs` | DiskImage, DiskGeometry, DiskController trait |
 | `core/src/lib.rs` | Computer struct, boot process |
 | `native/src/bios/mod.rs` | NativeBios implementing Bios trait |
 
@@ -49,15 +50,43 @@ self.set_flag(cpu_flag::CARRY, false);  // clear
 - 0xF3 (REP/REPE): MOVS, STOS, LODS, CMPS, SCAS
 - 0xF2 (REPNE): CMPS, SCAS
 
-### FAT Filesystem (core/src/fat.rs)
-- **DiskAdapter**: Call `reset_adapter_position()` before each `FileSystem::new()`
-- **Handle allocation**: `FatFileSystem::next_handle` starts at 3; sync with platform via `set_next_handle()`
-- **Borrow checker**: Extract path/position data before mutable `self.adapter` access
+### Multi-Drive Management (core/src/drive_manager.rs)
+
+The `DriveManager` struct manages multiple floppy and hard drives:
+
+**Drive Numbering:**
+- `0x00` = Floppy A:, `0x01` = Floppy B:
+- `0x80` = Hard drive C:, `0x81` = D:, etc.
+
+**Key Structures:**
+```rust
+DriveState<D>      // Per-drive state: adapter, current_dir, disk_changed, removable
+DriveManager<D>    // Holds floppy_drives[2], hard_drives: Vec, open_files, searches
+DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
+```
+
+**Floppy Hot-Swap:**
+- `insert_floppy(slot, disk)` - Sets `disk_changed = true`
+- `eject_floppy(slot)` - Closes open files, returns disk
+- `disk_detect_change(drive)` - Returns and clears change flag (INT 13h AH=16h)
+
+**Per-Drive State:**
+- Each drive has its own `current_dir: String`
+- Path parsing extracts drive letter: `C:\FOO` -> (0x80, "/FOO")
+- File handles store which drive they belong to
+
+**Handle Allocation:**
+- Single global `next_handle` counter in DriveManager (starts at 3)
+- NativeBios device handles share same space, synced via `set_next_handle()`
+
+**DiskAdapter Usage:**
+- Call `reset_position()` before each `fatfs::FileSystem::new()`
+- Extract path/position data before mutable adapter access (borrow checker)
 
 ### NativeBios Handle Management
 - Device handles (CON, NUL, etc.) and file handles share same number space
 - `device_handles: HashMap<u16, DosDevice>` for devices
-- File handles managed by FatFileSystem
+- File handles managed by DriveManager
 - Sync via `set_next_handle()` to prevent collisions
 
 ### Timer Emulation
@@ -72,7 +101,7 @@ self.set_flag(cpu_flag::CARRY, false);  // clear
 |-----|---------|---------------|
 | 10h | Video | 00h set mode, 02h cursor, 0Eh teletype |
 | 12h | Memory | Returns AX = KB (typically 640) |
-| 13h | Disk | 00h reset, 02h read, 03h write, 08h params |
+| 13h | Disk | 00h reset, 02h read, 03h write, 08h params, 15h type, 16h change |
 | 14h | Serial | 00h init, 01h write, 02h read, 03h status |
 | 15h | System | 86h wait, 88h ext mem, C0h config |
 | 16h | Keyboard | 00h read, 01h check, 02h shift flags |
@@ -104,9 +133,23 @@ self.set_flag(cpu_flag::CARRY, false);  // clear
 ## Boot Process
 
 ```bash
-cargo run -p emu86-native -- --boot --disk <image.img>
+# Boot from floppy A:
+cargo run -p emu86-native -- --boot --disk dos.img
+
+# Boot from hard drive C: with floppy in B:
+cargo run -p emu86-native -- --boot --boot-drive 0x80 --hdd drive_c.img --floppy-b disk2.img
+
+# Multiple hard drives
+cargo run -p emu86-native -- --boot --hdd drive_c.img --hdd drive_d.img
 ```
 
+**CLI Options:**
+- `--disk <path>` or `--floppy-a <path>` - Floppy A: image
+- `--floppy-b <path>` - Floppy B: image
+- `--hdd <path>` - Hard drive image (can specify multiple for C:, D:, etc.)
+- `--boot-drive <0x00|0x01|0x80>` - Boot drive number
+
+**Boot Sequence:**
 1. Read sector 0 to 0x7C00
 2. Verify 0x55AA signature at bytes 510-511
 3. Set CS:IP=0:7C00, DL=drive, SS:SP=0:7C00

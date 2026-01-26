@@ -7,7 +7,7 @@ use emu86_core::cpu::bios::{
     DriveParams, ExecParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod,
     SerialParams, SerialStatus, dos_errors, file_access,
 };
-use emu86_core::{Bios, DiskController, FatFileSystem};
+use emu86_core::{Bios, DiskController, DriveManager};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 
@@ -22,24 +22,38 @@ pub enum DosDevice {
 
 /// Native platform implementation of BIOS
 pub struct NativeBios<D: DiskController> {
-    fat: FatFileSystem<D>,
+    drive_manager: DriveManager<D>,
     memory_allocator: MemoryAllocator,
     device_handles: HashMap<u16, DosDevice>,
-    /// Next file/device handle to allocate. Shared between device handles and file handles.
-    next_handle: u16,
+    /// Next device handle to allocate. Shared between device handles and file handles.
+    next_device_handle: u16,
 }
 
 impl<D: DiskController> NativeBios<D> {
-    pub fn new(disk: D) -> Result<Self, String> {
-        let mut fat = FatFileSystem::new(disk)?;
-        // Sync the FAT filesystem's next_handle with our next_handle
-        fat.set_next_handle(3);
-        Ok(Self {
-            fat,
+    /// Create a new NativeBios with no drives attached
+    pub fn new() -> Self {
+        Self {
+            drive_manager: DriveManager::new(),
             memory_allocator: MemoryAllocator::new(),
             device_handles: HashMap::new(),
-            next_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
-        })
+            next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
+        }
+    }
+
+    /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
+    pub fn insert_floppy(&mut self, slot: u8, disk: D) -> Result<(), String> {
+        self.drive_manager.insert_floppy(slot, disk)
+    }
+
+    /// Eject a floppy disk from a slot (for runtime disk swapping)
+    #[allow(dead_code)]
+    pub fn eject_floppy(&mut self, slot: u8) -> Result<Option<D>, String> {
+        self.drive_manager.eject_floppy(slot)
+    }
+
+    /// Add a hard drive (returns assigned drive number: 0x80, 0x81, etc.)
+    pub fn add_hard_drive(&mut self, disk: D) -> u8 {
+        self.drive_manager.add_hard_drive(disk)
     }
 
     /// Check if a filename is a DOS device name
@@ -47,6 +61,8 @@ impl<D: DiskController> NativeBios<D> {
         // DOS device names are case-insensitive and may have extensions
         let name = filename.to_uppercase();
         let base_name = name.split('.').next().unwrap_or(&name);
+        // Also strip any path prefix
+        let base_name = base_name.rsplit(['\\', '/']).next().unwrap_or(base_name);
 
         match base_name {
             "NUL" => Some(DosDevice::Null),
@@ -57,17 +73,23 @@ impl<D: DiskController> NativeBios<D> {
         }
     }
 
-    /// Allocate a new file/device handle
-    /// This is shared between device handles and file handles to avoid collisions
-    fn allocate_handle(&mut self) -> Option<u16> {
-        let handle = self.next_handle;
-        self.next_handle = self.next_handle.wrapping_add(1);
-        if self.next_handle < 3 {
-            self.next_handle = 3; // Wrap around but skip reserved handles
+    /// Allocate a new device handle
+    /// This is shared between device handles and drive_manager file handles to avoid collisions
+    fn allocate_device_handle(&mut self) -> Option<u16> {
+        let handle = self.next_device_handle;
+        self.next_device_handle = self.next_device_handle.wrapping_add(1);
+        if self.next_device_handle < 3 {
+            self.next_device_handle = 3; // Wrap around but skip reserved handles
         }
-        // Sync the handle counter with the FAT filesystem
-        self.fat.set_next_handle(self.next_handle);
+        // Sync the handle counter with the drive manager
+        self.drive_manager.set_next_handle(self.next_device_handle);
         Some(handle)
+    }
+}
+
+impl<D: DiskController> Default for NativeBios<D> {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -101,9 +123,9 @@ impl<D: DiskController> Bios for NativeBios<D> {
         console::check_key()
     }
 
-    // Disk operations - delegate to FatFileSystem which owns the disk
+    // Disk operations - delegate to DriveManager
     fn disk_reset(&mut self, drive: u8) -> bool {
-        self.fat.disk_reset(drive)
+        self.drive_manager.disk_reset(drive)
     }
 
     fn disk_read_sectors(
@@ -114,7 +136,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
         sector: u8,
         count: u8,
     ) -> Result<Vec<u8>, u8> {
-        self.fat
+        self.drive_manager
             .disk_read_sectors(drive, cylinder, head, sector, count)
     }
 
@@ -127,20 +149,20 @@ impl<D: DiskController> Bios for NativeBios<D> {
         count: u8,
         data: &[u8],
     ) -> Result<u8, u8> {
-        self.fat
+        self.drive_manager
             .disk_write_sectors(drive, cylinder, head, sector, count, data)
     }
 
     fn disk_get_params(&self, drive: u8) -> Result<DriveParams, u8> {
-        self.fat.disk_get_params(drive)
+        self.drive_manager.disk_get_params(drive)
     }
 
     fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8> {
-        self.fat.disk_get_type(drive)
+        self.drive_manager.disk_get_type(drive)
     }
 
     fn disk_detect_change(&mut self, drive: u8) -> Result<bool, u8> {
-        self.fat.disk_detect_change(drive)
+        self.drive_manager.disk_detect_change(drive)
     }
 
     // File operations
@@ -148,28 +170,28 @@ impl<D: DiskController> Bios for NativeBios<D> {
         // Check if it's a DOS device
         if let Some(device) = Self::is_dos_device(filename) {
             let handle = self
-                .allocate_handle()
+                .allocate_device_handle()
                 .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
             self.device_handles.insert(handle, device);
             return Ok(handle);
         }
 
-        // Delegate to FAT filesystem
-        self.fat.file_create(filename, attributes)
+        // Delegate to drive manager
+        self.drive_manager.file_create(filename, attributes)
     }
 
     fn file_open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8> {
         // Check if it's a DOS device
         if let Some(device) = Self::is_dos_device(filename) {
             let handle = self
-                .allocate_handle()
+                .allocate_device_handle()
                 .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
             self.device_handles.insert(handle, device);
             return Ok(handle);
         }
 
-        // Delegate to FAT filesystem
-        self.fat.file_open(filename, access_mode)
+        // Delegate to drive manager
+        self.drive_manager.file_open(filename, access_mode)
     }
 
     fn file_close(&mut self, handle: u16) -> Result<(), u8> {
@@ -183,8 +205,8 @@ impl<D: DiskController> Bios for NativeBios<D> {
             return Ok(());
         }
 
-        // Delegate to FAT filesystem
-        self.fat.file_close(handle)
+        // Delegate to drive manager
+        self.drive_manager.file_close(handle)
     }
 
     fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, u8> {
@@ -218,8 +240,8 @@ impl<D: DiskController> Bios for NativeBios<D> {
                 }
             }
         } else {
-            // Delegate to FAT filesystem
-            self.fat.file_read(handle, max_bytes)
+            // Delegate to drive manager
+            self.drive_manager.file_read(handle, max_bytes)
         }
     }
 
@@ -260,8 +282,8 @@ impl<D: DiskController> Bios for NativeBios<D> {
                 }
             }
         } else {
-            // Delegate to FAT filesystem
-            self.fat.file_write(handle, data)
+            // Delegate to drive manager
+            self.drive_manager.file_write(handle, data)
         }
     }
 
@@ -271,15 +293,15 @@ impl<D: DiskController> Bios for NativeBios<D> {
             return Err(dos_errors::INVALID_HANDLE);
         }
 
-        // Delegate to FAT filesystem
-        self.fat.file_seek(handle, offset, method)
+        // Delegate to drive manager
+        self.drive_manager.file_seek(handle, offset, method)
     }
 
     fn file_duplicate(&mut self, handle: u16) -> Result<u16, u8> {
         // Standard handles (0, 1, 2) can be duplicated
         if handle < 3 {
             let new_handle = self
-                .allocate_handle()
+                .allocate_device_handle()
                 .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
             // We don't actually store anything for standard handles
             return Ok(new_handle);
@@ -288,52 +310,51 @@ impl<D: DiskController> Bios for NativeBios<D> {
         // Check if it's a device handle
         if let Some(device) = self.device_handles.get(&handle).copied() {
             let new_handle = self
-                .allocate_handle()
+                .allocate_device_handle()
                 .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
             self.device_handles.insert(new_handle, device);
             return Ok(new_handle);
         }
 
-        // Delegate to FAT filesystem
-        self.fat.file_duplicate(handle)
+        // Delegate to drive manager
+        self.drive_manager.file_duplicate(handle)
     }
 
     // Directory operations
     fn dir_create(&mut self, dirname: &str) -> Result<(), u8> {
-        self.fat.dir_create(dirname)
+        self.drive_manager.dir_create(dirname)
     }
 
     fn dir_remove(&mut self, dirname: &str) -> Result<(), u8> {
-        self.fat.dir_remove(dirname)
+        self.drive_manager.dir_remove(dirname)
     }
 
     fn dir_change(&mut self, dirname: &str) -> Result<(), u8> {
-        self.fat.dir_change(dirname)
+        self.drive_manager.dir_change(dirname)
     }
 
     fn dir_get_current(&self, drive: u8) -> Result<String, u8> {
-        self.fat.dir_get_current(drive)
+        self.drive_manager.get_current_dir(drive)
     }
 
     fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), u8> {
-        self.fat.find_first(pattern, attributes)
+        self.drive_manager.find_first(pattern, attributes)
     }
 
     fn find_next(&mut self, search_id: usize) -> Result<FindData, u8> {
-        self.fat.find_next(search_id)
+        self.drive_manager.find_next(search_id)
     }
 
     // Drive management
     fn get_current_drive(&self) -> u8 {
-        // For Unix-like systems, we don't have drive letters
-        // Always return drive A (0)
-        0
+        self.drive_manager.get_current_drive()
     }
 
-    fn set_default_drive(&mut self, _drive: u8) -> u8 {
-        // For Unix-like systems, we don't have drive letters
-        // Always return 1 logical drive (A:)
-        1
+    fn set_default_drive(&mut self, drive: u8) -> u8 {
+        match self.drive_manager.set_current_drive(drive) {
+            Ok(count) => count,
+            Err(_) => self.drive_manager.get_drive_count(),
+        }
     }
 
     // Memory management
@@ -379,7 +400,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
                         DosDevice::Null => Ok(0x8004),    // NUL device (bit 7), special device
                         DosDevice::Console => Ok(0x80D3), // CON device (bit 7), console I/O
                     }
-                } else if self.fat.contains_handle(handle) {
+                } else if self.drive_manager.contains_handle(handle) {
                     // It's a regular file (bit 7 = 0)
                     Ok(0x0000)
                 } else {
@@ -398,7 +419,9 @@ impl<D: DiskController> Bios for NativeBios<D> {
             }
             _ => {
                 // Check if it's a valid file handle
-                if self.fat.contains_handle(handle) || self.device_handles.contains_key(&handle) {
+                if self.drive_manager.contains_handle(handle)
+                    || self.device_handles.contains_key(&handle)
+                {
                     // Allow setting but ignore for files and devices
                     Ok(())
                 } else {

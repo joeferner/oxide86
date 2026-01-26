@@ -25,7 +25,7 @@ struct Cli {
     #[arg(long)]
     boot: bool,
 
-    /// Boot drive number (0x00 for floppy, 0x80 for hard disk)
+    /// Boot drive number (0x00 for floppy A:, 0x01 for floppy B:, 0x80 for hard disk C:)
     #[arg(long, default_value = "0x00")]
     boot_drive: String,
 
@@ -41,9 +41,21 @@ struct Cli {
     #[arg(long)]
     verbose_io: bool,
 
-    /// Path to disk image file (optional, will create empty 1.44MB floppy if not specified)
+    /// Path to disk image file for floppy A: (backwards compatible alias for --floppy-a)
     #[arg(long)]
     disk: Option<String>,
+
+    /// Path to disk image file for floppy A:
+    #[arg(long = "floppy-a")]
+    floppy_a: Option<String>,
+
+    /// Path to disk image file for floppy B:
+    #[arg(long = "floppy-b")]
+    floppy_b: Option<String>,
+
+    /// Path to hard disk image file(s) - can be specified multiple times for C:, D:, etc.
+    #[arg(long = "hdd", action = clap::ArgAction::Append)]
+    hard_disks: Vec<String>,
 
     /// CPU clock speed in MHz (default: 4.77 for original 8086)
     #[arg(long, default_value = "4.77")]
@@ -62,19 +74,63 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // Load or create disk image
-    let disk = if let Some(disk_path) = &cli.disk {
-        let disk_data = std::fs::read(disk_path)
-            .with_context(|| format!("Failed to read disk image: {}", disk_path))?;
-        DiskImage::new(disk_data).context("Failed to create disk image from file")?
-    } else {
-        // Create empty 1.44MB floppy disk
-        DiskImage::empty(DiskGeometry::FLOPPY_1440K)
-    };
+    // Create BIOS with no drives attached
+    let mut bios: NativeBios<DiskImage> = NativeBios::new();
+
+    // Load floppy A: (--disk or --floppy-a, with --floppy-a taking precedence)
+    let floppy_a_path = cli.floppy_a.as_ref().or(cli.disk.as_ref());
+    if let Some(path) = floppy_a_path {
+        let disk_data = std::fs::read(path)
+            .with_context(|| format!("Failed to read floppy A: image: {}", path))?;
+        let disk = DiskImage::new(disk_data)
+            .with_context(|| format!("Failed to create disk image from: {}", path))?;
+        bios.insert_floppy(0, disk)
+            .map_err(|e| anyhow::anyhow!("Failed to insert floppy A:: {}", e))?;
+        log::info!("Loaded floppy A: from {}", path);
+    }
+
+    // Load floppy B:
+    if let Some(path) = &cli.floppy_b {
+        let disk_data = std::fs::read(path)
+            .with_context(|| format!("Failed to read floppy B: image: {}", path))?;
+        let disk = DiskImage::new(disk_data)
+            .with_context(|| format!("Failed to create disk image from: {}", path))?;
+        bios.insert_floppy(1, disk)
+            .map_err(|e| anyhow::anyhow!("Failed to insert floppy B:: {}", e))?;
+        log::info!("Loaded floppy B: from {}", path);
+    }
+
+    // Load hard drives (C:, D:, etc.)
+    for (i, path) in cli.hard_disks.iter().enumerate() {
+        let disk_data = std::fs::read(path)
+            .with_context(|| format!("Failed to read hard disk image: {}", path))?;
+        let disk = DiskImage::new(disk_data)
+            .with_context(|| format!("Failed to create disk image from: {}", path))?;
+        let drive_num = bios.add_hard_drive(disk);
+        let drive_letter = (b'C' + i as u8) as char;
+        log::info!(
+            "Loaded hard drive {}: (0x{:02X}) from {}",
+            drive_letter,
+            drive_num,
+            path
+        );
+    }
+
+    // If no drives specified and booting, create an empty floppy
+    if floppy_a_path.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() {
+        if cli.boot {
+            return Err(anyhow::anyhow!(
+                "No disk images specified. Use --disk, --floppy-a, --floppy-b, or --hdd to specify disk images."
+            ));
+        }
+        // For non-boot mode with a program, create an empty floppy for potential file access
+        let empty_disk = DiskImage::empty(DiskGeometry::FLOPPY_1440K);
+        bios.insert_floppy(0, empty_disk)
+            .map_err(|e| anyhow::anyhow!("Failed to create empty floppy: {}", e))?;
+        log::info!("Created empty 1.44MB floppy A:");
+    }
 
     let io_device = SimpleIoDevice::new(cli.verbose_io);
-    let bios = NativeBios::new(disk)
-        .map_err(|e| anyhow::anyhow!("Failed to initialize FAT filesystem: {}", e))?;
     let video = TerminalVideo::new();
     let mut computer = Computer::new(bios, io_device, video);
 
