@@ -33,6 +33,8 @@ pub struct Computer<
     /// Cycles per timer tick (PIT frequency / 18.2 Hz)
     /// 8086 at 4.77 MHz: approximately 262144 cycles per tick
     cycles_per_tick: u64,
+    /// Instruction step counter for debugging
+    step_count: u64,
 }
 
 impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
@@ -63,6 +65,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             // 8086 at 4.77 MHz with PIT at 18.2 Hz: ~262144 cycles per tick
             // This is approximate: 4770000 / 18.2 ≈ 262088
             cycles_per_tick: 262088,
+            step_count: 0,
         }
     }
 
@@ -186,11 +189,28 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
 
     /// Execute a single instruction
     pub fn step(&mut self) {
+        self.step_count += 1;
+
         // Get current IP to check what opcode we're about to execute
         let current_ip = self.cpu.ip;
         let current_cs = self.cpu.cs;
         let addr = Cpu::physical_address(current_cs, current_ip);
         let opcode = self.memory.read_byte(addr);
+
+        // Log instruction execution with step counter
+        log::trace!(
+            "[{:06}] {:04X}:{:04X} op={:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X} SP={:04X} SS={:04X}",
+            self.step_count,
+            current_cs,
+            current_ip,
+            opcode,
+            self.cpu.ax,
+            self.cpu.bx,
+            self.cpu.cx,
+            self.cpu.dx,
+            self.cpu.sp,
+            self.cpu.ss
+        );
 
         // Check if it's an INT instruction
         match opcode {

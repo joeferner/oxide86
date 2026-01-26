@@ -34,14 +34,19 @@ impl Cpu {
 
     /// RET (opcode C3: near return, C2: near return with imm16 pop)
     pub(in crate::cpu) fn ret(&mut self, opcode: u8, memory: &mut Memory) {
+        // If opcode is C2, fetch the immediate BEFORE popping
+        // (fetch_word reads from CS:IP which will change after pop)
+        let bytes_to_pop = if opcode == 0xC2 {
+            self.fetch_word(memory)
+        } else {
+            0
+        };
+
         // Pop return address
         self.ip = self.pop(memory);
 
-        // If opcode is C2, also pop additional bytes from stack
-        if opcode == 0xC2 {
-            let bytes_to_pop = self.fetch_word(memory);
-            self.sp = self.sp.wrapping_add(bytes_to_pop);
-        }
+        // Add the immediate to SP (if C2)
+        self.sp = self.sp.wrapping_add(bytes_to_pop);
     }
 
     /// Conditional jumps - short relative (opcodes 70-7F)
@@ -202,15 +207,20 @@ impl Cpu {
     /// CA: RET far with imm16 (pop additional bytes)
     /// CB: RET far
     pub(in crate::cpu) fn retf(&mut self, opcode: u8, memory: &mut Memory) {
+        // If opcode is CA, fetch the immediate BEFORE popping
+        // (fetch_word reads from CS:IP which will change after pops)
+        let bytes_to_pop = if opcode == 0xCA {
+            self.fetch_word(memory)
+        } else {
+            0
+        };
+
         // Pop IP and CS
         self.ip = self.pop(memory);
         self.cs = self.pop(memory);
 
-        // If opcode is CA, also pop additional bytes from stack
-        if opcode == 0xCA {
-            let bytes_to_pop = self.fetch_word(memory);
-            self.sp = self.sp.wrapping_add(bytes_to_pop);
-        }
+        // Add the immediate to SP (if CA)
+        self.sp = self.sp.wrapping_add(bytes_to_pop);
     }
 
     /// INT - Software Interrupt (opcode CD)
@@ -269,10 +279,26 @@ impl Cpu {
     /// IRET - Interrupt Return (opcode CF)
     /// Returns from interrupt handler
     pub(in crate::cpu) fn iret(&mut self, memory: &mut Memory) {
+        let old_cs = self.cs;
+        let old_ip = self.ip;
+
         // Pop IP, CS, and flags
-        self.ip = self.pop(memory);
-        self.cs = self.pop(memory);
-        self.flags = self.pop(memory);
+        let new_ip = self.pop(memory);
+        let new_cs = self.pop(memory);
+        let new_flags = self.pop(memory);
+
+        log::trace!(
+            "IRET from {:04X}:{:04X} -> {:04X}:{:04X} flags={:04X}",
+            old_cs,
+            old_ip,
+            new_cs,
+            new_ip,
+            new_flags
+        );
+
+        self.ip = new_ip;
+        self.cs = new_cs;
+        self.flags = new_flags;
     }
 
     /// CBW - Convert Byte to Word (opcode 98)

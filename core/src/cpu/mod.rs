@@ -643,6 +643,15 @@ impl Cpu {
     pub(super) fn push(&mut self, value: u16, memory: &mut Memory) {
         self.sp = self.sp.wrapping_sub(2);
         let addr = Self::physical_address(self.ss, self.sp);
+        log::trace!(
+            "PUSH {:04X} to {:04X}:{:04X} (phys {:05X}) [from {:04X}:{:04X}]",
+            value,
+            self.ss,
+            self.sp,
+            addr,
+            self.cs,
+            self.ip
+        );
         memory.write_word(addr, value);
     }
 
@@ -650,6 +659,15 @@ impl Cpu {
     pub(super) fn pop(&mut self, memory: &Memory) -> u16 {
         let addr = Self::physical_address(self.ss, self.sp);
         let value = memory.read_word(addr);
+        log::trace!(
+            "POP {:04X} from {:04X}:{:04X} (phys {:05X}) [at {:04X}:{:04X}]",
+            value,
+            self.ss,
+            self.sp,
+            addr,
+            self.cs,
+            self.ip
+        );
         self.sp = self.sp.wrapping_add(2);
         value
     }
