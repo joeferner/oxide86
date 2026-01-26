@@ -410,4 +410,49 @@ impl Cpu {
         // Preserve upper 8 bits
         self.flags = (self.flags & 0xFF00) | (ah as u16);
     }
+
+    /// PUSHA - Push All General Registers (opcode 0x60)
+    /// Pushes AX, CX, DX, BX, original SP, BP, SI, DI onto the stack
+    /// 80186+ instruction
+    pub(in crate::cpu) fn pusha(&mut self, memory: &mut Memory) {
+        let original_sp = self.sp;
+        self.push(self.ax, memory);
+        self.push(self.cx, memory);
+        self.push(self.dx, memory);
+        self.push(self.bx, memory);
+        self.push(original_sp, memory);
+        self.push(self.bp, memory);
+        self.push(self.si, memory);
+        self.push(self.di, memory);
+    }
+
+    /// BOUND - Check Array Index Against Bounds (opcode 0x62)
+    /// Checks if a signed register value is within bounds stored in memory
+    /// If index < lower_bound or index > upper_bound, triggers INT 5
+    /// 80186+ instruction
+    pub(in crate::cpu) fn bound(&mut self, memory: &mut Memory) -> bool {
+        let modrm = self.fetch_byte(memory);
+        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, memory);
+
+        // BOUND only works with memory operands
+        if mode == 0b11 {
+            panic!("BOUND cannot use register operand");
+        }
+
+        // Get the index value from register (signed)
+        let index = self.get_reg16(reg) as i16;
+
+        // Read lower and upper bounds from memory (two consecutive signed words)
+        let lower_bound = memory.read_word(addr) as i16;
+        let upper_bound = memory.read_word(addr + 2) as i16;
+
+        // Check if index is out of bounds
+        if index < lower_bound || index > upper_bound {
+            // Out of bounds - caller should trigger INT 5
+            return true;
+        }
+
+        // Within bounds - no exception
+        false
+    }
 }

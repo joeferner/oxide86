@@ -21,6 +21,8 @@ pub struct Cpu {
     pub ds: u16,
     pub ss: u16,
     pub es: u16,
+    pub fs: u16, // 80386+
+    pub gs: u16, // 80386+
 
     // Instruction pointer
     pub ip: u16,
@@ -74,6 +76,8 @@ impl Cpu {
             ds: 0,
             ss: 0,
             es: 0,
+            fs: 0,
+            gs: 0,
             ip: 0,
             flags: 0,
             halted: false,
@@ -294,6 +298,44 @@ impl Cpu {
             // POP 16-bit register (58-5F)
             0x58..=0x5F => self.pop_reg16(opcode, memory),
 
+            // PUSHA - Push All General Registers (60)
+            0x60 => self.pusha(memory),
+
+            // BOUND - Check Array Index Against Bounds (62)
+            0x62 => {
+                if self.bound(memory) {
+                    // Index out of bounds - trigger INT 5
+                    self.push(self.flags, memory);
+                    self.push(self.cs, memory);
+                    // IP points after BOUND instruction; we need to point at it
+                    // The modrm byte and any displacement were already consumed by bound()
+                    // so we save the current IP (which is past the instruction)
+                    self.push(self.ip, memory);
+                    self.set_flag(cpu_flag::INTERRUPT, false);
+                    self.set_flag(cpu_flag::TRAP, false);
+                    // Load INT 5 vector
+                    let ivt_addr = 5 * 4;
+                    self.ip = memory.read_word(ivt_addr);
+                    self.cs = memory.read_word(ivt_addr + 2);
+                }
+            }
+
+            // FS: segment override prefix (64) - 80386+
+            0x64 => {
+                self.segment_override = Some(self.fs);
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+                self.segment_override = None;
+            }
+
+            // GS: segment override prefix (65) - 80386+
+            0x65 => {
+                self.segment_override = Some(self.gs);
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+                self.segment_override = None;
+            }
+
             // PUSH immediate (68: imm16, 6A: imm8 sign-extended)
             0x68 | 0x6A => self.push_imm(opcode, memory),
 
@@ -473,6 +515,13 @@ impl Cpu {
 
             // OUT DX, AX (EF)
             0xEF => self.out_dx_ax(io_port),
+
+            // LOCK prefix (F0)
+            // Asserts LOCK# signal for atomic memory operations; no-op in single-processor emulator
+            0xF0 => {
+                let next_opcode = self.fetch_byte(memory);
+                self.execute_with_io(next_opcode, memory, io_port);
+            }
 
             // REPNE/REPNZ prefix (F2)
             0xF2 => {
