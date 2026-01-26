@@ -41,10 +41,6 @@ struct Cli {
     #[arg(long)]
     verbose_io: bool,
 
-    /// Path to disk image file for floppy A: (backwards compatible alias for --floppy-a)
-    #[arg(long)]
-    disk: Option<String>,
-
     /// Path to disk image file for floppy A:
     #[arg(long = "floppy-a")]
     floppy_a: Option<String>,
@@ -77,9 +73,8 @@ fn main() -> Result<()> {
     // Create BIOS with no drives attached
     let mut bios: NativeBios<DiskImage> = NativeBios::new();
 
-    // Load floppy A: (--disk or --floppy-a, with --floppy-a taking precedence)
-    let floppy_a_path = cli.floppy_a.as_ref().or(cli.disk.as_ref());
-    if let Some(path) = floppy_a_path {
+    // Load floppy A:
+    if let Some(path) = &cli.floppy_a {
         let disk_data = std::fs::read(path)
             .with_context(|| format!("Failed to read floppy A: image: {}", path))?;
         let disk = DiskImage::new(disk_data)
@@ -117,10 +112,10 @@ fn main() -> Result<()> {
     }
 
     // If no drives specified and booting, create an empty floppy
-    if floppy_a_path.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() {
+    if cli.floppy_a.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() {
         if cli.boot {
             return Err(anyhow::anyhow!(
-                "No disk images specified. Use --disk, --floppy-a, --floppy-b, or --hdd to specify disk images."
+                "No disk images specified. Use --floppy-a, --floppy-b, or --hdd to specify disk images."
             ));
         }
         // For non-boot mode with a program, create an empty floppy for potential file access

@@ -134,7 +134,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 
 ```bash
 # Boot from floppy A:
-cargo run -p emu86-native -- --boot --disk dos.img
+cargo run -p emu86-native -- --boot --floppy-a dos.img
 
 # Boot from hard drive C: with floppy in B:
 cargo run -p emu86-native -- --boot --boot-drive 0x80 --hdd drive_c.img --floppy-b disk2.img
@@ -144,7 +144,7 @@ cargo run -p emu86-native -- --boot --hdd drive_c.img --hdd drive_d.img
 ```
 
 **CLI Options:**
-- `--disk <path>` or `--floppy-a <path>` - Floppy A: image
+- `--floppy-a <path>` - Floppy A: image
 - `--floppy-b <path>` - Floppy B: image
 - `--hdd <path>` - Hard drive image (can specify multiple for C:, D:, etc.)
 - `--boot-drive <0x00|0x01|0x80>` - Boot drive number
