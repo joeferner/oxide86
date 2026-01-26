@@ -31,7 +31,7 @@ impl Cpu {
         }
     }
 
-    /// AH=11h - Network Redirector Installation Check
+    /// AH=11h - Network Redirector Interface
     /// Input: AL = subfunction
     /// Output: AL = 0x00 if not installed, non-zero if installed
     fn int2f_network_redirector(&mut self, subfunction: u8) {
@@ -40,6 +40,13 @@ impl Cpu {
                 // Installation check
                 // Return AL=0x00 (not installed)
                 self.ax &= 0xFF00;
+            }
+            0x22 => {
+                // Process termination hook
+                // Called by DOS when a process terminates to allow
+                // the network redirector to clean up network resources.
+                // Input: DS = PSP segment of terminating process
+                // Since we don't have network redirection, just return.
             }
             _ => {
                 // Unknown subfunction - return not installed

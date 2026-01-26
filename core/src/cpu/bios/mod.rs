@@ -10,8 +10,10 @@ mod int15;
 mod int16;
 pub mod int17;
 mod int1a;
+mod int20;
 mod int21;
 mod int29;
+mod int2a;
 mod int2f;
 pub mod null_bios;
 
@@ -389,12 +391,20 @@ impl Cpu {
                 self.handle_int1a(memory, io);
                 true
             }
+            0x20 => {
+                self.handle_int20();
+                true
+            }
             0x21 => {
                 self.handle_int21(memory, io);
                 true
             }
             0x29 => {
                 self.handle_int29(memory, io);
+                true
+            }
+            0x2A => {
+                self.handle_int2a();
                 true
             }
             0x2F => {
