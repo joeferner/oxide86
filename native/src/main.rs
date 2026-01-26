@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::{Computer, DiskGeometry, DiskImage};
+use std::fs::File;
 
 mod bios;
 use bios::NativeBios;
@@ -45,7 +46,10 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
-    env_logger::init();
+    let log_file = File::create("/tmp/emu86.log").context("Failed to create log file")?;
+    env_logger::Builder::from_default_env()
+        .target(env_logger::Target::Pipe(Box::new(log_file)))
+        .init();
 
     let cli = Cli::parse();
 

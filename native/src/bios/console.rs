@@ -17,10 +17,19 @@ fn stdin_has_data() -> bool {
     result > 0 && (pollfd.revents & libc::POLLIN) != 0
 }
 
+/// Translate Unix line endings to DOS
+fn translate_newline(ch: u8) -> u8 {
+    if ch == 0x0A {
+        0x0D // LF -> CR
+    } else {
+        ch
+    }
+}
+
 pub fn read_char() -> Option<u8> {
     let mut buffer = [0u8; 1];
     match io::stdin().read_exact(&mut buffer) {
-        Ok(_) => Some(buffer[0]),
+        Ok(_) => Some(translate_newline(buffer[0])),
         Err(_) => None,
     }
 }
@@ -50,7 +59,7 @@ pub fn read_key() -> Option<KeyPress> {
     let mut buffer = [0u8; 1];
     match io::stdin().read_exact(&mut buffer) {
         Ok(_) => {
-            let ascii_code = buffer[0];
+            let ascii_code = translate_newline(buffer[0]);
             let scan_code = ascii_to_scan_code(ascii_code);
             Some(KeyPress {
                 scan_code,
@@ -71,7 +80,7 @@ pub fn check_key() -> Option<KeyPress> {
     let mut buffer = [0u8; 1];
     match io::stdin().read(&mut buffer) {
         Ok(1) => {
-            let ascii_code = buffer[0];
+            let ascii_code = translate_newline(buffer[0]);
             let scan_code = ascii_to_scan_code(ascii_code);
             Some(KeyPress {
                 scan_code,

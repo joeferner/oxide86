@@ -2,20 +2,62 @@ use emu86_core::video::{
     CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextAttribute, TextCell, VideoController,
 };
 use std::io::{self, Write};
+use std::os::unix::io::AsRawFd;
 
 /// Terminal-based video controller using ANSI escape codes
 pub struct TerminalVideo {
     last_buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
+    original_termios: Option<libc::termios>,
 }
 
 impl TerminalVideo {
     pub fn new() -> Self {
+        // Save original terminal settings and enable raw mode
+        let original_termios = Self::enable_raw_mode();
+
         // Clear screen and hide cursor
         print!("\x1b[2J\x1b[?25l");
         io::stdout().flush().unwrap();
 
         Self {
             last_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            original_termios,
+        }
+    }
+
+    /// Enable raw mode for character-at-a-time input
+    fn enable_raw_mode() -> Option<libc::termios> {
+        let stdin_fd = io::stdin().as_raw_fd();
+
+        unsafe {
+            let mut termios: libc::termios = std::mem::zeroed();
+            if libc::tcgetattr(stdin_fd, &mut termios) != 0 {
+                return None;
+            }
+
+            let original = termios;
+
+            // Disable canonical mode (line buffering) and echo
+            termios.c_lflag &= !(libc::ICANON | libc::ECHO);
+            // Set minimum characters for read to 1
+            termios.c_cc[libc::VMIN] = 1;
+            termios.c_cc[libc::VTIME] = 0;
+
+            if libc::tcsetattr(stdin_fd, libc::TCSANOW, &termios) != 0 {
+                return None;
+            }
+
+            Some(original)
+        }
+    }
+
+    /// Restore original terminal settings
+    fn restore_terminal(&self) {
+        if let Some(ref original) = self.original_termios {
+            let stdin_fd = io::stdin().as_raw_fd();
+            unsafe {
+                libc::tcsetattr(stdin_fd, libc::TCSANOW, original);
+            }
         }
     }
 
@@ -82,6 +124,9 @@ impl VideoController for TerminalVideo {
 
 impl Drop for TerminalVideo {
     fn drop(&mut self) {
+        // Restore terminal settings first
+        self.restore_terminal();
+
         // Restore terminal on exit: reset colors, show cursor, move to bottom
         // Position cursor at row 26 (below the 25-row display)
         println!("\x1b[26;1H\x1b[0m\x1b[?25h");
