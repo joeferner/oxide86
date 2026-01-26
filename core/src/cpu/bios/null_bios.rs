@@ -78,6 +78,10 @@ impl Bios for NullBios {
         None
     }
 
+    fn check_key(&mut self) -> Option<KeyPress> {
+        None
+    }
+
     fn disk_reset(&mut self, _drive: u8) -> bool {
         false // No disk available
     }

@@ -150,9 +150,13 @@ pub trait Bios {
 
     // --- INT 16h - Keyboard Services ---
 
-    /// Read a keystroke (INT 16h, AH=00h)
+    /// Read a keystroke (INT 16h, AH=00h) - blocking
     /// Returns key press data if available, None otherwise
     fn read_key(&mut self) -> Option<KeyPress>;
+
+    /// Check if a key is available without blocking (INT 16h, AH=01h)
+    /// Returns key press data if available, None if no key is waiting
+    fn check_key(&mut self) -> Option<KeyPress>;
 
     // --- INT 13h - Disk Services ---
 

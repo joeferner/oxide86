@@ -1,7 +1,21 @@
 use emu86_core::cpu::bios::KeyPress;
 use std::io::{self, Read, Write};
+use std::os::unix::io::AsRawFd;
 
 // Console I/O operations for NativeBios
+
+/// Check if stdin has data available (non-blocking)
+fn stdin_has_data() -> bool {
+    let stdin_fd = io::stdin().as_raw_fd();
+    let mut pollfd = libc::pollfd {
+        fd: stdin_fd,
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    // Poll with 0 timeout (immediate return)
+    let result = unsafe { libc::poll(&mut pollfd, 1, 0) };
+    result > 0 && (pollfd.revents & libc::POLLIN) != 0
+}
 
 pub fn read_char() -> Option<u8> {
     let mut buffer = [0u8; 1];
@@ -21,25 +35,49 @@ pub fn write_str(s: &str) {
     let _ = io::stdout().flush();
 }
 
+/// Convert ASCII code to scan code
+fn ascii_to_scan_code(ascii_code: u8) -> u8 {
+    match ascii_code {
+        0x0D => 0x1C, // Enter key
+        0x08 => 0x0E, // Backspace
+        0x1B => 0x01, // Escape
+        _ => ascii_code,
+    }
+}
+
 pub fn read_key() -> Option<KeyPress> {
-    // Read a character from stdin
+    // Read a character from stdin (blocking)
     let mut buffer = [0u8; 1];
     match io::stdin().read_exact(&mut buffer) {
         Ok(_) => {
             let ascii_code = buffer[0];
-            // For simple implementation, use ASCII code as scan code
-            // In a real implementation, we'd need to map special keys to proper scan codes
-            let scan_code = match ascii_code {
-                0x0D => 0x1C,    // Enter key
-                0x08 => 0x0E,    // Backspace
-                0x1B => 0x01,    // Escape
-                _ => ascii_code, // Use ASCII as scan code for regular keys
-            };
+            let scan_code = ascii_to_scan_code(ascii_code);
             Some(KeyPress {
                 scan_code,
                 ascii_code,
             })
         }
         Err(_) => None,
+    }
+}
+
+pub fn check_key() -> Option<KeyPress> {
+    // Check if a key is available without blocking
+    if !stdin_has_data() {
+        return None;
+    }
+
+    // Data is available, read it
+    let mut buffer = [0u8; 1];
+    match io::stdin().read(&mut buffer) {
+        Ok(1) => {
+            let ascii_code = buffer[0];
+            let scan_code = ascii_to_scan_code(ascii_code);
+            Some(KeyPress {
+                scan_code,
+                ascii_code,
+            })
+        }
+        _ => None,
     }
 }

@@ -89,6 +89,10 @@ impl<D: DiskController> Bios for NativeBios<D> {
         console::read_key()
     }
 
+    fn check_key(&mut self) -> Option<KeyPress> {
+        console::check_key()
+    }
+
     // Disk operations - delegate to FatFileSystem which owns the disk
     fn disk_reset(&mut self, drive: u8) -> bool {
         self.fat.disk_reset(drive)

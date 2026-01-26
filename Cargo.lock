@@ -323,6 +323,7 @@ dependencies = [
  "clap",
  "emu86-core",
  "env_logger",
+ "libc",
  "log",
 ]
 

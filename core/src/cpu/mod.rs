@@ -130,6 +130,15 @@ impl Cpu {
         io: &mut T,
         video: &mut crate::video::Video,
     ) {
+        log::trace!(
+            "INT 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X}",
+            int_num,
+            self.ax,
+            self.bx,
+            self.cx,
+            self.dx
+        );
+
         // Try to handle with BIOS I/O first
         if self.handle_bios_interrupt(int_num, memory, io, video) {
             // Handled by BIOS, don't do the normal INT

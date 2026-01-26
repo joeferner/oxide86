@@ -12,7 +12,7 @@ impl Cpu {
 
         match function {
             0x00 => self.int16_read_char(memory, io),
-            0x01 => self.int16_check_keystroke(memory),
+            0x01 => self.int16_check_keystroke(memory, io),
             0x02 => self.int16_get_shift_flags(memory),
             _ => {
                 log::warn!("Unhandled INT 0x16 function: AH=0x{:02X}", function);
@@ -70,7 +70,7 @@ impl Cpu {
     ///   If keystroke available:
     ///     AH = BIOS scan code
     ///     AL = ASCII character
-    fn int16_check_keystroke(&mut self, memory: &Memory) {
+    fn int16_check_keystroke<T: super::Bios>(&mut self, memory: &mut Memory, io: &mut T) {
         // Check keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
@@ -89,8 +89,31 @@ impl Cpu {
             // Clear ZF to indicate keystroke available
             self.set_flag(cpu_flag::ZERO, false);
         } else {
-            // No keystroke available - set ZF
-            self.set_flag(cpu_flag::ZERO, true);
+            // Buffer is empty - check if a key is available from the host (non-blocking)
+            if let Some(key) = io.check_key() {
+                // Key is available - put it in the buffer for later consumption
+                let buffer_start: u16 = 0x001E; // Relative to BDA
+                let char_addr = BDA_START + tail as usize;
+                memory.write_byte(char_addr, key.scan_code);
+                memory.write_byte(char_addr + 1, key.ascii_code);
+
+                // Update tail pointer (circular buffer)
+                let new_tail = if tail == buffer_start + 30 {
+                    buffer_start // Wrap around
+                } else {
+                    tail + 2
+                };
+                memory.write_word(tail_addr, new_tail);
+
+                // Return the key data
+                self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
+
+                // Clear ZF to indicate keystroke available
+                self.set_flag(cpu_flag::ZERO, false);
+            } else {
+                // No keystroke available - set ZF
+                self.set_flag(cpu_flag::ZERO, true);
+            }
         }
     }
 
