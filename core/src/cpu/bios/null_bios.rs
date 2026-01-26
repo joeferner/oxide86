@@ -1,7 +1,7 @@
 use crate::{
     Bios, DriveParams,
     cpu::bios::{
-        FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod, SerialParams,
+        ExecParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod, SerialParams,
         SerialStatus, dos_errors, int14::line_status, int17::printer_status,
     },
     disk_errors,
@@ -55,6 +55,11 @@ impl Bios for NullBios {
             0..=2 => Ok(()),
             _ => Err(dos_errors::INVALID_HANDLE),
         }
+    }
+
+    fn exec_load_program(&mut self, _params: &ExecParams) -> Result<Vec<u8>, u8> {
+        // No file system available in null implementation
+        Err(dos_errors::FILE_NOT_FOUND)
     }
 
     fn read_char(&mut self) -> Option<u8> {

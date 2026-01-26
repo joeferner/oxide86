@@ -4,8 +4,8 @@ mod peripheral;
 mod time;
 
 use emu86_core::cpu::bios::{
-    DriveParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod, SerialParams,
-    SerialStatus, dos_errors,
+    DriveParams, ExecParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod,
+    SerialParams, SerialStatus, dos_errors, file_access,
 };
 use emu86_core::{Bios, DiskController, FatFileSystem};
 use std::collections::HashMap;
@@ -390,6 +390,37 @@ impl<D: DiskController> Bios for NativeBios<D> {
                 }
             }
         }
+    }
+
+    fn exec_load_program(&mut self, params: &ExecParams) -> Result<Vec<u8>, u8> {
+        // Open the program file
+        let handle = self.file_open(&params.filename, file_access::READ_ONLY)?;
+
+        // Read the entire file
+        let mut program_data = Vec::new();
+        loop {
+            match self.file_read(handle, 4096) {
+                Ok(data) => {
+                    if data.is_empty() {
+                        break;
+                    }
+                    program_data.extend(data);
+                }
+                Err(e) => {
+                    let _ = self.file_close(handle);
+                    return Err(e);
+                }
+            }
+        }
+
+        // Close the file
+        let _ = self.file_close(handle);
+
+        if program_data.is_empty() {
+            return Err(dos_errors::FILE_NOT_FOUND);
+        }
+
+        Ok(program_data)
     }
 
     // Serial port (stub implementations)

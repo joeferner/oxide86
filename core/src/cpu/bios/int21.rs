@@ -2,7 +2,7 @@ use crate::{
     Bios,
     cpu::{
         Cpu,
-        bios::{FindData, SeekMethod},
+        bios::{ExecParams, FindData, SeekMethod},
         cpu_flag,
     },
     memory::Memory,
@@ -76,6 +76,7 @@ impl Cpu {
             0x48 => self.int21_allocate_memory(io),
             0x49 => self.int21_free_memory(io),
             0x4A => self.int21_resize_memory(io),
+            0x4B => self.int21_exec(memory, io),
             0x4C => self.int21_exit(),
             0x4E => self.int21_find_first(memory, io),
             0x4F => self.int21_find_next(memory, io),
@@ -833,6 +834,445 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }
+    }
+
+    /// INT 21h, AH=4Bh - EXEC (Load and Execute Program)
+    /// Input:
+    ///   AL = subfunction (00h=load+execute, 01h=load, 03h=overlay)
+    ///   DS:DX = pointer to null-terminated program filename
+    ///   ES:BX = pointer to parameter block
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code
+    fn int21_exec<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+        let subfunction = (self.ax & 0xFF) as u8;
+        let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
+
+        log::info!("INT 21h AH=4Bh AL={:02X}: EXEC '{}'", subfunction, filename);
+
+        // Read parameter block from ES:BX
+        let param_block_addr = Self::physical_address(self.es, self.bx);
+
+        // Parameter block structure for AL=00h (Load and Execute):
+        // Offset 0: Word - Environment segment (0 = use parent's)
+        // Offset 2: Dword - Command line pointer (far pointer)
+        // Offset 6: Dword - First FCB pointer (far pointer)
+        // Offset 10: Dword - Second FCB pointer (far pointer)
+
+        let env_segment = memory.read_word(param_block_addr);
+        let cmdline_offset = memory.read_word(param_block_addr + 2);
+        let cmdline_segment = memory.read_word(param_block_addr + 4);
+
+        // Read command line (Pascal-style string: first byte is length)
+        let cmdline_addr = Self::physical_address(cmdline_segment, cmdline_offset);
+        let cmdline_len = memory.read_byte(cmdline_addr) as usize;
+        let mut command_line = String::new();
+        for i in 0..cmdline_len {
+            let ch = memory.read_byte(cmdline_addr + 1 + i);
+            if ch == 0x0D {
+                // CR terminates the command line
+                break;
+            }
+            command_line.push(ch as char);
+        }
+
+        log::debug!(
+            "INT 21h AH=4Bh: env_segment=0x{:04X}, command_line='{}'",
+            env_segment,
+            command_line
+        );
+
+        let params = ExecParams {
+            subfunction,
+            filename: filename.clone(),
+            env_segment,
+            command_line,
+        };
+
+        // Load the program data
+        let program_data = match io.exec_load_program(&params) {
+            Ok(data) => data,
+            Err(error_code) => {
+                log::warn!(
+                    "INT 21h AH=4Bh: Failed to load '{}' - error 0x{:02X}",
+                    filename,
+                    error_code
+                );
+                self.ax = error_code as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+                return;
+            }
+        };
+
+        if program_data.is_empty() {
+            log::warn!("INT 21h AH=4Bh: Empty program file '{}'", filename);
+            self.ax = dos_errors::INVALID_FORMAT as u16;
+            self.set_flag(cpu_flag::CARRY, true);
+            return;
+        }
+
+        // Check if this is an EXE file (MZ header)
+        let is_exe = program_data.len() >= 2 && program_data[0] == 0x4D && program_data[1] == 0x5A;
+
+        if is_exe {
+            // EXE file handling
+            self.exec_load_exe(memory, io, &program_data, &params);
+        } else {
+            // COM file handling
+            self.exec_load_com(memory, io, &program_data, &params);
+        }
+    }
+
+    /// Load and execute a COM file
+    fn exec_load_com<T: Bios>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut T,
+        program_data: &[u8],
+        params: &ExecParams,
+    ) {
+        // COM files need PSP (256 bytes) + program
+        // Max size is 64KB - 256 bytes for PSP - 2 bytes for stack
+        let program_size = program_data.len();
+        if program_size > 0xFFFE - 0x100 {
+            log::warn!(
+                "INT 21h AH=4Bh: COM file too large ({} bytes)",
+                program_size
+            );
+            self.ax = dos_errors::INSUFFICIENT_MEMORY as u16;
+            self.set_flag(cpu_flag::CARRY, true);
+            return;
+        }
+
+        // Calculate paragraphs needed: PSP (16 paragraphs) + program + stack
+        // Round up program size to paragraph boundary
+        let total_bytes = 0x100 + program_size + 0x100; // PSP + program + some stack
+        let paragraphs = total_bytes.div_ceil(16) as u16;
+
+        // Allocate memory for the program
+        let psp_segment = match io.memory_allocate(paragraphs) {
+            Ok(seg) => seg,
+            Err((error_code, _)) => {
+                log::warn!(
+                    "INT 21h AH=4Bh: Failed to allocate memory - error 0x{:02X}",
+                    error_code
+                );
+                self.ax = error_code as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+                return;
+            }
+        };
+
+        log::info!(
+            "INT 21h AH=4Bh: Allocated {} paragraphs at segment 0x{:04X}",
+            paragraphs,
+            psp_segment
+        );
+
+        // Build the PSP at psp_segment:0000
+        self.build_psp(memory, io, psp_segment, params);
+
+        // Load program at psp_segment:0100
+        let load_addr = Self::physical_address(psp_segment, 0x0100);
+        for (i, &byte) in program_data.iter().enumerate() {
+            memory.write_byte(load_addr + i, byte);
+        }
+
+        log::info!(
+            "INT 21h AH=4Bh: Loaded {} bytes at {:05X}",
+            program_size,
+            load_addr
+        );
+
+        match params.subfunction {
+            0x00 => {
+                // Load and execute
+                // Save parent's PSP and set new PSP
+                let parent_psp = io.get_psp();
+                io.set_psp(psp_segment);
+
+                // For COM files: CS=DS=ES=SS=PSP, IP=0100h, SP=FFFEh
+                self.cs = psp_segment;
+                self.ds = psp_segment;
+                self.es = psp_segment;
+                self.ss = psp_segment;
+                self.ip = 0x0100;
+                self.sp = 0xFFFE;
+
+                // Push return address (0000:0000) for proper termination
+                self.sp = self.sp.wrapping_sub(2);
+                let stack_addr = Self::physical_address(self.ss, self.sp);
+                memory.write_word(stack_addr, 0x0000); // Return offset
+                self.sp = self.sp.wrapping_sub(2);
+                let stack_addr = Self::physical_address(self.ss, self.sp);
+                memory.write_word(stack_addr, 0x0000); // Return segment
+
+                // Store parent PSP at offset 0x16 in child's PSP
+                let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
+                memory.write_word(parent_psp_addr, parent_psp);
+
+                log::info!(
+                    "INT 21h AH=4Bh: Executing COM at {:04X}:{:04X}",
+                    self.cs,
+                    self.ip
+                );
+
+                // Success - clear carry flag
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x01 => {
+                // Load but don't execute - return load info
+                // BX:CX = entry point (CS:IP)
+                self.bx = psp_segment;
+                self.cx = 0x0100;
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x03 => {
+                // Load overlay - load at ES:BX, no PSP
+                // For overlay, we loaded at the wrong place, need to reload
+                // This is a simplified implementation
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            _ => {
+                log::warn!(
+                    "INT 21h AH=4Bh: Unsupported subfunction 0x{:02X}",
+                    params.subfunction
+                );
+                self.ax = dos_errors::INVALID_FUNCTION as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// Load and execute an EXE file
+    fn exec_load_exe<T: Bios>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut T,
+        program_data: &[u8],
+        params: &ExecParams,
+    ) {
+        // Parse EXE header
+        if program_data.len() < 28 {
+            log::warn!("INT 21h AH=4Bh: EXE header too small");
+            self.ax = dos_errors::INVALID_FORMAT as u16;
+            self.set_flag(cpu_flag::CARRY, true);
+            return;
+        }
+
+        // EXE header fields
+        let last_page_bytes = u16::from_le_bytes([program_data[2], program_data[3]]);
+        let total_pages = u16::from_le_bytes([program_data[4], program_data[5]]);
+        let reloc_count = u16::from_le_bytes([program_data[6], program_data[7]]);
+        let header_paragraphs = u16::from_le_bytes([program_data[8], program_data[9]]);
+        let min_paragraphs = u16::from_le_bytes([program_data[10], program_data[11]]);
+        let _max_paragraphs = u16::from_le_bytes([program_data[12], program_data[13]]);
+        let init_ss = u16::from_le_bytes([program_data[14], program_data[15]]);
+        let init_sp = u16::from_le_bytes([program_data[16], program_data[17]]);
+        let _checksum = u16::from_le_bytes([program_data[18], program_data[19]]);
+        let init_ip = u16::from_le_bytes([program_data[20], program_data[21]]);
+        let init_cs = u16::from_le_bytes([program_data[22], program_data[23]]);
+        let reloc_table_offset = u16::from_le_bytes([program_data[24], program_data[25]]);
+
+        // Calculate load module size
+        let header_size = (header_paragraphs as usize) * 16;
+        let load_module_size = if last_page_bytes == 0 {
+            (total_pages as usize) * 512
+        } else {
+            ((total_pages as usize) - 1) * 512 + (last_page_bytes as usize)
+        } - header_size;
+
+        log::debug!(
+            "INT 21h AH=4Bh: EXE header_size={}, load_module_size={}, reloc_count={}",
+            header_size,
+            load_module_size,
+            reloc_count
+        );
+
+        // Allocate memory: PSP (16 paragraphs) + load module + min extra
+        let load_paragraphs = load_module_size.div_ceil(16) as u16;
+        let total_paragraphs = 16 + load_paragraphs + min_paragraphs;
+
+        let psp_segment = match io.memory_allocate(total_paragraphs) {
+            Ok(seg) => seg,
+            Err((error_code, _)) => {
+                log::warn!(
+                    "INT 21h AH=4Bh: Failed to allocate memory - error 0x{:02X}",
+                    error_code
+                );
+                self.ax = error_code as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+                return;
+            }
+        };
+
+        // Build PSP
+        self.build_psp(memory, io, psp_segment, params);
+
+        // Load segment is right after PSP
+        let load_segment = psp_segment.wrapping_add(16);
+
+        // Load the program after the header
+        let load_addr = Self::physical_address(load_segment, 0);
+        if header_size + load_module_size <= program_data.len() {
+            for (i, &byte) in program_data[header_size..header_size + load_module_size]
+                .iter()
+                .enumerate()
+            {
+                memory.write_byte(load_addr + i, byte);
+            }
+        }
+
+        // Apply relocations
+        let reloc_table_start = reloc_table_offset as usize;
+        for i in 0..reloc_count as usize {
+            let reloc_entry_offset = reloc_table_start + i * 4;
+            if reloc_entry_offset + 4 > program_data.len() {
+                break;
+            }
+
+            let offset = u16::from_le_bytes([
+                program_data[reloc_entry_offset],
+                program_data[reloc_entry_offset + 1],
+            ]);
+            let segment = u16::from_le_bytes([
+                program_data[reloc_entry_offset + 2],
+                program_data[reloc_entry_offset + 3],
+            ]);
+
+            // Calculate address in loaded image
+            let reloc_addr = Self::physical_address(load_segment.wrapping_add(segment), offset);
+
+            // Read current value and add load segment
+            let current = memory.read_word(reloc_addr);
+            memory.write_word(reloc_addr, current.wrapping_add(load_segment));
+        }
+
+        log::info!(
+            "INT 21h AH=4Bh: Loaded EXE at segment 0x{:04X}, {} relocations applied",
+            load_segment,
+            reloc_count
+        );
+
+        match params.subfunction {
+            0x00 => {
+                // Load and execute
+                let parent_psp = io.get_psp();
+                io.set_psp(psp_segment);
+
+                // Set up registers for EXE
+                self.cs = load_segment.wrapping_add(init_cs);
+                self.ip = init_ip;
+                self.ss = load_segment.wrapping_add(init_ss);
+                self.sp = init_sp;
+                self.ds = psp_segment;
+                self.es = psp_segment;
+
+                // Store parent PSP
+                let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
+                memory.write_word(parent_psp_addr, parent_psp);
+
+                log::info!(
+                    "INT 21h AH=4Bh: Executing EXE at {:04X}:{:04X}, SS:SP={:04X}:{:04X}",
+                    self.cs,
+                    self.ip,
+                    self.ss,
+                    self.sp
+                );
+
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x01 => {
+                // Load but don't execute
+                self.bx = load_segment.wrapping_add(init_cs);
+                self.cx = init_ip;
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x03 => {
+                // Load overlay - simplified
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            _ => {
+                self.ax = dos_errors::INVALID_FUNCTION as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// Build a Program Segment Prefix (PSP)
+    fn build_psp<T: Bios>(
+        &mut self,
+        memory: &mut Memory,
+        io: &T,
+        psp_segment: u16,
+        params: &ExecParams,
+    ) {
+        let psp_addr = Self::physical_address(psp_segment, 0);
+
+        // Clear PSP area
+        for i in 0..256 {
+            memory.write_byte(psp_addr + i, 0);
+        }
+
+        // Offset 0x00: INT 20h instruction (CD 20)
+        memory.write_byte(psp_addr, 0xCD);
+        memory.write_byte(psp_addr + 1, 0x20);
+
+        // Offset 0x02: Memory size in paragraphs (segment of first byte beyond allocated memory)
+        // For now, use 0xA000 (end of conventional memory)
+        memory.write_word(psp_addr + 0x02, 0xA000);
+
+        // Offset 0x05: Far call to DOS function dispatcher (not implemented - use INT 21h)
+        memory.write_byte(psp_addr + 0x05, 0xCD); // INT 21h
+        memory.write_byte(psp_addr + 0x06, 0x21);
+        memory.write_byte(psp_addr + 0x07, 0xCB); // RETF
+
+        // Offset 0x0A: Terminate address (INT 22h vector)
+        // Offset 0x0E: Break address (INT 23h vector)
+        // Offset 0x12: Critical error address (INT 24h vector)
+        // These would normally point to parent's handlers
+
+        // Offset 0x16: Parent PSP segment
+        memory.write_word(psp_addr + 0x16, io.get_psp());
+
+        // Offset 0x18: Job File Table (JFT) - 20 bytes, 0xFF = unused
+        for i in 0..20 {
+            memory.write_byte(psp_addr + 0x18 + i, 0xFF);
+        }
+        // Set up standard handles
+        memory.write_byte(psp_addr + 0x18, 0x01); // stdin -> CON
+        memory.write_byte(psp_addr + 0x19, 0x01); // stdout -> CON
+        memory.write_byte(psp_addr + 0x1A, 0x01); // stderr -> CON
+        memory.write_byte(psp_addr + 0x1B, 0x00); // stdaux -> AUX
+        memory.write_byte(psp_addr + 0x1C, 0x02); // stdprn -> PRN
+
+        // Offset 0x2C: Environment segment
+        memory.write_word(psp_addr + 0x2C, params.env_segment);
+
+        // Offset 0x32: JFT size
+        memory.write_word(psp_addr + 0x32, 20);
+
+        // Offset 0x34: JFT pointer (far pointer to JFT at offset 0x18)
+        memory.write_word(psp_addr + 0x34, 0x18);
+        memory.write_word(psp_addr + 0x36, psp_segment);
+
+        // Offset 0x50: DOS function call (INT 21h, RETF)
+        memory.write_byte(psp_addr + 0x50, 0xCD);
+        memory.write_byte(psp_addr + 0x51, 0x21);
+        memory.write_byte(psp_addr + 0x52, 0xCB);
+
+        // Offset 0x5C: First FCB (not populated - zeroed)
+        // Offset 0x6C: Second FCB (not populated - zeroed)
+
+        // Offset 0x80: Command line (Pascal-style: length byte followed by string)
+        let cmdline_bytes = params.command_line.as_bytes();
+        let cmdline_len = cmdline_bytes.len().min(126) as u8;
+        memory.write_byte(psp_addr + 0x80, cmdline_len);
+        for (i, &byte) in cmdline_bytes.iter().take(126).enumerate() {
+            memory.write_byte(psp_addr + 0x81 + i, byte);
+        }
+        // Terminate with CR
+        memory.write_byte(psp_addr + 0x81 + cmdline_len as usize, 0x0D);
     }
 
     /// INT 21h, AH=50h - Set PSP Address

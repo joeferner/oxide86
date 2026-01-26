@@ -107,6 +107,33 @@ pub struct FindData {
     pub filename: String,
 }
 
+/// EXEC function parameters (INT 21h, AH=4Bh)
+#[derive(Debug, Clone)]
+pub struct ExecParams {
+    /// Subfunction (AL value)
+    /// 0x00 = Load and execute
+    /// 0x01 = Load but don't execute
+    /// 0x03 = Load overlay
+    pub subfunction: u8,
+    /// Program filename
+    pub filename: String,
+    /// Environment segment (0 = use parent's)
+    pub env_segment: u16,
+    /// Command line string (without program name)
+    pub command_line: String,
+}
+
+/// Result of EXEC function for load-only (AL=01h) or overlay (AL=03h)
+#[derive(Debug, Clone)]
+pub struct ExecResult {
+    /// Segment where program was loaded (PSP segment for AL=00h/01h)
+    pub load_segment: u16,
+    /// Entry point offset (only for AL=01h)
+    pub entry_offset: u16,
+    /// Entry point segment (only for AL=01h)
+    pub entry_segment: u16,
+}
+
 /// Trait for handling BIOS interrupt I/O operations
 /// Platform-specific code (native, WASM) implements this to provide actual I/O
 pub trait Bios {
@@ -259,6 +286,11 @@ pub trait Bios {
     /// Set device information for IOCTL (INT 21h, AH=44h, AL=01h)
     /// Sets device information word for the given handle
     fn ioctl_set_device_info(&mut self, handle: u16, info: u16) -> Result<(), u8>;
+
+    /// Load and/or execute a program (INT 21h, AH=4Bh)
+    /// Returns the program data to be loaded into memory on success,
+    /// or error code on failure
+    fn exec_load_program(&mut self, params: &ExecParams) -> Result<Vec<u8>, u8>;
 
     // --- INT 14h - Serial Port Services ---
 

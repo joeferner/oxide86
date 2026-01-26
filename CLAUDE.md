@@ -455,6 +455,7 @@ INT instruction (0xCD/0xCC) → Computer::step() intercepts
     - AH=49h: Free memory
     - AH=4Ah: Resize memory block
   - **Process Control:**
+    - AH=4Bh: EXEC - Load and/or execute program
     - AH=4Ch: Exit program
     - AH=50h: Set PSP address
   - **System Functions:**
@@ -856,6 +857,38 @@ The emulator implements additional DOS system functions for compatibility with D
     - Shrinking always succeeds (reduces block size)
     - Growing only succeeds if block is the last allocated block
     - Returns INSUFFICIENT_MEMORY if cannot resize in place
+
+- **AH=4Bh - EXEC (Load and/or Execute Program):**
+  - Input:
+    - AL = subfunction:
+      - 00h = Load and execute program
+      - 01h = Load but don't execute (returns entry point)
+      - 03h = Load overlay (no PSP, load at specified address)
+    - DS:DX = pointer to null-terminated program filename
+    - ES:BX = pointer to parameter block
+  - Output (success): CF clear, for AL=01h: BX:CX = entry point
+  - Output (failure): CF set, AX = error code
+  - **Parameter Block Format (for AL=00h):**
+    - Offset 0 (Word): Environment segment (0 = use parent's environment)
+    - Offset 2 (Dword): Far pointer to command line (Pascal string: length byte + chars + 0Dh)
+    - Offset 6 (Dword): Far pointer to first FCB (not used)
+    - Offset 10 (Dword): Far pointer to second FCB (not used)
+  - **Implementation:**
+    - Supports both .COM and .EXE file formats
+    - Builds PSP (Program Segment Prefix) at allocated segment
+    - For .COM files: loads program at PSP:0100h, sets all segments to PSP
+    - For .EXE files: parses MZ header, applies relocations, sets CS:IP from header
+    - Parent PSP stored at child PSP offset 0x16
+    - Command line stored at PSP offset 0x80 (Pascal string format)
+  - **PSP Structure** (256 bytes at program segment):
+    - Offset 0x00: INT 20h instruction (program termination)
+    - Offset 0x02: Memory size in paragraphs
+    - Offset 0x05: Far call to DOS function dispatcher
+    - Offset 0x16: Parent PSP segment
+    - Offset 0x18: Job File Table (20 bytes, file handles)
+    - Offset 0x2C: Environment segment
+    - Offset 0x50: INT 21h, RETF sequence
+    - Offset 0x80: Command line (length byte + string + 0Dh)
 
 - **AH=50h - Set PSP Address:**
   - Input: BX = segment of new Program Segment Prefix
