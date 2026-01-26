@@ -190,6 +190,11 @@ impl<D: DiskController> FatFileSystem<D> {
         })
     }
 
+    /// Helper: Reset adapter position to 0 (required by fatfs)
+    fn reset_adapter_position(&mut self) {
+        self.adapter.position = 0;
+    }
+
     /// Convert DOS path (backslashes) to Unix path (forward slashes)
     fn dos_to_unix_path(dos_path: &str) -> String {
         dos_path.replace('\\', "/")
@@ -250,6 +255,7 @@ impl<D: DiskController> FatFileSystem<D> {
         let path = self.resolve_path(filename);
 
         // Create the file using fatfs
+        self.reset_adapter_position();
         let fs = fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new())
             .map_err(Self::map_error)?;
         let root_dir = fs.root_dir();
@@ -282,21 +288,24 @@ impl<D: DiskController> FatFileSystem<D> {
     }
 
     pub fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, u8> {
-        let file_handle = self
-            .open_files
-            .get_mut(&handle)
-            .ok_or(dos_errors::INVALID_HANDLE)?;
+        // Get file info first, then release borrow
+        let (path, position) = {
+            let file_handle = self
+                .open_files
+                .get(&handle)
+                .ok_or(dos_errors::INVALID_HANDLE)?;
+            (file_handle.path.clone(), file_handle.position)
+        };
 
         // Open filesystem and file
+        self.reset_adapter_position();
         let fs = fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new())
             .map_err(Self::map_error)?;
         let root_dir = fs.root_dir();
-        let mut file = root_dir
-            .open_file(&file_handle.path)
-            .map_err(Self::map_error)?;
+        let mut file = root_dir.open_file(&path).map_err(Self::map_error)?;
 
         // Seek to current position
-        file.seek(SeekFrom::Start(file_handle.position))
+        file.seek(SeekFrom::Start(position))
             .map_err(|_| dos_errors::INVALID_FUNCTION)?;
 
         // Read data
@@ -306,55 +315,66 @@ impl<D: DiskController> FatFileSystem<D> {
             .map_err(|_| dos_errors::INVALID_FUNCTION)?;
 
         buffer.truncate(bytes_read);
+
+        // Update position
+        let file_handle = self.open_files.get_mut(&handle).unwrap();
         file_handle.position += bytes_read as u64;
 
         Ok(buffer)
     }
 
     pub fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, u8> {
-        let file_handle = self
-            .open_files
-            .get_mut(&handle)
-            .ok_or(dos_errors::INVALID_HANDLE)?;
+        // Get file info first, then release borrow
+        let (path, position) = {
+            let file_handle = self
+                .open_files
+                .get(&handle)
+                .ok_or(dos_errors::INVALID_HANDLE)?;
+            (file_handle.path.clone(), file_handle.position)
+        };
 
         // Open filesystem and file
+        self.reset_adapter_position();
         let fs = fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new())
             .map_err(Self::map_error)?;
         let root_dir = fs.root_dir();
-        let mut file = root_dir
-            .open_file(&file_handle.path)
-            .map_err(Self::map_error)?;
+        let mut file = root_dir.open_file(&path).map_err(Self::map_error)?;
 
         // Seek to current position
-        file.seek(SeekFrom::Start(file_handle.position))
+        file.seek(SeekFrom::Start(position))
             .map_err(|_| dos_errors::INVALID_FUNCTION)?;
 
         // Write data
         let bytes_written = file.write(data).map_err(|_| dos_errors::INVALID_FUNCTION)?;
 
+        // Update position
+        let file_handle = self.open_files.get_mut(&handle).unwrap();
         file_handle.position += bytes_written as u64;
 
         Ok(bytes_written as u16)
     }
 
     pub fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8> {
-        let file_handle = self
-            .open_files
-            .get_mut(&handle)
-            .ok_or(dos_errors::INVALID_HANDLE)?;
+        // Get file info first
+        let (path, current_position) = {
+            let file_handle = self
+                .open_files
+                .get(&handle)
+                .ok_or(dos_errors::INVALID_HANDLE)?;
+            (file_handle.path.clone(), file_handle.position)
+        };
 
         // Calculate new position
         let new_position = match method {
             SeekMethod::FromStart => offset as i64,
-            SeekMethod::FromCurrent => file_handle.position as i64 + offset as i64,
+            SeekMethod::FromCurrent => current_position as i64 + offset as i64,
             SeekMethod::FromEnd => {
                 // Need to get file size by seeking to end
+                self.reset_adapter_position();
                 let fs = fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new())
                     .map_err(Self::map_error)?;
                 let root_dir = fs.root_dir();
-                let mut file = root_dir
-                    .open_file(&file_handle.path)
-                    .map_err(Self::map_error)?;
+                let mut file = root_dir.open_file(&path).map_err(Self::map_error)?;
                 let size = file
                     .seek(SeekFrom::End(0))
                     .map_err(|_| dos_errors::INVALID_FUNCTION)? as i64;
@@ -366,6 +386,8 @@ impl<D: DiskController> FatFileSystem<D> {
             return Err(dos_errors::INVALID_FUNCTION);
         }
 
+        // Update position
+        let file_handle = self.open_files.get_mut(&handle).unwrap();
         file_handle.position = new_position as u64;
         Ok(new_position as u32)
     }
@@ -397,6 +419,7 @@ impl<D: DiskController> FatFileSystem<D> {
     pub fn dir_create(&mut self, dirname: &str) -> Result<(), u8> {
         let path = self.resolve_path(dirname);
 
+        self.reset_adapter_position();
         let fs = fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new())
             .map_err(Self::map_error)?;
         let root_dir = fs.root_dir();
@@ -409,6 +432,7 @@ impl<D: DiskController> FatFileSystem<D> {
     pub fn dir_remove(&mut self, dirname: &str) -> Result<(), u8> {
         let path = self.resolve_path(dirname);
 
+        self.reset_adapter_position();
         let fs = fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new())
             .map_err(Self::map_error)?;
         let root_dir = fs.root_dir();
@@ -422,6 +446,7 @@ impl<D: DiskController> FatFileSystem<D> {
         let path = self.resolve_path(dirname);
 
         // Verify directory exists
+        self.reset_adapter_position();
         let fs = fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new())
             .map_err(Self::map_error)?;
         let root_dir = fs.root_dir();
@@ -444,6 +469,7 @@ impl<D: DiskController> FatFileSystem<D> {
     pub fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), u8> {
         let path = self.resolve_path(".");
 
+        self.reset_adapter_position();
         let fs = fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new())
             .map_err(Self::map_error)?;
         let root_dir = fs.root_dir();

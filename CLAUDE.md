@@ -46,9 +46,13 @@ The native platform implements the `Bios` trait through `NativeBios`, which is o
 **FAT Filesystem Implementation** ([core/src/fat.rs](core/src/fat.rs)):
 Platform-agnostic FAT12/16/32 filesystem support in the core library:
 - `DiskAdapter` - Adapts sector-based `DiskController` to byte-stream interface (Read + Write + Seek)
+  - **Important:** The `fatfs` crate requires the disk position to be at 0 when creating a new `FileSystem` instance
+  - Call `reset_adapter_position()` before each `FileSystem::new()` to ensure the position is reset
+  - This prevents assertion failures in the `fatfs` crate
 - `FatFileSystem` - Wraps the `fatfs` crate to provide file/directory operations and disk pass-through for INT 13h
 - All file/directory operations are performed on the disk image filesystem
 - Works on both native and WASM platforms without platform-specific code
+- **Borrow checker note:** When modifying file operations, extract path/position data first before calling methods that need mutable access to `self.adapter`
 
 ### WebAssembly Build ([wasm/](wasm/))
 The `emu86-wasm` crate provides WebAssembly bindings:
