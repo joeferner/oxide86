@@ -713,4 +713,10 @@ impl<D: DiskController> FatFileSystem<D> {
         // Drive type: 0x02 for floppy with change-line support
         Ok((0x02, sectors))
     }
+
+    pub fn disk_detect_change(&mut self, _drive: u8) -> Result<bool, u8> {
+        // In an emulator, the disk image doesn't physically change
+        // Always return false (disk not changed)
+        Ok(false)
+    }
 }

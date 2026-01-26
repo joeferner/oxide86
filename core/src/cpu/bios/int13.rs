@@ -46,6 +46,7 @@ impl Cpu {
             0x03 => self.int13_write_sectors(memory, io),
             0x08 => self.int13_get_drive_params(io),
             0x15 => self.int13_get_disk_type(io),
+            0x16 => self.int13_detect_disk_change(io),
             _ => {
                 log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -238,6 +239,38 @@ impl Cpu {
             Err(_) => {
                 // Drive not present
                 self.ax &= 0x00FF; // AH = 0x00 (drive not present)
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 13h, AH=16h - Detect Disk Change
+    /// Input:
+    ///   DL = drive number (0x00-0x7F for floppies)
+    /// Output:
+    ///   AH = status:
+    ///     0x00 = disk not changed (changeline inactive)
+    ///     0x01 = invalid drive number
+    ///     0x06 = disk changed (changeline active)
+    ///     0x80 = drive not ready (timeout)
+    ///   CF = clear if disk not changed, set if changed or error
+    fn int13_detect_disk_change<T: Bios>(&mut self, io: &mut T) {
+        let drive = (self.dx & 0xFF) as u8; // Get DL
+
+        match io.disk_detect_change(drive) {
+            Ok(changed) => {
+                if changed {
+                    // Disk was changed
+                    self.ax = (self.ax & 0x00FF) | ((disk_errors::DISK_CHANGED as u16) << 8);
+                    self.set_flag(cpu_flag::CARRY, true);
+                } else {
+                    // Disk not changed
+                    self.ax &= 0x00FF; // AH = 0 (not changed)
+                    self.set_flag(cpu_flag::CARRY, false);
+                }
+            }
+            Err(error_code) => {
+                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8);
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }

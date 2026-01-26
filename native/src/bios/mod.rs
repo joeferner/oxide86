@@ -127,6 +127,10 @@ impl<D: DiskController> Bios for NativeBios<D> {
         self.fat.disk_get_type(drive)
     }
 
+    fn disk_detect_change(&mut self, drive: u8) -> Result<bool, u8> {
+        self.fat.disk_detect_change(drive)
+    }
+
     // File operations
     fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, u8> {
         // Check if it's a DOS device

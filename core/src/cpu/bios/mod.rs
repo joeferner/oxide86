@@ -194,6 +194,11 @@ pub trait Bios {
     /// - sector_count: total 512-byte sectors (only for type 0x03)
     fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8>;
 
+    /// Detect disk change (INT 13h, AH=16h)
+    /// Returns Ok(false) if disk not changed, Ok(true) if disk changed,
+    /// or Err(error_code) on error
+    fn disk_detect_change(&mut self, drive: u8) -> Result<bool, u8>;
+
     // --- INT 21h - DOS File Services ---
 
     /// Create or truncate file (INT 21h, AH=3Ch)

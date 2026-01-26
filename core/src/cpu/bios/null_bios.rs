@@ -113,6 +113,10 @@ impl Bios for NullBios {
         Err(disk_errors::INVALID_COMMAND)
     }
 
+    fn disk_detect_change(&mut self, _drive: u8) -> Result<bool, u8> {
+        Err(disk_errors::INVALID_COMMAND)
+    }
+
     fn file_create(&mut self, _filename: &str, _attributes: u8) -> Result<u16, u8> {
         Err(dos_errors::ACCESS_DENIED)
     }
