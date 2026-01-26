@@ -190,6 +190,11 @@ impl<D: DiskController> FatFileSystem<D> {
         })
     }
 
+    /// Set the next handle number (used by platform code to synchronize handle allocation)
+    pub fn set_next_handle(&mut self, handle: u16) {
+        self.next_handle = handle;
+    }
+
     /// Helper: Reset adapter position to 0 (required by fatfs)
     fn reset_adapter_position(&mut self) {
         self.adapter.position = 0;
@@ -233,6 +238,24 @@ impl<D: DiskController> FatFileSystem<D> {
 
     pub fn file_open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8> {
         let path = self.resolve_path(filename);
+        log::debug!("FAT: Opening file '{}' (resolved to '{}')", filename, path);
+
+        // Verify file exists by attempting to open it
+        self.reset_adapter_position();
+        let fs =
+            fatfs::FileSystem::new(&mut self.adapter, fatfs::FsOptions::new()).map_err(|e| {
+                log::error!("FAT: Failed to create filesystem: {:?}", e);
+                Self::map_error(e)
+            })?;
+        let root_dir = fs.root_dir();
+
+        // Try to open the file to verify it exists
+        let _ = root_dir.open_file(&path).map_err(|e| {
+            log::warn!("FAT: Failed to open file '{}': {:?}", path, e);
+            Self::map_error(e)
+        })?;
+
+        log::debug!("FAT: File '{}' exists and can be opened", path);
 
         // Allocate handle
         let handle = self.next_handle;
@@ -393,10 +416,18 @@ impl<D: DiskController> FatFileSystem<D> {
     }
 
     pub fn file_duplicate(&mut self, handle: u16) -> Result<u16, u8> {
-        let file_handle = self
-            .open_files
-            .get(&handle)
-            .ok_or(dos_errors::INVALID_HANDLE)?;
+        // Get file info first, then release borrow
+        let (path, position, access_mode) = {
+            let file_handle = self
+                .open_files
+                .get(&handle)
+                .ok_or(dos_errors::INVALID_HANDLE)?;
+            (
+                file_handle.path.clone(),
+                file_handle.position,
+                file_handle.access_mode,
+            )
+        };
 
         // Create new handle with same metadata
         let new_handle = self.next_handle;
@@ -405,9 +436,9 @@ impl<D: DiskController> FatFileSystem<D> {
         self.open_files.insert(
             new_handle,
             FileHandle {
-                path: file_handle.path.clone(),
-                position: file_handle.position,
-                access_mode: file_handle.access_mode,
+                path,
+                position,
+                access_mode,
             },
         );
 

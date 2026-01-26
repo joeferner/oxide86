@@ -42,6 +42,14 @@ impl Cpu {
     /// AH register contains the function number
     pub(super) fn handle_int21<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
         let function = (self.ax >> 8) as u8; // Get AH directly
+        log::trace!(
+            "INT 21h AH=0x{:02X}, AX=0x{:04X}, BX=0x{:04X}, CX=0x{:04X}, DX=0x{:04X}",
+            function,
+            self.ax,
+            self.bx,
+            self.cx,
+            self.dx
+        );
 
         match function {
             0x01 => self.int21_read_char_with_echo(io),
@@ -228,12 +236,26 @@ impl Cpu {
         let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
         let access_mode = (self.ax & 0xFF) as u8;
 
+        log::info!(
+            "INT 21h AH=3Dh: Opening file '{}' with access mode 0x{:02X}",
+            filename,
+            access_mode
+        );
+
         match io.file_open(&filename, access_mode) {
             Ok(handle) => {
+                log::info!(
+                    "INT 21h AH=3Dh: File opened successfully, handle = {}",
+                    handle
+                );
                 self.ax = handle;
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
+                log::warn!(
+                    "INT 21h AH=3Dh: Failed to open file - error 0x{:02X}",
+                    error_code
+                );
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
@@ -272,8 +294,19 @@ impl Cpu {
         let handle = self.bx;
         let max_bytes = self.cx;
 
+        log::debug!(
+            "INT 21h AH=3Fh: Reading from handle {} (max {} bytes)",
+            handle,
+            max_bytes
+        );
+
         match io.file_read(handle, max_bytes) {
             Ok(data) => {
+                log::debug!(
+                    "INT 21h AH=3Fh: Read {} bytes from handle {}",
+                    data.len(),
+                    handle
+                );
                 // Write data to DS:DX
                 let buffer_addr = Self::physical_address(self.ds, self.dx);
                 for (i, &byte) in data.iter().enumerate() {
@@ -283,6 +316,11 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
+                log::warn!(
+                    "INT 21h AH=3Fh: Failed to read from handle {} - error 0x{:02X}",
+                    handle,
+                    error_code
+                );
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
@@ -347,14 +385,23 @@ impl Cpu {
             }
         };
 
+        log::debug!(
+            "INT 21h AH=42h: Seek handle {} to offset {} from {:?}",
+            handle,
+            offset_signed,
+            method
+        );
+
         match io.file_seek(handle, offset_signed, method) {
             Ok(new_position) => {
+                log::debug!("INT 21h AH=42h: New position = {}", new_position);
                 // Return new position in DX:AX
                 self.dx = (new_position >> 16) as u16;
                 self.ax = (new_position & 0xFFFF) as u16;
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
+                log::warn!("INT 21h AH=42h: Seek failed - error 0x{:02X}", error_code);
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }

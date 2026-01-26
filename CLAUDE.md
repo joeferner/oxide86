@@ -38,6 +38,10 @@ The `emu86-native` crate provides a command-line interface for running 8086 prog
 **Native BIOS Implementation** ([native/src/bios/](native/src/bios/)):
 The native platform implements the `Bios` trait through `NativeBios`, which is organized into focused modules:
 - [mod.rs](native/src/bios/mod.rs) - Main `NativeBios` struct that implements the `Bios` trait, integrates `FatFileSystem` from core, and handles DOS device files (CON, NUL, etc.)
+  - **Handle management:** Device handles (CON, NUL, AUX, PRN, etc.) and file handles share the same number space
+  - The `next_handle` field is synchronized with `FatFileSystem::next_handle` via `set_next_handle()` to prevent collisions
+  - Device handles are stored in `device_handles: HashMap<u16, DosDevice>`
+  - File handles are managed by the `FatFileSystem`
 - [console.rs](native/src/bios/console.rs) - Console I/O operations (keyboard and screen)
 - [memory_allocator.rs](native/src/bios/memory_allocator.rs) - DOS memory allocation
 - [time.rs](native/src/bios/time.rs) - System time and RTC operations
@@ -50,6 +54,9 @@ Platform-agnostic FAT12/16/32 filesystem support in the core library:
   - Call `reset_adapter_position()` before each `FileSystem::new()` to ensure the position is reset
   - This prevents assertion failures in the `fatfs` crate
 - `FatFileSystem` - Wraps the `fatfs` crate to provide file/directory operations and disk pass-through for INT 13h
+  - **Handle allocation:** The `next_handle` field tracks the next file handle to allocate (starts at 3)
+  - Platform code (e.g., `NativeBios`) must synchronize handle allocation with `set_next_handle()` to prevent handle collisions between file handles and device handles
+  - The `file_open()` method now validates that files exist before allocating handles (prevents "file not found" errors from appearing later during read operations)
 - All file/directory operations are performed on the disk image filesystem
 - Works on both native and WASM platforms without platform-specific code
 - **Borrow checker note:** When modifying file operations, extract path/position data first before calling methods that need mutable access to `self.adapter`

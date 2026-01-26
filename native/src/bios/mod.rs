@@ -25,12 +25,15 @@ pub struct NativeBios<D: DiskController> {
     fat: FatFileSystem<D>,
     memory_allocator: MemoryAllocator,
     device_handles: HashMap<u16, DosDevice>,
+    /// Next file/device handle to allocate. Shared between device handles and file handles.
     next_handle: u16,
 }
 
 impl<D: DiskController> NativeBios<D> {
     pub fn new(disk: D) -> Result<Self, String> {
-        let fat = FatFileSystem::new(disk)?;
+        let mut fat = FatFileSystem::new(disk)?;
+        // Sync the FAT filesystem's next_handle with our next_handle
+        fat.set_next_handle(3);
         Ok(Self {
             fat,
             memory_allocator: MemoryAllocator::new(),
@@ -54,16 +57,16 @@ impl<D: DiskController> NativeBios<D> {
         }
     }
 
-    /// Allocate a new file handle for devices
+    /// Allocate a new file/device handle
+    /// This is shared between device handles and file handles to avoid collisions
     fn allocate_handle(&mut self) -> Option<u16> {
-        if self.device_handles.len() >= 252 {
-            return None;
-        }
         let handle = self.next_handle;
         self.next_handle = self.next_handle.wrapping_add(1);
         if self.next_handle < 3 {
             self.next_handle = 3; // Wrap around but skip reserved handles
         }
+        // Sync the handle counter with the FAT filesystem
+        self.fat.set_next_handle(self.next_handle);
         Some(handle)
     }
 }
