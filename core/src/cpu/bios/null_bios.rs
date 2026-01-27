@@ -1,5 +1,5 @@
 use crate::{
-    Bios, DriveParams,
+    Bios, DriveNumber, DriveParams,
     cpu::bios::{
         ExecParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod, SerialParams,
         SerialStatus, dos_errors, int14::line_status, int17::printer_status,
@@ -11,11 +11,11 @@ use crate::{
 pub struct NullBios;
 
 impl Bios for NullBios {
-    fn get_current_drive(&self) -> u8 {
-        0 // Default to drive A
+    fn get_current_drive(&self) -> DriveNumber {
+        DriveNumber::floppy_a()
     }
 
-    fn set_default_drive(&mut self, _drive: u8) -> u8 {
+    fn set_default_drive(&mut self, _drive: DriveNumber) -> u8 {
         1 // Return 1 logical drive (A:)
     }
 
@@ -90,13 +90,13 @@ impl Bios for NullBios {
         None
     }
 
-    fn disk_reset(&mut self, _drive: u8) -> bool {
+    fn disk_reset(&mut self, _drive: DriveNumber) -> bool {
         false // No disk available
     }
 
     fn disk_read_sectors(
         &mut self,
-        _drive: u8,
+        _drive: DriveNumber,
         _cylinder: u8,
         _head: u8,
         _sector: u8,
@@ -107,7 +107,7 @@ impl Bios for NullBios {
 
     fn disk_write_sectors(
         &mut self,
-        _drive: u8,
+        _drive: DriveNumber,
         _cylinder: u8,
         _head: u8,
         _sector: u8,
@@ -117,21 +117,21 @@ impl Bios for NullBios {
         Err(disk_errors::INVALID_COMMAND)
     }
 
-    fn disk_get_params(&self, _drive: u8) -> Result<DriveParams, u8> {
+    fn disk_get_params(&self, _drive: DriveNumber) -> Result<DriveParams, u8> {
         Err(disk_errors::INVALID_COMMAND)
     }
 
-    fn disk_get_type(&self, _drive: u8) -> Result<(u8, u32), u8> {
+    fn disk_get_type(&self, _drive: DriveNumber) -> Result<(u8, u32), u8> {
         Err(disk_errors::INVALID_COMMAND)
     }
 
-    fn disk_detect_change(&mut self, _drive: u8) -> Result<bool, u8> {
+    fn disk_detect_change(&mut self, _drive: DriveNumber) -> Result<bool, u8> {
         Err(disk_errors::INVALID_COMMAND)
     }
 
     fn disk_format_track(
         &mut self,
-        _drive: u8,
+        _drive: DriveNumber,
         _cylinder: u8,
         _head: u8,
         _sectors_per_track: u8,
@@ -141,7 +141,7 @@ impl Bios for NullBios {
 
     fn disk_read_sectors_lba(
         &mut self,
-        _drive: u8,
+        _drive: DriveNumber,
         _start_sector: u32,
         _count: u16,
     ) -> Result<Vec<u8>, u8> {
@@ -188,7 +188,7 @@ impl Bios for NullBios {
         Err(dos_errors::PATH_NOT_FOUND)
     }
 
-    fn dir_get_current(&self, _drive: u8) -> Result<String, u8> {
+    fn dir_get_current(&self, _drive: DriveNumber) -> Result<String, u8> {
         Err(dos_errors::INVALID_DRIVE)
     }
 

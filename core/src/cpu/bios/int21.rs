@@ -1,5 +1,5 @@
 use crate::{
-    Bios,
+    Bios, DriveNumber,
     cpu::{
         Cpu,
         bios::{ExecParams, FindData, SeekMethod},
@@ -235,7 +235,7 @@ impl Cpu {
     /// Output: AL = current drive (0=A, 1=B, etc.)
     fn int21_get_current_drive<T: Bios>(&mut self, io: &T) {
         let drive = io.get_current_drive();
-        self.ax = (self.ax & 0xFF00) | (drive as u16);
+        self.ax = (self.ax & 0xFF00) | (drive.to_standard() as u16);
     }
 
     /// INT 21h, AH=25h - Set Interrupt Vector
@@ -628,24 +628,13 @@ impl Cpu {
     ///   CX = bytes per sector
     ///   DX = total clusters on drive
     fn int21_get_disk_free_space<T: Bios>(&mut self, io: &T) {
-        let drive = (self.dx & 0xFF) as u8; // DL
+        let drive = DriveNumber::from_dos_with_current((self.dx & 0xFF) as u8); // DL
+        let drive = drive.unwrap_or(io.get_current_drive());
 
         log::debug!("INT 21h AH=36h: Get Disk Free Space for drive {}", drive);
 
-        // Convert DOS drive number to internal
-        // 0=default/current, 1=A (0x00), 2=B (0x01), 3=C (0x80), etc.
-        let internal_drive = if drive == 0 {
-            io.get_current_drive()
-        } else if drive == 1 {
-            0x00 // A:
-        } else if drive == 2 {
-            0x01 // B:
-        } else {
-            0x80 + (drive - 3) // C:=0x80, D:=0x81, etc.
-        };
-
         // Get drive parameters to check if drive exists
-        match io.disk_get_params(internal_drive) {
+        match io.disk_get_params(drive) {
             Ok(_params) => {
                 // Drive exists - return reasonable values
                 // For simplicity, we'll return fixed cluster size and calculate totals
@@ -654,7 +643,7 @@ impl Cpu {
                 let bytes_per_sector = 512u16;
 
                 // Get total disk size from INT 13h
-                match io.disk_get_type(internal_drive) {
+                match io.disk_get_type(drive) {
                     Ok((_drive_type, total_sectors)) => {
                         let total_clusters = (total_sectors / sectors_per_cluster as u32) as u16;
                         // Report as all free for now (simplification)
@@ -697,7 +686,8 @@ impl Cpu {
     ///   CF clear if success: buffer filled with path (without drive or leading backslash)
     ///   CF set if error: AX = error code
     fn int21_get_current_dir<T: Bios>(&mut self, memory: &mut Memory, io: &T) {
-        let drive = (self.dx & 0xFF) as u8; // DL
+        let drive = DriveNumber::from_dos_with_current((self.dx & 0xFF) as u8); // DL
+        let drive = drive.unwrap_or(io.get_current_drive());
 
         match io.dir_get_current(drive) {
             Ok(path) => {
@@ -824,7 +814,7 @@ impl Cpu {
     /// Output:
     ///   AL = number of logical drives in system
     fn int21_select_disk<T: Bios>(&mut self, io: &mut T) {
-        let drive = (self.dx & 0xFF) as u8; // DL
+        let drive = DriveNumber::from_dos((self.dx & 0xFF) as u8); // DL
         log::debug!("INT 21h AH=0Eh: Select disk {}", drive);
         let num_drives = io.set_default_drive(drive);
         log::debug!(
@@ -842,40 +832,22 @@ impl Cpu {
     ///   AL = 00h if drive valid, FFh if invalid
     ///   DS:BX = pointer to Drive Parameter Block (DPB)
     fn int21_get_dpb<T: Bios>(&mut self, memory: &mut Memory, io: &T) {
-        let drive_num = (self.dx & 0xFF) as u8; // DL
+        let drive = DriveNumber::from_dos_with_current((self.dx & 0xFF) as u8); // DL
+        let drive = drive.unwrap_or(io.get_current_drive());
 
-        // Convert to internal drive number
-        let internal_drive = if drive_num == 0 {
-            io.get_current_drive()
-        } else if drive_num == 1 {
-            0x00 // A:
-        } else if drive_num == 2 {
-            0x01 // B:
-        } else {
-            0x80 + (drive_num - 3) // C:=0x80, D:=0x81, etc.
-        };
-
-        log::debug!(
-            "INT 21h AH=32h: Get DPB for drive {} (internal 0x{:02X})",
-            drive_num,
-            internal_drive
-        );
+        log::debug!("INT 21h AH=32h: Get DPB for drive {:?}", drive);
 
         // Check if drive exists
-        match io.disk_get_params(internal_drive) {
+        match io.disk_get_params(drive) {
             Ok(_params) => {
                 // Drive exists - create a DPB structure in memory
                 // We'll use a fixed location in high memory for DPB storage
                 // Offset 0x500 (just after BDA) is a safe area
-                let dpb_addr = 0x0500 + (internal_drive as usize * 64); // 64 bytes per DPB
+                let dpb_addr = 0x0500 + (drive.to_standard() as usize * 64); // 64 bytes per DPB
 
                 // Build a minimal DPB structure
                 // +0: Drive number (0=A, 1=B, 2=C, etc.)
-                let dos_drive = if internal_drive < 0x80 {
-                    internal_drive
-                } else {
-                    2 + (internal_drive - 0x80)
-                };
+                let dos_drive = drive.to_dos_drive();
                 memory.write_u8(dpb_addr, dos_drive);
 
                 // +1: Unit number within driver
@@ -903,7 +875,7 @@ impl Cpu {
                 memory.write_u16(dpb_addr + 11, 33); // After boot, FATs, and root
 
                 // +13: Highest cluster number + 1 (word)
-                if let Ok((_drive_type, total_sectors)) = io.disk_get_type(internal_drive) {
+                if let Ok((_drive_type, total_sectors)) = io.disk_get_type(drive) {
                     let clusters = (total_sectors / 4) as u16;
                     memory.write_u16(dpb_addr + 13, clusters);
                 } else {
@@ -921,7 +893,7 @@ impl Cpu {
                 memory.write_u16(dpb_addr + 21, 0xFFFF);
 
                 // +23: Media descriptor (byte)
-                let media_id = if internal_drive < 0x80 {
+                let media_id = if drive.is_floppy() {
                     0xF0 // Floppy
                 } else {
                     0xF8 // Hard disk
@@ -952,11 +924,7 @@ impl Cpu {
             Err(_) => {
                 // Drive doesn't exist
                 self.ax = (self.ax & 0xFF00) | 0xFF; // AL = FFh (invalid)
-                log::warn!(
-                    "INT 21h AH=32h: Invalid drive {} (internal 0x{:02X})",
-                    drive_num,
-                    internal_drive
-                );
+                log::warn!("INT 21h AH=32h: Invalid drive {}", drive);
             }
         }
     }
@@ -1044,19 +1012,10 @@ impl Cpu {
                 // Check if block device is removable
                 // BL = drive number (0=default, 1=A:, 2=B:, 3=C:, etc.)
                 // Return AL=0 if removable, AL=1 if fixed
-                let drive_num = (self.bx & 0xFF) as u8;
+                let drive = DriveNumber::from_dos_with_current((self.bx & 0xFF) as u8);
+                let drive = drive.unwrap_or(io.get_current_drive());
 
-                // Handle IOCTL drive numbering: 0=default, 1=A:, 2=B:, 3=C:, etc.
-                let dos_drive = if drive_num == 0 {
-                    io.get_current_drive() // 0 = use current drive
-                } else {
-                    drive_num - 1 // Convert to 0=A:, 1=B:, 2=C:, etc.
-                };
-
-                // Floppies (0-1) are removable, hard drives (2+) are fixed
-                let is_removable = dos_drive < 2;
-
-                if is_removable {
+                if drive.is_floppy() {
                     self.ax &= 0xFF00; // Removable (AL=0x00)
                 } else {
                     self.ax = (self.ax & 0xFF00) | 0x01; // Fixed (AL=0x01)
@@ -1083,21 +1042,14 @@ impl Cpu {
                 // CH = category (08h = disk drive)
                 // CL = function code
                 // DS:DX = pointer to parameter block
-                let drive_num = (self.bx & 0xFF) as u8;
+                let drive = DriveNumber::from_dos_with_current((self.bx & 0xFF) as u8);
+                let drive = drive.unwrap_or(io.get_current_drive());
                 let category = (self.cx >> 8) as u8;
                 let function = (self.cx & 0xFF) as u8;
 
-                // Handle IOCTL drive numbering: 0=default, 1=A:, 2=B:, 3=C:, etc.
-                let dos_drive = if drive_num == 0 {
-                    io.get_current_drive() // 0 = use current drive
-                } else {
-                    drive_num - 1 // Convert to 0=A:, 1=B:, 2=C:, etc.
-                };
-
                 log::info!(
-                    "INT 21h AH=44h AL=0Dh: Generic IOCTL drive={} (BL={}), category=0x{:02X}, function=0x{:02X}",
-                    dos_drive,
-                    drive_num,
+                    "INT 21h AH=44h AL=0Dh: Generic IOCTL drive={}, category=0x{:02X}, function=0x{:02X}",
+                    drive,
                     category,
                     function
                 );
@@ -1105,8 +1057,8 @@ impl Cpu {
                 match (category, function) {
                     (0x08, 0x60) => {
                         // Get device parameters
-                        log::info!("  Get device parameters for DOS drive {}", dos_drive);
-                        match self.int21_ioctl_get_device_params(memory, io, dos_drive) {
+                        log::info!("  Get device parameters for DOS drive {}", drive);
+                        match self.int21_ioctl_get_device_params(memory, io, drive) {
                             Ok(()) => {
                                 self.set_flag(cpu_flag::CARRY, false);
                             }
@@ -1146,18 +1098,11 @@ impl Cpu {
         &mut self,
         memory: &mut Memory,
         io: &mut T,
-        drive_num: u8,
+        drive: DriveNumber,
     ) -> Result<(), u8> {
-        // Convert DOS drive number (0=A:, 1=B:, 2=C:) to BIOS drive number (0x00, 0x01, 0x80, 0x81)
-        let bios_drive = if drive_num >= 2 {
-            0x80 + (drive_num - 2) // C: = 0x80, D: = 0x81, etc.
-        } else {
-            drive_num // A: = 0x00, B: = 0x01
-        };
-
         // Get drive parameters from INT 13h
         let params = io
-            .disk_get_params(bios_drive)
+            .disk_get_params(drive)
             .map_err(|_| dos_errors::INVALID_DRIVE)?;
 
         // Convert max values to actual counts
@@ -1178,11 +1123,11 @@ impl Cpu {
         memory.write_u8(addr, 0x00);
 
         // Byte 1: Device type (5 = hard disk, 0-4 = floppy types)
-        let device_type = if bios_drive >= 0x80 { 0x05 } else { 0x02 }; // 0x02 = 720KB floppy
+        let device_type = if drive.is_hard_drive() { 0x05 } else { 0x02 }; // 0x02 = 720KB floppy
         memory.write_u8(addr + 1, device_type);
 
         // Bytes 2-3: Device attributes (bit 0 = 0 for non-removable, 1 for removable)
-        let is_removable = bios_drive < 0x80; // Floppies are removable, hard drives are not
+        let is_removable = drive.is_floppy(); // Floppies are removable, hard drives are not
         let attributes: u16 = if is_removable { 0x0001 } else { 0x0000 };
         memory.write_u16(addr + 2, attributes);
 
@@ -1216,7 +1161,7 @@ impl Cpu {
         }
 
         // Byte 17: Media descriptor (0xF8 = hard disk, 0xF0 = floppy)
-        let media_desc = if bios_drive >= 0x80 { 0xF8 } else { 0xF0 };
+        let media_desc = if drive.is_hard_drive() { 0xF8 } else { 0xF0 };
         memory.write_u8(addr + 17, media_desc);
 
         // Bytes 18-19: Sectors per FAT (calculate based on total sectors)
@@ -1229,8 +1174,10 @@ impl Cpu {
         // Bytes 22-23: Number of heads
         memory.write_u16(addr + 22, heads);
 
-        // Bytes 24-27: Hidden sectors (0 for non-partitioned, 63 for first partition)
-        let hidden_sectors = if bios_drive >= 0x80 { 63u32 } else { 0u32 };
+        // Bytes 24-27: Hidden sectors
+        // Since PartitionedDisk handles partition offsets transparently,
+        // we report 0 (the OS sees the partition directly, not the whole disk)
+        let hidden_sectors = 0u32;
         // Write u32 as two u16 values (little-endian)
         memory.write_u16(addr + 24, (hidden_sectors & 0xFFFF) as u16);
         memory.write_u16(addr + 26, (hidden_sectors >> 16) as u16);

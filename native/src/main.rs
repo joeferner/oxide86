@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use emu86_core::{BackedDisk, Computer, DiskController};
+use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber};
 use std::fs::File;
 use std::time::{Duration, Instant};
 
@@ -81,7 +81,7 @@ fn main() -> Result<()> {
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        bios.insert_floppy(0, Box::new(disk))
+        bios.insert_floppy(DriveNumber::floppy_a(), Box::new(disk))
             .map_err(|e| anyhow::anyhow!("Failed to insert floppy A:: {}", e))?;
         log::info!("Opened floppy A: from {}", path);
     }
@@ -91,13 +91,13 @@ fn main() -> Result<()> {
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        bios.insert_floppy(1, Box::new(disk))
+        bios.insert_floppy(DriveNumber::floppy_b(), Box::new(disk))
             .map_err(|e| anyhow::anyhow!("Failed to insert floppy B:: {}", e))?;
         log::info!("Opened floppy B: from {}", path);
     }
 
     // Load hard drives (C:, D:, etc.)
-    for (i, path) in cli.hard_disks.iter().enumerate() {
+    for path in cli.hard_disks.iter() {
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
@@ -131,10 +131,9 @@ fn main() -> Result<()> {
             bios.add_hard_drive(Box::new(disk))
         };
 
-        let drive_letter = (b'C' + i as u8) as char;
         log::info!(
-            "Opened hard drive {}: (0x{:02X}) from {}",
-            drive_letter,
+            "Opened hard drive {}: ({}) from {}",
+            drive_num.to_letter(),
             drive_num,
             path
         );
@@ -160,10 +159,11 @@ fn main() -> Result<()> {
                 boot_drive
             ));
         }
+        let boot_drive = DriveNumber::from_standard(boot_drive as u8);
 
-        log::info!("Booting from drive 0x{:02X}...", boot_drive);
+        log::info!("Booting from drive {}...", boot_drive);
         computer
-            .boot(boot_drive as u8)
+            .boot(boot_drive)
             .context("Failed to boot from disk")?;
 
         log::info!("Boot sector loaded at 0x0000:0x7C00");

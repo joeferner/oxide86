@@ -6,6 +6,7 @@
 //! - Per-drive current directory tracking
 //! - Disk change detection flags for floppies
 
+use crate::DriveNumber;
 use crate::cpu::bios::{DriveParams, FindData, SeekMethod, disk_errors, dos_errors};
 use crate::disk::{DiskController, SECTOR_SIZE};
 use std::collections::HashMap;
@@ -220,7 +221,7 @@ impl<D: DiskController> DriveState<D> {
 /// Metadata for an open file handle
 struct FileHandle {
     /// Which drive this file is on
-    drive: u8,
+    drive: DriveNumber,
     /// Path on that drive
     path: String,
     /// Current position in file
@@ -232,7 +233,7 @@ struct FileHandle {
 /// Search state for directory iteration
 struct SearchState {
     /// Which drive this search is on
-    drive: u8,
+    drive: DriveNumber,
     /// Matching entries
     entries: Vec<FindData>,
     /// Current index in entries
@@ -255,7 +256,7 @@ pub struct DriveManager<D: DiskController> {
     hard_drives: Vec<DriveState<D>>,
 
     /// Current default drive (0 = A:, 1 = B:, 0x80 = C:, etc.)
-    current_drive: u8,
+    current_drive: DriveNumber,
 
     /// Open file handles: maps handle -> file metadata
     open_files: HashMap<u16, FileHandle>,
@@ -282,7 +283,7 @@ impl<D: DiskController> DriveManager<D> {
         Self {
             floppy_drives: [DriveState::empty(), DriveState::empty()],
             hard_drives: Vec::new(),
-            current_drive: 0,
+            current_drive: DriveNumber::from_standard(0),
             open_files: HashMap::new(),
             searches: HashMap::new(),
             next_handle: 3, // 0-2 reserved for stdin/stdout/stderr
@@ -303,31 +304,33 @@ impl<D: DiskController> DriveManager<D> {
     // === Floppy Management ===
 
     /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
-    pub fn insert_floppy(&mut self, slot: u8, disk: D) -> Result<(), String> {
-        if slot > 1 {
+    pub fn insert_floppy(&mut self, slot: DriveNumber, disk: D) -> Result<(), String> {
+        if !slot.is_floppy() {
             return Err(format!("Invalid floppy slot: {} (must be 0 or 1)", slot));
         }
 
         // Close any open files on this drive first
         self.close_files_on_drive(slot);
 
-        self.floppy_drives[slot as usize] = DriveState::new_with_disk(disk, true);
-        self.floppy_drives[slot as usize].disk_changed = true; // Mark as changed
+        self.floppy_drives[slot.to_floppy_index()] = DriveState::new_with_disk(disk, true);
+        self.floppy_drives[slot.to_floppy_index()].disk_changed = true; // Mark as changed
 
         Ok(())
     }
 
     /// Eject a floppy disk from a slot, returning the disk if present
-    pub fn eject_floppy(&mut self, slot: u8) -> Result<Option<D>, String> {
-        if slot > 1 {
+    pub fn eject_floppy(&mut self, slot: DriveNumber) -> Result<Option<D>, String> {
+        if !slot.is_floppy() {
             return Err(format!("Invalid floppy slot: {} (must be 0 or 1)", slot));
         }
 
         // Close any open files on this drive
         self.close_files_on_drive(slot);
 
-        let old_state =
-            std::mem::replace(&mut self.floppy_drives[slot as usize], DriveState::empty());
+        let old_state = std::mem::replace(
+            &mut self.floppy_drives[slot.to_floppy_index()],
+            DriveState::empty(),
+        );
 
         // Return the disk if there was one
         Ok(old_state.adapter.map(|a| a.into_disk()))
@@ -336,8 +339,8 @@ impl<D: DiskController> DriveManager<D> {
     // === Hard Drive Management ===
 
     /// Add a hard drive (returns the assigned drive number: 0x80, 0x81, etc.)
-    pub fn add_hard_drive(&mut self, disk: D) -> u8 {
-        let drive_number = 0x80 + self.hard_drives.len() as u8;
+    pub fn add_hard_drive(&mut self, disk: D) -> DriveNumber {
+        let drive_number = DriveNumber::from_hard_drive_index(self.hard_drives.len());
         self.hard_drives
             .push(DriveState::new_with_disk(disk, false));
         drive_number
@@ -346,8 +349,8 @@ impl<D: DiskController> DriveManager<D> {
     /// Add a partitioned hard drive with both partition and raw disk views
     /// partition: Disk with partition offset (for DOS filesystem operations)
     /// raw_disk: Raw disk without offset (for INT 13h MBR access)
-    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> u8 {
-        let drive_number = 0x80 + self.hard_drives.len() as u8;
+    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> DriveNumber {
+        let drive_number = DriveNumber::from_hard_drive_index(self.hard_drives.len());
         self.hard_drives
             .push(DriveState::new_with_partition(partition, raw_disk, false));
         drive_number
@@ -356,37 +359,35 @@ impl<D: DiskController> DriveManager<D> {
     // === Drive Access ===
 
     /// Get mutable reference to a drive state
-    fn get_drive_mut(&mut self, drive: u8) -> Option<&mut DriveState<D>> {
-        if drive < 0x80 {
+    fn get_drive_mut(&mut self, drive: DriveNumber) -> Option<&mut DriveState<D>> {
+        if drive.is_floppy() {
             // Floppy drive
-            if drive < 2 {
-                Some(&mut self.floppy_drives[drive as usize])
+            if drive.to_floppy_index() < 2 {
+                Some(&mut self.floppy_drives[drive.to_floppy_index()])
             } else {
                 None
             }
         } else {
             // Hard drive
-            let index = (drive - 0x80) as usize;
-            self.hard_drives.get_mut(index)
+            self.hard_drives.get_mut(drive.to_hard_drive_index())
         }
     }
 
     /// Get immutable reference to a drive state
-    fn get_drive(&self, drive: u8) -> Option<&DriveState<D>> {
-        if drive < 0x80 {
-            if drive < 2 {
-                Some(&self.floppy_drives[drive as usize])
+    fn get_drive(&self, drive: DriveNumber) -> Option<&DriveState<D>> {
+        if drive.is_floppy() {
+            if drive.to_floppy_index() < 2 {
+                Some(&self.floppy_drives[drive.to_floppy_index()])
             } else {
                 None
             }
         } else {
-            let index = (drive - 0x80) as usize;
-            self.hard_drives.get(index)
+            self.hard_drives.get(drive.to_hard_drive_index())
         }
     }
 
     /// Close all open files on a specific drive
-    fn close_files_on_drive(&mut self, drive: u8) {
+    fn close_files_on_drive(&mut self, drive: DriveNumber) {
         let handles_to_close: Vec<u16> = self
             .open_files
             .iter()
@@ -414,21 +415,17 @@ impl<D: DiskController> DriveManager<D> {
     // === Current Drive/Directory Management ===
 
     /// Get the current default drive
-    /// Returns DOS drive number (0=A, 1=B, 2=C, etc.)
-    pub fn get_current_drive(&self) -> u8 {
-        Self::internal_to_dos_drive(self.current_drive)
+    pub fn get_current_drive(&self) -> DriveNumber {
+        self.current_drive
     }
 
     /// Set the current default drive
     /// drive: DOS drive number (0=A, 1=B, 2=C, etc.)
     /// Returns the total number of logical drives on success
-    pub fn set_current_drive(&mut self, drive: u8) -> Result<u8, u8> {
-        // Convert DOS drive number to internal format
-        let internal_drive = Self::dos_drive_to_internal(drive);
-
+    pub fn set_current_drive(&mut self, drive: DriveNumber) -> Result<u8, u8> {
         // Verify drive exists
-        if self.get_drive(internal_drive).is_some() {
-            self.current_drive = internal_drive;
+        if self.get_drive(drive).is_some() {
+            self.current_drive = drive;
             // Return number of logical drives (floppies + hard drives)
             let floppy_count = 2u8; // Always report 2 floppy slots
             let hd_count = self.hard_drives.len() as u8;
@@ -439,39 +436,14 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Get current directory for a drive
-    /// drive: 0 = use current default drive, 1 = A:, 2 = B:, 3 = C:, etc.
-    pub fn get_current_dir(&self, drive: u8) -> Result<String, u8> {
-        let target_drive = if drive == 0 {
-            self.current_drive
-        } else {
-            // DOS uses 1=A:, 2=B:, 3=C:, etc. for this function
-            Self::dos_drive_to_internal(drive - 1)
-        };
-
-        self.get_drive(target_drive)
+    /// drive: None = use current default drive
+    pub fn get_current_dir(&self, drive: DriveNumber) -> Result<String, u8> {
+        self.get_drive(drive)
             .map(|d| {
                 // Convert Unix path back to DOS path
                 d.current_dir.replace('/', "\\")
             })
             .ok_or(dos_errors::INVALID_DRIVE)
-    }
-
-    /// Convert DOS drive number (0=A, 1=B, 2=C, ...) to internal (0x00, 0x01, 0x80, ...)
-    fn dos_drive_to_internal(dos_drive: u8) -> u8 {
-        if dos_drive < 2 {
-            dos_drive // A: and B: are 0x00 and 0x01
-        } else {
-            0x80 + (dos_drive - 2) // C: onwards are 0x80+
-        }
-    }
-
-    /// Convert internal drive number (0x00, 0x01, 0x80, ...) to DOS (0=A, 1=B, 2=C, ...)
-    fn internal_to_dos_drive(internal_drive: u8) -> u8 {
-        if internal_drive < 0x80 {
-            internal_drive // A: (0x00) -> 0, B: (0x01) -> 1
-        } else {
-            2 + (internal_drive - 0x80) // C: (0x80) -> 2, D: (0x81) -> 3, etc.
-        }
     }
 
     /// Get total number of drives
@@ -487,17 +459,16 @@ impl<D: DiskController> DriveManager<D> {
     ///   "A:FILE.TXT" -> (0x00, "FILE.TXT")
     ///   "\TEMP"      -> (current_drive, "/TEMP")
     ///   "FILE.TXT"   -> (current_drive, "FILE.TXT")
-    fn parse_path(&self, path: &str) -> (u8, String) {
+    fn parse_path(&self, path: &str) -> (DriveNumber, String) {
         let path = path.replace('\\', "/");
 
         if path.len() >= 2 && path.chars().nth(1) == Some(':') {
             // Has drive letter
             let drive_letter = path.chars().next().unwrap().to_ascii_uppercase();
-            let drive = match drive_letter {
-                'A' => 0x00,
-                'B' => 0x01,
-                'C'..='Z' => 0x80 + (drive_letter as u8 - b'C'),
-                _ => self.current_drive,
+            let drive = if let Some(drive) = DriveNumber::from_letter(drive_letter) {
+                drive
+            } else {
+                self.current_drive
             };
             (drive, path[2..].to_string())
         } else {
@@ -524,7 +495,7 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Resolve a path relative to a drive's current directory
-    fn resolve_path(&self, drive: u8, path: &str) -> String {
+    fn resolve_path(&self, drive: DriveNumber, path: &str) -> String {
         let unix_path = Self::dos_to_unix_path(path);
 
         if unix_path.starts_with('/') {
@@ -568,7 +539,7 @@ impl<D: DiskController> DriveManager<D> {
         let (drive, path_part) = self.parse_path(filename);
         let path = self.resolve_path(drive, &path_part);
         log::debug!(
-            "DriveManager: Opening file '{}' on drive {:02X} (resolved to '{}')",
+            "DriveManager: Opening file '{}' on drive {} (resolved to '{}')",
             filename,
             drive,
             path
@@ -1051,7 +1022,7 @@ impl<D: DiskController> DriveManager<D> {
 
     pub fn disk_read_sectors(
         &self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sector: u8,
@@ -1085,7 +1056,7 @@ impl<D: DiskController> DriveManager<D> {
 
     pub fn disk_write_sectors(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sector: u8,
@@ -1137,11 +1108,11 @@ impl<D: DiskController> DriveManager<D> {
         Ok(written)
     }
 
-    pub fn disk_reset(&mut self, _drive: u8) -> bool {
+    pub fn disk_reset(&mut self, _drive: DriveNumber) -> bool {
         true // Always succeeds in our implementation
     }
 
-    pub fn disk_get_params(&self, drive: u8) -> Result<DriveParams, u8> {
+    pub fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, u8> {
         let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
@@ -1157,7 +1128,7 @@ impl<D: DiskController> DriveManager<D> {
         let geometry = adapter.disk().geometry();
 
         // Count drives of this type
-        let drive_count = if drive < 0x80 {
+        let drive_count = if drive.is_floppy() {
             // Count floppy drives with disks
             self.floppy_drives.iter().filter(|d| d.has_disk()).count() as u8
         } else {
@@ -1172,7 +1143,7 @@ impl<D: DiskController> DriveManager<D> {
         })
     }
 
-    pub fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8> {
+    pub fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), u8> {
         let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
@@ -1193,7 +1164,7 @@ impl<D: DiskController> DriveManager<D> {
         // 0x01 = floppy without change-line support
         // 0x02 = floppy with change-line support
         // 0x03 = fixed disk (hard drive)
-        let drive_type = if drive < 0x80 {
+        let drive_type = if drive.is_floppy() {
             0x02 // Floppy with change-line support
         } else {
             0x03 // Fixed disk
@@ -1202,7 +1173,7 @@ impl<D: DiskController> DriveManager<D> {
         Ok((drive_type, sectors))
     }
 
-    pub fn disk_detect_change(&mut self, drive: u8) -> Result<bool, u8> {
+    pub fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, u8> {
         let drive_state = self
             .get_drive_mut(drive)
             .ok_or(disk_errors::DRIVE_NOT_READY)?;
@@ -1224,7 +1195,7 @@ impl<D: DiskController> DriveManager<D> {
 
     pub fn disk_format_track(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sectors_per_track: u8,
@@ -1278,20 +1249,14 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Read sectors using logical sector addressing (INT 25h)
-    /// dos_drive: DOS drive number (0=A, 1=B, 2=C, etc.)
     /// start_sector: starting logical sector number
     /// count: number of sectors to read
     pub fn disk_read_sectors_lba(
         &self,
-        dos_drive: u8,
+        drive: DriveNumber,
         start_sector: u32,
         count: u16,
     ) -> Result<Vec<u8>, u8> {
-        // Convert DOS drive number to internal drive number
-        // DOS: 0=A, 1=B, 2=C, 3=D, ...
-        // Internal: 0x00=A, 0x01=B, 0x80=C, 0x81=D, ...
-        let drive = Self::dos_drive_to_internal(dos_drive);
-
         let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
         let adapter = drive_state
             .adapter
@@ -1313,22 +1278,20 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Get immutable access to a floppy disk (for saving)
-    /// slot: 0 = A:, 1 = B:
-    pub fn get_floppy_disk(&self, slot: u8) -> Option<&D> {
-        if slot > 1 {
+    pub fn get_floppy_disk(&self, drive: DriveNumber) -> Option<&D> {
+        if !drive.is_floppy() {
             return None;
         }
-        self.floppy_drives[slot as usize]
+        self.floppy_drives[drive.to_floppy_index()]
             .adapter
             .as_ref()
             .map(|a| a.disk())
     }
 
     /// Get immutable access to a hard drive (for saving)
-    /// index: 0 = C: (0x80), 1 = D: (0x81), etc.
-    pub fn get_hard_drive_disk(&self, index: usize) -> Option<&D> {
+    pub fn get_hard_drive_disk(&self, drive: DriveNumber) -> Option<&D> {
         self.hard_drives
-            .get(index)
+            .get(drive.to_hard_drive_index())
             .and_then(|d| d.adapter.as_ref())
             .map(|a| a.disk())
     }

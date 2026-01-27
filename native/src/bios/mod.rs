@@ -7,7 +7,7 @@ use emu86_core::cpu::bios::{
     DriveParams, ExecParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod,
     SerialParams, SerialStatus, dos_errors, file_access,
 };
-use emu86_core::{Bios, DiskController, DriveManager};
+use emu86_core::{Bios, DiskController, DriveManager, DriveNumber};
 use std::collections::HashMap;
 use std::io::{self, Read, Write};
 
@@ -41,24 +41,24 @@ impl<D: DiskController> NativeBios<D> {
     }
 
     /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
-    pub fn insert_floppy(&mut self, slot: u8, disk: D) -> Result<(), String> {
+    pub fn insert_floppy(&mut self, slot: DriveNumber, disk: D) -> Result<(), String> {
         self.drive_manager.insert_floppy(slot, disk)
     }
 
     /// Eject a floppy disk from a slot (for runtime disk swapping)
     #[allow(dead_code)]
-    pub fn eject_floppy(&mut self, slot: u8) -> Result<Option<D>, String> {
+    pub fn eject_floppy(&mut self, slot: DriveNumber) -> Result<Option<D>, String> {
         self.drive_manager.eject_floppy(slot)
     }
 
     /// Add a hard drive (returns assigned drive number: 0x80, 0x81, etc.)
-    pub fn add_hard_drive(&mut self, disk: D) -> u8 {
+    pub fn add_hard_drive(&mut self, disk: D) -> DriveNumber {
         self.drive_manager.add_hard_drive(disk)
     }
 
     /// Add a partitioned hard drive with both partition and raw disk views
     /// This allows INT 13h to read the MBR while DOS file operations use the partition
-    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> u8 {
+    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> DriveNumber {
         self.drive_manager
             .add_hard_drive_with_partition(partition, raw_disk)
     }
@@ -131,13 +131,13 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     // Disk operations - delegate to DriveManager
-    fn disk_reset(&mut self, drive: u8) -> bool {
+    fn disk_reset(&mut self, drive: DriveNumber) -> bool {
         self.drive_manager.disk_reset(drive)
     }
 
     fn disk_read_sectors(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sector: u8,
@@ -149,7 +149,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
 
     fn disk_write_sectors(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sector: u8,
@@ -160,21 +160,21 @@ impl<D: DiskController> Bios for NativeBios<D> {
             .disk_write_sectors(drive, cylinder, head, sector, count, data)
     }
 
-    fn disk_get_params(&self, drive: u8) -> Result<DriveParams, u8> {
+    fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, u8> {
         self.drive_manager.disk_get_params(drive)
     }
 
-    fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8> {
+    fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), u8> {
         self.drive_manager.disk_get_type(drive)
     }
 
-    fn disk_detect_change(&mut self, drive: u8) -> Result<bool, u8> {
+    fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, u8> {
         self.drive_manager.disk_detect_change(drive)
     }
 
     fn disk_format_track(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sectors_per_track: u8,
@@ -185,7 +185,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
 
     fn disk_read_sectors_lba(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         start_sector: u32,
         count: u16,
     ) -> Result<Vec<u8>, u8> {
@@ -361,7 +361,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
         self.drive_manager.dir_change(dirname)
     }
 
-    fn dir_get_current(&self, drive: u8) -> Result<String, u8> {
+    fn dir_get_current(&self, drive: DriveNumber) -> Result<String, u8> {
         self.drive_manager.get_current_dir(drive)
     }
 
@@ -374,11 +374,11 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     // Drive management
-    fn get_current_drive(&self) -> u8 {
+    fn get_current_drive(&self) -> DriveNumber {
         self.drive_manager.get_current_drive()
     }
 
-    fn set_default_drive(&mut self, drive: u8) -> u8 {
+    fn set_default_drive(&mut self, drive: DriveNumber) -> u8 {
         match self.drive_manager.set_current_drive(drive) {
             Ok(count) => count,
             Err(_) => self.drive_manager.get_drive_count(),

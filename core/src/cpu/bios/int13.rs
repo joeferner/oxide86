@@ -1,5 +1,5 @@
 use crate::{
-    Bios,
+    Bios, DriveNumber,
     cpu::{Cpu, cpu_flag},
     memory::Memory,
 };
@@ -66,7 +66,7 @@ impl Cpu {
     ///   AH = status (0 = success)
     ///   CF = clear if success, set if error
     fn int13_reset_disk<T: Bios>(&mut self, io: &mut T) {
-        let drive = (self.dx & 0xFF) as u8; // Get DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         let success = io.disk_reset(drive);
 
@@ -96,7 +96,7 @@ impl Cpu {
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
         let head = (self.dx >> 8) as u8; // DH
-        let drive = (self.dx & 0xFF) as u8; // DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
 
         // Extract cylinder and sector from CL
         let sector = sector_and_cyl_high & 0x3F; // Bits 0-5
@@ -104,7 +104,7 @@ impl Cpu {
         let cylinder_8bit = cylinder_low;
 
         log::debug!(
-            "INT 13h AH=02h: Read {} sectors from drive 0x{:02X}, C/H/S={}/{}/{}",
+            "INT 13h AH=02h: Read {} sectors from drive {}, C/H/S={}/{}/{}",
             count,
             drive,
             cylinder_8bit,
@@ -124,7 +124,7 @@ impl Cpu {
                 let sectors_read = (data.len() / 512).min(count as usize) as u8;
 
                 log::debug!(
-                    "INT 13h AH=02h: Successfully read {} sectors from drive 0x{:02X} to {:04X}:{:04X}",
+                    "INT 13h AH=02h: Successfully read {} sectors from drive {} to {:04X}:{:04X}",
                     sectors_read,
                     drive,
                     self.es,
@@ -137,7 +137,7 @@ impl Cpu {
             }
             Err(error_code) => {
                 log::warn!(
-                    "INT 13h AH=02h: Read failed for drive 0x{:02X}, error code 0x{:02X}",
+                    "INT 13h AH=02h: Read failed for drive {}, error code 0x{:02X}",
                     drive,
                     error_code
                 );
@@ -165,7 +165,7 @@ impl Cpu {
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
         let head = (self.dx >> 8) as u8; // DH
-        let drive = (self.dx & 0xFF) as u8; // DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
 
         // Extract cylinder and sector from CL
         let sector = sector_and_cyl_high & 0x3F; // Bits 0-5
@@ -211,7 +211,7 @@ impl Cpu {
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
         let head = (self.dx >> 8) as u8; // DH
-        let drive = (self.dx & 0xFF) as u8; // DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
 
         // Extract cylinder and sector from CL
         let sector = sector_and_cyl_high & 0x3F; // Bits 0-5
@@ -251,7 +251,7 @@ impl Cpu {
         let sectors_per_track = (self.ax & 0xFF) as u8; // AL
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let head = (self.dx >> 8) as u8; // DH
-        let drive = (self.dx & 0xFF) as u8; // DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
 
         // For 8086, we only support 8-bit cylinders (compatibility mode)
         let cylinder = cylinder_low;
@@ -280,17 +280,14 @@ impl Cpu {
     ///     DH = maximum head number
     ///     DL = number of drives
     fn int13_get_drive_params<T: Bios>(&mut self, io: &T) {
-        let drive = (self.dx & 0xFF) as u8; // Get DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
-        log::debug!(
-            "INT 13h AH=08h: Get Drive Parameters for drive 0x{:02X}",
-            drive
-        );
+        log::debug!("INT 13h AH=08h: Get Drive Parameters for drive {}", drive);
 
         match io.disk_get_params(drive) {
             Ok(params) => {
                 log::debug!(
-                    "INT 13h AH=08h: Drive 0x{:02X} params: cyl={}, head={}, sec={}, drives={}",
+                    "INT 13h AH=08h: Drive {} params: cyl={}, head={}, sec={}, drives={}",
                     drive,
                     params.max_cylinder,
                     params.max_head,
@@ -330,7 +327,7 @@ impl Cpu {
     ///   For type 0x03 (fixed disk):
     ///     CX:DX = number of 512-byte sectors (32-bit value, CX=high word, DX=low word)
     fn int13_get_disk_type<T: Bios>(&mut self, io: &T) {
-        let drive = (self.dx & 0xFF) as u8; // Get DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         match io.disk_get_type(drive) {
             Ok((drive_type, sector_count)) => {
@@ -367,7 +364,7 @@ impl Cpu {
     ///     0x80 = drive not ready (timeout)
     ///   CF = clear if disk not changed, set if changed or error
     fn int13_detect_disk_change<T: Bios>(&mut self, io: &mut T) {
-        let drive = (self.dx & 0xFF) as u8; // Get DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         match io.disk_detect_change(drive) {
             Ok(changed) => {
@@ -402,7 +399,7 @@ impl Cpu {
     ///   On success:
     ///     ES:DI = pointer to 11-byte Disk Base Table (DBT)
     fn int13_set_dasd_type<T: Bios>(&mut self, memory: &mut Memory, io: &T) {
-        let drive = (self.dx & 0xFF) as u8; // Get DL
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
         let tracks_low = (self.cx >> 8) as u8; // CH
         let sectors_and_tracks_high = (self.cx & 0xFF) as u8; // CL
 
@@ -412,7 +409,7 @@ impl Cpu {
         let tracks = ((tracks_high as u16) << 8) | (tracks_low as u16);
 
         // Only support floppy drives (0x00-0x7F)
-        if drive >= 0x80 {
+        if !drive.is_floppy() {
             // Hard disks don't support this function
             self.ax = (self.ax & 0x00FF) | (0x80_u16 << 8); // AH = 0x80 (not supported)
             self.set_flag(cpu_flag::CARRY, true);

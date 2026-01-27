@@ -21,7 +21,7 @@ mod int35_3f;
 pub mod null_bios;
 
 use super::Cpu;
-use crate::memory::Memory;
+use crate::{DriveNumber, memory::Memory};
 pub use int13::disk_errors;
 pub use int14::{SerialParams, SerialStatus};
 pub use int17::PrinterStatus;
@@ -173,13 +173,13 @@ pub trait Bios {
 
     /// Reset disk system (INT 13h, AH=00h)
     /// Returns true if successful
-    fn disk_reset(&mut self, drive: u8) -> bool;
+    fn disk_reset(&mut self, drive: DriveNumber) -> bool;
 
     /// Read sectors from disk (INT 13h, AH=02h)
     /// Returns the read data on success, or error code on failure
     fn disk_read_sectors(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sector: u8,
@@ -190,7 +190,7 @@ pub trait Bios {
     /// Returns number of sectors written on success, or error code on failure
     fn disk_write_sectors(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sector: u8,
@@ -200,26 +200,26 @@ pub trait Bios {
 
     /// Get drive parameters (INT 13h, AH=08h)
     /// Returns drive parameters on success, or error code on failure
-    fn disk_get_params(&self, drive: u8) -> Result<DriveParams, u8>;
+    fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, u8>;
 
     /// Get disk type (INT 13h, AH=15h)
     /// Returns (drive_type, sector_count) where:
     /// - drive_type: 0x00 = not present, 0x01 = floppy no change-line,
     ///   0x02 = floppy with change-line, 0x03 = fixed disk
     /// - sector_count: total 512-byte sectors (only for type 0x03)
-    fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8>;
+    fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), u8>;
 
     /// Detect disk change (INT 13h, AH=16h)
     /// Returns Ok(false) if disk not changed, Ok(true) if disk changed,
     /// or Err(error_code) on error
-    fn disk_detect_change(&mut self, drive: u8) -> Result<bool, u8>;
+    fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, u8>;
 
     /// Format track (INT 13h, AH=05h)
     /// Formats a track by filling sectors with zeros
     /// Returns Ok(()) on success, or Err(error_code) on failure
     fn disk_format_track(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sectors_per_track: u8,
@@ -232,7 +232,7 @@ pub trait Bios {
     /// Returns the read data on success, or error code on failure
     fn disk_read_sectors_lba(
         &mut self,
-        drive: u8,
+        drive: DriveNumber,
         start_sector: u32,
         count: u16,
     ) -> Result<Vec<u8>, u8>;
@@ -283,7 +283,7 @@ pub trait Bios {
 
     /// Get current directory (INT 21h, AH=47h)
     /// Returns the current directory path (without drive letter)
-    fn dir_get_current(&self, drive: u8) -> Result<String, u8>;
+    fn dir_get_current(&self, drive: DriveNumber) -> Result<String, u8>;
 
     /// Find first matching file (INT 21h, AH=4Eh)
     /// Returns file data on success, or error code on failure
@@ -298,11 +298,11 @@ pub trait Bios {
 
     /// Get current default drive (INT 21h, AH=19h)
     /// Returns the current drive number (0=A, 1=B, etc.)
-    fn get_current_drive(&self) -> u8;
+    fn get_current_drive(&self) -> DriveNumber;
 
     /// Set default drive (INT 21h, AH=0Eh)
     /// Returns the total number of logical drives
-    fn set_default_drive(&mut self, drive: u8) -> u8;
+    fn set_default_drive(&mut self, drive: DriveNumber) -> u8;
 
     /// Allocate memory (INT 21h, AH=48h)
     /// Returns segment of allocated memory on success, or (error_code, max_available) on failure
