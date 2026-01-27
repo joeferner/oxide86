@@ -136,31 +136,25 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     fn read_key(&mut self) -> Option<KeyPress> {
-        loop {
-            let key = console::read_key()?;
-            log::info!("read_key.... 0x{:02x}", key.scan_code);
-            // Intercept F12 for command mode
-            if key.scan_code == 0x86 {
-                self.command_mode_requested = true;
-                // Continue looping to consume the F12 and wait for next key
-                continue;
-            }
-            return Some(key);
+        let key = console::read_key()?;
+        // Intercept F12 for command mode
+        if key.scan_code == 0x86 {
+            self.command_mode_requested = true;
+            // Return None so the emulated program doesn't see F12
+            return None;
         }
+        Some(key)
     }
 
     fn check_key(&mut self) -> Option<KeyPress> {
-        loop {
-            let key = console::check_key()?;
-            log::info!("check_key.... 0x{:02x}", key.scan_code);
-            // Intercept F12 for command mode
-            if key.scan_code == 0x86 {
-                self.command_mode_requested = true;
-                // Continue looping to consume any additional F12 presses
-                continue;
-            }
-            return Some(key);
+        let key = console::check_key()?;
+        // Intercept F12 for command mode
+        if key.scan_code == 0x86 {
+            self.command_mode_requested = true;
+            // Return None so the emulated program doesn't see F12
+            return None;
         }
+        Some(key)
     }
 
     // Disk operations - delegate to DriveManager

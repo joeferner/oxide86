@@ -93,7 +93,8 @@ fn ascii_to_scan_code(ascii_code: u8) -> u8 {
 fn try_read_escape_sequence() -> Option<KeyPress> {
     // We've already read ESC (0x1B). Check if more data follows quickly.
     // If no data within a short timeout, it's just the ESC key.
-    if !stdin_poll_timeout(50) {
+    // Use 200ms timeout to handle slow terminal escape sequences
+    if !stdin_poll_timeout(200) {
         // Just ESC key
         return Some(KeyPress {
             scan_code: 0x01,
@@ -306,6 +307,7 @@ pub fn read_key() -> Option<KeyPress> {
     match io::stdin().read_exact(&mut buffer) {
         Ok(_) => {
             let ch = buffer[0];
+            log::info!("read_key.... 0x{:02x}", ch);
 
             // Check for escape sequence
             if ch == 0x1B {
@@ -343,6 +345,7 @@ pub fn check_key() -> Option<KeyPress> {
     match io::stdin().read(&mut buffer) {
         Ok(1) => {
             let ch = buffer[0];
+            log::info!("check_key.... 0x{:02x}", ch);
 
             // Check for escape sequence
             if ch == 0x1B {
