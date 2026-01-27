@@ -134,14 +134,22 @@ impl Cpu {
         io: &mut T,
         video: &mut crate::video::Video,
     ) {
-        log::trace!(
-            "INT 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X}",
-            int_num,
-            self.ax,
-            self.bx,
-            self.cx,
-            self.dx
-        );
+        if int_num != 0x10
+            && int_num != 0x16
+            && int_num != 0x1a
+            && int_num != 0x2a
+            && int_num != 0x28
+            && int_num != 0x29
+        {
+            log::trace!(
+                "INT 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X}",
+                int_num,
+                self.ax,
+                self.bx,
+                self.cx,
+                self.dx
+            );
+        }
 
         // Try to handle with BIOS I/O first
         if self.handle_bios_interrupt(int_num, memory, io, video) {

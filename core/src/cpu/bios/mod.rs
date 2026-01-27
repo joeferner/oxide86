@@ -392,23 +392,8 @@ impl Cpu {
     /// Returns true if the vector is in BIOS ROM area, false if DOS has installed its own handler
     fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
         let ivt_addr = (int_num as usize) * 4;
-        let offset = memory.read_u16(ivt_addr);
         let segment = memory.read_u16(ivt_addr + 2);
-        let is_bios = segment == 0xF000;
-
-        // Log for INT 13h to debug boot issues
-        if int_num == 0x13 {
-            log::debug!(
-                "is_bios_handler: INT 0x{:02X} points to {:04X}:{:04X}, is_bios={}",
-                int_num,
-                segment,
-                offset,
-                is_bios
-            );
-        }
-
-        // BIOS handlers are in the F000 segment (ROM area)
-        is_bios
+        segment == 0xF000 // BIOS handlers are in the F000 segment (ROM area)
     }
 
     /// Handle BIOS interrupt directly without checking IVT
@@ -435,12 +420,6 @@ impl Cpu {
         // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
         // let DOS handle it instead of intercepting
         if !Self::is_bios_handler(memory, int_num) {
-            if int_num == 0x13 {
-                log::debug!(
-                    "INT 0x{:02X}: DOS handler detected, letting normal INT mechanism proceed",
-                    int_num
-                );
-            }
             return false;
         }
 

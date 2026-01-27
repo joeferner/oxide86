@@ -1041,14 +1041,34 @@ impl<D: DiskController> DriveManager<D> {
                 .ok_or(disk_errors::DRIVE_NOT_READY)?
         };
 
+        // Get disk geometry for proper C/H/S wrapping
+        let geometry = adapter.disk().geometry();
+        let sectors_per_track = geometry.sectors_per_track;
+        let heads = geometry.heads;
+
+        let mut current_cylinder = cylinder as u16;
+        let mut current_head = head as u16;
+        let mut current_sector = sector as u16;
+
         let mut result = Vec::new();
 
-        for i in 0..count {
+        for _ in 0..count {
             let sector_data = adapter
                 .disk()
-                .read_sector_chs(cylinder as u16, head as u16, (sector + i) as u16)
+                .read_sector_chs(current_cylinder, current_head, current_sector)
                 .map_err(|_| disk_errors::SECTOR_NOT_FOUND)?;
             result.extend_from_slice(&sector_data);
+
+            // Advance to next sector with proper C/H/S wrapping
+            current_sector += 1;
+            if current_sector > sectors_per_track {
+                current_sector = 1;
+                current_head += 1;
+                if current_head >= heads {
+                    current_head = 0;
+                    current_cylinder += 1;
+                }
+            }
         }
 
         Ok(result)
@@ -1082,6 +1102,15 @@ impl<D: DiskController> DriveManager<D> {
             return Err(disk_errors::WRITE_PROTECTED);
         }
 
+        // Get disk geometry for proper C/H/S wrapping
+        let geometry = adapter.disk().geometry();
+        let sectors_per_track = geometry.sectors_per_track;
+        let heads = geometry.heads;
+
+        let mut current_cylinder = cylinder as u16;
+        let mut current_head = head as u16;
+        let mut current_sector = sector as u16;
+
         let mut written = 0;
         for i in 0..count {
             let offset = i as usize * SECTOR_SIZE;
@@ -1094,15 +1123,21 @@ impl<D: DiskController> DriveManager<D> {
 
             adapter
                 .disk_mut()
-                .write_sector_chs(
-                    cylinder as u16,
-                    head as u16,
-                    (sector + i) as u16,
-                    &sector_data,
-                )
+                .write_sector_chs(current_cylinder, current_head, current_sector, &sector_data)
                 .map_err(|_| disk_errors::SECTOR_NOT_FOUND)?;
 
             written += 1;
+
+            // Advance to next sector with proper C/H/S wrapping
+            current_sector += 1;
+            if current_sector > sectors_per_track {
+                current_sector = 1;
+                current_head += 1;
+                if current_head >= heads {
+                    current_head = 0;
+                    current_cylinder += 1;
+                }
+            }
         }
 
         Ok(written)
