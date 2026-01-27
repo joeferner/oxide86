@@ -1,5 +1,6 @@
-use emu86_core::cpu::bios::dos_errors;
 use std::collections::HashMap;
+
+use emu86_core::cpu::bios::dos_error::DosError;
 
 /// Memory allocation block
 #[derive(Debug, Clone)]
@@ -50,9 +51,9 @@ impl MemoryAllocator {
 
     /// Allocate memory
     /// Returns segment address on success, or (error_code, max_available) on failure
-    pub fn allocate(&mut self, paragraphs: u16) -> Result<u16, (u8, u16)> {
+    pub fn allocate(&mut self, paragraphs: u16) -> Result<u16, (DosError, u16)> {
         if paragraphs == 0 {
-            return Err((dos_errors::INVALID_MEMORY_BLOCK_ADDRESS, 0));
+            return Err((DosError::InvalidMemoryBlockAddress, 0));
         }
 
         // First, try to find a free block that fits (first-fit strategy)
@@ -92,7 +93,7 @@ impl MemoryAllocator {
                 .max()
                 .unwrap_or(0)
                 .max(available);
-            return Err((dos_errors::INSUFFICIENT_MEMORY, max_block));
+            return Err((DosError::InsufficientMemory, max_block));
         }
 
         // Allocate block at next_segment
@@ -109,7 +110,7 @@ impl MemoryAllocator {
     }
 
     /// Free memory
-    pub fn free(&mut self, segment: u16) -> Result<(), u8> {
+    pub fn free(&mut self, segment: u16) -> Result<(), DosError> {
         if let Some(block) = self.blocks.remove(&segment) {
             let block_end = segment.saturating_add(block.paragraphs);
 
@@ -133,7 +134,7 @@ impl MemoryAllocator {
 
             Ok(())
         } else {
-            Err(dos_errors::INVALID_MEMORY_BLOCK_ADDRESS)
+            Err(DosError::InvalidMemoryBlockAddress)
         }
     }
 
@@ -188,12 +189,12 @@ impl MemoryAllocator {
     }
 
     /// Resize memory block
-    pub fn resize(&mut self, segment: u16, new_paragraphs: u16) -> Result<(), (u8, u16)> {
+    pub fn resize(&mut self, segment: u16, new_paragraphs: u16) -> Result<(), (DosError, u16)> {
         // Get the existing block
         let block = self
             .blocks
             .get_mut(&segment)
-            .ok_or((dos_errors::INVALID_MEMORY_BLOCK_ADDRESS, 0))?;
+            .ok_or((DosError::InvalidMemoryBlockAddress, 0))?;
 
         let old_paragraphs = block.paragraphs;
 
@@ -235,7 +236,7 @@ impl MemoryAllocator {
                 let available = self.max_segment.saturating_sub(self.next_segment);
 
                 if additional > available {
-                    return Err((dos_errors::INSUFFICIENT_MEMORY, old_paragraphs + available));
+                    return Err((DosError::InsufficientMemory, old_paragraphs + available));
                 }
 
                 block.paragraphs = new_paragraphs;
@@ -273,7 +274,7 @@ impl MemoryAllocator {
                 }
 
                 // Cannot resize in place - not enough space
-                Err((dos_errors::INSUFFICIENT_MEMORY, old_paragraphs))
+                Err((DosError::InsufficientMemory, old_paragraphs))
             }
         }
     }

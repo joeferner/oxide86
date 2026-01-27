@@ -1,40 +1,22 @@
+use strum_macros::{Display, FromRepr};
+
 use crate::{
     Bios, DriveNumber,
     cpu::{
         Cpu,
-        bios::{ExecParams, FindData, SeekMethod},
+        bios::{ExecParams, FindData, SeekMethod, dos_error::DosError},
         cpu_flag,
     },
     memory::Memory,
 };
 
-/// INT 21h DOS error codes
-pub mod dos_errors {
-    pub const SUCCESS: u8 = 0x00;
-    pub const INVALID_FUNCTION: u8 = 0x01;
-    pub const FILE_NOT_FOUND: u8 = 0x02;
-    pub const PATH_NOT_FOUND: u8 = 0x03;
-    pub const TOO_MANY_OPEN_FILES: u8 = 0x04;
-    pub const ACCESS_DENIED: u8 = 0x05;
-    pub const INVALID_HANDLE: u8 = 0x06;
-    pub const MEMORY_CONTROL_BLOCKS_DESTROYED: u8 = 0x07;
-    pub const INSUFFICIENT_MEMORY: u8 = 0x08;
-    pub const INVALID_MEMORY_BLOCK_ADDRESS: u8 = 0x09;
-    pub const INVALID_ENVIRONMENT: u8 = 0x0A;
-    pub const INVALID_FORMAT: u8 = 0x0B;
-    pub const INVALID_ACCESS_CODE: u8 = 0x0C;
-    pub const INVALID_DATA: u8 = 0x0D;
-    pub const INVALID_DRIVE: u8 = 0x0F;
-    pub const ATTEMPT_TO_REMOVE_CURRENT_DIR: u8 = 0x10;
-    pub const NOT_SAME_DEVICE: u8 = 0x11;
-    pub const NO_MORE_FILES: u8 = 0x12;
-}
-
 /// File access modes for INT 21h, AH=3Dh
-pub mod file_access {
-    pub const READ_ONLY: u8 = 0x00;
-    pub const WRITE_ONLY: u8 = 0x01;
-    pub const READ_WRITE: u8 = 0x02;
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Display, FromRepr)]
+pub enum FileAccess {
+    ReadOnly = 0x00,
+    WriteOnly = 0x01,
+    ReadWrite = 0x02,
 }
 
 impl Cpu {
@@ -448,10 +430,11 @@ impl Cpu {
     ///   CF set if error: AX = error code
     fn int21_open_file<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
         let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
-        let access_mode = (self.ax & 0xFF) as u8;
+        let access_mode =
+            FileAccess::from_repr((self.ax & 0xFF) as u8).unwrap_or(FileAccess::ReadOnly);
 
         log::info!(
-            "INT 21h AH=3Dh: Opening file '{}' with access mode 0x{:02X}",
+            "INT 21h AH=3Dh: Opening file '{}' with access mode {}",
             filename,
             access_mode
         );
@@ -466,10 +449,7 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
-                log::warn!(
-                    "INT 21h AH=3Dh: Failed to open file - error 0x{:02X}",
-                    error_code
-                );
+                log::warn!("INT 21h AH=3Dh: Failed to open file - error {}", error_code);
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
@@ -531,7 +511,7 @@ impl Cpu {
             }
             Err(error_code) => {
                 log::warn!(
-                    "INT 21h AH=3Fh: Failed to read from handle {} - error 0x{:02X}",
+                    "INT 21h AH=3Fh: Failed to read from handle {} - error {}",
                     handle,
                     error_code
                 );
@@ -615,7 +595,7 @@ impl Cpu {
             1 => SeekMethod::FromCurrent,
             2 => SeekMethod::FromEnd,
             _ => {
-                self.ax = dos_errors::INVALID_FUNCTION as u16;
+                self.ax = DosError::InvalidFunction as u16;
                 self.set_flag(cpu_flag::CARRY, true);
                 return;
             }
@@ -637,7 +617,7 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
-                log::warn!("INT 21h AH=42h: Seek failed - error 0x{:02X}", error_code);
+                log::warn!("INT 21h AH=42h: Seek failed - error {}", error_code);
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
@@ -1213,14 +1193,14 @@ impl Cpu {
                             category,
                             function
                         );
-                        self.ax = dos_errors::INVALID_FUNCTION as u16;
+                        self.ax = DosError::InvalidFunction as u16;
                         self.set_flag(cpu_flag::CARRY, true);
                     }
                 }
             }
             _ => {
                 log::warn!("Unhandled IOCTL subfunction: AL=0x{:02X}", subfunction);
-                self.ax = dos_errors::INVALID_FUNCTION as u16;
+                self.ax = DosError::InvalidFunction as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }
@@ -1238,11 +1218,11 @@ impl Cpu {
         memory: &mut Memory,
         io: &mut T,
         drive: DriveNumber,
-    ) -> Result<(), u8> {
+    ) -> Result<(), DosError> {
         // Get drive parameters from INT 13h
         let params = io
             .disk_get_params(drive)
-            .map_err(|_| dos_errors::INVALID_DRIVE)?;
+            .map_err(|_| DosError::InvalidDrive)?;
 
         // Convert max values to actual counts
         let cylinders = (params.max_cylinder as u16) + 1;
@@ -1357,7 +1337,7 @@ impl Cpu {
         memory: &mut Memory,
         io: &mut T,
         drive: DriveNumber,
-    ) -> Result<(), u8> {
+    ) -> Result<(), DosError> {
         // Get pointer to parameter block (DS:DX)
         let seg = self.ds;
         let offset = self.dx;
@@ -1378,7 +1358,7 @@ impl Cpu {
         // Get drive parameters to determine sectors per track
         let params = io
             .disk_get_params(drive)
-            .map_err(|_| dos_errors::INVALID_DRIVE)?;
+            .map_err(|_| DosError::InvalidDrive)?;
 
         let sectors_per_track = params.max_sector;
 
@@ -1386,18 +1366,13 @@ impl Cpu {
         io.disk_format_track(drive, cylinder as u8, head as u8, sectors_per_track)
             .map_err(|error_code| {
                 log::warn!(
-                    "  Format track failed: drive={}, cyl={}, head={}, error=0x{:02X}",
+                    "  Format track failed: drive={}, cyl={}, head={}, error={}",
                     drive,
                     cylinder,
                     head,
                     error_code
                 );
-                // Map disk error codes to DOS error codes
-                match error_code {
-                    0x03 => dos_errors::ACCESS_DENIED, // Write protected
-                    0xAA => dos_errors::ACCESS_DENIED, // Drive not ready
-                    _ => dos_errors::ACCESS_DENIED,
-                }
+                DosError::AccessDenied
             })?;
 
         log::info!("  Format track succeeded");
@@ -1426,7 +1401,7 @@ impl Cpu {
             }
             Err((error_code, max_available)) => {
                 log::warn!(
-                    "INT 21h AH=48h: Allocation failed - error 0x{:02X}, max available: {} paragraphs ({} bytes)",
+                    "INT 21h AH=48h: Allocation failed - error {}, max available: {} paragraphs ({} bytes)",
                     error_code,
                     max_available,
                     max_available as u32 * 16
@@ -1457,7 +1432,7 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
-                log::warn!("INT 21h AH=49h: Free failed - error 0x{:02X}", error_code);
+                log::warn!("INT 21h AH=49h: Free failed - error {}", error_code);
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
@@ -1491,7 +1466,7 @@ impl Cpu {
             }
             Err((error_code, max_available)) => {
                 log::warn!(
-                    "INT 21h AH=4Ah: Resize failed - error 0x{:02X}, max available: {} paragraphs",
+                    "INT 21h AH=4Ah: Resize failed - error {}, max available: {} paragraphs",
                     error_code,
                     max_available
                 );
@@ -1560,7 +1535,7 @@ impl Cpu {
             Ok(data) => data,
             Err(error_code) => {
                 log::warn!(
-                    "INT 21h AH=4Bh: Failed to load '{}' - error 0x{:02X}",
+                    "INT 21h AH=4Bh: Failed to load '{}' - error {}",
                     filename,
                     error_code
                 );
@@ -1572,7 +1547,7 @@ impl Cpu {
 
         if program_data.is_empty() {
             log::warn!("INT 21h AH=4Bh: Empty program file '{}'", filename);
-            self.ax = dos_errors::INVALID_FORMAT as u16;
+            self.ax = DosError::InvalidFormat as u16;
             self.set_flag(cpu_flag::CARRY, true);
             return;
         }
@@ -1605,7 +1580,7 @@ impl Cpu {
                 "INT 21h AH=4Bh: COM file too large ({} bytes)",
                 program_size
             );
-            self.ax = dos_errors::INSUFFICIENT_MEMORY as u16;
+            self.ax = DosError::InsufficientMemory as u16;
             self.set_flag(cpu_flag::CARRY, true);
             return;
         }
@@ -1620,7 +1595,7 @@ impl Cpu {
             Ok(seg) => seg,
             Err((error_code, _)) => {
                 log::warn!(
-                    "INT 21h AH=4Bh: Failed to allocate memory - error 0x{:02X}",
+                    "INT 21h AH=4Bh: Failed to allocate memory - error {}",
                     error_code
                 );
                 self.ax = error_code as u16;
@@ -1705,7 +1680,7 @@ impl Cpu {
                     "INT 21h AH=4Bh: Unsupported subfunction 0x{:02X}",
                     params.subfunction
                 );
-                self.ax = dos_errors::INVALID_FUNCTION as u16;
+                self.ax = DosError::InvalidFunction as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }
@@ -1722,7 +1697,7 @@ impl Cpu {
         // Parse EXE header
         if program_data.len() < 28 {
             log::warn!("INT 21h AH=4Bh: EXE header too small");
-            self.ax = dos_errors::INVALID_FORMAT as u16;
+            self.ax = DosError::InvalidFormat as u16;
             self.set_flag(cpu_flag::CARRY, true);
             return;
         }
@@ -1764,7 +1739,7 @@ impl Cpu {
             Ok(seg) => seg,
             Err((error_code, _)) => {
                 log::warn!(
-                    "INT 21h AH=4Bh: Failed to allocate memory - error 0x{:02X}",
+                    "INT 21h AH=4Bh: Failed to allocate memory - error {}",
                     error_code
                 );
                 self.ax = error_code as u16;
@@ -1860,7 +1835,7 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, false);
             }
             _ => {
-                self.ax = dos_errors::INVALID_FUNCTION as u16;
+                self.ax = DosError::InvalidFunction as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }

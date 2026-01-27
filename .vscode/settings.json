@@ -45,6 +45,7 @@
         "REPE",
         "REPNE",
         "REPNZ",
+        "repr",
         "REPZ",
         "retf",
         "rsplit",

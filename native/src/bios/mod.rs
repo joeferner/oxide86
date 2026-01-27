@@ -3,9 +3,11 @@ mod memory_allocator;
 mod peripheral;
 mod time;
 
+use emu86_core::cpu::bios::disk_error::DiskError;
+use emu86_core::cpu::bios::dos_error::DosError;
 use emu86_core::cpu::bios::{
-    DriveParams, ExecParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod,
-    SerialParams, SerialStatus, dos_errors, file_access,
+    DriveParams, ExecParams, FileAccess, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime,
+    SeekMethod, SerialParams, SerialStatus,
 };
 use emu86_core::{Bios, DiskController, DriveManager, DriveNumber};
 use std::collections::HashMap;
@@ -169,7 +171,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
         head: u8,
         sector: u8,
         count: u8,
-    ) -> Result<Vec<u8>, u8> {
+    ) -> Result<Vec<u8>, DiskError> {
         self.drive_manager
             .disk_read_sectors(drive, cylinder, head, sector, count)
     }
@@ -182,20 +184,20 @@ impl<D: DiskController> Bios for NativeBios<D> {
         sector: u8,
         count: u8,
         data: &[u8],
-    ) -> Result<u8, u8> {
+    ) -> Result<u8, DiskError> {
         self.drive_manager
             .disk_write_sectors(drive, cylinder, head, sector, count, data)
     }
 
-    fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, u8> {
+    fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError> {
         self.drive_manager.disk_get_params(drive)
     }
 
-    fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), u8> {
+    fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError> {
         self.drive_manager.disk_get_type(drive)
     }
 
-    fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, u8> {
+    fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, DiskError> {
         self.drive_manager.disk_detect_change(drive)
     }
 
@@ -205,7 +207,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
         cylinder: u8,
         head: u8,
         sectors_per_track: u8,
-    ) -> Result<(), u8> {
+    ) -> Result<(), DiskError> {
         self.drive_manager
             .disk_format_track(drive, cylinder, head, sectors_per_track)
     }
@@ -215,18 +217,18 @@ impl<D: DiskController> Bios for NativeBios<D> {
         drive: DriveNumber,
         start_sector: u32,
         count: u16,
-    ) -> Result<Vec<u8>, u8> {
+    ) -> Result<Vec<u8>, DiskError> {
         self.drive_manager
             .disk_read_sectors_lba(drive, start_sector, count)
     }
 
     // File operations
-    fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, u8> {
+    fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, DosError> {
         // Check if it's a DOS device
         if let Some(device) = Self::is_dos_device(filename) {
             let handle = self
                 .allocate_device_handle()
-                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+                .ok_or(DosError::TooManyOpenFiles)?;
             self.device_handles.insert(handle, device);
             return Ok(handle);
         }
@@ -235,12 +237,12 @@ impl<D: DiskController> Bios for NativeBios<D> {
         self.drive_manager.file_create(filename, attributes)
     }
 
-    fn file_open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8> {
+    fn file_open(&mut self, filename: &str, access_mode: FileAccess) -> Result<u16, DosError> {
         // Check if it's a DOS device
         if let Some(device) = Self::is_dos_device(filename) {
             let handle = self
                 .allocate_device_handle()
-                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+                .ok_or(DosError::TooManyOpenFiles)?;
             self.device_handles.insert(handle, device);
             return Ok(handle);
         }
@@ -249,10 +251,10 @@ impl<D: DiskController> Bios for NativeBios<D> {
         self.drive_manager.file_open(filename, access_mode)
     }
 
-    fn file_close(&mut self, handle: u16) -> Result<(), u8> {
+    fn file_close(&mut self, handle: u16) -> Result<(), DosError> {
         // Don't allow closing standard handles
         if handle < 3 {
-            return Err(dos_errors::INVALID_HANDLE);
+            return Err(DosError::InvalidHandle);
         }
 
         // Try removing from device handles first
@@ -264,7 +266,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
         self.drive_manager.file_close(handle)
     }
 
-    fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, u8> {
+    fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, DosError> {
         // Handle stdin separately
         if handle == 0 {
             let mut buffer = vec![0u8; max_bytes as usize];
@@ -273,7 +275,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
                     buffer.truncate(n);
                     Ok(buffer)
                 }
-                Err(_) => Err(dos_errors::ACCESS_DENIED),
+                Err(_) => Err(DosError::AccessDenied),
             }
         } else if let Some(device) = self.device_handles.get(&handle) {
             // Handle DOS devices
@@ -290,7 +292,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
                             buffer.truncate(n);
                             Ok(buffer)
                         }
-                        Err(_) => Err(dos_errors::ACCESS_DENIED),
+                        Err(_) => Err(DosError::AccessDenied),
                     }
                 }
             }
@@ -300,7 +302,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
         }
     }
 
-    fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, u8> {
+    fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, DosError> {
         // Handle stdout/stderr separately
         if handle == 1 {
             match io::stdout().write(data) {
@@ -308,7 +310,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
                     let _ = io::stdout().flush();
                     Ok(n as u16)
                 }
-                Err(_) => Err(dos_errors::ACCESS_DENIED),
+                Err(_) => Err(DosError::AccessDenied),
             }
         } else if handle == 2 {
             match io::stderr().write(data) {
@@ -316,7 +318,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
                     let _ = io::stderr().flush();
                     Ok(n as u16)
                 }
-                Err(_) => Err(dos_errors::ACCESS_DENIED),
+                Err(_) => Err(DosError::AccessDenied),
             }
         } else if let Some(device) = self.device_handles.get(&handle) {
             // Handle DOS devices
@@ -332,7 +334,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
                             let _ = io::stdout().flush();
                             Ok(n as u16)
                         }
-                        Err(_) => Err(dos_errors::ACCESS_DENIED),
+                        Err(_) => Err(DosError::AccessDenied),
                     }
                 }
             }
@@ -342,22 +344,22 @@ impl<D: DiskController> Bios for NativeBios<D> {
         }
     }
 
-    fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8> {
+    fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, DosError> {
         // Standard handles and device handles don't support seeking
         if handle < 3 || self.device_handles.contains_key(&handle) {
-            return Err(dos_errors::INVALID_HANDLE);
+            return Err(DosError::InvalidHandle);
         }
 
         // Delegate to drive manager
         self.drive_manager.file_seek(handle, offset, method)
     }
 
-    fn file_duplicate(&mut self, handle: u16) -> Result<u16, u8> {
+    fn file_duplicate(&mut self, handle: u16) -> Result<u16, DosError> {
         // Standard handles (0, 1, 2) can be duplicated
         if handle < 3 {
             let new_handle = self
                 .allocate_device_handle()
-                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+                .ok_or(DosError::TooManyOpenFiles)?;
             // We don't actually store anything for standard handles
             return Ok(new_handle);
         }
@@ -366,7 +368,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
         if let Some(device) = self.device_handles.get(&handle).copied() {
             let new_handle = self
                 .allocate_device_handle()
-                .ok_or(dos_errors::TOO_MANY_OPEN_FILES)?;
+                .ok_or(DosError::TooManyOpenFiles)?;
             self.device_handles.insert(new_handle, device);
             return Ok(new_handle);
         }
@@ -376,27 +378,27 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     // Directory operations
-    fn dir_create(&mut self, dirname: &str) -> Result<(), u8> {
+    fn dir_create(&mut self, dirname: &str) -> Result<(), DosError> {
         self.drive_manager.dir_create(dirname)
     }
 
-    fn dir_remove(&mut self, dirname: &str) -> Result<(), u8> {
+    fn dir_remove(&mut self, dirname: &str) -> Result<(), DosError> {
         self.drive_manager.dir_remove(dirname)
     }
 
-    fn dir_change(&mut self, dirname: &str) -> Result<(), u8> {
+    fn dir_change(&mut self, dirname: &str) -> Result<(), DosError> {
         self.drive_manager.dir_change(dirname)
     }
 
-    fn dir_get_current(&self, drive: DriveNumber) -> Result<String, u8> {
+    fn dir_get_current(&self, drive: DriveNumber) -> Result<String, DosError> {
         self.drive_manager.get_current_dir(drive)
     }
 
-    fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), u8> {
+    fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), DosError> {
         self.drive_manager.find_first(pattern, attributes)
     }
 
-    fn find_next(&mut self, search_id: usize) -> Result<FindData, u8> {
+    fn find_next(&mut self, search_id: usize) -> Result<FindData, DosError> {
         self.drive_manager.find_next(search_id)
     }
 
@@ -413,15 +415,15 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     // Memory management
-    fn memory_allocate(&mut self, paragraphs: u16) -> Result<u16, (u8, u16)> {
+    fn memory_allocate(&mut self, paragraphs: u16) -> Result<u16, (DosError, u16)> {
         self.memory_allocator.allocate(paragraphs)
     }
 
-    fn memory_free(&mut self, segment: u16) -> Result<(), u8> {
+    fn memory_free(&mut self, segment: u16) -> Result<(), DosError> {
         self.memory_allocator.free(segment)
     }
 
-    fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (u8, u16)> {
+    fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (DosError, u16)> {
         self.memory_allocator.resize(segment, paragraphs)
     }
 
@@ -436,7 +438,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     // IOCTL
-    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, u8> {
+    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, DosError> {
         // Return device information word
         // Bit 7 = 1 for character device, 0 for disk file
         // Bit 6 = 0 for EOF on input (for files)
@@ -459,13 +461,13 @@ impl<D: DiskController> Bios for NativeBios<D> {
                     // It's a regular file (bit 7 = 0)
                     Ok(0x0000)
                 } else {
-                    Err(dos_errors::INVALID_HANDLE)
+                    Err(DosError::InvalidHandle)
                 }
             }
         }
     }
 
-    fn ioctl_set_device_info(&mut self, handle: u16, _info: u16) -> Result<(), u8> {
+    fn ioctl_set_device_info(&mut self, handle: u16, _info: u16) -> Result<(), DosError> {
         // Allow setting device info for standard handles and open files
         match handle {
             0..=2 => {
@@ -480,15 +482,15 @@ impl<D: DiskController> Bios for NativeBios<D> {
                     // Allow setting but ignore for files and devices
                     Ok(())
                 } else {
-                    Err(dos_errors::INVALID_HANDLE)
+                    Err(DosError::InvalidHandle)
                 }
             }
         }
     }
 
-    fn exec_load_program(&mut self, params: &ExecParams) -> Result<Vec<u8>, u8> {
+    fn exec_load_program(&mut self, params: &ExecParams) -> Result<Vec<u8>, DosError> {
         // Open the program file
-        let handle = self.file_open(&params.filename, file_access::READ_ONLY)?;
+        let handle = self.file_open(&params.filename, FileAccess::ReadOnly)?;
 
         // Read the entire file
         let mut program_data = Vec::new();
@@ -511,7 +513,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
         let _ = self.file_close(handle);
 
         if program_data.is_empty() {
-            return Err(dos_errors::FILE_NOT_FOUND);
+            return Err(DosError::FileNotFound);
         }
 
         Ok(program_data)

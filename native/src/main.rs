@@ -1,7 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use crossterm::execute;
+use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber};
 use std::fs::File;
+use std::panic;
 use std::time::{Duration, Instant};
 
 mod bios;
@@ -75,6 +78,12 @@ fn main() -> Result<()> {
     env_logger::Builder::from_default_env()
         .target(env_logger::Target::Pipe(Box::new(log_file)))
         .init();
+    let default_panic = panic::take_hook();
+    panic::set_hook(Box::new(move |info| {
+        let _ = disable_raw_mode();
+        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+        default_panic(info);
+    }));
 
     let cli = Cli::parse();
 

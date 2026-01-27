@@ -590,12 +590,14 @@ impl Cpu {
             }
 
             _ => {
-                panic!(
+                let err = format!(
                     "Unknown opcode: {:#04X} at {:04X}:{:04X}",
                     opcode,
                     self.cs,
                     self.ip.wrapping_sub(1)
                 );
+                log::error!("{}", err);
+                panic!("{}", err);
             }
         }
     }

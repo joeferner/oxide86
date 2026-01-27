@@ -1,10 +1,10 @@
 use crate::{
     Bios, DriveNumber, DriveParams,
     cpu::bios::{
-        ExecParams, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod, SerialParams,
-        SerialStatus, dos_errors, int14::line_status, int17::printer_status,
+        ExecParams, FileAccess, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime, SeekMethod,
+        SerialParams, SerialStatus, disk_error::DiskError, dos_error::DosError, int14::line_status,
+        int17::printer_status,
     },
-    disk_errors,
 };
 
 /// A null I/O handler that does nothing (for testing or headless operation)
@@ -19,16 +19,16 @@ impl Bios for NullBios {
         1 // Return 1 logical drive (A:)
     }
 
-    fn memory_allocate(&mut self, _paragraphs: u16) -> Result<u16, (u8, u16)> {
-        Err((dos_errors::INSUFFICIENT_MEMORY, 0))
+    fn memory_allocate(&mut self, _paragraphs: u16) -> Result<u16, (DosError, u16)> {
+        Err((DosError::InsufficientMemory, 0))
     }
 
-    fn memory_free(&mut self, _segment: u16) -> Result<(), u8> {
-        Err(dos_errors::INVALID_MEMORY_BLOCK_ADDRESS)
+    fn memory_free(&mut self, _segment: u16) -> Result<(), DosError> {
+        Err(DosError::InvalidMemoryBlockAddress)
     }
 
-    fn memory_resize(&mut self, _segment: u16, _paragraphs: u16) -> Result<(), (u8, u16)> {
-        Err((dos_errors::INVALID_MEMORY_BLOCK_ADDRESS, 0))
+    fn memory_resize(&mut self, _segment: u16, _paragraphs: u16) -> Result<(), (DosError, u16)> {
+        Err((DosError::InvalidMemoryBlockAddress, 0))
     }
 
     fn get_psp(&self) -> u16 {
@@ -39,27 +39,27 @@ impl Bios for NullBios {
         // Do nothing in null implementation
     }
 
-    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, u8> {
+    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, DosError> {
         // Return device information for standard handles
         match handle {
             0 => Ok(0x80D0), // STDIN: device, no EOF, binary mode
             1 => Ok(0x80D1), // STDOUT: device, no EOF, binary mode
             2 => Ok(0x80D1), // STDERR: device, no EOF, binary mode
-            _ => Err(dos_errors::INVALID_HANDLE),
+            _ => Err(DosError::InvalidHandle),
         }
     }
 
-    fn ioctl_set_device_info(&mut self, handle: u16, _info: u16) -> Result<(), u8> {
+    fn ioctl_set_device_info(&mut self, handle: u16, _info: u16) -> Result<(), DosError> {
         // Only allow setting info for standard handles
         match handle {
             0..=2 => Ok(()),
-            _ => Err(dos_errors::INVALID_HANDLE),
+            _ => Err(DosError::InvalidHandle),
         }
     }
 
-    fn exec_load_program(&mut self, _params: &ExecParams) -> Result<Vec<u8>, u8> {
+    fn exec_load_program(&mut self, _params: &ExecParams) -> Result<Vec<u8>, DosError> {
         // No file system available in null implementation
-        Err(dos_errors::FILE_NOT_FOUND)
+        Err(DosError::FileNotFound)
     }
 
     fn read_char(&mut self) -> Option<u8> {
@@ -101,8 +101,8 @@ impl Bios for NullBios {
         _head: u8,
         _sector: u8,
         _count: u8,
-    ) -> Result<Vec<u8>, u8> {
-        Err(disk_errors::INVALID_COMMAND)
+    ) -> Result<Vec<u8>, DiskError> {
+        Err(DiskError::InvalidCommand)
     }
 
     fn disk_write_sectors(
@@ -113,20 +113,20 @@ impl Bios for NullBios {
         _sector: u8,
         _count: u8,
         _data: &[u8],
-    ) -> Result<u8, u8> {
-        Err(disk_errors::INVALID_COMMAND)
+    ) -> Result<u8, DiskError> {
+        Err(DiskError::InvalidCommand)
     }
 
-    fn disk_get_params(&self, _drive: DriveNumber) -> Result<DriveParams, u8> {
-        Err(disk_errors::INVALID_COMMAND)
+    fn disk_get_params(&self, _drive: DriveNumber) -> Result<DriveParams, DiskError> {
+        Err(DiskError::InvalidCommand)
     }
 
-    fn disk_get_type(&self, _drive: DriveNumber) -> Result<(u8, u32), u8> {
-        Err(disk_errors::INVALID_COMMAND)
+    fn disk_get_type(&self, _drive: DriveNumber) -> Result<(u8, u32), DiskError> {
+        Err(DiskError::InvalidCommand)
     }
 
-    fn disk_detect_change(&mut self, _drive: DriveNumber) -> Result<bool, u8> {
-        Err(disk_errors::INVALID_COMMAND)
+    fn disk_detect_change(&mut self, _drive: DriveNumber) -> Result<bool, DiskError> {
+        Err(DiskError::InvalidCommand)
     }
 
     fn disk_format_track(
@@ -135,8 +135,8 @@ impl Bios for NullBios {
         _cylinder: u8,
         _head: u8,
         _sectors_per_track: u8,
-    ) -> Result<(), u8> {
-        Err(disk_errors::INVALID_COMMAND)
+    ) -> Result<(), DiskError> {
+        Err(DiskError::InvalidCommand)
     }
 
     fn disk_read_sectors_lba(
@@ -144,60 +144,69 @@ impl Bios for NullBios {
         _drive: DriveNumber,
         _start_sector: u32,
         _count: u16,
-    ) -> Result<Vec<u8>, u8> {
-        Err(disk_errors::INVALID_COMMAND)
+    ) -> Result<Vec<u8>, DiskError> {
+        Err(DiskError::InvalidCommand)
     }
 
-    fn file_create(&mut self, _filename: &str, _attributes: u8) -> Result<u16, u8> {
-        Err(dos_errors::ACCESS_DENIED)
+    fn file_create(&mut self, _filename: &str, _attributes: u8) -> Result<u16, DosError> {
+        Err(DosError::AccessDenied)
     }
 
-    fn file_open(&mut self, _filename: &str, _access_mode: u8) -> Result<u16, u8> {
-        Err(dos_errors::FILE_NOT_FOUND)
+    fn file_open(&mut self, _filename: &str, _access_mode: FileAccess) -> Result<u16, DosError> {
+        Err(DosError::FileNotFound)
     }
 
-    fn file_close(&mut self, _handle: u16) -> Result<(), u8> {
-        Err(dos_errors::INVALID_HANDLE)
+    fn file_close(&mut self, _handle: u16) -> Result<(), DosError> {
+        Err(DosError::InvalidHandle)
     }
 
-    fn file_read(&mut self, _handle: u16, _max_bytes: u16) -> Result<Vec<u8>, u8> {
-        Err(dos_errors::INVALID_HANDLE)
+    fn file_read(&mut self, _handle: u16, _max_bytes: u16) -> Result<Vec<u8>, DosError> {
+        Err(DosError::InvalidHandle)
     }
 
-    fn file_write(&mut self, _handle: u16, _data: &[u8]) -> Result<u16, u8> {
-        Err(dos_errors::INVALID_HANDLE)
+    fn file_write(&mut self, _handle: u16, _data: &[u8]) -> Result<u16, DosError> {
+        Err(DosError::InvalidHandle)
     }
 
-    fn file_seek(&mut self, _handle: u16, _offset: i32, _method: SeekMethod) -> Result<u32, u8> {
-        Err(dos_errors::INVALID_HANDLE)
+    fn file_seek(
+        &mut self,
+        _handle: u16,
+        _offset: i32,
+        _method: SeekMethod,
+    ) -> Result<u32, DosError> {
+        Err(DosError::InvalidHandle)
     }
 
-    fn file_duplicate(&mut self, _handle: u16) -> Result<u16, u8> {
-        Err(dos_errors::INVALID_HANDLE)
+    fn file_duplicate(&mut self, _handle: u16) -> Result<u16, DosError> {
+        Err(DosError::InvalidHandle)
     }
 
-    fn dir_create(&mut self, _dirname: &str) -> Result<(), u8> {
-        Err(dos_errors::ACCESS_DENIED)
+    fn dir_create(&mut self, _dirname: &str) -> Result<(), DosError> {
+        Err(DosError::AccessDenied)
     }
 
-    fn dir_remove(&mut self, _dirname: &str) -> Result<(), u8> {
-        Err(dos_errors::ACCESS_DENIED)
+    fn dir_remove(&mut self, _dirname: &str) -> Result<(), DosError> {
+        Err(DosError::AccessDenied)
     }
 
-    fn dir_change(&mut self, _dirname: &str) -> Result<(), u8> {
-        Err(dos_errors::PATH_NOT_FOUND)
+    fn dir_change(&mut self, _dirname: &str) -> Result<(), DosError> {
+        Err(DosError::PathNotFound)
     }
 
-    fn dir_get_current(&self, _drive: DriveNumber) -> Result<String, u8> {
-        Err(dos_errors::INVALID_DRIVE)
+    fn dir_get_current(&self, _drive: DriveNumber) -> Result<String, DosError> {
+        Err(DosError::InvalidDrive)
     }
 
-    fn find_first(&mut self, _pattern: &str, _attributes: u8) -> Result<(usize, FindData), u8> {
-        Err(dos_errors::NO_MORE_FILES)
+    fn find_first(
+        &mut self,
+        _pattern: &str,
+        _attributes: u8,
+    ) -> Result<(usize, FindData), DosError> {
+        Err(DosError::NoMoreFiles)
     }
 
-    fn find_next(&mut self, _search_id: usize) -> Result<FindData, u8> {
-        Err(dos_errors::NO_MORE_FILES)
+    fn find_next(&mut self, _search_id: usize) -> Result<FindData, DosError> {
+        Err(DosError::NoMoreFiles)
     }
 
     fn serial_init(&mut self, _port: u8, _params: SerialParams) -> SerialStatus {

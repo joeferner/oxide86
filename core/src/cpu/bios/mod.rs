@@ -1,6 +1,8 @@
 // BIOS and DOS interrupt handler trait and implementation
 // The core provides the interrupt dispatch mechanism, but I/O is handled via callbacks
 
+pub mod disk_error;
+pub mod dos_error;
 mod int10;
 mod int11;
 mod int12;
@@ -21,11 +23,14 @@ mod int35_3f;
 pub mod null_bios;
 
 use super::Cpu;
-use crate::{DriveNumber, memory::Memory};
-pub use int13::disk_errors;
+use crate::{
+    DriveNumber,
+    cpu::bios::{disk_error::DiskError, dos_error::DosError},
+    memory::Memory,
+};
 pub use int14::{SerialParams, SerialStatus};
 pub use int17::PrinterStatus;
-pub use int21::{dos_errors, file_access};
+pub use int21::FileAccess;
 pub use null_bios::NullBios;
 
 /// Drive parameters returned by INT 13h, AH=08h
@@ -184,7 +189,7 @@ pub trait Bios {
         head: u8,
         sector: u8,
         count: u8,
-    ) -> Result<Vec<u8>, u8>;
+    ) -> Result<Vec<u8>, DiskError>;
 
     /// Write sectors to disk (INT 13h, AH=03h)
     /// Returns number of sectors written on success, or error code on failure
@@ -196,23 +201,23 @@ pub trait Bios {
         sector: u8,
         count: u8,
         data: &[u8],
-    ) -> Result<u8, u8>;
+    ) -> Result<u8, DiskError>;
 
     /// Get drive parameters (INT 13h, AH=08h)
     /// Returns drive parameters on success, or error code on failure
-    fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, u8>;
+    fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError>;
 
     /// Get disk type (INT 13h, AH=15h)
     /// Returns (drive_type, sector_count) where:
     /// - drive_type: 0x00 = not present, 0x01 = floppy no change-line,
     ///   0x02 = floppy with change-line, 0x03 = fixed disk
     /// - sector_count: total 512-byte sectors (only for type 0x03)
-    fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), u8>;
+    fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError>;
 
     /// Detect disk change (INT 13h, AH=16h)
     /// Returns Ok(false) if disk not changed, Ok(true) if disk changed,
     /// or Err(error_code) on error
-    fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, u8>;
+    fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, DiskError>;
 
     /// Format track (INT 13h, AH=05h)
     /// Formats a track by filling sectors with zeros
@@ -223,7 +228,7 @@ pub trait Bios {
         cylinder: u8,
         head: u8,
         sectors_per_track: u8,
-    ) -> Result<(), u8>;
+    ) -> Result<(), DiskError>;
 
     /// Read sectors using logical sector addressing (INT 25h)
     /// drive: DOS drive number (0=A, 1=B, 2=C, etc.)
@@ -235,64 +240,64 @@ pub trait Bios {
         drive: DriveNumber,
         start_sector: u32,
         count: u16,
-    ) -> Result<Vec<u8>, u8>;
+    ) -> Result<Vec<u8>, DiskError>;
 
     // --- INT 21h - DOS File Services ---
 
     /// Create or truncate file (INT 21h, AH=3Ch)
     /// Returns file handle on success, or error code on failure
-    fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, u8>;
+    fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, DosError>;
 
     /// Open existing file (INT 21h, AH=3Dh)
     /// Returns file handle on success, or error code on failure
-    fn file_open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8>;
+    fn file_open(&mut self, filename: &str, access_mode: FileAccess) -> Result<u16, DosError>;
 
     /// Close file (INT 21h, AH=3Eh)
     /// Returns success or error code
-    fn file_close(&mut self, handle: u16) -> Result<(), u8>;
+    fn file_close(&mut self, handle: u16) -> Result<(), DosError>;
 
     /// Read from file or device (INT 21h, AH=3Fh)
     /// Returns the data read on success, or error code on failure
-    fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, u8>;
+    fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, DosError>;
 
     /// Write to file or device (INT 21h, AH=40h)
     /// Returns the number of bytes written on success, or error code on failure
-    fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, u8>;
+    fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, DosError>;
 
     /// Seek within file (INT 21h, AH=42h)
     /// Returns the new file position on success, or error code on failure
-    fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8>;
+    fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, DosError>;
 
     /// Duplicate file handle (INT 21h, AH=45h)
     /// Returns a new file handle that refers to the same file on success, or error code on failure
-    fn file_duplicate(&mut self, handle: u16) -> Result<u16, u8>;
+    fn file_duplicate(&mut self, handle: u16) -> Result<u16, DosError>;
 
     // --- INT 21h - DOS Directory Services ---
 
     /// Create directory (INT 21h, AH=39h)
     /// Returns success or error code
-    fn dir_create(&mut self, dirname: &str) -> Result<(), u8>;
+    fn dir_create(&mut self, dirname: &str) -> Result<(), DosError>;
 
     /// Remove directory (INT 21h, AH=3Ah)
     /// Returns success or error code
-    fn dir_remove(&mut self, dirname: &str) -> Result<(), u8>;
+    fn dir_remove(&mut self, dirname: &str) -> Result<(), DosError>;
 
     /// Change current directory (INT 21h, AH=3Bh)
     /// Returns success or error code
-    fn dir_change(&mut self, dirname: &str) -> Result<(), u8>;
+    fn dir_change(&mut self, dirname: &str) -> Result<(), DosError>;
 
     /// Get current directory (INT 21h, AH=47h)
     /// Returns the current directory path (without drive letter)
-    fn dir_get_current(&self, drive: DriveNumber) -> Result<String, u8>;
+    fn dir_get_current(&self, drive: DriveNumber) -> Result<String, DosError>;
 
     /// Find first matching file (INT 21h, AH=4Eh)
     /// Returns file data on success, or error code on failure
     /// The search_id is used to identify this search for subsequent find_next calls
-    fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), u8>;
+    fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), DosError>;
 
     /// Find next matching file (INT 21h, AH=4Fh)
     /// Returns file data on success, or error code on failure
-    fn find_next(&mut self, search_id: usize) -> Result<FindData, u8>;
+    fn find_next(&mut self, search_id: usize) -> Result<FindData, DosError>;
 
     // --- INT 21h - DOS System Functions ---
 
@@ -306,15 +311,15 @@ pub trait Bios {
 
     /// Allocate memory (INT 21h, AH=48h)
     /// Returns segment of allocated memory on success, or (error_code, max_available) on failure
-    fn memory_allocate(&mut self, paragraphs: u16) -> Result<u16, (u8, u16)>;
+    fn memory_allocate(&mut self, paragraphs: u16) -> Result<u16, (DosError, u16)>;
 
     /// Free memory (INT 21h, AH=49h)
     /// Returns success or error code
-    fn memory_free(&mut self, segment: u16) -> Result<(), u8>;
+    fn memory_free(&mut self, segment: u16) -> Result<(), DosError>;
 
     /// Resize memory block (INT 21h, AH=4Ah)
     /// Returns success or (error_code, max_available) on failure
-    fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (u8, u16)>;
+    fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (DosError, u16)>;
 
     /// Get PSP segment (INT 21h, AH=50h/51h/62h)
     /// Returns the current Program Segment Prefix segment
@@ -326,16 +331,16 @@ pub trait Bios {
 
     /// Get device information for IOCTL (INT 21h, AH=44h, AL=00h)
     /// Returns device information word for the given handle
-    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, u8>;
+    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, DosError>;
 
     /// Set device information for IOCTL (INT 21h, AH=44h, AL=01h)
     /// Sets device information word for the given handle
-    fn ioctl_set_device_info(&mut self, handle: u16, info: u16) -> Result<(), u8>;
+    fn ioctl_set_device_info(&mut self, handle: u16, info: u16) -> Result<(), DosError>;
 
     /// Load and/or execute a program (INT 21h, AH=4Bh)
     /// Returns the program data to be loaded into memory on success,
     /// or error code on failure
-    fn exec_load_program(&mut self, params: &ExecParams) -> Result<Vec<u8>, u8>;
+    fn exec_load_program(&mut self, params: &ExecParams) -> Result<Vec<u8>, DosError>;
 
     // --- INT 14h - Serial Port Services ---
 

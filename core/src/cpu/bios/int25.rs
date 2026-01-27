@@ -96,7 +96,7 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, true);
 
                 log::warn!(
-                    "INT 25h: Read failed - drive={}, error={:02X}",
+                    "INT 25h: Read failed - drive={}, error={}",
                     drive,
                     error_code
                 );

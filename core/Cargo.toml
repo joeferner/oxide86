@@ -7,6 +7,8 @@ edition = "2024"
 anyhow = { workspace = true }
 log = { workspace = true }
 fatfs = { version = "0.3", features = ["alloc"] }
+strum = "0.27"
+strum_macros = "0.27"
 
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["html_reports"] }

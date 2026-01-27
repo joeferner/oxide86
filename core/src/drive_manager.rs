@@ -7,7 +7,9 @@
 //! - Disk change detection flags for floppies
 
 use crate::DriveNumber;
-use crate::cpu::bios::{DriveParams, FindData, SeekMethod, disk_errors, dos_errors};
+use crate::cpu::bios::disk_error::DiskError;
+use crate::cpu::bios::dos_error::DosError;
+use crate::cpu::bios::{DriveParams, FileAccess, FindData, SeekMethod};
 use crate::disk::{DiskController, SECTOR_SIZE};
 use std::collections::HashMap;
 use std::io::{self, Error, ErrorKind, Read, Seek, SeekFrom, Write};
@@ -227,7 +229,7 @@ struct FileHandle {
     /// Current position in file
     position: u64,
     /// Access mode (read/write/both)
-    access_mode: u8,
+    access_mode: FileAccess,
 }
 
 /// Search state for directory iteration
@@ -422,7 +424,7 @@ impl<D: DiskController> DriveManager<D> {
     /// Set the current default drive
     /// drive: DOS drive number (0=A, 1=B, 2=C, etc.)
     /// Returns the total number of logical drives on success
-    pub fn set_current_drive(&mut self, drive: DriveNumber) -> Result<u8, u8> {
+    pub fn set_current_drive(&mut self, drive: DriveNumber) -> Result<u8, DosError> {
         // Verify drive exists
         if self.get_drive(drive).is_some() {
             self.current_drive = drive;
@@ -431,19 +433,19 @@ impl<D: DiskController> DriveManager<D> {
             let hd_count = self.hard_drives.len() as u8;
             Ok(floppy_count + hd_count)
         } else {
-            Err(dos_errors::INVALID_DRIVE)
+            Err(DosError::InvalidDrive)
         }
     }
 
     /// Get current directory for a drive
     /// drive: None = use current default drive
-    pub fn get_current_dir(&self, drive: DriveNumber) -> Result<String, u8> {
+    pub fn get_current_dir(&self, drive: DriveNumber) -> Result<String, DosError> {
         self.get_drive(drive)
             .map(|d| {
                 // Convert Unix path back to DOS path
                 d.current_dir.replace('/', "\\")
             })
-            .ok_or(dos_errors::INVALID_DRIVE)
+            .ok_or(DosError::InvalidDrive)
     }
 
     /// Get total number of drives
@@ -483,14 +485,14 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Convert IO error to DOS error code
-    fn map_error(err: io::Error) -> u8 {
+    fn map_error(err: io::Error) -> DosError {
         match err.kind() {
-            ErrorKind::NotFound => dos_errors::FILE_NOT_FOUND,
-            ErrorKind::AlreadyExists => dos_errors::ACCESS_DENIED,
-            ErrorKind::PermissionDenied => dos_errors::ACCESS_DENIED,
-            ErrorKind::InvalidInput => dos_errors::INVALID_FUNCTION,
-            ErrorKind::WriteZero => dos_errors::ACCESS_DENIED,
-            _ => dos_errors::INVALID_FUNCTION,
+            ErrorKind::NotFound => DosError::FileNotFound,
+            ErrorKind::AlreadyExists => DosError::AccessDenied,
+            ErrorKind::PermissionDenied => DosError::AccessDenied,
+            ErrorKind::InvalidInput => DosError::InvalidFunction,
+            ErrorKind::WriteZero => DosError::AccessDenied,
+            _ => DosError::InvalidFunction,
         }
     }
 
@@ -535,7 +537,7 @@ impl<D: DiskController> DriveManager<D> {
 
     // === File Operations ===
 
-    pub fn file_open(&mut self, filename: &str, access_mode: u8) -> Result<u16, u8> {
+    pub fn file_open(&mut self, filename: &str, access_mode: FileAccess) -> Result<u16, DosError> {
         let (drive, path_part) = self.parse_path(filename);
         let path = self.resolve_path(drive, &path_part);
         log::debug!(
@@ -547,11 +549,8 @@ impl<D: DiskController> DriveManager<D> {
 
         // Verify file exists - scope the filesystem access
         {
-            let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-            let adapter = drive_state
-                .adapter
-                .as_mut()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?;
+            let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+            let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
             adapter.reset_position();
             let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new()).map_err(|e| {
@@ -586,17 +585,14 @@ impl<D: DiskController> DriveManager<D> {
         Ok(handle)
     }
 
-    pub fn file_create(&mut self, filename: &str, _attributes: u8) -> Result<u16, u8> {
+    pub fn file_create(&mut self, filename: &str, _attributes: u8) -> Result<u16, DosError> {
         let (drive, path_part) = self.parse_path(filename);
         let path = self.resolve_path(drive, &path_part);
 
         // Create the file - scope the filesystem access
         {
-            let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-            let adapter = drive_state
-                .adapter
-                .as_mut()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?;
+            let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+            let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
             adapter.reset_position();
             let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
@@ -617,27 +613,27 @@ impl<D: DiskController> DriveManager<D> {
                 drive,
                 path,
                 position: 0,
-                access_mode: 2, // Read-write access
+                access_mode: FileAccess::ReadWrite,
             },
         );
 
         Ok(handle)
     }
 
-    pub fn file_close(&mut self, handle: u16) -> Result<(), u8> {
+    pub fn file_close(&mut self, handle: u16) -> Result<(), DosError> {
         self.open_files
             .remove(&handle)
-            .ok_or(dos_errors::INVALID_HANDLE)?;
+            .ok_or(DosError::InvalidHandle)?;
         Ok(())
     }
 
-    pub fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, u8> {
+    pub fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, DosError> {
         // Get file info first, then release borrow
         let (drive, path, position) = {
             let file_handle = self
                 .open_files
                 .get(&handle)
-                .ok_or(dos_errors::INVALID_HANDLE)?;
+                .ok_or(DosError::InvalidHandle)?;
             (
                 file_handle.drive,
                 file_handle.path.clone(),
@@ -647,11 +643,8 @@ impl<D: DiskController> DriveManager<D> {
 
         // Read from filesystem - scope the filesystem access
         let (buffer, bytes_read) = {
-            let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-            let adapter = drive_state
-                .adapter
-                .as_mut()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?;
+            let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+            let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
             adapter.reset_position();
             let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
@@ -661,13 +654,13 @@ impl<D: DiskController> DriveManager<D> {
 
             // Seek to current position
             file.seek(SeekFrom::Start(position))
-                .map_err(|_| dos_errors::INVALID_FUNCTION)?;
+                .map_err(|_| DosError::InvalidFunction)?;
 
             // Read data
             let mut buffer = vec![0u8; max_bytes as usize];
             let bytes_read = file
                 .read(&mut buffer)
-                .map_err(|_| dos_errors::INVALID_FUNCTION)?;
+                .map_err(|_| DosError::InvalidFunction)?;
 
             buffer.truncate(bytes_read);
             (buffer, bytes_read)
@@ -680,13 +673,13 @@ impl<D: DiskController> DriveManager<D> {
         Ok(buffer)
     }
 
-    pub fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, u8> {
+    pub fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, DosError> {
         // Get file info first, then release borrow
         let (drive, path, position) = {
             let file_handle = self
                 .open_files
                 .get(&handle)
-                .ok_or(dos_errors::INVALID_HANDLE)?;
+                .ok_or(DosError::InvalidHandle)?;
             (
                 file_handle.drive,
                 file_handle.path.clone(),
@@ -696,11 +689,8 @@ impl<D: DiskController> DriveManager<D> {
 
         // Write to filesystem - scope the filesystem access
         let bytes_written = {
-            let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-            let adapter = drive_state
-                .adapter
-                .as_mut()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?;
+            let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+            let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
             adapter.reset_position();
             let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
@@ -710,10 +700,10 @@ impl<D: DiskController> DriveManager<D> {
 
             // Seek to current position
             file.seek(SeekFrom::Start(position))
-                .map_err(|_| dos_errors::INVALID_FUNCTION)?;
+                .map_err(|_| DosError::InvalidFunction)?;
 
             // Write data
-            file.write(data).map_err(|_| dos_errors::INVALID_FUNCTION)?
+            file.write(data).map_err(|_| DosError::InvalidFunction)?
         };
 
         // Update position
@@ -723,13 +713,18 @@ impl<D: DiskController> DriveManager<D> {
         Ok(bytes_written as u16)
     }
 
-    pub fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, u8> {
+    pub fn file_seek(
+        &mut self,
+        handle: u16,
+        offset: i32,
+        method: SeekMethod,
+    ) -> Result<u32, DosError> {
         // Get file info first
         let (drive, path, current_position) = {
             let file_handle = self
                 .open_files
                 .get(&handle)
-                .ok_or(dos_errors::INVALID_HANDLE)?;
+                .ok_or(DosError::InvalidHandle)?;
             (
                 file_handle.drive,
                 file_handle.path.clone(),
@@ -743,11 +738,8 @@ impl<D: DiskController> DriveManager<D> {
             SeekMethod::FromCurrent => current_position as i64 + offset as i64,
             SeekMethod::FromEnd => {
                 // Need to get file size by seeking to end
-                let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-                let adapter = drive_state
-                    .adapter
-                    .as_mut()
-                    .ok_or(disk_errors::DRIVE_NOT_READY)?;
+                let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+                let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
                 adapter.reset_position();
                 let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
@@ -756,13 +748,13 @@ impl<D: DiskController> DriveManager<D> {
                 let mut file = root_dir.open_file(&path).map_err(Self::map_error)?;
                 let size = file
                     .seek(SeekFrom::End(0))
-                    .map_err(|_| dos_errors::INVALID_FUNCTION)? as i64;
+                    .map_err(|_| DosError::InvalidFunction)? as i64;
                 size + offset as i64
             }
         };
 
         if new_position < 0 {
-            return Err(dos_errors::INVALID_FUNCTION);
+            return Err(DosError::InvalidFunction);
         }
 
         // Update position
@@ -771,13 +763,13 @@ impl<D: DiskController> DriveManager<D> {
         Ok(new_position as u32)
     }
 
-    pub fn file_duplicate(&mut self, handle: u16) -> Result<u16, u8> {
+    pub fn file_duplicate(&mut self, handle: u16) -> Result<u16, DosError> {
         // Get file info first, then release borrow
         let (drive, path, position, access_mode) = {
             let file_handle = self
                 .open_files
                 .get(&handle)
-                .ok_or(dos_errors::INVALID_HANDLE)?;
+                .ok_or(DosError::InvalidHandle)?;
             (
                 file_handle.drive,
                 file_handle.path.clone(),
@@ -804,15 +796,12 @@ impl<D: DiskController> DriveManager<D> {
 
     // === Directory Operations ===
 
-    pub fn dir_create(&mut self, dirname: &str) -> Result<(), u8> {
+    pub fn dir_create(&mut self, dirname: &str) -> Result<(), DosError> {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
 
-        let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-        let adapter = drive_state
-            .adapter
-            .as_mut()
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+        let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+        let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
         adapter.reset_position();
         let fs =
@@ -824,15 +813,12 @@ impl<D: DiskController> DriveManager<D> {
         Ok(())
     }
 
-    pub fn dir_remove(&mut self, dirname: &str) -> Result<(), u8> {
+    pub fn dir_remove(&mut self, dirname: &str) -> Result<(), DosError> {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
 
-        let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-        let adapter = drive_state
-            .adapter
-            .as_mut()
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+        let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+        let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
         adapter.reset_position();
         let fs =
@@ -844,17 +830,14 @@ impl<D: DiskController> DriveManager<D> {
         Ok(())
     }
 
-    pub fn dir_change(&mut self, dirname: &str) -> Result<(), u8> {
+    pub fn dir_change(&mut self, dirname: &str) -> Result<(), DosError> {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
 
         // First verify directory exists
         {
-            let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-            let adapter = drive_state
-                .adapter
-                .as_mut()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?;
+            let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+            let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
             adapter.reset_position();
             let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
@@ -872,17 +855,18 @@ impl<D: DiskController> DriveManager<D> {
         Ok(())
     }
 
-    pub fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), u8> {
+    pub fn find_first(
+        &mut self,
+        pattern: &str,
+        attributes: u8,
+    ) -> Result<(usize, FindData), DosError> {
         let (drive, _) = self.parse_path(pattern);
         let path = self.resolve_path(drive, ".");
 
         // Collect entries in a scoped block so fs is dropped before we access self.next_search_id
         let entries = {
-            let drive_state = self.get_drive_mut(drive).ok_or(dos_errors::INVALID_DRIVE)?;
-            let adapter = drive_state
-                .adapter
-                .as_mut()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?;
+            let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+            let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
             adapter.reset_position();
             let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
@@ -924,7 +908,7 @@ impl<D: DiskController> DriveManager<D> {
         };
 
         if entries.is_empty() {
-            return Err(dos_errors::NO_MORE_FILES);
+            return Err(DosError::NoMoreFiles);
         }
 
         // Store search state
@@ -945,14 +929,14 @@ impl<D: DiskController> DriveManager<D> {
         Ok((search_id, first_entry))
     }
 
-    pub fn find_next(&mut self, search_id: usize) -> Result<FindData, u8> {
+    pub fn find_next(&mut self, search_id: usize) -> Result<FindData, DosError> {
         let search = self
             .searches
             .get_mut(&search_id)
-            .ok_or(dos_errors::NO_MORE_FILES)?;
+            .ok_or(DosError::NoMoreFiles)?;
 
         if search.index >= search.entries.len() {
-            return Err(dos_errors::NO_MORE_FILES);
+            return Err(DosError::NoMoreFiles);
         }
 
         let entry = search.entries[search.index].clone();
@@ -984,7 +968,7 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Helper: Convert fatfs directory entry to FindData
-    fn entry_to_find_data<T>(entry: &fatfs::DirEntry<'_, T>) -> Result<FindData, u8>
+    fn entry_to_find_data<T>(entry: &fatfs::DirEntry<'_, T>) -> Result<FindData, DosError>
     where
         T: fatfs::ReadWriteSeek,
     {
@@ -1027,8 +1011,8 @@ impl<D: DiskController> DriveManager<D> {
         head: u8,
         sector: u8,
         count: u8,
-    ) -> Result<Vec<u8>, u8> {
-        let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
+    ) -> Result<Vec<u8>, DiskError> {
+        let drive_state = self.get_drive(drive).ok_or(DiskError::DriveNotReady)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
         // This allows reading the MBR at sector 0
@@ -1038,7 +1022,7 @@ impl<D: DiskController> DriveManager<D> {
             drive_state
                 .adapter
                 .as_ref()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?
+                .ok_or(DiskError::DriveNotReady)?
         };
 
         // Get disk geometry for proper C/H/S wrapping
@@ -1056,7 +1040,7 @@ impl<D: DiskController> DriveManager<D> {
             let sector_data = adapter
                 .disk()
                 .read_sector_chs(current_cylinder, current_head, current_sector)
-                .map_err(|_| disk_errors::SECTOR_NOT_FOUND)?;
+                .map_err(|_| DiskError::SectorNotFound)?;
             result.extend_from_slice(&sector_data);
 
             // Advance to next sector with proper C/H/S wrapping
@@ -1082,10 +1066,8 @@ impl<D: DiskController> DriveManager<D> {
         sector: u8,
         count: u8,
         data: &[u8],
-    ) -> Result<u8, u8> {
-        let drive_state = self
-            .get_drive_mut(drive)
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+    ) -> Result<u8, DiskError> {
+        let drive_state = self.get_drive_mut(drive).ok_or(DiskError::DriveNotReady)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
         let use_raw = drive_state.raw_adapter.is_some();
@@ -1095,11 +1077,11 @@ impl<D: DiskController> DriveManager<D> {
             drive_state
                 .adapter
                 .as_mut()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?
+                .ok_or(DiskError::DriveNotReady)?
         };
 
         if adapter.disk().is_read_only() {
-            return Err(disk_errors::WRITE_PROTECTED);
+            return Err(DiskError::WriteProtected);
         }
 
         // Get disk geometry for proper C/H/S wrapping
@@ -1124,7 +1106,7 @@ impl<D: DiskController> DriveManager<D> {
             adapter
                 .disk_mut()
                 .write_sector_chs(current_cylinder, current_head, current_sector, &sector_data)
-                .map_err(|_| disk_errors::SECTOR_NOT_FOUND)?;
+                .map_err(|_| DiskError::SectorNotFound)?;
 
             written += 1;
 
@@ -1147,8 +1129,8 @@ impl<D: DiskController> DriveManager<D> {
         true // Always succeeds in our implementation
     }
 
-    pub fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, u8> {
-        let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
+    pub fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError> {
+        let drive_state = self.get_drive(drive).ok_or(DiskError::DriveNotReady)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
         let adapter = if let Some(ref raw) = drive_state.raw_adapter {
@@ -1157,7 +1139,7 @@ impl<D: DiskController> DriveManager<D> {
             drive_state
                 .adapter
                 .as_ref()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?
+                .ok_or(DiskError::DriveNotReady)?
         };
 
         let geometry = adapter.disk().geometry();
@@ -1178,8 +1160,8 @@ impl<D: DiskController> DriveManager<D> {
         })
     }
 
-    pub fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), u8> {
-        let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
+    pub fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError> {
+        let drive_state = self.get_drive(drive).ok_or(DiskError::DriveNotReady)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
         let adapter = if let Some(ref raw) = drive_state.raw_adapter {
@@ -1188,7 +1170,7 @@ impl<D: DiskController> DriveManager<D> {
             drive_state
                 .adapter
                 .as_ref()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?
+                .ok_or(DiskError::DriveNotReady)?
         };
 
         let geometry = adapter.disk().geometry();
@@ -1208,10 +1190,8 @@ impl<D: DiskController> DriveManager<D> {
         Ok((drive_type, sectors))
     }
 
-    pub fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, u8> {
-        let drive_state = self
-            .get_drive_mut(drive)
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+    pub fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, DiskError> {
+        let drive_state = self.get_drive_mut(drive).ok_or(DiskError::DriveNotReady)?;
 
         if !drive_state.removable {
             // Fixed disks never change
@@ -1219,7 +1199,7 @@ impl<D: DiskController> DriveManager<D> {
         }
 
         if !drive_state.has_disk() {
-            return Err(disk_errors::DRIVE_NOT_READY);
+            return Err(DiskError::DriveNotReady);
         }
 
         // Return and clear the change flag
@@ -1234,10 +1214,8 @@ impl<D: DiskController> DriveManager<D> {
         cylinder: u8,
         head: u8,
         sectors_per_track: u8,
-    ) -> Result<(), u8> {
-        let drive_state = self
-            .get_drive_mut(drive)
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+    ) -> Result<(), DiskError> {
+        let drive_state = self.get_drive_mut(drive).ok_or(DiskError::DriveNotReady)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
         let use_raw = drive_state.raw_adapter.is_some();
@@ -1247,11 +1225,11 @@ impl<D: DiskController> DriveManager<D> {
             drive_state
                 .adapter
                 .as_mut()
-                .ok_or(disk_errors::DRIVE_NOT_READY)?
+                .ok_or(DiskError::DriveNotReady)?
         };
 
         if adapter.disk().is_read_only() {
-            return Err(disk_errors::WRITE_PROTECTED);
+            return Err(DiskError::WriteProtected);
         }
 
         // Format track by writing zeros to each sector
@@ -1269,7 +1247,7 @@ impl<D: DiskController> DriveManager<D> {
                         sector,
                         e
                     );
-                    disk_errors::BAD_SECTOR
+                    DiskError::BadSector
                 })?;
         }
 
@@ -1291,12 +1269,12 @@ impl<D: DiskController> DriveManager<D> {
         drive: DriveNumber,
         start_sector: u32,
         count: u16,
-    ) -> Result<Vec<u8>, u8> {
-        let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
+    ) -> Result<Vec<u8>, DiskError> {
+        let drive_state = self.get_drive(drive).ok_or(DiskError::DriveNotReady)?;
         let adapter = drive_state
             .adapter
             .as_ref()
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+            .ok_or(DiskError::DriveNotReady)?;
 
         let mut result = Vec::with_capacity(count as usize * SECTOR_SIZE);
 
@@ -1305,7 +1283,7 @@ impl<D: DiskController> DriveManager<D> {
             let sector_data = adapter
                 .disk()
                 .read_sector_lba(lba)
-                .map_err(|_| disk_errors::SECTOR_NOT_FOUND)?;
+                .map_err(|_| DiskError::SectorNotFound)?;
             result.extend_from_slice(&sector_data);
         }
 

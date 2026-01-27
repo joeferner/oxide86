@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-pub use crate::cpu::bios::{Bios, DriveParams, KeyPress, NullBios, disk_errors};
+pub use crate::cpu::bios::{Bios, DriveParams, KeyPress, NullBios};
 pub use crate::disk::{
     BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, PartitionedDisk, SECTOR_SIZE,
     parse_mbr,

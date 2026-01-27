@@ -115,10 +115,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             .bios
             .disk_read_sectors(drive, 0, 0, 1, 1)
             .map_err(|error_code| {
-                anyhow::anyhow!(
-                    "Failed to read boot sector: error code 0x{:02X}",
-                    error_code
-                )
+                anyhow::anyhow!("Failed to read boot sector: error {}", error_code)
             })?;
 
         if boot_sector.len() != 512 {
@@ -180,7 +177,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             }
             Err((error_code, available)) => {
                 log::warn!(
-                    "Failed to pre-allocate DOS memory: error 0x{:02X}, available {} paragraphs",
+                    "Failed to pre-allocate DOS memory: error {}, available {} paragraphs",
                     error_code,
                     available
                 );
