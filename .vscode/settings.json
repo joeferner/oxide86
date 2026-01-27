@@ -35,6 +35,7 @@
         "MOVS",
         "MOVSB",
         "MOVSW",
+        "netbios",
         "OUTSB",
         "OUTSW",
         "POPF",

@@ -73,6 +73,7 @@ impl Cpu {
             0x19 => self.int21_get_current_drive(io),
             0x25 => self.int21_set_interrupt_vector(memory),
             0x30 => self.int21_get_dos_version(),
+            0x31 => self.int21_terminate_stay_resident(memory, io),
             0x32 => self.int21_get_dpb(memory, io),
             0x35 => self.int21_get_interrupt_vector(memory),
             0x36 => self.int21_get_disk_free_space(io),
@@ -93,7 +94,7 @@ impl Cpu {
             0x49 => self.int21_free_memory(io),
             0x4A => self.int21_resize_memory(io),
             0x4B => self.int21_exec(memory, io),
-            0x4C => self.int21_exit(),
+            0x4C => self.int21_exit(memory, io),
             0x4E => self.int21_find_first(memory, io),
             0x4F => self.int21_find_next(memory, io),
             0x50 => self.int21_set_psp(io),
@@ -320,9 +321,81 @@ impl Cpu {
 
     /// INT 21h, AH=4Ch - Exit Program
     /// Input: AL = return code
-    fn int21_exit(&mut self) {
-        // Halt the CPU
-        self.halted = true;
+    fn int21_exit<T: Bios>(&mut self, memory: &Memory, io: &T) {
+        // INT 21h AH=4Ch - Terminate Program
+        // Read the terminate address (INT 22h) from the PSP at offset 0x0A
+        let psp_segment = io.get_psp();
+        let terminate_offset_addr = Self::physical_address(psp_segment, 0x0A);
+        let terminate_ip = memory.read_u16(terminate_offset_addr);
+        let terminate_cs = memory.read_u16(terminate_offset_addr + 2);
+
+        log::info!(
+            "INT 21h AH=4Ch: Terminating, jumping to {:04X}:{:04X}",
+            terminate_cs,
+            terminate_ip
+        );
+
+        // Jump to the terminate address
+        if terminate_cs == 0 && terminate_ip == 0 {
+            // No return address - halt the CPU (top-level program)
+            self.halted = true;
+        } else {
+            // Return to parent program
+            self.cs = terminate_cs;
+            self.ip = terminate_ip;
+        }
+    }
+
+    /// INT 21h, AH=31h - Terminate and Stay Resident (TSR)
+    /// Input:
+    ///   AL = exit code
+    ///   DX = number of paragraphs to keep resident (including PSP)
+    /// Output: None (does not return to caller)
+    ///
+    /// This function terminates the current program but keeps it resident in memory.
+    /// The specified number of paragraphs (DX) starting from the PSP are kept allocated.
+    /// TSR programs use this to install themselves and return control to DOS.
+    fn int21_terminate_stay_resident<T: Bios>(&mut self, memory: &Memory, io: &T) {
+        let exit_code = (self.ax & 0xFF) as u8;
+        let paragraphs_to_keep = self.dx;
+
+        log::info!(
+            "INT 21h AH=31h: TSR with {} paragraphs, exit code {}",
+            paragraphs_to_keep,
+            exit_code
+        );
+
+        // In a real DOS system, this would:
+        // 1. Mark the memory block as resident
+        // 2. Resize the current program's memory to keep only DX paragraphs
+        // 3. Restore parent's INT 22h/23h/24h vectors from PSP
+        // 4. Return to parent program
+        //
+        // For our emulator, we treat TSR termination the same as normal termination.
+        // The program has already installed its interrupt handlers and they remain
+        // in memory. We jump to the terminate address to return control to the parent.
+
+        // Read the terminate address (INT 22h) from the PSP at offset 0x0A
+        let psp_segment = io.get_psp();
+        let terminate_offset_addr = Self::physical_address(psp_segment, 0x0A);
+        let terminate_ip = memory.read_u16(terminate_offset_addr);
+        let terminate_cs = memory.read_u16(terminate_offset_addr + 2);
+
+        log::info!(
+            "INT 21h AH=31h: Returning to {:04X}:{:04X}",
+            terminate_cs,
+            terminate_ip
+        );
+
+        // Jump to the terminate address
+        if terminate_cs == 0 && terminate_ip == 0 {
+            // No return address - halt the CPU (top-level program)
+            self.halted = true;
+        } else {
+            // Return to parent program
+            self.cs = terminate_cs;
+            self.ip = terminate_ip;
+        }
     }
 
     /// INT 21h, AH=3Ch - Create or Truncate File
