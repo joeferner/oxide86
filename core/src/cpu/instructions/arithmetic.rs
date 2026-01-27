@@ -900,4 +900,28 @@ impl Cpu {
         self.ax &= 0x00FF;
         self.set_flags_8(result);
     }
+
+    /// IMUL - Signed Multiply with Immediate (opcode 0x69)
+    /// IMUL r16, r/m16, imm16
+    /// Multiplies r/m16 by imm16 and stores result in r16
+    pub(in crate::cpu) fn imul_imm16(&mut self, memory: &mut Memory) {
+        let modrm = self.fetch_byte(memory);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+        let src = self.read_rm16(mode, rm, addr, memory) as i16;
+        let imm = self.fetch_word(memory) as i16;
+
+        // Perform signed multiplication
+        let result = (src as i32) * (imm as i32);
+
+        // Store the lower 16 bits in the destination register
+        self.set_reg16(reg, result as u16);
+
+        // CF and OF are set if the result doesn't fit in a signed 16-bit value
+        // i.e., if sign-extending the lower 16 bits doesn't equal the full result
+        let sign_extended = ((result as u16) as i16) as i32;
+        let overflow = sign_extended != result;
+        self.set_flag(cpu_flag::CARRY, overflow);
+        self.set_flag(cpu_flag::OVERFLOW, overflow);
+        // Other flags (SF, ZF, PF, AF) are undefined per Intel spec
+    }
 }
