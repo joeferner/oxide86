@@ -109,7 +109,7 @@ impl Cpu {
     // Fetch a byte from memory at CS:IP and increment IP
     pub(crate) fn fetch_byte(&mut self, memory: &Memory) -> u8 {
         let addr = Self::physical_address(self.cs, self.ip);
-        let byte = memory.read_byte(addr);
+        let byte = memory.read_u8(addr);
         self.ip = self.ip.wrapping_add(1);
         byte
     }
@@ -159,8 +159,8 @@ impl Cpu {
         self.set_flag(cpu_flag::TRAP, false);
         // Load interrupt vector from IVT
         let ivt_addr = (int_num as usize) * 4;
-        let offset = memory.read_word(ivt_addr);
-        let segment = memory.read_word(ivt_addr + 2);
+        let offset = memory.read_u16(ivt_addr);
+        let segment = memory.read_u16(ivt_addr + 2);
         self.ip = offset;
         self.cs = segment;
     }
@@ -315,8 +315,8 @@ impl Cpu {
                     self.set_flag(cpu_flag::TRAP, false);
                     // Load INT 5 vector
                     let ivt_addr = 5 * 4;
-                    self.ip = memory.read_word(ivt_addr);
-                    self.cs = memory.read_word(ivt_addr + 2);
+                    self.ip = memory.read_u16(ivt_addr);
+                    self.cs = memory.read_u16(ivt_addr + 2);
                 }
             }
 
@@ -570,7 +570,7 @@ impl Cpu {
             0xFE => self.inc_dec_rm(opcode, memory),
             0xFF => {
                 // For FF, we need to check the reg field to determine operation
-                let modrm_peek = memory.read_byte(Self::physical_address(self.cs, self.ip));
+                let modrm_peek = memory.read_u8(Self::physical_address(self.cs, self.ip));
                 let reg_field = (modrm_peek >> 3) & 0x07;
                 match reg_field {
                     0 | 1 => self.inc_dec_rm(opcode, memory), // INC/DEC
@@ -692,13 +692,13 @@ impl Cpu {
     pub(super) fn push(&mut self, value: u16, memory: &mut Memory) {
         self.sp = self.sp.wrapping_sub(2);
         let addr = Self::physical_address(self.ss, self.sp);
-        memory.write_word(addr, value);
+        memory.write_u16(addr, value);
     }
 
     // Pop 16-bit value from stack
     pub(super) fn pop(&mut self, memory: &Memory) -> u16 {
         let addr = Self::physical_address(self.ss, self.sp);
-        let value = memory.read_word(addr);
+        let value = memory.read_u16(addr);
         self.sp = self.sp.wrapping_add(2);
         value
     }
@@ -768,7 +768,7 @@ impl Cpu {
             self.get_reg8(rm)
         } else {
             // Memory mode
-            memory.read_byte(addr)
+            memory.read_u8(addr)
         }
     }
 
@@ -779,7 +779,7 @@ impl Cpu {
             self.get_reg16(rm)
         } else {
             // Memory mode
-            memory.read_word(addr)
+            memory.read_u16(addr)
         }
     }
 
@@ -797,7 +797,7 @@ impl Cpu {
             self.set_reg8(rm, value);
         } else {
             // Memory mode
-            memory.write_byte(addr, value);
+            memory.write_u8(addr, value);
         }
     }
 
@@ -815,7 +815,7 @@ impl Cpu {
             self.set_reg16(rm, value);
         } else {
             // Memory mode
-            memory.write_word(addr, value);
+            memory.write_u16(addr, value);
         }
     }
 

@@ -151,8 +151,8 @@ impl Cpu {
                 if mode == 0b11 {
                     panic!("Far JMP indirect requires memory operand");
                 }
-                let offset = memory.read_word(addr);
-                let segment = memory.read_word(addr + 2);
+                let offset = memory.read_u16(addr);
+                let segment = memory.read_u16(addr + 2);
                 self.ip = offset;
                 self.cs = segment;
             }
@@ -192,8 +192,8 @@ impl Cpu {
                 if mode == 0b11 {
                     panic!("Far CALL indirect requires memory operand");
                 }
-                let offset = memory.read_word(addr);
-                let segment = memory.read_word(addr + 2);
+                let offset = memory.read_u16(addr);
+                let segment = memory.read_u16(addr + 2);
                 self.push(self.cs, memory);
                 self.push(self.ip, memory);
                 self.ip = offset;
@@ -237,8 +237,8 @@ impl Cpu {
         // Load interrupt vector from interrupt vector table (IVT)
         // IVT starts at 0x00000, each entry is 4 bytes (offset, segment)
         let ivt_addr = (int_num as usize) * 4;
-        let offset = memory.read_word(ivt_addr);
-        let segment = memory.read_word(ivt_addr + 2);
+        let offset = memory.read_u16(ivt_addr);
+        let segment = memory.read_u16(ivt_addr + 2);
         self.ip = offset;
         self.cs = segment;
     }
@@ -253,8 +253,8 @@ impl Cpu {
         self.set_flag(cpu_flag::INTERRUPT, false);
         self.set_flag(cpu_flag::TRAP, false);
         let ivt_addr = 3 * 4;
-        let offset = memory.read_word(ivt_addr);
-        let segment = memory.read_word(ivt_addr + 2);
+        let offset = memory.read_u16(ivt_addr);
+        let segment = memory.read_u16(ivt_addr + 2);
         self.ip = offset;
         self.cs = segment;
     }
@@ -269,8 +269,8 @@ impl Cpu {
             self.set_flag(cpu_flag::INTERRUPT, false);
             self.set_flag(cpu_flag::TRAP, false);
             let ivt_addr = 4 * 4;
-            let offset = memory.read_word(ivt_addr);
-            let segment = memory.read_word(ivt_addr + 2);
+            let offset = memory.read_u16(ivt_addr);
+            let segment = memory.read_u16(ivt_addr + 2);
             self.ip = offset;
             self.cs = segment;
         }

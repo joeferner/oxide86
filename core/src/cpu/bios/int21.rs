@@ -86,7 +86,7 @@ impl Cpu {
             0x3F => self.int21_read_file(memory, io),
             0x40 => self.int21_write_file(memory, io, video),
             0x42 => self.int21_seek_file(io),
-            0x44 => self.int21_ioctl(io),
+            0x44 => self.int21_ioctl(memory, io),
             0x45 => self.int21_duplicate_file(io),
             0x47 => self.int21_get_current_dir(memory, io),
             0x48 => self.int21_allocate_memory(io),
@@ -181,7 +181,7 @@ impl Cpu {
         let saved_ax = self.ax;
 
         loop {
-            let ch = memory.read_byte(addr);
+            let ch = memory.read_u8(addr);
             if ch == b'$' {
                 break;
             }
@@ -253,12 +253,12 @@ impl Cpu {
         let ivt_addr = (int_num as usize) * 4;
 
         // Write offset (low word)
-        memory.write_byte(ivt_addr, (offset & 0xFF) as u8);
-        memory.write_byte(ivt_addr + 1, (offset >> 8) as u8);
+        memory.write_u8(ivt_addr, (offset & 0xFF) as u8);
+        memory.write_u8(ivt_addr + 1, (offset >> 8) as u8);
 
         // Write segment (high word)
-        memory.write_byte(ivt_addr + 2, (segment & 0xFF) as u8);
-        memory.write_byte(ivt_addr + 3, (segment >> 8) as u8);
+        memory.write_u8(ivt_addr + 2, (segment & 0xFF) as u8);
+        memory.write_u8(ivt_addr + 3, (segment >> 8) as u8);
     }
 
     /// INT 21h, AH=30h - Get DOS Version
@@ -289,13 +289,13 @@ impl Cpu {
         let ivt_addr = (int_num as usize) * 4;
 
         // Read offset (low word)
-        let offset_low = memory.read_byte(ivt_addr) as u16;
-        let offset_high = memory.read_byte(ivt_addr + 1) as u16;
+        let offset_low = memory.read_u8(ivt_addr) as u16;
+        let offset_high = memory.read_u8(ivt_addr + 1) as u16;
         let offset = (offset_high << 8) | offset_low;
 
         // Read segment (high word)
-        let segment_low = memory.read_byte(ivt_addr + 2) as u16;
-        let segment_high = memory.read_byte(ivt_addr + 3) as u16;
+        let segment_low = memory.read_u8(ivt_addr + 2) as u16;
+        let segment_high = memory.read_u8(ivt_addr + 3) as u16;
         let segment = (segment_high << 8) | segment_low;
 
         // Return in ES:BX
@@ -418,7 +418,7 @@ impl Cpu {
                 // Write data to DS:DX
                 let buffer_addr = Self::physical_address(self.ds, self.dx);
                 for (i, &byte) in data.iter().enumerate() {
-                    memory.write_byte(buffer_addr + i, byte);
+                    memory.write_u8(buffer_addr + i, byte);
                 }
                 self.ax = data.len() as u16;
                 self.set_flag(cpu_flag::CARRY, false);
@@ -459,7 +459,7 @@ impl Cpu {
         if handle == 1 || handle == 2 {
             let saved_ax = self.ax;
             for i in 0..num_bytes {
-                let ch = memory.read_byte(buffer_addr + i as usize);
+                let ch = memory.read_u8(buffer_addr + i as usize);
                 self.ax = (self.ax & 0xFF00) | (ch as u16);
                 self.int10_teletype_output(video);
             }
@@ -473,7 +473,7 @@ impl Cpu {
         // For other handles, use file I/O
         let mut data = Vec::with_capacity(num_bytes as usize);
         for i in 0..num_bytes {
-            data.push(memory.read_byte(buffer_addr + i as usize));
+            data.push(memory.read_u8(buffer_addr + i as usize));
         }
 
         match io.file_write(handle, &data) {
@@ -707,11 +707,11 @@ impl Cpu {
                     if i >= 63 {
                         break; // Leave room for null terminator
                     }
-                    memory.write_byte(buffer_addr + i, byte);
+                    memory.write_u8(buffer_addr + i, byte);
                 }
                 // Write null terminator
                 let len = path.len().min(63);
-                memory.write_byte(buffer_addr + len, 0);
+                memory.write_u8(buffer_addr + len, 0);
 
                 self.set_flag(cpu_flag::CARRY, false);
             }
@@ -749,7 +749,7 @@ impl Cpu {
 
                 // Store search_id in first 8 bytes (as u64)
                 for i in 0..8 {
-                    memory.write_byte(dta_addr + i, ((search_id >> (i * 8)) & 0xFF) as u8);
+                    memory.write_u8(dta_addr + i, ((search_id >> (i * 8)) & 0xFF) as u8);
                 }
 
                 self.write_find_data_to_dta(memory, dta_addr, &find_data);
@@ -774,7 +774,7 @@ impl Cpu {
         // Read search_id from DTA
         let mut search_id: usize = 0;
         for i in 0..8 {
-            search_id |= (memory.read_byte(dta_addr + i) as usize) << (i * 8);
+            search_id |= (memory.read_u8(dta_addr + i) as usize) << (i * 8);
         }
 
         match io.find_next(search_id) {
@@ -792,30 +792,30 @@ impl Cpu {
     /// Helper function to write FindData to DTA
     fn write_find_data_to_dta(&self, memory: &mut Memory, dta_addr: usize, find_data: &FindData) {
         // Offset 21: File attributes
-        memory.write_byte(dta_addr + 21, find_data.attributes);
+        memory.write_u8(dta_addr + 21, find_data.attributes);
 
         // Offset 22-23: File time (little-endian)
-        memory.write_byte(dta_addr + 22, (find_data.time & 0xFF) as u8);
-        memory.write_byte(dta_addr + 23, (find_data.time >> 8) as u8);
+        memory.write_u8(dta_addr + 22, (find_data.time & 0xFF) as u8);
+        memory.write_u8(dta_addr + 23, (find_data.time >> 8) as u8);
 
         // Offset 24-25: File date (little-endian)
-        memory.write_byte(dta_addr + 24, (find_data.date & 0xFF) as u8);
-        memory.write_byte(dta_addr + 25, (find_data.date >> 8) as u8);
+        memory.write_u8(dta_addr + 24, (find_data.date & 0xFF) as u8);
+        memory.write_u8(dta_addr + 25, (find_data.date >> 8) as u8);
 
         // Offset 26-29: File size (32-bit little-endian)
-        memory.write_byte(dta_addr + 26, (find_data.size & 0xFF) as u8);
-        memory.write_byte(dta_addr + 27, ((find_data.size >> 8) & 0xFF) as u8);
-        memory.write_byte(dta_addr + 28, ((find_data.size >> 16) & 0xFF) as u8);
-        memory.write_byte(dta_addr + 29, ((find_data.size >> 24) & 0xFF) as u8);
+        memory.write_u8(dta_addr + 26, (find_data.size & 0xFF) as u8);
+        memory.write_u8(dta_addr + 27, ((find_data.size >> 8) & 0xFF) as u8);
+        memory.write_u8(dta_addr + 28, ((find_data.size >> 16) & 0xFF) as u8);
+        memory.write_u8(dta_addr + 29, ((find_data.size >> 24) & 0xFF) as u8);
 
         // Offset 30-42: Filename (null-terminated, max 13 bytes)
         let filename_bytes = find_data.filename.as_bytes();
         for (i, &byte) in filename_bytes.iter().take(12).enumerate() {
-            memory.write_byte(dta_addr + 30 + i, byte);
+            memory.write_u8(dta_addr + 30 + i, byte);
         }
         // Null terminator
         let len = filename_bytes.len().min(12);
-        memory.write_byte(dta_addr + 30 + len, 0);
+        memory.write_u8(dta_addr + 30 + len, 0);
     }
 
     /// INT 21h, AH=0Eh - Select Default Disk
@@ -876,49 +876,49 @@ impl Cpu {
                 } else {
                     2 + (internal_drive - 0x80)
                 };
-                memory.write_byte(dpb_addr, dos_drive);
+                memory.write_u8(dpb_addr, dos_drive);
 
                 // +1: Unit number within driver
-                memory.write_byte(dpb_addr + 1, 0);
+                memory.write_u8(dpb_addr + 1, 0);
 
                 // +2: Bytes per sector (word)
-                memory.write_word(dpb_addr + 2, 512);
+                memory.write_u16(dpb_addr + 2, 512);
 
                 // +4: Sectors per cluster - 1 (byte)
-                memory.write_byte(dpb_addr + 4, 3); // 4 sectors per cluster
+                memory.write_u8(dpb_addr + 4, 3); // 4 sectors per cluster
 
                 // +5: Cluster to sector shift (byte)
-                memory.write_byte(dpb_addr + 5, 2); // log2(4) = 2
+                memory.write_u8(dpb_addr + 5, 2); // log2(4) = 2
 
                 // +6: Reserved sectors (word)
-                memory.write_word(dpb_addr + 6, 1); // Boot sector
+                memory.write_u16(dpb_addr + 6, 1); // Boot sector
 
                 // +8: Number of FATs (byte)
-                memory.write_byte(dpb_addr + 8, 2);
+                memory.write_u8(dpb_addr + 8, 2);
 
                 // +9: Root directory entries (word)
-                memory.write_word(dpb_addr + 9, 512);
+                memory.write_u16(dpb_addr + 9, 512);
 
                 // +11: First data sector (word)
-                memory.write_word(dpb_addr + 11, 33); // After boot, FATs, and root
+                memory.write_u16(dpb_addr + 11, 33); // After boot, FATs, and root
 
                 // +13: Highest cluster number + 1 (word)
                 if let Ok((_drive_type, total_sectors)) = io.disk_get_type(internal_drive) {
                     let clusters = (total_sectors / 4) as u16;
-                    memory.write_word(dpb_addr + 13, clusters);
+                    memory.write_u16(dpb_addr + 13, clusters);
                 } else {
-                    memory.write_word(dpb_addr + 13, 1000); // Default
+                    memory.write_u16(dpb_addr + 13, 1000); // Default
                 }
 
                 // +15: Sectors per FAT (byte in DOS 2.x, word in DOS 3+)
-                memory.write_word(dpb_addr + 15, 9); // Typical for small disk
+                memory.write_u16(dpb_addr + 15, 9); // Typical for small disk
 
                 // +17: First directory sector (word)
-                memory.write_word(dpb_addr + 17, 19); // After boot and FATs
+                memory.write_u16(dpb_addr + 17, 19); // After boot and FATs
 
                 // +19: Device driver header (dword)
-                memory.write_word(dpb_addr + 19, 0xFFFF);
-                memory.write_word(dpb_addr + 21, 0xFFFF);
+                memory.write_u16(dpb_addr + 19, 0xFFFF);
+                memory.write_u16(dpb_addr + 21, 0xFFFF);
 
                 // +23: Media descriptor (byte)
                 let media_id = if internal_drive < 0x80 {
@@ -926,14 +926,14 @@ impl Cpu {
                 } else {
                     0xF8 // Hard disk
                 };
-                memory.write_byte(dpb_addr + 23, media_id);
+                memory.write_u8(dpb_addr + 23, media_id);
 
                 // +24: Access flag (byte) - 0 = accessed
-                memory.write_byte(dpb_addr + 24, 0);
+                memory.write_u8(dpb_addr + 24, 0);
 
                 // +25: Next DPB pointer (dword)
-                memory.write_word(dpb_addr + 25, 0xFFFF);
-                memory.write_word(dpb_addr + 27, 0xFFFF);
+                memory.write_u16(dpb_addr + 25, 0xFFFF);
+                memory.write_u16(dpb_addr + 27, 0xFFFF);
 
                 // Return pointer in DS:BX
                 let dpb_seg = (dpb_addr >> 4) as u16;
@@ -987,7 +987,7 @@ impl Cpu {
     ///   AL = subfunction
     ///   BX = file handle (for most subfunctions)
     /// Output: Varies by subfunction
-    fn int21_ioctl<T: Bios>(&mut self, io: &mut T) {
+    fn int21_ioctl<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
         let subfunction = (self.ax & 0xFF) as u8; // AL
         let handle = self.bx;
 
@@ -1042,9 +1042,17 @@ impl Cpu {
             }
             0x08 => {
                 // Check if block device is removable
+                // BL = drive number (0=A:, 1=B:, 2=C:, etc.)
                 // Return AL=0 if removable, AL=1 if fixed
-                // For compatibility, return fixed (most emulated drives are fixed)
-                self.ax = (self.ax & 0xFF00) | 0x01;
+                let drive_num = (self.bx & 0xFF) as u8;
+                // Floppies (0-1) are removable, hard drives (2+) are fixed
+                let is_removable = drive_num < 2;
+
+                if is_removable {
+                    self.ax &= 0xFF00; // Removable (AL=0x00)
+                } else {
+                    self.ax = (self.ax & 0xFF00) | 0x01; // Fixed (AL=0x01)
+                }
                 self.set_flag(cpu_flag::CARRY, false);
             }
             0x09 => {
@@ -1061,12 +1069,175 @@ impl Cpu {
                 self.dx &= !0x8000; // Clear bit 15
                 self.set_flag(cpu_flag::CARRY, false);
             }
+            0x0D => {
+                // Generic block device request
+                // BL = drive number (0=A:, 1=B:, 2=C:, etc.)
+                // CH = category (08h = disk drive)
+                // CL = function code
+                // DS:DX = pointer to parameter block
+                let drive_num = (self.bx & 0xFF) as u8;
+                let category = (self.cx >> 8) as u8;
+                let function = (self.cx & 0xFF) as u8;
+
+                log::info!(
+                    "INT 21h AH=44h AL=0Dh: Generic IOCTL drive={}, category=0x{:02X}, function=0x{:02X}",
+                    drive_num,
+                    category,
+                    function
+                );
+
+                match (category, function) {
+                    (0x08, 0x60) => {
+                        // Get device parameters
+                        log::info!("  Get device parameters for drive {}", drive_num);
+                        match self.int21_ioctl_get_device_params(memory, io, drive_num) {
+                            Ok(()) => {
+                                self.set_flag(cpu_flag::CARRY, false);
+                            }
+                            Err(error_code) => {
+                                self.ax = error_code as u16;
+                                self.set_flag(cpu_flag::CARRY, true);
+                            }
+                        }
+                    }
+                    _ => {
+                        log::warn!(
+                            "Unhandled IOCTL 0x0D: category=0x{:02X}, function=0x{:02X}",
+                            category,
+                            function
+                        );
+                        self.ax = dos_errors::INVALID_FUNCTION as u16;
+                        self.set_flag(cpu_flag::CARRY, true);
+                    }
+                }
+            }
             _ => {
                 log::warn!("Unhandled IOCTL subfunction: AL=0x{:02X}", subfunction);
                 self.ax = dos_errors::INVALID_FUNCTION as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }
+    }
+
+    /// INT 21h, AH=44h AL=0Dh CL=60h - Get Device Parameters
+    /// Input:
+    ///   BL = drive number (0=A:, 1=B:, 2=C:, etc.)
+    ///   DS:DX = pointer to device parameter block
+    /// Output:
+    ///   CF clear if success, parameter block filled
+    ///   CF set if error: AX = error code
+    fn int21_ioctl_get_device_params<T: Bios>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut T,
+        drive_num: u8,
+    ) -> Result<(), u8> {
+        // Convert DOS drive number to BIOS drive number
+        let bios_drive = if drive_num >= 2 {
+            0x80 + (drive_num - 2) // C: = 0x82, etc.
+        } else {
+            drive_num // A: = 0x00, B: = 0x01
+        };
+
+        // Get drive parameters from INT 13h
+        let params = io
+            .disk_get_params(bios_drive)
+            .map_err(|_| dos_errors::INVALID_DRIVE)?;
+
+        // Convert max values to actual counts
+        let cylinders = (params.max_cylinder as u16) + 1;
+        let heads = (params.max_head as u16) + 1;
+        let sectors_per_track = params.max_sector as u16; // Already 1-based
+
+        // Calculate total sectors
+        let total_sectors = cylinders as u32 * heads as u32 * sectors_per_track as u32;
+
+        // Get pointer to parameter block (DS:DX)
+        let seg = self.ds;
+        let offset = self.dx;
+        let addr = (seg as usize) * 16 + offset as usize;
+
+        // Build device parameter block
+        // Byte 0: Special functions (0 = default)
+        memory.write_u8(addr, 0x00);
+
+        // Byte 1: Device type (5 = hard disk, 0-4 = floppy types)
+        let device_type = if bios_drive >= 0x80 { 0x05 } else { 0x02 }; // 0x02 = 720KB floppy
+        memory.write_u8(addr + 1, device_type);
+
+        // Bytes 2-3: Device attributes (bit 0 = 0 for non-removable, 1 for removable)
+        let is_removable = bios_drive < 0x80; // Floppies are removable, hard drives are not
+        let attributes: u16 = if is_removable { 0x0001 } else { 0x0000 };
+        memory.write_u16(addr + 2, attributes);
+
+        // Bytes 4-5: Number of cylinders
+        memory.write_u16(addr + 4, cylinders);
+
+        // Byte 6: Media type (0 = default)
+        memory.write_u8(addr + 6, 0x00);
+
+        // BPB starts at byte 7 - provide reasonable defaults for unformatted drive
+        // Bytes 7-8: Bytes per sector
+        memory.write_u16(addr + 7, 512);
+
+        // Byte 9: Sectors per cluster (use 1 for simplicity)
+        memory.write_u8(addr + 9, 0x01);
+
+        // Bytes 10-11: Reserved sectors (usually 1 for boot sector)
+        memory.write_u16(addr + 10, 1);
+
+        // Byte 12: Number of FATs (usually 2)
+        memory.write_u8(addr + 12, 2);
+
+        // Bytes 13-14: Root directory entries (512 is common for hard disks)
+        memory.write_u16(addr + 13, 512);
+
+        // Bytes 15-16: Total sectors (if < 32MB)
+        if total_sectors < 65536 {
+            memory.write_u16(addr + 15, total_sectors as u16);
+        } else {
+            memory.write_u16(addr + 15, 0); // Use extended field instead
+        }
+
+        // Byte 17: Media descriptor (0xF8 = hard disk, 0xF0 = floppy)
+        let media_desc = if bios_drive >= 0x80 { 0xF8 } else { 0xF0 };
+        memory.write_u8(addr + 17, media_desc);
+
+        // Bytes 18-19: Sectors per FAT (calculate based on total sectors)
+        let sectors_per_fat = ((total_sectors / 512) / 2).div_ceil(256);
+        memory.write_u16(addr + 18, sectors_per_fat as u16);
+
+        // Bytes 20-21: Sectors per track
+        memory.write_u16(addr + 20, sectors_per_track);
+
+        // Bytes 22-23: Number of heads
+        memory.write_u16(addr + 22, heads);
+
+        // Bytes 24-27: Hidden sectors (0 for non-partitioned, 63 for first partition)
+        let hidden_sectors = if bios_drive >= 0x80 { 63u32 } else { 0u32 };
+        // Write u32 as two u16 values (little-endian)
+        memory.write_u16(addr + 24, (hidden_sectors & 0xFFFF) as u16);
+        memory.write_u16(addr + 26, (hidden_sectors >> 16) as u16);
+
+        // Bytes 28-31: Total sectors (extended field for >= 32MB)
+        if total_sectors >= 65536 {
+            memory.write_u16(addr + 28, (total_sectors & 0xFFFF) as u16);
+            memory.write_u16(addr + 30, (total_sectors >> 16) as u16);
+        } else {
+            memory.write_u16(addr + 28, 0);
+            memory.write_u16(addr + 30, 0);
+        }
+
+        log::info!(
+            "  Device params: cyl={}, head={}, sec={}, total_sec={}, hidden={}",
+            cylinders,
+            heads,
+            sectors_per_track,
+            total_sectors,
+            hidden_sectors
+        );
+
+        Ok(())
     }
 
     /// INT 21h, AH=48h - Allocate Memory
@@ -1190,16 +1361,16 @@ impl Cpu {
         // Offset 6: Dword - First FCB pointer (far pointer)
         // Offset 10: Dword - Second FCB pointer (far pointer)
 
-        let env_segment = memory.read_word(param_block_addr);
-        let cmdline_offset = memory.read_word(param_block_addr + 2);
-        let cmdline_segment = memory.read_word(param_block_addr + 4);
+        let env_segment = memory.read_u16(param_block_addr);
+        let cmdline_offset = memory.read_u16(param_block_addr + 2);
+        let cmdline_segment = memory.read_u16(param_block_addr + 4);
 
         // Read command line (Pascal-style string: first byte is length)
         let cmdline_addr = Self::physical_address(cmdline_segment, cmdline_offset);
-        let cmdline_len = memory.read_byte(cmdline_addr) as usize;
+        let cmdline_len = memory.read_u8(cmdline_addr) as usize;
         let mut command_line = String::new();
         for i in 0..cmdline_len {
-            let ch = memory.read_byte(cmdline_addr + 1 + i);
+            let ch = memory.read_u8(cmdline_addr + 1 + i);
             if ch == 0x0D {
                 // CR terminates the command line
                 break;
@@ -1306,7 +1477,7 @@ impl Cpu {
         // Load program at psp_segment:0100
         let load_addr = Self::physical_address(psp_segment, 0x0100);
         for (i, &byte) in program_data.iter().enumerate() {
-            memory.write_byte(load_addr + i, byte);
+            memory.write_u8(load_addr + i, byte);
         }
 
         log::info!(
@@ -1333,14 +1504,14 @@ impl Cpu {
                 // Push return address (0000:0000) for proper termination
                 self.sp = self.sp.wrapping_sub(2);
                 let stack_addr = Self::physical_address(self.ss, self.sp);
-                memory.write_word(stack_addr, 0x0000); // Return offset
+                memory.write_u16(stack_addr, 0x0000); // Return offset
                 self.sp = self.sp.wrapping_sub(2);
                 let stack_addr = Self::physical_address(self.ss, self.sp);
-                memory.write_word(stack_addr, 0x0000); // Return segment
+                memory.write_u16(stack_addr, 0x0000); // Return segment
 
                 // Store parent PSP at offset 0x16 in child's PSP
                 let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
-                memory.write_word(parent_psp_addr, parent_psp);
+                memory.write_u16(parent_psp_addr, parent_psp);
 
                 log::info!(
                     "INT 21h AH=4Bh: Executing COM at {:04X}:{:04X}",
@@ -1450,7 +1621,7 @@ impl Cpu {
                 .iter()
                 .enumerate()
             {
-                memory.write_byte(load_addr + i, byte);
+                memory.write_u8(load_addr + i, byte);
             }
         }
 
@@ -1475,8 +1646,8 @@ impl Cpu {
             let reloc_addr = Self::physical_address(load_segment.wrapping_add(segment), offset);
 
             // Read current value and add load segment
-            let current = memory.read_word(reloc_addr);
-            memory.write_word(reloc_addr, current.wrapping_add(load_segment));
+            let current = memory.read_u16(reloc_addr);
+            memory.write_u16(reloc_addr, current.wrapping_add(load_segment));
         }
 
         log::info!(
@@ -1501,7 +1672,7 @@ impl Cpu {
 
                 // Store parent PSP
                 let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
-                memory.write_word(parent_psp_addr, parent_psp);
+                memory.write_u16(parent_psp_addr, parent_psp);
 
                 log::info!(
                     "INT 21h AH=4Bh: Executing EXE at {:04X}:{:04X}, SS:SP={:04X}:{:04X}",
@@ -1542,21 +1713,21 @@ impl Cpu {
 
         // Clear PSP area
         for i in 0..256 {
-            memory.write_byte(psp_addr + i, 0);
+            memory.write_u8(psp_addr + i, 0);
         }
 
         // Offset 0x00: INT 20h instruction (CD 20)
-        memory.write_byte(psp_addr, 0xCD);
-        memory.write_byte(psp_addr + 1, 0x20);
+        memory.write_u8(psp_addr, 0xCD);
+        memory.write_u8(psp_addr + 1, 0x20);
 
         // Offset 0x02: Memory size in paragraphs (segment of first byte beyond allocated memory)
         // For now, use 0xA000 (end of conventional memory)
-        memory.write_word(psp_addr + 0x02, 0xA000);
+        memory.write_u16(psp_addr + 0x02, 0xA000);
 
         // Offset 0x05: Far call to DOS function dispatcher (not implemented - use INT 21h)
-        memory.write_byte(psp_addr + 0x05, 0xCD); // INT 21h
-        memory.write_byte(psp_addr + 0x06, 0x21);
-        memory.write_byte(psp_addr + 0x07, 0xCB); // RETF
+        memory.write_u8(psp_addr + 0x05, 0xCD); // INT 21h
+        memory.write_u8(psp_addr + 0x06, 0x21);
+        memory.write_u8(psp_addr + 0x07, 0xCB); // RETF
 
         // Offset 0x0A: Terminate address (INT 22h vector)
         // Offset 0x0E: Break address (INT 23h vector)
@@ -1564,33 +1735,33 @@ impl Cpu {
         // These would normally point to parent's handlers
 
         // Offset 0x16: Parent PSP segment
-        memory.write_word(psp_addr + 0x16, io.get_psp());
+        memory.write_u16(psp_addr + 0x16, io.get_psp());
 
         // Offset 0x18: Job File Table (JFT) - 20 bytes, 0xFF = unused
         for i in 0..20 {
-            memory.write_byte(psp_addr + 0x18 + i, 0xFF);
+            memory.write_u8(psp_addr + 0x18 + i, 0xFF);
         }
         // Set up standard handles
-        memory.write_byte(psp_addr + 0x18, 0x01); // stdin -> CON
-        memory.write_byte(psp_addr + 0x19, 0x01); // stdout -> CON
-        memory.write_byte(psp_addr + 0x1A, 0x01); // stderr -> CON
-        memory.write_byte(psp_addr + 0x1B, 0x00); // stdaux -> AUX
-        memory.write_byte(psp_addr + 0x1C, 0x02); // stdprn -> PRN
+        memory.write_u8(psp_addr + 0x18, 0x01); // stdin -> CON
+        memory.write_u8(psp_addr + 0x19, 0x01); // stdout -> CON
+        memory.write_u8(psp_addr + 0x1A, 0x01); // stderr -> CON
+        memory.write_u8(psp_addr + 0x1B, 0x00); // stdaux -> AUX
+        memory.write_u8(psp_addr + 0x1C, 0x02); // stdprn -> PRN
 
         // Offset 0x2C: Environment segment
-        memory.write_word(psp_addr + 0x2C, params.env_segment);
+        memory.write_u16(psp_addr + 0x2C, params.env_segment);
 
         // Offset 0x32: JFT size
-        memory.write_word(psp_addr + 0x32, 20);
+        memory.write_u16(psp_addr + 0x32, 20);
 
         // Offset 0x34: JFT pointer (far pointer to JFT at offset 0x18)
-        memory.write_word(psp_addr + 0x34, 0x18);
-        memory.write_word(psp_addr + 0x36, psp_segment);
+        memory.write_u16(psp_addr + 0x34, 0x18);
+        memory.write_u16(psp_addr + 0x36, psp_segment);
 
         // Offset 0x50: DOS function call (INT 21h, RETF)
-        memory.write_byte(psp_addr + 0x50, 0xCD);
-        memory.write_byte(psp_addr + 0x51, 0x21);
-        memory.write_byte(psp_addr + 0x52, 0xCB);
+        memory.write_u8(psp_addr + 0x50, 0xCD);
+        memory.write_u8(psp_addr + 0x51, 0x21);
+        memory.write_u8(psp_addr + 0x52, 0xCB);
 
         // Offset 0x5C: First FCB (not populated - zeroed)
         // Offset 0x6C: Second FCB (not populated - zeroed)
@@ -1598,12 +1769,12 @@ impl Cpu {
         // Offset 0x80: Command line (Pascal-style: length byte followed by string)
         let cmdline_bytes = params.command_line.as_bytes();
         let cmdline_len = cmdline_bytes.len().min(126) as u8;
-        memory.write_byte(psp_addr + 0x80, cmdline_len);
+        memory.write_u8(psp_addr + 0x80, cmdline_len);
         for (i, &byte) in cmdline_bytes.iter().take(126).enumerate() {
-            memory.write_byte(psp_addr + 0x81 + i, byte);
+            memory.write_u8(psp_addr + 0x81 + i, byte);
         }
         // Terminate with CR
-        memory.write_byte(psp_addr + 0x81 + cmdline_len as usize, 0x0D);
+        memory.write_u8(psp_addr + 0x81 + cmdline_len as usize, 0x0D);
     }
 
     /// INT 21h, AH=50h - Set PSP Address
@@ -1632,8 +1803,8 @@ impl Cpu {
 
             // Write empty table (just two null bytes) at the location
             let addr = Self::physical_address(DBCS_TABLE_SEGMENT, DBCS_TABLE_OFFSET);
-            memory.write_byte(addr, 0x00);
-            memory.write_byte(addr + 1, 0x00);
+            memory.write_u8(addr, 0x00);
+            memory.write_u8(addr + 1, 0x00);
 
             // Return DS:SI pointing to the table
             self.ds = DBCS_TABLE_SEGMENT;
@@ -1658,7 +1829,7 @@ impl Cpu {
         let mut result = String::new();
 
         loop {
-            let ch = memory.read_byte(addr);
+            let ch = memory.read_u8(addr);
             if ch == 0 {
                 break;
             }

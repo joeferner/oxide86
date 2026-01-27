@@ -32,15 +32,15 @@ impl Cpu {
         // Check if there's already a character in the keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-        let head = memory.read_word(head_addr);
-        let tail = memory.read_word(tail_addr);
+        let head = memory.read_u16(head_addr);
+        let tail = memory.read_u16(tail_addr);
 
         if head != tail {
             // Buffer has data - read from it
             let buffer_start = 0x001E; // Relative to BDA
             let char_addr = BDA_START + head as usize;
-            let scan_code = memory.read_byte(char_addr);
-            let ascii_code = memory.read_byte(char_addr + 1);
+            let scan_code = memory.read_u8(char_addr);
+            let ascii_code = memory.read_u8(char_addr + 1);
 
             // Update head pointer (circular buffer)
             let new_head = if head == buffer_start + 30 {
@@ -48,7 +48,7 @@ impl Cpu {
             } else {
                 head + 2
             };
-            memory.write_word(head_addr, new_head);
+            memory.write_u16(head_addr, new_head);
 
             // Set return values
             self.ax = ((scan_code as u16) << 8) | (ascii_code as u16);
@@ -76,14 +76,14 @@ impl Cpu {
         // Check keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-        let head = memory.read_word(head_addr);
-        let tail = memory.read_word(tail_addr);
+        let head = memory.read_u16(head_addr);
+        let tail = memory.read_u16(tail_addr);
 
         if head != tail {
             // Buffer has data - peek at it without removing
             let char_addr = BDA_START + head as usize;
-            let scan_code = memory.read_byte(char_addr);
-            let ascii_code = memory.read_byte(char_addr + 1);
+            let scan_code = memory.read_u8(char_addr);
+            let ascii_code = memory.read_u8(char_addr + 1);
 
             // Set return values
             self.ax = ((scan_code as u16) << 8) | (ascii_code as u16);
@@ -96,8 +96,8 @@ impl Cpu {
                 // Key is available - put it in the buffer for later consumption
                 let buffer_start: u16 = 0x001E; // Relative to BDA
                 let char_addr = BDA_START + tail as usize;
-                memory.write_byte(char_addr, key.scan_code);
-                memory.write_byte(char_addr + 1, key.ascii_code);
+                memory.write_u8(char_addr, key.scan_code);
+                memory.write_u8(char_addr + 1, key.ascii_code);
 
                 // Update tail pointer (circular buffer)
                 let new_tail = if tail == buffer_start + 30 {
@@ -105,7 +105,7 @@ impl Cpu {
                 } else {
                     tail + 2
                 };
-                memory.write_word(tail_addr, new_tail);
+                memory.write_u16(tail_addr, new_tail);
 
                 // Return the key data
                 self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
@@ -134,7 +134,7 @@ impl Cpu {
     ///     Bit 7: Insert mode active
     fn int16_get_shift_flags(&mut self, memory: &Memory) {
         let flags_addr = BDA_START + BDA_KEYBOARD_FLAGS1;
-        let flags = memory.read_byte(flags_addr);
+        let flags = memory.read_u8(flags_addr);
 
         // Return flags in AL
         self.ax = (self.ax & 0xFF00) | (flags as u16);

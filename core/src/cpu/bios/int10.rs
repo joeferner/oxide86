@@ -294,11 +294,11 @@ impl Cpu {
         let mut addr = Self::physical_address(self.es, self.bp);
 
         for _ in 0..length {
-            let ch = memory.read_byte(addr);
+            let ch = memory.read_u8(addr);
             addr += 1;
 
             let current_attr = if has_attributes {
-                let a = memory.read_byte(addr);
+                let a = memory.read_u8(addr);
                 addr += 1;
                 a
             } else {
@@ -339,11 +339,11 @@ impl Cpu {
         let end_line = (self.cx & 0xFF) as u8; // CL
 
         // Store cursor shape in BDA
-        memory.write_byte(
+        memory.write_u8(
             crate::memory::BDA_START + crate::memory::BDA_CURSOR_START_LINE,
             start_line,
         );
-        memory.write_byte(
+        memory.write_u8(
             crate::memory::BDA_START + crate::memory::BDA_CURSOR_END_LINE,
             end_line,
         );
@@ -362,9 +362,9 @@ impl Cpu {
 
         // Get cursor shape from BDA
         let start_line =
-            memory.read_byte(crate::memory::BDA_START + crate::memory::BDA_CURSOR_START_LINE);
+            memory.read_u8(crate::memory::BDA_START + crate::memory::BDA_CURSOR_START_LINE);
         let end_line =
-            memory.read_byte(crate::memory::BDA_START + crate::memory::BDA_CURSOR_END_LINE);
+            memory.read_u8(crate::memory::BDA_START + crate::memory::BDA_CURSOR_END_LINE);
 
         // Return cursor shape in CX
         self.cx = ((start_line as u16) << 8) | (end_line as u16);
@@ -390,16 +390,16 @@ impl Cpu {
         video.set_active_page(page);
 
         // Update BDA active page
-        memory.write_byte(
+        memory.write_u8(
             crate::memory::BDA_START + crate::memory::BDA_ACTIVE_PAGE,
             page,
         );
 
         // Update BDA video page offset (page_number * page_size)
         let page_size =
-            memory.read_word(crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_SIZE);
+            memory.read_u16(crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_SIZE);
         let page_offset = (page as u16) * page_size;
-        memory.write_word(
+        memory.write_u16(
             crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_OFFSET,
             page_offset,
         );
@@ -626,82 +626,82 @@ impl Cpu {
         // Build the 64-byte state information structure
         // Offset 00h-03h: Pointer to static functionality table (we'll point to a dummy location)
         // For simplicity, we set this to 0 (null pointer)
-        memory.write_word(buffer_addr, 0x0000); // Offset
-        memory.write_word(buffer_addr + 2, 0x0000); // Segment
+        memory.write_u16(buffer_addr, 0x0000); // Offset
+        memory.write_u16(buffer_addr + 2, 0x0000); // Segment
 
         // Offset 04h: Current video mode
-        memory.write_byte(buffer_addr + 4, video.get_mode());
+        memory.write_u8(buffer_addr + 4, video.get_mode());
 
         // Offset 05h-06h: Number of columns
-        memory.write_word(buffer_addr + 5, 80);
+        memory.write_u16(buffer_addr + 5, 80);
 
         // Offset 07h-08h: Length of regen buffer (page size in bytes)
         // For 80x25 text mode: 80 * 25 * 2 = 4000 bytes
-        memory.write_word(buffer_addr + 7, 4000);
+        memory.write_u16(buffer_addr + 7, 4000);
 
         // Offset 09h-0Ah: Starting address in regen buffer (current page offset)
-        memory.write_word(buffer_addr + 9, 0x0000);
+        memory.write_u16(buffer_addr + 9, 0x0000);
 
         // Offset 0Bh-1Ah: Cursor positions for 8 pages (row, column pairs)
         let cursor = video.get_cursor();
         for page in 0..8 {
             let offset = buffer_addr + 0x0B + (page * 2);
             if page == 0 {
-                memory.write_byte(offset, cursor.col as u8); // Column
-                memory.write_byte(offset + 1, cursor.row as u8); // Row
+                memory.write_u8(offset, cursor.col as u8); // Column
+                memory.write_u8(offset + 1, cursor.row as u8); // Row
             } else {
-                memory.write_byte(offset, 0);
-                memory.write_byte(offset + 1, 0);
+                memory.write_u8(offset, 0);
+                memory.write_u8(offset + 1, 0);
             }
         }
 
         // Offset 1Bh-1Ch: Cursor type (start/end scan lines)
         let cursor_start =
-            memory.read_byte(crate::memory::BDA_START + crate::memory::BDA_CURSOR_START_LINE);
+            memory.read_u8(crate::memory::BDA_START + crate::memory::BDA_CURSOR_START_LINE);
         let cursor_end =
-            memory.read_byte(crate::memory::BDA_START + crate::memory::BDA_CURSOR_END_LINE);
-        memory.write_byte(buffer_addr + 0x1B, cursor_end);
-        memory.write_byte(buffer_addr + 0x1C, cursor_start);
+            memory.read_u8(crate::memory::BDA_START + crate::memory::BDA_CURSOR_END_LINE);
+        memory.write_u8(buffer_addr + 0x1B, cursor_end);
+        memory.write_u8(buffer_addr + 0x1C, cursor_start);
 
         // Offset 1Dh: Active display page
-        memory.write_byte(buffer_addr + 0x1D, 0);
+        memory.write_u8(buffer_addr + 0x1D, 0);
 
         // Offset 1Eh-1Fh: CRTC port address (3D4h for color, 3B4h for mono)
-        memory.write_word(buffer_addr + 0x1E, 0x03D4);
+        memory.write_u16(buffer_addr + 0x1E, 0x03D4);
 
         // Offset 20h: Current setting of register 3x8h
-        memory.write_byte(buffer_addr + 0x20, 0x00);
+        memory.write_u8(buffer_addr + 0x20, 0x00);
 
         // Offset 21h: Current setting of register 3x9h
-        memory.write_byte(buffer_addr + 0x21, 0x00);
+        memory.write_u8(buffer_addr + 0x21, 0x00);
 
         // Offset 22h: Number of rows - 1
-        memory.write_byte(buffer_addr + 0x22, 24); // 25 rows - 1
+        memory.write_u8(buffer_addr + 0x22, 24); // 25 rows - 1
 
         // Offset 23h-24h: Character height (scan lines per character)
-        memory.write_word(buffer_addr + 0x23, 16); // 16 scan lines for VGA
+        memory.write_u16(buffer_addr + 0x23, 16); // 16 scan lines for VGA
 
         // Offset 25h: Active display combination code
-        memory.write_byte(buffer_addr + 0x25, 0x08); // VGA with color analog display
+        memory.write_u8(buffer_addr + 0x25, 0x08); // VGA with color analog display
 
         // Offset 26h: Alternate display combination code
-        memory.write_byte(buffer_addr + 0x26, 0x00); // No alternate display
+        memory.write_u8(buffer_addr + 0x26, 0x00); // No alternate display
 
         // Offset 27h-28h: Number of colors supported (0 = mono)
-        memory.write_word(buffer_addr + 0x27, 16); // 16 colors in text mode
+        memory.write_u16(buffer_addr + 0x27, 16); // 16 colors in text mode
 
         // Offset 29h: Number of pages supported
-        memory.write_byte(buffer_addr + 0x29, 8);
+        memory.write_u8(buffer_addr + 0x29, 8);
 
         // Offset 2Ah: Number of scan lines active
         // 0 = 200, 1 = 350, 2 = 400
-        memory.write_byte(buffer_addr + 0x2A, 2); // 400 scan lines
+        memory.write_u8(buffer_addr + 0x2A, 2); // 400 scan lines
 
         // Offset 2Bh: Primary character block
-        memory.write_byte(buffer_addr + 0x2B, 0);
+        memory.write_u8(buffer_addr + 0x2B, 0);
 
         // Offset 2Ch: Secondary character block
-        memory.write_byte(buffer_addr + 0x2C, 0);
+        memory.write_u8(buffer_addr + 0x2C, 0);
 
         // Offset 2Dh: Miscellaneous state flags
         // Bit 0: All modes on all displays
@@ -711,22 +711,22 @@ impl Cpu {
         // Bit 4: Cursor emulation enabled
         // Bit 5: Blinking enabled
         // Bit 6-7: Reserved
-        memory.write_byte(buffer_addr + 0x2D, 0x21); // All modes + blinking
+        memory.write_u8(buffer_addr + 0x2D, 0x21); // All modes + blinking
 
         // Offset 2Eh-2Fh: Reserved
-        memory.write_byte(buffer_addr + 0x2E, 0);
-        memory.write_byte(buffer_addr + 0x2F, 0);
+        memory.write_u8(buffer_addr + 0x2E, 0);
+        memory.write_u8(buffer_addr + 0x2F, 0);
 
         // Offset 30h: Video memory available
         // 0 = 64KB, 1 = 128KB, 2 = 192KB, 3 = 256KB
-        memory.write_byte(buffer_addr + 0x30, 3); // 256KB
+        memory.write_u8(buffer_addr + 0x30, 3); // 256KB
 
         // Offset 31h: Save pointer state flags
-        memory.write_byte(buffer_addr + 0x31, 0);
+        memory.write_u8(buffer_addr + 0x31, 0);
 
         // Offset 32h-3Fh: Reserved (fill with zeros)
         for i in 0x32..0x40 {
-            memory.write_byte(buffer_addr + i, 0);
+            memory.write_u8(buffer_addr + i, 0);
         }
 
         // Return AL = 1Bh to indicate function is supported

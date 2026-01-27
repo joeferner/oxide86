@@ -1174,10 +1174,16 @@ impl<D: DiskController> DriveManager<D> {
 
     pub fn disk_get_type(&self, drive: u8) -> Result<(u8, u32), u8> {
         let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
-        let adapter = drive_state
-            .adapter
-            .as_ref()
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+
+        // Use raw_adapter for INT 13h if available (partitioned hard drives)
+        let adapter = if let Some(ref raw) = drive_state.raw_adapter {
+            raw
+        } else {
+            drive_state
+                .adapter
+                .as_ref()
+                .ok_or(disk_errors::DRIVE_NOT_READY)?
+        };
 
         let geometry = adapter.disk().geometry();
         let sectors = geometry.total_sectors() as u32;
@@ -1226,10 +1232,17 @@ impl<D: DiskController> DriveManager<D> {
         let drive_state = self
             .get_drive_mut(drive)
             .ok_or(disk_errors::DRIVE_NOT_READY)?;
-        let adapter = drive_state
-            .adapter
-            .as_mut()
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+
+        // Use raw_adapter for INT 13h if available (partitioned hard drives)
+        let use_raw = drive_state.raw_adapter.is_some();
+        let adapter = if use_raw {
+            drive_state.raw_adapter.as_mut().unwrap()
+        } else {
+            drive_state
+                .adapter
+                .as_mut()
+                .ok_or(disk_errors::DRIVE_NOT_READY)?
+        };
 
         if adapter.disk().is_read_only() {
             return Err(disk_errors::WRITE_PROTECTED);

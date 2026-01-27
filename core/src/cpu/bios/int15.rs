@@ -109,7 +109,7 @@ impl Cpu {
         // Write table to memory
         let physical_addr = ((table_segment as usize) << 4) + table_offset as usize;
         for (i, &byte) in table.iter().enumerate() {
-            memory.write_byte(physical_addr + i, byte);
+            memory.write_u8(physical_addr + i, byte);
         }
 
         // Return pointer in ES:BX

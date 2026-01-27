@@ -50,11 +50,11 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
 
         // Initialize BDA timer counter from host system time
         let initial_ticks = bios.get_system_ticks();
-        memory.write_word(
+        memory.write_u16(
             memory::BDA_START + memory::BDA_TIMER_COUNTER,
             (initial_ticks & 0xFFFF) as u16,
         );
-        memory.write_word(
+        memory.write_u16(
             memory::BDA_START + memory::BDA_TIMER_COUNTER + 2,
             (initial_ticks >> 16) as u16,
         );
@@ -65,7 +65,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             .disk_get_params(0x80)
             .map(|params| params.drive_count)
             .unwrap_or(0);
-        memory.write_byte(
+        memory.write_u8(
             memory::BDA_START + memory::BDA_NUM_HARD_DRIVES,
             hard_drive_count,
         );
@@ -217,13 +217,13 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         let current_ip = self.cpu.ip;
         let current_cs = self.cpu.cs;
         let addr = Cpu::physical_address(current_cs, current_ip);
-        let opcode = self.memory.read_byte(addr);
+        let opcode = self.memory.read_u8(addr);
 
         // Check if it's an INT instruction
         match opcode {
             0xCD => {
                 // INT with immediate - need to fetch the interrupt number
-                let int_num = self.memory.read_byte(addr + 1);
+                let int_num = self.memory.read_u8(addr + 1);
                 // Manually advance IP past the INT instruction
                 self.cpu.ip = self.cpu.ip.wrapping_add(2);
                 // Execute with BIOS I/O
@@ -310,8 +310,8 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
 
             // Read current timer counter from BDA
             let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
-            let low_word = self.memory.read_word(counter_addr);
-            let high_word = self.memory.read_word(counter_addr + 2);
+            let low_word = self.memory.read_u16(counter_addr);
+            let high_word = self.memory.read_u16(counter_addr + 2);
             let mut tick_count = ((high_word as u32) << 16) | (low_word as u32);
 
             // Increment tick count
@@ -322,14 +322,14 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
                 tick_count = 0;
                 // Set midnight overflow flag
                 let overflow_addr = memory::BDA_START + memory::BDA_TIMER_OVERFLOW;
-                self.memory.write_byte(overflow_addr, 1);
+                self.memory.write_u8(overflow_addr, 1);
             }
 
             // Write updated tick count back to BDA
             self.memory
-                .write_word(counter_addr, (tick_count & 0xFFFF) as u16);
+                .write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
             self.memory
-                .write_word(counter_addr + 2, (tick_count >> 16) as u16);
+                .write_u16(counter_addr + 2, (tick_count >> 16) as u16);
         }
     }
 }

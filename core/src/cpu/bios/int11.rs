@@ -16,7 +16,7 @@ impl Cpu {
     /// - Bits 14-15: Number of printers
     pub(super) fn handle_int11(&mut self, memory: &Memory) {
         // Read equipment list from BDA at offset 0x10 (2 bytes)
-        let equipment = memory.read_word(BDA_START + BDA_EQUIPMENT_LIST);
+        let equipment = memory.read_u16(BDA_START + BDA_EQUIPMENT_LIST);
         self.ax = equipment;
     }
 }

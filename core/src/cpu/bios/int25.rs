@@ -43,12 +43,12 @@ impl Cpu {
             // DWORD starting sector (offset 0)
             // WORD sector count (offset 4)
             // DWORD buffer address (offset 6)
-            let start_low = memory.read_word(param_addr) as u32;
-            let start_high = memory.read_word(param_addr + 2) as u32;
+            let start_low = memory.read_u16(param_addr) as u32;
+            let start_high = memory.read_u16(param_addr + 2) as u32;
             start_sector = start_low | (start_high << 16);
-            sector_count = memory.read_word(param_addr + 4);
-            let buf_offset = memory.read_word(param_addr + 6);
-            let buf_segment = memory.read_word(param_addr + 8);
+            sector_count = memory.read_u16(param_addr + 4);
+            let buf_offset = memory.read_u16(param_addr + 6);
+            let buf_segment = memory.read_u16(param_addr + 8);
             buffer_addr = Self::physical_address(buf_segment, buf_offset);
 
             log::debug!(
@@ -78,7 +78,7 @@ impl Cpu {
             Ok(data) => {
                 // Write data to buffer
                 for (i, &byte) in data.iter().enumerate() {
-                    memory.write_byte(buffer_addr + i, byte);
+                    memory.write_u8(buffer_addr + i, byte);
                 }
 
                 // Clear carry flag (success)

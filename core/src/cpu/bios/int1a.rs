@@ -35,13 +35,13 @@ impl Cpu {
     fn int1a_get_system_time(&mut self, memory: &mut Memory) {
         // Read timer counter from BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
-        let low_word = memory.read_word(counter_addr);
-        let high_word = memory.read_word(counter_addr + 2);
+        let low_word = memory.read_u16(counter_addr);
+        let high_word = memory.read_u16(counter_addr + 2);
 
         // Read and clear midnight flag
         let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
-        let midnight_flag = memory.read_byte(overflow_addr);
-        memory.write_byte(overflow_addr, 0); // Clear the flag
+        let midnight_flag = memory.read_u8(overflow_addr);
+        memory.write_u8(overflow_addr, 0); // Clear the flag
 
         // Return values
         self.cx = high_word; // CX = high word of tick count
@@ -60,12 +60,12 @@ impl Cpu {
 
         // Write timer counter to BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
-        memory.write_word(counter_addr, low_word); // Low word
-        memory.write_word(counter_addr + 2, high_word); // High word
+        memory.write_u16(counter_addr, low_word); // Low word
+        memory.write_u16(counter_addr + 2, high_word); // High word
 
         // Clear midnight overflow flag when setting time
         let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
-        memory.write_byte(overflow_addr, 0);
+        memory.write_u8(overflow_addr, 0);
     }
 
     /// INT 1Ah, AH=02h - Read Real Time Clock Time

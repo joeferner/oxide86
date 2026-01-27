@@ -392,7 +392,7 @@ impl Cpu {
     /// Returns true if the vector is in BIOS ROM area, false if DOS has installed its own handler
     fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
         let ivt_addr = (int_num as usize) * 4;
-        let segment = memory.read_word(ivt_addr + 2);
+        let segment = memory.read_u16(ivt_addr + 2);
         // BIOS handlers are in the F000 segment (ROM area)
         segment == 0xF000
     }

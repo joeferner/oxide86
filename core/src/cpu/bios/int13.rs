@@ -117,7 +117,7 @@ impl Cpu {
                 // Write data to ES:BX
                 let buffer_addr = Self::physical_address(self.es, self.bx);
                 for (i, &byte) in data.iter().enumerate() {
-                    memory.write_byte(buffer_addr + i, byte);
+                    memory.write_u8(buffer_addr + i, byte);
                 }
 
                 // Calculate actual sectors read
@@ -177,7 +177,7 @@ impl Cpu {
         let data_len = count as usize * 512;
         let mut data = Vec::with_capacity(data_len);
         for i in 0..data_len {
-            data.push(memory.read_byte(buffer_addr + i));
+            data.push(memory.read_u8(buffer_addr + i));
         }
 
         match io.disk_write_sectors(drive, cylinder_8bit, head, sector, count, &data) {
@@ -454,7 +454,7 @@ impl Cpu {
 
                 // Write DBT to memory
                 for (i, &byte) in dbt.iter().enumerate() {
-                    memory.write_byte(dbt_addr + i, byte);
+                    memory.write_u8(dbt_addr + i, byte);
                 }
 
                 // Return success with ES:DI pointing to DBT

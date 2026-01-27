@@ -32,8 +32,8 @@ impl Cpu {
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let src_addr = Self::physical_address(src_seg, self.si);
             let dst_addr = Self::physical_address(self.es, self.di); // ES:DI is always ES
-            let value = memory.read_word(src_addr);
-            memory.write_word(dst_addr, value);
+            let value = memory.read_u16(src_addr);
+            memory.write_u16(dst_addr, value);
 
             // Update SI and DI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -50,8 +50,8 @@ impl Cpu {
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let src_addr = Self::physical_address(src_seg, self.si);
             let dst_addr = Self::physical_address(self.es, self.di); // ES:DI is always ES
-            let value = memory.read_byte(src_addr);
-            memory.write_byte(dst_addr, value);
+            let value = memory.read_u8(src_addr);
+            memory.write_u8(dst_addr, value);
 
             // Update SI and DI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -111,8 +111,8 @@ impl Cpu {
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let src_addr = Self::physical_address(src_seg, self.si);
             let dst_addr = Self::physical_address(self.es, self.di); // ES:DI is always ES
-            let src = memory.read_word(src_addr);
-            let dst = memory.read_word(dst_addr);
+            let src = memory.read_u16(src_addr);
+            let dst = memory.read_u16(dst_addr);
 
             // Perform subtraction to set flags (src - dst)
             let result = src.wrapping_sub(dst);
@@ -131,8 +131,8 @@ impl Cpu {
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let src_addr = Self::physical_address(src_seg, self.si);
             let dst_addr = Self::physical_address(self.es, self.di); // ES:DI is always ES
-            let src = memory.read_byte(src_addr);
-            let dst = memory.read_byte(dst_addr);
+            let src = memory.read_u8(src_addr);
+            let dst = memory.read_u8(dst_addr);
 
             // Perform subtraction to set flags (src - dst)
             let result = src.wrapping_sub(dst);
@@ -190,7 +190,7 @@ impl Cpu {
         if is_word {
             // SCASW - Scan word
             let addr = Self::physical_address(self.es, self.di);
-            let value = memory.read_word(addr);
+            let value = memory.read_u16(addr);
 
             // Compare AX with memory value (AX - value)
             let result = self.ax.wrapping_sub(value);
@@ -205,7 +205,7 @@ impl Cpu {
         } else {
             // SCASB - Scan byte
             let addr = Self::physical_address(self.es, self.di);
-            let value = memory.read_byte(addr);
+            let value = memory.read_u8(addr);
             let al = (self.ax & 0xFF) as u8;
 
             // Compare AL with memory value (AL - value)
@@ -246,7 +246,7 @@ impl Cpu {
             // LODSW - Load word
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
-            self.ax = memory.read_word(addr);
+            self.ax = memory.read_u16(addr);
 
             // Update SI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -258,7 +258,7 @@ impl Cpu {
             // LODSB - Load byte
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
-            let value = memory.read_byte(addr);
+            let value = memory.read_u8(addr);
             self.ax = (self.ax & 0xFF00) | (value as u16);
 
             // Update SI based on direction flag
@@ -293,7 +293,7 @@ impl Cpu {
         if is_word {
             // STOSW - Store word
             let addr = Self::physical_address(self.es, self.di);
-            memory.write_word(addr, self.ax);
+            memory.write_u16(addr, self.ax);
 
             // Update DI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -305,7 +305,7 @@ impl Cpu {
             // STOSB - Store byte
             let addr = Self::physical_address(self.es, self.di);
             let al = (self.ax & 0xFF) as u8;
-            memory.write_byte(addr, al);
+            memory.write_u8(addr, al);
 
             // Update DI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -352,7 +352,7 @@ impl Cpu {
             // INSW - Input word
             let value = io_port.read_word(port);
             let addr = Self::physical_address(self.es, self.di);
-            memory.write_word(addr, value);
+            memory.write_u16(addr, value);
 
             // Update DI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -364,7 +364,7 @@ impl Cpu {
             // INSB - Input byte
             let value = io_port.read_byte(port);
             let addr = Self::physical_address(self.es, self.di);
-            memory.write_byte(addr, value);
+            memory.write_u8(addr, value);
 
             // Update DI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -406,7 +406,7 @@ impl Cpu {
             // OUTSW - Output word
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
-            let value = memory.read_word(addr);
+            let value = memory.read_u16(addr);
             io_port.write_word(port, value);
 
             // Update SI based on direction flag
@@ -419,7 +419,7 @@ impl Cpu {
             // OUTSB - Output byte
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
-            let value = memory.read_byte(addr);
+            let value = memory.read_u8(addr);
             io_port.write_byte(port, value);
 
             // Update SI based on direction flag

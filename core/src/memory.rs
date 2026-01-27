@@ -90,11 +90,11 @@ impl Memory {
         self.load_at(bios_start, bios_data)
     }
 
-    pub fn read_byte(&self, address: usize) -> u8 {
+    pub fn read_u8(&self, address: usize) -> u8 {
         self.data[address % MEMORY_SIZE]
     }
 
-    pub fn write_byte(&mut self, address: usize, value: u8) {
+    pub fn write_u8(&mut self, address: usize, value: u8) {
         let addr = address % MEMORY_SIZE;
         self.data[addr] = value;
 
@@ -106,16 +106,16 @@ impl Memory {
     }
 
     // Read a 16-bit word (little-endian)
-    pub fn read_word(&self, address: usize) -> u16 {
-        let low = self.read_byte(address) as u16;
-        let high = self.read_byte(address + 1) as u16;
+    pub fn read_u16(&self, address: usize) -> u16 {
+        let low = self.read_u8(address) as u16;
+        let high = self.read_u8(address + 1) as u16;
         (high << 8) | low
     }
 
     // Write a 16-bit word (little-endian)
-    pub fn write_word(&mut self, address: usize, value: u16) {
-        self.write_byte(address, (value & 0xFF) as u8);
-        self.write_byte(address + 1, (value >> 8) as u8);
+    pub fn write_u16(&mut self, address: usize, value: u16) {
+        self.write_u8(address, (value & 0xFF) as u8);
+        self.write_u8(address + 1, (value >> 8) as u8);
     }
 
     /// Initialize the Interrupt Vector Table (IVT)
@@ -132,8 +132,8 @@ impl Memory {
         // Initialize all 256 interrupt vectors to default handler
         for int_num in 0..256 {
             let ivt_addr = int_num * IVT_ENTRY_SIZE;
-            self.write_word(ivt_addr, default_offset);
-            self.write_word(ivt_addr + 2, default_segment);
+            self.write_u16(ivt_addr, default_offset);
+            self.write_u16(ivt_addr + 2, default_segment);
         }
 
         // Set up specific interrupt handlers
@@ -142,14 +142,14 @@ impl Memory {
 
         // Write the default IRET handler at F000:0000
         let iret_addr = ((default_segment as usize) << 4) + (default_offset as usize);
-        self.write_byte(iret_addr, 0xCF); // IRET instruction
+        self.write_u8(iret_addr, 0xCF); // IRET instruction
     }
 
     /// Set an interrupt vector in the IVT
     pub fn set_interrupt_vector(&mut self, int_num: u8, segment: u16, offset: u16) {
         let ivt_addr = (int_num as usize) * IVT_ENTRY_SIZE;
-        self.write_word(ivt_addr, offset);
-        self.write_word(ivt_addr + 2, segment);
+        self.write_u16(ivt_addr, offset);
+        self.write_u16(ivt_addr + 2, segment);
     }
 
     /// Install BIOS interrupt handlers
@@ -185,7 +185,7 @@ impl Memory {
 
         // Stub handler: Just return with IRET
         // IRET instruction (0xCF)
-        self.write_byte(handler_addr, 0xCF);
+        self.write_u8(handler_addr, 0xCF);
     }
 
     /// Drain video memory writes collected during instruction execution
@@ -198,17 +198,17 @@ impl Memory {
     pub fn initialize_bda(&mut self) {
         // COM port addresses (0x0040:0000 - 4 words)
         // Standard COM port I/O addresses
-        self.write_word(BDA_START + BDA_COM_PORTS, 0x03F8); // COM1
-        self.write_word(BDA_START + BDA_COM_PORTS + 2, 0x02F8); // COM2
-        self.write_word(BDA_START + BDA_COM_PORTS + 4, 0x03E8); // COM3
-        self.write_word(BDA_START + BDA_COM_PORTS + 6, 0x02E8); // COM4
+        self.write_u16(BDA_START + BDA_COM_PORTS, 0x03F8); // COM1
+        self.write_u16(BDA_START + BDA_COM_PORTS + 2, 0x02F8); // COM2
+        self.write_u16(BDA_START + BDA_COM_PORTS + 4, 0x03E8); // COM3
+        self.write_u16(BDA_START + BDA_COM_PORTS + 6, 0x02E8); // COM4
 
         // LPT port addresses (0x0040:0008 - 4 words)
         // Standard LPT (parallel) port I/O addresses
-        self.write_word(BDA_START + BDA_LPT_PORTS, 0x0378); // LPT1
-        self.write_word(BDA_START + BDA_LPT_PORTS + 2, 0x0278); // LPT2
-        self.write_word(BDA_START + BDA_LPT_PORTS + 4, 0x03BC); // LPT3
-        self.write_word(BDA_START + BDA_LPT_PORTS + 6, 0x0000); // LPT4 (not installed)
+        self.write_u16(BDA_START + BDA_LPT_PORTS, 0x0378); // LPT1
+        self.write_u16(BDA_START + BDA_LPT_PORTS + 2, 0x0278); // LPT2
+        self.write_u16(BDA_START + BDA_LPT_PORTS + 4, 0x03BC); // LPT3
+        self.write_u16(BDA_START + BDA_LPT_PORTS + 6, 0x0000); // LPT4 (not installed)
 
         // Equipment list word (0x0040:0010)
         // Bits indicate installed hardware
@@ -217,68 +217,68 @@ impl Memory {
         equipment |= EQUIPMENT_VIDEO_MODE_80X25_COLOR; // 80x25 color text mode
         equipment |= 0x0040; // 1 floppy drive (bits 6-7: count-1 = 0)
         // No math coprocessor, no serial ports configured in equipment list
-        self.write_word(BDA_START + BDA_EQUIPMENT_LIST, equipment);
+        self.write_u16(BDA_START + BDA_EQUIPMENT_LIST, equipment);
 
         // Memory size in KB (0x0040:0013)
         // Report 640KB of conventional memory (maximum for PC/XT compatibility)
-        self.write_word(BDA_START + BDA_MEMORY_SIZE, 640);
+        self.write_u16(BDA_START + BDA_MEMORY_SIZE, 640);
 
         // Keyboard flags (0x0040:0017-0018)
-        self.write_byte(BDA_START + BDA_KEYBOARD_FLAGS1, 0); // No shift/ctrl/alt pressed
-        self.write_byte(BDA_START + BDA_KEYBOARD_FLAGS2, 0); // No special states
+        self.write_u8(BDA_START + BDA_KEYBOARD_FLAGS1, 0); // No shift/ctrl/alt pressed
+        self.write_u8(BDA_START + BDA_KEYBOARD_FLAGS2, 0); // No special states
 
         // Keyboard buffer pointers (0x0040:001A-001D)
         // Buffer is empty, both pointers point to buffer start
         let buffer_start = 0x1E; // Offset within BDA
-        self.write_word(BDA_START + BDA_KEYBOARD_BUFFER_HEAD, buffer_start);
-        self.write_word(BDA_START + BDA_KEYBOARD_BUFFER_TAIL, buffer_start);
+        self.write_u16(BDA_START + BDA_KEYBOARD_BUFFER_HEAD, buffer_start);
+        self.write_u16(BDA_START + BDA_KEYBOARD_BUFFER_TAIL, buffer_start);
 
         // Keyboard buffer (0x0040:001E-003D) - 32 bytes (16 scan code/char pairs)
         // Initialize to zeros
         for i in 0..32 {
-            self.write_byte(BDA_START + BDA_KEYBOARD_BUFFER + i, 0);
+            self.write_u8(BDA_START + BDA_KEYBOARD_BUFFER + i, 0);
         }
 
         // Video mode (0x0040:0049)
-        self.write_byte(BDA_START + BDA_VIDEO_MODE, 0x03); // 80x25 color text mode
+        self.write_u8(BDA_START + BDA_VIDEO_MODE, 0x03); // 80x25 color text mode
 
         // Screen columns (0x0040:004A)
-        self.write_word(BDA_START + BDA_SCREEN_COLUMNS, 80);
+        self.write_u16(BDA_START + BDA_SCREEN_COLUMNS, 80);
 
         // Video page size (0x0040:004C)
-        self.write_word(BDA_START + BDA_VIDEO_PAGE_SIZE, 4000); // 80*25*2 bytes
+        self.write_u16(BDA_START + BDA_VIDEO_PAGE_SIZE, 4000); // 80*25*2 bytes
 
         // Current video page offset (0x0040:004E)
-        self.write_word(BDA_START + BDA_VIDEO_PAGE_OFFSET, 0); // Page 0
+        self.write_u16(BDA_START + BDA_VIDEO_PAGE_OFFSET, 0); // Page 0
 
         // Cursor positions for 8 pages (0x0040:0050-005F)
         // Each page gets a word: low byte = column, high byte = row
         for page in 0..8 {
-            self.write_word(BDA_START + BDA_CURSOR_POS + page * 2, 0x0000); // Row 0, Col 0
+            self.write_u16(BDA_START + BDA_CURSOR_POS + page * 2, 0x0000); // Row 0, Col 0
         }
 
         // Cursor shape (0x0040:0060-0061)
-        self.write_byte(BDA_START + BDA_CURSOR_END_LINE, 0x0D); // Cursor end scan line
-        self.write_byte(BDA_START + BDA_CURSOR_START_LINE, 0x0C); // Cursor start scan line
+        self.write_u8(BDA_START + BDA_CURSOR_END_LINE, 0x0D); // Cursor end scan line
+        self.write_u8(BDA_START + BDA_CURSOR_START_LINE, 0x0C); // Cursor start scan line
 
         // Active display page (0x0040:0062)
-        self.write_byte(BDA_START + BDA_ACTIVE_PAGE, 0); // Page 0
+        self.write_u8(BDA_START + BDA_ACTIVE_PAGE, 0); // Page 0
 
         // CRT controller port address (0x0040:0063)
-        self.write_word(BDA_START + BDA_CRTC_PORT, 0x03D4); // Color adapter (monochrome = 0x03B4)
+        self.write_u16(BDA_START + BDA_CRTC_PORT, 0x03D4); // Color adapter (monochrome = 0x03B4)
 
         // CRT mode control register (0x0040:0065)
-        self.write_byte(BDA_START + BDA_CRT_MODE_CONTROL, 0x09); // 80x25 text, enable video
+        self.write_u8(BDA_START + BDA_CRT_MODE_CONTROL, 0x09); // 80x25 text, enable video
 
         // CRT palette register (0x0040:0066)
-        self.write_byte(BDA_START + BDA_CRT_PALETTE, 0x00); // Default palette
+        self.write_u8(BDA_START + BDA_CRT_PALETTE, 0x00); // Default palette
 
         // Timer counter (0x0040:006C) - 4 bytes
         // Initialize to 0 ticks since midnight
-        self.write_word(BDA_START + BDA_TIMER_COUNTER, 0); // Low word
-        self.write_word(BDA_START + BDA_TIMER_COUNTER + 2, 0); // High word
+        self.write_u16(BDA_START + BDA_TIMER_COUNTER, 0); // Low word
+        self.write_u16(BDA_START + BDA_TIMER_COUNTER + 2, 0); // High word
 
         // Timer overflow flag (0x0040:0070)
-        self.write_byte(BDA_START + BDA_TIMER_OVERFLOW, 0); // No midnight rollover yet
+        self.write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0); // No midnight rollover yet
     }
 }

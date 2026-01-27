@@ -130,19 +130,19 @@ impl Cpu {
         if is_word {
             if to_acc {
                 // MOV AX, [offset]
-                self.ax = memory.read_word(addr);
+                self.ax = memory.read_u16(addr);
             } else {
                 // MOV [offset], AX
-                memory.write_word(addr, self.ax);
+                memory.write_u16(addr, self.ax);
             }
         } else if to_acc {
             // MOV AL, [offset]
-            let value = memory.read_byte(addr);
+            let value = memory.read_u8(addr);
             self.ax = (self.ax & 0xFF00) | (value as u16);
         } else {
             // MOV [offset], AL
             let value = (self.ax & 0xFF) as u8;
-            memory.write_byte(addr, value);
+            memory.write_u8(addr, value);
         }
     }
 
@@ -301,7 +301,7 @@ impl Cpu {
         // Use segment override if present, otherwise use DS
         let segment = self.segment_override.unwrap_or(self.ds);
         let addr = Self::physical_address(segment, offset);
-        let value = memory.read_byte(addr);
+        let value = memory.read_u8(addr);
         self.ax = (self.ax & 0xFF00) | (value as u16);
     }
 
@@ -369,8 +369,8 @@ impl Cpu {
         }
 
         // Read offset and segment from memory (4 bytes total)
-        let offset = memory.read_word(addr);
-        let segment = memory.read_word(addr + 2);
+        let offset = memory.read_u16(addr);
+        let segment = memory.read_u16(addr + 2);
 
         self.set_reg16(reg, offset);
         self.ds = segment;
@@ -388,8 +388,8 @@ impl Cpu {
         }
 
         // Read offset and segment from memory (4 bytes total)
-        let offset = memory.read_word(addr);
-        let segment = memory.read_word(addr + 2);
+        let offset = memory.read_u16(addr);
+        let segment = memory.read_u16(addr + 2);
 
         self.set_reg16(reg, offset);
         self.es = segment;
@@ -443,8 +443,8 @@ impl Cpu {
         let index = self.get_reg16(reg) as i16;
 
         // Read lower and upper bounds from memory (two consecutive signed words)
-        let lower_bound = memory.read_word(addr) as i16;
-        let upper_bound = memory.read_word(addr + 2) as i16;
+        let lower_bound = memory.read_u16(addr) as i16;
+        let upper_bound = memory.read_u16(addr + 2) as i16;
 
         // Check if index is out of bounds
         if index < lower_bound || index > upper_bound {
