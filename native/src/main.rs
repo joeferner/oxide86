@@ -16,9 +16,14 @@ use simple_io_device::SimpleIoDevice;
 mod terminal_video;
 use terminal_video::TerminalVideo;
 
+mod command_mode;
+
 #[derive(Parser)]
 #[command(name = "emu86")]
 #[command(about = "Intel 8086 CPU Emulator", long_about = None)]
+#[command(
+    after_help = "During emulation:\n  Press F12 to enter command mode for floppy swapping and other runtime operations."
+)]
 struct Cli {
     /// Path to the program binary to load and execute (not used with --boot)
     #[arg(required_unless_present = "boot")]
@@ -167,7 +172,7 @@ fn main() -> Result<()> {
             .context("Failed to boot from disk")?;
 
         log::info!("Boot sector loaded at 0x0000:0x7C00");
-        log::info!("Starting execution...\n");
+        log::info!("Starting execution... (Press F12 for command mode)\n");
     } else {
         // Load program from file
         let program_path = cli.program.as_ref().unwrap(); // Safe because of required_unless_present
@@ -187,7 +192,7 @@ fn main() -> Result<()> {
             segment,
             offset
         );
-        log::info!("Starting execution...\n");
+        log::info!("Starting execution... (Press F12 for command mode)\n");
     }
 
     // Run the program with optional speed throttling
@@ -207,9 +212,11 @@ fn main() -> Result<()> {
 }
 
 /// Run the emulator with clock speed throttling
-fn run_throttled<B, I, V>(computer: &mut Computer<B, I, V>, clock_hz: u64)
-where
-    B: emu86_core::Bios,
+/// Now specific to NativeBios to support F12 command mode
+fn run_throttled<I, V>(
+    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, I, V>,
+    clock_hz: u64,
+) where
     I: emu86_core::IoDevice,
     V: emu86_core::VideoController,
 {
@@ -227,6 +234,18 @@ where
             }
             computer.step();
             computer.update_video();
+        }
+
+        // Check if F12 was pressed (intercepted by BIOS)
+        if computer.bios_mut().is_command_mode_requested() {
+            computer.bios_mut().clear_command_mode_request();
+            log::info!("F12 detected - entering command mode");
+
+            // Enter command mode and check if we should continue
+            if !command_mode::handle_command_mode(computer) {
+                // User chose to quit
+                break;
+            }
         }
 
         // Calculate how much time should have elapsed

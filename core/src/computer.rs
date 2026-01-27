@@ -337,6 +337,11 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         &self.bios
     }
 
+    /// Get a mutable reference to the BIOS (for runtime operations like disk swapping)
+    pub fn bios_mut(&mut self) -> &mut B {
+        &mut self.bios
+    }
+
     /// Increment cycle counter and update system timer if needed
     /// This simulates the PIT (Programmable Interval Timer) running at 18.2 Hz
     fn increment_cycles(&mut self, cycles: u64) {

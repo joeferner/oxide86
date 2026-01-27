@@ -27,6 +27,8 @@ pub struct NativeBios<D: DiskController> {
     device_handles: HashMap<u16, DosDevice>,
     /// Next device handle to allocate. Shared between device handles and file handles.
     next_device_handle: u16,
+    /// Flag set when F12 is pressed (command mode request)
+    command_mode_requested: bool,
 }
 
 impl<D: DiskController> NativeBios<D> {
@@ -37,6 +39,7 @@ impl<D: DiskController> NativeBios<D> {
             memory_allocator: MemoryAllocator::new(),
             device_handles: HashMap::new(),
             next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
+            command_mode_requested: false,
         }
     }
 
@@ -92,6 +95,16 @@ impl<D: DiskController> NativeBios<D> {
         self.drive_manager.set_next_handle(self.next_device_handle);
         Some(handle)
     }
+
+    /// Check if command mode has been requested via F12
+    pub fn is_command_mode_requested(&self) -> bool {
+        self.command_mode_requested
+    }
+
+    /// Clear the command mode request flag
+    pub fn clear_command_mode_request(&mut self) {
+        self.command_mode_requested = false;
+    }
 }
 
 impl<D: DiskController> Default for NativeBios<D> {
@@ -123,11 +136,31 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     fn read_key(&mut self) -> Option<KeyPress> {
-        console::read_key()
+        loop {
+            let key = console::read_key()?;
+            log::info!("read_key.... 0x{:02x}", key.scan_code);
+            // Intercept F12 for command mode
+            if key.scan_code == 0x86 {
+                self.command_mode_requested = true;
+                // Continue looping to consume the F12 and wait for next key
+                continue;
+            }
+            return Some(key);
+        }
     }
 
     fn check_key(&mut self) -> Option<KeyPress> {
-        console::check_key()
+        loop {
+            let key = console::check_key()?;
+            log::info!("check_key.... 0x{:02x}", key.scan_code);
+            // Intercept F12 for command mode
+            if key.scan_code == 0x86 {
+                self.command_mode_requested = true;
+                // Continue looping to consume any additional F12 presses
+                continue;
+            }
+            return Some(key);
+        }
     }
 
     // Disk operations - delegate to DriveManager
