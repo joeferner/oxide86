@@ -1,6 +1,7 @@
 use anyhow::Result;
+use crossterm::event::{self, Event, KeyCode};
 use emu86_core::{BackedDisk, Computer, DriveNumber};
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 
 use crate::bios::NativeBios;
 use crate::disk_backend::FileDiskBackend;
@@ -8,47 +9,41 @@ use crate::disk_backend::FileDiskBackend;
 /// Read a line of input in raw terminal mode with basic editing support
 fn read_line_raw() -> Option<String> {
     let mut line = String::new();
-    let mut stdin = io::stdin();
     let mut stdout = io::stdout();
 
     loop {
-        let mut buffer = [0u8; 1];
-        if stdin.read_exact(&mut buffer).is_err() {
-            return None;
-        }
-
-        let ch = buffer[0];
-
-        match ch {
-            // Enter (CR or LF)
-            0x0D | 0x0A => {
-                print!("\r\n");
-                stdout.flush().ok()?;
-                return Some(line);
-            }
-            // Backspace or DEL
-            0x08 | 0x7F => {
-                if !line.is_empty() {
-                    line.pop();
-                    // Move back, print space, move back again
-                    print!("\x08 \x08");
+        if let Ok(Event::Key(key_event)) = event::read() {
+            match key_event.code {
+                KeyCode::Enter => {
+                    print!("\r\n");
+                    stdout.flush().ok()?;
+                    return Some(line);
+                }
+                KeyCode::Backspace => {
+                    if !line.is_empty() {
+                        line.pop();
+                        // Move back, print space, move back again
+                        print!("\x08 \x08");
+                        stdout.flush().ok()?;
+                    }
+                }
+                KeyCode::Char('c')
+                    if key_event
+                        .modifiers
+                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                {
+                    print!("^C\r\n");
+                    stdout.flush().ok()?;
+                    return None;
+                }
+                KeyCode::Char(c) if (0x20..=0x7E).contains(&(c as u8)) => {
+                    line.push(c);
+                    print!("{}", c);
                     stdout.flush().ok()?;
                 }
+                // Ignore other keys (arrows, function keys, etc.)
+                _ => {}
             }
-            // Ctrl+C
-            0x03 => {
-                print!("^C\r\n");
-                stdout.flush().ok()?;
-                return None;
-            }
-            // Printable ASCII characters
-            0x20..=0x7E => {
-                line.push(ch as char);
-                print!("{}", ch as char);
-                stdout.flush().ok()?;
-            }
-            // Ignore other control characters (including escape sequences)
-            _ => {}
         }
     }
 }
@@ -70,7 +65,10 @@ fn parse_command(input: &str) -> Result<Command> {
         return Ok(Command::Resume);
     }
 
-    if input.eq_ignore_ascii_case("quit") || input.eq_ignore_ascii_case("exit") {
+    if input.eq_ignore_ascii_case("q")
+        || input.eq_ignore_ascii_case("quit")
+        || input.eq_ignore_ascii_case("exit")
+    {
         return Ok(Command::Quit);
     }
 

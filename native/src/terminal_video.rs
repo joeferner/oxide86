@@ -1,8 +1,12 @@
+use crossterm::{
+    ExecutableCommand, QueueableCommand, cursor,
+    style::{Color, SetBackgroundColor, SetForegroundColor},
+    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
+};
 use emu86_core::video::{
-    CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextAttribute, TextCell, VideoController,
+    CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController,
 };
 use std::io::{self, Write};
-use std::os::unix::io::AsRawFd;
 
 /// Convert CP437 byte to Unicode character
 /// CP437 is the original IBM PC character set
@@ -28,132 +32,122 @@ fn cp437_to_unicode(byte: u8) -> char {
     }
 }
 
-/// Terminal-based video controller using ANSI escape codes
+/// Map VGA color to crossterm Color
+fn vga_to_crossterm_color(vga_color: u8) -> Color {
+    match vga_color {
+        0 => Color::Black,
+        1 => Color::Blue,
+        2 => Color::Green,
+        3 => Color::Cyan,
+        4 => Color::Red,
+        5 => Color::Magenta,
+        6 => Color::Yellow,
+        7 => Color::Grey,
+        8 => Color::DarkGrey,
+        9 => Color::DarkBlue,
+        10 => Color::DarkGreen,
+        11 => Color::DarkCyan,
+        12 => Color::DarkRed,
+        13 => Color::DarkMagenta,
+        14 => Color::DarkYellow,
+        15 => Color::White,
+        _ => Color::White,
+    }
+}
+
+/// Terminal-based video controller using crossterm
 pub struct TerminalVideo {
     last_buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
-    original_termios: Option<libc::termios>,
 }
 
 impl TerminalVideo {
     pub fn new() -> Self {
-        // Save original terminal settings and enable raw mode
-        let original_termios = Self::enable_raw_mode();
+        let mut stdout = io::stdout();
 
-        // Clear screen and hide cursor
-        print!("\x1b[2J\x1b[?25l");
-        io::stdout().flush().unwrap();
+        // Enable raw mode and alternate screen
+        terminal::enable_raw_mode().unwrap();
+        stdout.execute(EnterAlternateScreen).unwrap();
+        stdout
+            .execute(terminal::Clear(terminal::ClearType::All))
+            .unwrap();
+        stdout.execute(cursor::Hide).unwrap();
+        stdout.flush().unwrap();
 
         Self {
             last_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
-            original_termios,
-        }
-    }
-
-    /// Enable raw mode for character-at-a-time input
-    fn enable_raw_mode() -> Option<libc::termios> {
-        let stdin_fd = io::stdin().as_raw_fd();
-
-        unsafe {
-            let mut termios: libc::termios = std::mem::zeroed();
-            if libc::tcgetattr(stdin_fd, &mut termios) != 0 {
-                return None;
-            }
-
-            let original = termios;
-
-            // Disable canonical mode (line buffering) and echo
-            termios.c_lflag &= !(libc::ICANON | libc::ECHO);
-            // Set minimum characters for read to 1
-            termios.c_cc[libc::VMIN] = 1;
-            termios.c_cc[libc::VTIME] = 0;
-
-            if libc::tcsetattr(stdin_fd, libc::TCSANOW, &termios) != 0 {
-                return None;
-            }
-
-            Some(original)
-        }
-    }
-
-    /// Restore original terminal settings
-    fn restore_terminal(&self) {
-        if let Some(ref original) = self.original_termios {
-            let stdin_fd = io::stdin().as_raw_fd();
-            unsafe {
-                libc::tcsetattr(stdin_fd, libc::TCSANOW, original);
-            }
-        }
-    }
-
-    fn attribute_to_ansi(attr: &TextAttribute) -> String {
-        // Map VGA colors to ANSI color codes
-        // ANSI: 30-37 (foreground), 40-47 (background)
-        // VGA colors 0-7 map directly, 8-15 use bright variants
-        let fg = if attr.foreground < 8 {
-            30 + attr.foreground
-        } else {
-            // Bright colors (90-97)
-            90 + (attr.foreground - 8)
-        };
-
-        let bg = if attr.background < 8 {
-            40 + attr.background
-        } else {
-            // Bright backgrounds (100-107)
-            100 + (attr.background - 8)
-        };
-
-        if attr.blink {
-            format!("\x1b[{};{};5m", fg, bg)
-        } else {
-            format!("\x1b[{};{}m", fg, bg)
         }
     }
 }
 
 impl VideoController for TerminalVideo {
     fn update_display(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
+        let mut stdout = io::stdout();
+
         // Only update changed cells for efficiency
         for row in 0..TEXT_MODE_ROWS {
             for col in 0..TEXT_MODE_COLS {
                 let idx = row * TEXT_MODE_COLS + col;
                 if buffer[idx] != self.last_buffer[idx] {
-                    // Position cursor (ANSI rows/cols are 1-indexed)
-                    print!("\x1b[{};{}H", row + 1, col + 1);
-                    // Set colors and print character (convert CP437 to Unicode)
-                    print!(
-                        "{}{}",
-                        Self::attribute_to_ansi(&buffer[idx].attribute),
-                        cp437_to_unicode(buffer[idx].character)
-                    );
+                    let cell = &buffer[idx];
+
+                    // Position cursor (crossterm uses 0-indexed coordinates)
+                    stdout
+                        .queue(cursor::MoveTo(col as u16, row as u16))
+                        .unwrap();
+
+                    // Set colors
+                    stdout
+                        .queue(SetForegroundColor(vga_to_crossterm_color(
+                            cell.attribute.foreground,
+                        )))
+                        .unwrap();
+                    stdout
+                        .queue(SetBackgroundColor(vga_to_crossterm_color(
+                            cell.attribute.background,
+                        )))
+                        .unwrap();
+
+                    // Print character (convert CP437 to Unicode)
+                    print!("{}", cp437_to_unicode(cell.character));
                 }
             }
         }
-        io::stdout().flush().unwrap();
+
+        stdout.flush().unwrap();
         self.last_buffer.copy_from_slice(buffer);
     }
 
     fn update_cursor(&mut self, position: CursorPosition) {
-        // Position cursor and show it (ANSI rows/cols are 1-indexed)
-        print!("\x1b[{};{}H\x1b[?25h", position.row + 1, position.col + 1);
-        io::stdout().flush().unwrap();
+        let mut stdout = io::stdout();
+
+        // Position cursor and show it
+        stdout
+            .queue(cursor::MoveTo(position.col as u16, position.row as u16))
+            .unwrap();
+        stdout.queue(cursor::Show).unwrap();
+        stdout.flush().unwrap();
     }
 
     fn set_video_mode(&mut self, _mode: u8) {
+        let mut stdout = io::stdout();
+
         // Clear screen on mode change
-        print!("\x1b[2J");
-        io::stdout().flush().unwrap();
+        stdout
+            .execute(terminal::Clear(terminal::ClearType::All))
+            .unwrap();
+        stdout.flush().unwrap();
     }
 }
 
 impl Drop for TerminalVideo {
     fn drop(&mut self) {
-        // Restore terminal settings first
-        self.restore_terminal();
+        let mut stdout = io::stdout();
 
-        // Restore terminal on exit: reset colors, show cursor, move to bottom
-        // Position cursor at row 26 (below the 25-row display)
-        println!("\x1b[26;1H\x1b[0m\x1b[?25h");
-        io::stdout().flush().unwrap();
+        // Restore terminal: leave alternate screen, disable raw mode, show cursor
+        stdout.execute(LeaveAlternateScreen).unwrap();
+        stdout.execute(cursor::Show).unwrap();
+        stdout.flush().unwrap();
+
+        terminal::disable_raw_mode().unwrap();
     }
 }

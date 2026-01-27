@@ -7,6 +7,7 @@
         "CMPS",
         "CMPSB",
         "CMPSW",
+        "crossterm",
         "dasd",
         "dbcs",
         "fatfs",
