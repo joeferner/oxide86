@@ -573,23 +573,10 @@ impl<D: DiskController> DiskController for PartitionedDisk<D> {
     }
 }
 
-/// Enum to represent either a raw disk or a partitioned disk
-pub enum MaybePartitionedDisk<B: DiskBackend> {
-    Raw(BackedDisk<B>),
-    Partitioned(PartitionedDisk<BackedDisk<B>>),
-}
-
-impl<B: DiskBackend> DiskController for MaybePartitionedDisk<B> {
-    fn read_sector_chs(
-        &self,
-        cylinder: u16,
-        head: u16,
-        sector: u16,
-    ) -> anyhow::Result<[u8; SECTOR_SIZE]> {
-        match self {
-            Self::Raw(disk) => disk.read_sector_chs(cylinder, head, sector),
-            Self::Partitioned(disk) => disk.read_sector_chs(cylinder, head, sector),
-        }
+/// Blanket implementation for boxed trait objects
+impl DiskController for Box<dyn DiskController> {
+    fn read_sector_chs(&self, cylinder: u16, head: u16, sector: u16) -> Result<[u8; SECTOR_SIZE]> {
+        (**self).read_sector_chs(cylinder, head, sector)
     }
 
     fn write_sector_chs(
@@ -598,45 +585,27 @@ impl<B: DiskBackend> DiskController for MaybePartitionedDisk<B> {
         head: u16,
         sector: u16,
         data: &[u8; SECTOR_SIZE],
-    ) -> anyhow::Result<()> {
-        match self {
-            Self::Raw(disk) => disk.write_sector_chs(cylinder, head, sector, data),
-            Self::Partitioned(disk) => disk.write_sector_chs(cylinder, head, sector, data),
-        }
+    ) -> Result<()> {
+        (**self).write_sector_chs(cylinder, head, sector, data)
     }
 
-    fn read_sector_lba(&self, lba: usize) -> anyhow::Result<[u8; SECTOR_SIZE]> {
-        match self {
-            Self::Raw(disk) => disk.read_sector_lba(lba),
-            Self::Partitioned(disk) => disk.read_sector_lba(lba),
-        }
+    fn read_sector_lba(&self, lba: usize) -> Result<[u8; SECTOR_SIZE]> {
+        (**self).read_sector_lba(lba)
     }
 
-    fn write_sector_lba(&mut self, lba: usize, data: &[u8; SECTOR_SIZE]) -> anyhow::Result<()> {
-        match self {
-            Self::Raw(disk) => disk.write_sector_lba(lba, data),
-            Self::Partitioned(disk) => disk.write_sector_lba(lba, data),
-        }
+    fn write_sector_lba(&mut self, lba: usize, data: &[u8; SECTOR_SIZE]) -> Result<()> {
+        (**self).write_sector_lba(lba, data)
     }
 
     fn geometry(&self) -> &DiskGeometry {
-        match self {
-            Self::Raw(disk) => disk.geometry(),
-            Self::Partitioned(disk) => disk.geometry(),
-        }
+        (**self).geometry()
     }
 
     fn size(&self) -> usize {
-        match self {
-            Self::Raw(disk) => disk.size(),
-            Self::Partitioned(disk) => disk.size(),
-        }
+        (**self).size()
     }
 
     fn is_read_only(&self) -> bool {
-        match self {
-            Self::Raw(disk) => disk.is_read_only(),
-            Self::Partitioned(disk) => disk.is_read_only(),
-        }
+        (**self).is_read_only()
     }
 }

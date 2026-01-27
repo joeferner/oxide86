@@ -2,8 +2,8 @@ use anyhow::Result;
 
 pub use crate::cpu::bios::{Bios, DriveParams, KeyPress, NullBios, disk_errors};
 pub use crate::disk::{
-    BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, MaybePartitionedDisk,
-    PartitionedDisk, SECTOR_SIZE, parse_mbr,
+    BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, PartitionedDisk, SECTOR_SIZE,
+    parse_mbr,
 };
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 use crate::io_port::IoPort;
@@ -171,6 +171,15 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         self.cpu.ds = 0x0000;
         self.cpu.es = 0x0000;
 
+        // Set current drive to match boot drive
+        // Convert BIOS drive number to DOS drive number: 0x00->0, 0x01->1, 0x80->2, 0x81->3
+        let dos_drive = if drive < 0x80 {
+            drive // A: or B:
+        } else {
+            2 + (drive - 0x80) // C: onwards
+        };
+        self.bios.set_default_drive(dos_drive);
+
         // Pre-allocate memory for DOS kernel
         // In a real system, DOS would already be loaded in memory before
         // the memory allocator starts. We simulate this by pre-allocating
@@ -224,6 +233,27 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             0xCD => {
                 // INT with immediate - need to fetch the interrupt number
                 let int_num = self.memory.read_u8(addr + 1);
+
+                // Log the interrupt with register state
+                if int_num != 0x16
+                    && int_num != 0x28
+                    && int_num != 0x2A
+                    && int_num != 0x1A
+                    && int_num != 0x10
+                    && int_num != 0x29
+                {
+                    log::info!(
+                        "INT 0x{:02X} - AX=0x{:04X} BX=0x{:04X} CX=0x{:04X} DX=0x{:04X} DS=0x{:04X} ES=0x{:04X}",
+                        int_num,
+                        self.cpu.ax,
+                        self.cpu.bx,
+                        self.cpu.cx,
+                        self.cpu.dx,
+                        self.cpu.ds,
+                        self.cpu.es
+                    );
+                }
+
                 // Manually advance IP past the INT instruction
                 self.cpu.ip = self.cpu.ip.wrapping_add(2);
                 // Execute with BIOS I/O
@@ -236,6 +266,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             }
             0xCC => {
                 // INT 3 - advance IP and execute INT 3
+                log::info!("INT 0x03 (breakpoint)");
                 self.cpu.ip = self.cpu.ip.wrapping_add(1);
                 self.cpu
                     .execute_int_with_io(3, &mut self.memory, &mut self.bios, &mut self.video);

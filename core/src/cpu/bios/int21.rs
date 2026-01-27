@@ -1042,11 +1042,19 @@ impl Cpu {
             }
             0x08 => {
                 // Check if block device is removable
-                // BL = drive number (0=A:, 1=B:, 2=C:, etc.)
+                // BL = drive number (0=default, 1=A:, 2=B:, 3=C:, etc.)
                 // Return AL=0 if removable, AL=1 if fixed
                 let drive_num = (self.bx & 0xFF) as u8;
+
+                // Handle IOCTL drive numbering: 0=default, 1=A:, 2=B:, 3=C:, etc.
+                let dos_drive = if drive_num == 0 {
+                    io.get_current_drive() // 0 = use current drive
+                } else {
+                    drive_num - 1 // Convert to 0=A:, 1=B:, 2=C:, etc.
+                };
+
                 // Floppies (0-1) are removable, hard drives (2+) are fixed
-                let is_removable = drive_num < 2;
+                let is_removable = dos_drive < 2;
 
                 if is_removable {
                     self.ax &= 0xFF00; // Removable (AL=0x00)
@@ -1071,7 +1079,7 @@ impl Cpu {
             }
             0x0D => {
                 // Generic block device request
-                // BL = drive number (0=A:, 1=B:, 2=C:, etc.)
+                // BL = drive number (0=default, 1=A:, 2=B:, 3=C:, etc.)
                 // CH = category (08h = disk drive)
                 // CL = function code
                 // DS:DX = pointer to parameter block
@@ -1079,8 +1087,16 @@ impl Cpu {
                 let category = (self.cx >> 8) as u8;
                 let function = (self.cx & 0xFF) as u8;
 
+                // Handle IOCTL drive numbering: 0=default, 1=A:, 2=B:, 3=C:, etc.
+                let dos_drive = if drive_num == 0 {
+                    io.get_current_drive() // 0 = use current drive
+                } else {
+                    drive_num - 1 // Convert to 0=A:, 1=B:, 2=C:, etc.
+                };
+
                 log::info!(
-                    "INT 21h AH=44h AL=0Dh: Generic IOCTL drive={}, category=0x{:02X}, function=0x{:02X}",
+                    "INT 21h AH=44h AL=0Dh: Generic IOCTL drive={} (BL={}), category=0x{:02X}, function=0x{:02X}",
+                    dos_drive,
                     drive_num,
                     category,
                     function
@@ -1089,8 +1105,8 @@ impl Cpu {
                 match (category, function) {
                     (0x08, 0x60) => {
                         // Get device parameters
-                        log::info!("  Get device parameters for drive {}", drive_num);
-                        match self.int21_ioctl_get_device_params(memory, io, drive_num) {
+                        log::info!("  Get device parameters for DOS drive {}", dos_drive);
+                        match self.int21_ioctl_get_device_params(memory, io, dos_drive) {
                             Ok(()) => {
                                 self.set_flag(cpu_flag::CARRY, false);
                             }
@@ -1121,7 +1137,7 @@ impl Cpu {
 
     /// INT 21h, AH=44h AL=0Dh CL=60h - Get Device Parameters
     /// Input:
-    ///   BL = drive number (0=A:, 1=B:, 2=C:, etc.)
+    ///   drive_num = DOS drive number (0=A:, 1=B:, 2=C:, etc.)
     ///   DS:DX = pointer to device parameter block
     /// Output:
     ///   CF clear if success, parameter block filled
@@ -1132,9 +1148,9 @@ impl Cpu {
         io: &mut T,
         drive_num: u8,
     ) -> Result<(), u8> {
-        // Convert DOS drive number to BIOS drive number
+        // Convert DOS drive number (0=A:, 1=B:, 2=C:) to BIOS drive number (0x00, 0x01, 0x80, 0x81)
         let bios_drive = if drive_num >= 2 {
-            0x80 + (drive_num - 2) // C: = 0x82, etc.
+            0x80 + (drive_num - 2) // C: = 0x80, D: = 0x81, etc.
         } else {
             drive_num // A: = 0x00, B: = 0x01
         };

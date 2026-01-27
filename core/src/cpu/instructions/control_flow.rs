@@ -227,6 +227,7 @@ impl Cpu {
     /// Calls interrupt handler
     pub(in crate::cpu) fn int(&mut self, memory: &mut Memory) {
         let int_num = self.fetch_byte(memory);
+
         // Push flags, CS, and IP
         self.push(self.flags, memory);
         self.push(self.cs, memory);
