@@ -8,3 +8,6 @@ mod io;
 mod logical;
 mod shift_rotate;
 mod string;
+
+#[cfg(test)]
+mod tests;
