@@ -70,6 +70,7 @@ impl Cpu {
             0x25 => self.int21_set_interrupt_vector(memory),
             0x30 => self.int21_get_dos_version(),
             0x35 => self.int21_get_interrupt_vector(memory),
+            0x36 => self.int21_get_disk_free_space(io),
             0x37 => self.int21_switch_char(),
             0x39 => self.int21_create_dir(memory, io),
             0x3A => self.int21_remove_dir(memory, io),
@@ -609,6 +610,76 @@ impl Cpu {
             Err(error_code) => {
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=36h - Get Disk Free Space
+    /// Input:
+    ///   DL = drive number (0=default, 1=A, 2=B, 3=C, etc.)
+    /// Output:
+    ///   AX = sectors per cluster (FFFF if drive invalid)
+    ///   BX = number of available clusters
+    ///   CX = bytes per sector
+    ///   DX = total clusters on drive
+    fn int21_get_disk_free_space<T: Bios>(&mut self, io: &T) {
+        let drive = (self.dx & 0xFF) as u8; // DL
+
+        log::debug!("INT 21h AH=36h: Get Disk Free Space for drive {}", drive);
+
+        // Convert DOS drive number to internal
+        // 0=default/current, 1=A (0x00), 2=B (0x01), 3=C (0x80), etc.
+        let internal_drive = if drive == 0 {
+            io.get_current_drive()
+        } else if drive == 1 {
+            0x00 // A:
+        } else if drive == 2 {
+            0x01 // B:
+        } else {
+            0x80 + (drive - 3) // C:=0x80, D:=0x81, etc.
+        };
+
+        // Get drive parameters to check if drive exists
+        match io.disk_get_params(internal_drive) {
+            Ok(_params) => {
+                // Drive exists - return reasonable values
+                // For simplicity, we'll return fixed cluster size and calculate totals
+                // Typical FAT16 values:
+                let sectors_per_cluster = 4u16; // 4 sectors = 2KB clusters
+                let bytes_per_sector = 512u16;
+
+                // Get total disk size from INT 13h
+                match io.disk_get_type(internal_drive) {
+                    Ok((_drive_type, total_sectors)) => {
+                        let total_clusters = (total_sectors / sectors_per_cluster as u32) as u16;
+                        // Report as all free for now (simplification)
+                        let free_clusters = total_clusters;
+
+                        self.ax = sectors_per_cluster;
+                        self.bx = free_clusters;
+                        self.cx = bytes_per_sector;
+                        self.dx = total_clusters;
+
+                        log::debug!(
+                            "INT 21h AH=36h: Drive {} - spc={}, free={}, bps={}, total={}",
+                            drive,
+                            sectors_per_cluster,
+                            free_clusters,
+                            bytes_per_sector,
+                            total_clusters
+                        );
+                    }
+                    Err(_) => {
+                        // Drive exists but can't get size - return error
+                        self.ax = 0xFFFF;
+                        log::warn!("INT 21h AH=36h: Drive {} exists but can't get size", drive);
+                    }
+                }
+            }
+            Err(_) => {
+                // Drive doesn't exist
+                self.ax = 0xFFFF;
+                log::warn!("INT 21h AH=36h: Invalid drive {}", drive);
             }
         }
     }

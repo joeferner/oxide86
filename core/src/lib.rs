@@ -2,7 +2,8 @@ use anyhow::Result;
 
 pub use crate::cpu::bios::{Bios, DriveParams, KeyPress, NullBios, disk_errors};
 pub use crate::disk::{
-    BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, SECTOR_SIZE,
+    BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, MaybePartitionedDisk,
+    PartitionedDisk, SECTOR_SIZE, parse_mbr,
 };
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 use crate::io_port::IoPort;

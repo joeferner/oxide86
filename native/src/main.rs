@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use emu86_core::{BackedDisk, Computer};
+use emu86_core::{BackedDisk, Computer, MaybePartitionedDisk};
 use std::fs::File;
 use std::time::{Duration, Instant};
 
@@ -74,14 +74,14 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Create BIOS with no drives attached
-    let mut bios: NativeBios<BackedDisk<FileDiskBackend>> = NativeBios::new();
+    let mut bios: NativeBios<MaybePartitionedDisk<FileDiskBackend>> = NativeBios::new();
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        bios.insert_floppy(0, disk)
+        bios.insert_floppy(0, MaybePartitionedDisk::Raw(disk))
             .map_err(|e| anyhow::anyhow!("Failed to insert floppy A:: {}", e))?;
         log::info!("Opened floppy A: from {}", path);
     }
@@ -91,7 +91,7 @@ fn main() -> Result<()> {
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        bios.insert_floppy(1, disk)
+        bios.insert_floppy(1, MaybePartitionedDisk::Raw(disk))
             .map_err(|e| anyhow::anyhow!("Failed to insert floppy B:: {}", e))?;
         log::info!("Opened floppy B: from {}", path);
     }
@@ -101,7 +101,31 @@ fn main() -> Result<()> {
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        let drive_num = bios.add_hard_drive(disk);
+
+        // Check if disk has MBR and partitions
+        use emu86_core::{DiskController, parse_mbr};
+        let sector_0 = disk.read_sector_lba(0).ok();
+        let has_partitions = sector_0
+            .as_ref()
+            .and_then(parse_mbr)
+            .and_then(|parts| parts[0]);
+
+        let drive_num = if let Some(partition) = has_partitions {
+            log::info!(
+                "Detected MBR on {}: partition 1 at sector {}, {} sectors",
+                path,
+                partition.start_sector,
+                partition.sector_count
+            );
+            use emu86_core::PartitionedDisk;
+            let partitioned =
+                PartitionedDisk::new(disk, partition.start_sector, partition.sector_count);
+            bios.add_hard_drive(MaybePartitionedDisk::Partitioned(partitioned))
+        } else {
+            log::info!("No MBR detected on {}, using raw disk", path);
+            bios.add_hard_drive(MaybePartitionedDisk::Raw(disk))
+        };
+
         let drive_letter = (b'C' + i as u8) as char;
         log::info!(
             "Opened hard drive {}: (0x{:02X}) from {}",

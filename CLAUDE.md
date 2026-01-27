@@ -83,6 +83,13 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 - Call `reset_position()` before each `fatfs::FileSystem::new()`
 - Extract path/position data before mutable adapter access (borrow checker)
 
+**Partition Support:**
+- Hard drives are checked for MBR partition tables on load
+- If MBR detected, `PartitionedDisk` wrapper offsets all sector access to partition 1 start
+- `parse_mbr()` extracts up to 4 partition entries from sector 0
+- Boot sector (MBR) remains accessible via raw disk for booting
+- DOS file operations see only the partition, not the full disk
+
 ### NativeBios Handle Management
 - Device handles (CON, NUL, etc.) and file handles share same number space
 - `device_handles: HashMap<u16, DosDevice>` for devices
@@ -120,7 +127,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 - **Dirs**: 39h mkdir, 3Ah rmdir, 3Bh chdir, 47h getcwd, 4Eh/4Fh find
 - **Memory**: 48h alloc, 49h free, 4Ah resize
 - **Process**: 4Bh exec, 4Ch exit, 50h set PSP
-- **System**: 0Eh select disk, 19h get drive, 25h/35h int vectors, 30h version
+- **System**: 0Eh select disk, 19h get drive, 25h/35h int vectors, 30h version, 36h disk free space
 
 ### Adding New Interrupt
 1. Create `core/src/cpu/bios/intXX.rs` with `handle_intXX()` method

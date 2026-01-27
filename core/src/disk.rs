@@ -291,6 +291,63 @@ impl<B: DiskBackend> DiskController for BackedDisk<B> {
     }
 }
 
+/// MBR Partition Table Entry (16 bytes)
+#[derive(Debug, Clone, Copy)]
+pub struct PartitionEntry {
+    /// Boot indicator (0x80 = bootable, 0x00 = non-bootable)
+    pub bootable: u8,
+    /// Partition type (e.g., 0x01 = FAT12, 0x04/0x06 = FAT16, 0x0B/0x0C = FAT32)
+    pub partition_type: u8,
+    /// Starting sector (LBA)
+    pub start_sector: u32,
+    /// Size in sectors
+    pub sector_count: u32,
+}
+
+impl PartitionEntry {
+    /// Parse a partition entry from 16 bytes at the given offset
+    fn from_bytes(data: &[u8]) -> Option<Self> {
+        if data.len() < 16 {
+            return None;
+        }
+
+        let bootable = data[0];
+        let partition_type = data[4];
+        let start_sector = u32::from_le_bytes([data[8], data[9], data[10], data[11]]);
+        let sector_count = u32::from_le_bytes([data[12], data[13], data[14], data[15]]);
+
+        // Empty partition entry
+        if partition_type == 0 {
+            return None;
+        }
+
+        Some(Self {
+            bootable,
+            partition_type,
+            start_sector,
+            sector_count,
+        })
+    }
+}
+
+/// Parse MBR partition table from sector 0
+/// Returns up to 4 partition entries
+pub fn parse_mbr(sector_0: &[u8; SECTOR_SIZE]) -> Option<[Option<PartitionEntry>; 4]> {
+    // Check MBR signature (0x55AA at bytes 510-511)
+    if sector_0[510] != 0x55 || sector_0[511] != 0xAA {
+        return None;
+    }
+
+    // Partition table starts at offset 0x1BE (446)
+    let mut partitions = [None; 4];
+    for (i, partition) in partitions.iter_mut().enumerate() {
+        let offset = 0x1BE + i * 16;
+        *partition = PartitionEntry::from_bytes(&sector_0[offset..offset + 16]);
+    }
+
+    Some(partitions)
+}
+
 /// Raw disk image stored in memory
 /// Platform-agnostic - works with both native and WASM
 #[derive(Debug, Clone)]
@@ -411,5 +468,169 @@ impl DiskController for DiskImage {
 
     fn is_read_only(&self) -> bool {
         self.read_only
+    }
+}
+
+/// Wrapper around a disk that provides access to a single partition
+/// All sector accesses are offset by the partition's start sector
+#[derive(Debug)]
+pub struct PartitionedDisk<D: DiskController> {
+    disk: D,
+    partition_start: usize,
+    partition_sectors: usize,
+    geometry: DiskGeometry,
+}
+
+impl<D: DiskController> PartitionedDisk<D> {
+    /// Create a new partitioned disk wrapper
+    /// partition_start: LBA of first sector in partition
+    /// partition_sectors: Number of sectors in partition
+    pub fn new(disk: D, partition_start: u32, partition_sectors: u32) -> Self {
+        // Calculate geometry for the partition
+        let geometry = DiskGeometry::hard_drive(partition_sectors as usize);
+
+        log::info!(
+            "PartitionedDisk: Created partition view starting at sector {} with {} sectors",
+            partition_start,
+            partition_sectors
+        );
+
+        Self {
+            disk,
+            partition_start: partition_start as usize,
+            partition_sectors: partition_sectors as usize,
+            geometry,
+        }
+    }
+
+    /// Get the underlying disk (for boot operations that need raw access)
+    pub fn into_inner(self) -> D {
+        self.disk
+    }
+}
+
+impl<D: DiskController> DiskController for PartitionedDisk<D> {
+    fn read_sector_chs(&self, cylinder: u16, head: u16, sector: u16) -> Result<[u8; SECTOR_SIZE]> {
+        let lba = self.geometry.chs_to_lba(cylinder, head, sector)?;
+        self.read_sector_lba(lba)
+    }
+
+    fn write_sector_chs(
+        &mut self,
+        cylinder: u16,
+        head: u16,
+        sector: u16,
+        data: &[u8; SECTOR_SIZE],
+    ) -> Result<()> {
+        let lba = self.geometry.chs_to_lba(cylinder, head, sector)?;
+        self.write_sector_lba(lba, data)
+    }
+
+    fn read_sector_lba(&self, lba: usize) -> Result<[u8; SECTOR_SIZE]> {
+        if lba >= self.partition_sectors {
+            return Err(anyhow!(
+                "LBA {} exceeds partition size ({})",
+                lba,
+                self.partition_sectors
+            ));
+        }
+
+        // Offset LBA by partition start
+        let absolute_lba = self.partition_start + lba;
+        self.disk.read_sector_lba(absolute_lba)
+    }
+
+    fn write_sector_lba(&mut self, lba: usize, data: &[u8; SECTOR_SIZE]) -> Result<()> {
+        if lba >= self.partition_sectors {
+            return Err(anyhow!(
+                "LBA {} exceeds partition size ({})",
+                lba,
+                self.partition_sectors
+            ));
+        }
+
+        // Offset LBA by partition start
+        let absolute_lba = self.partition_start + lba;
+        self.disk.write_sector_lba(absolute_lba, data)
+    }
+
+    fn geometry(&self) -> &DiskGeometry {
+        &self.geometry
+    }
+
+    fn size(&self) -> usize {
+        self.partition_sectors * SECTOR_SIZE
+    }
+
+    fn is_read_only(&self) -> bool {
+        self.disk.is_read_only()
+    }
+}
+
+/// Enum to represent either a raw disk or a partitioned disk
+pub enum MaybePartitionedDisk<B: DiskBackend> {
+    Raw(BackedDisk<B>),
+    Partitioned(PartitionedDisk<BackedDisk<B>>),
+}
+
+impl<B: DiskBackend> DiskController for MaybePartitionedDisk<B> {
+    fn read_sector_chs(
+        &self,
+        cylinder: u16,
+        head: u16,
+        sector: u16,
+    ) -> anyhow::Result<[u8; SECTOR_SIZE]> {
+        match self {
+            Self::Raw(disk) => disk.read_sector_chs(cylinder, head, sector),
+            Self::Partitioned(disk) => disk.read_sector_chs(cylinder, head, sector),
+        }
+    }
+
+    fn write_sector_chs(
+        &mut self,
+        cylinder: u16,
+        head: u16,
+        sector: u16,
+        data: &[u8; SECTOR_SIZE],
+    ) -> anyhow::Result<()> {
+        match self {
+            Self::Raw(disk) => disk.write_sector_chs(cylinder, head, sector, data),
+            Self::Partitioned(disk) => disk.write_sector_chs(cylinder, head, sector, data),
+        }
+    }
+
+    fn read_sector_lba(&self, lba: usize) -> anyhow::Result<[u8; SECTOR_SIZE]> {
+        match self {
+            Self::Raw(disk) => disk.read_sector_lba(lba),
+            Self::Partitioned(disk) => disk.read_sector_lba(lba),
+        }
+    }
+
+    fn write_sector_lba(&mut self, lba: usize, data: &[u8; SECTOR_SIZE]) -> anyhow::Result<()> {
+        match self {
+            Self::Raw(disk) => disk.write_sector_lba(lba, data),
+            Self::Partitioned(disk) => disk.write_sector_lba(lba, data),
+        }
+    }
+
+    fn geometry(&self) -> &DiskGeometry {
+        match self {
+            Self::Raw(disk) => disk.geometry(),
+            Self::Partitioned(disk) => disk.geometry(),
+        }
+    }
+
+    fn size(&self) -> usize {
+        match self {
+            Self::Raw(disk) => disk.size(),
+            Self::Partitioned(disk) => disk.size(),
+        }
+    }
+
+    fn is_read_only(&self) -> bool {
+        match self {
+            Self::Raw(disk) => disk.is_read_only(),
+            Self::Partitioned(disk) => disk.is_read_only(),
+        }
     }
 }

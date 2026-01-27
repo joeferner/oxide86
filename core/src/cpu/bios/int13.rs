@@ -260,8 +260,21 @@ impl Cpu {
     fn int13_get_drive_params<T: Bios>(&mut self, io: &T) {
         let drive = (self.dx & 0xFF) as u8; // Get DL
 
+        log::debug!(
+            "INT 13h AH=08h: Get Drive Parameters for drive 0x{:02X}",
+            drive
+        );
+
         match io.disk_get_params(drive) {
             Ok(params) => {
+                log::debug!(
+                    "INT 13h AH=08h: Drive 0x{:02X} params: cyl={}, head={}, sec={}, drives={}",
+                    drive,
+                    params.max_cylinder,
+                    params.max_head,
+                    params.max_sector,
+                    params.drive_count
+                );
                 // Pack cylinder into CH and CL
                 let cylinder = params.max_cylinder as u16;
                 let cylinder_low = (cylinder & 0xFF) as u8;
