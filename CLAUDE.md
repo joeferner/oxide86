@@ -101,7 +101,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 |-----|---------|---------------|
 | 10h | Video | 00h set mode, 02h cursor, 0Eh teletype |
 | 12h | Memory | Returns AX = KB (typically 640) |
-| 13h | Disk | 00h reset, 02h read, 03h write, 08h params, 15h type, 16h change |
+| 13h | Disk | 00h reset, 02h read, 03h write, 04h verify, 05h format, 08h params, 15h type, 16h change, 18h DASD |
 | 14h | Serial | 00h init, 01h write, 02h read, 03h status |
 | 15h | System | 86h wait, 88h ext mem, C0h config |
 | 16h | Keyboard | 00h read, 01h check, 02h shift flags |
