@@ -283,6 +283,8 @@ impl Cpu {
     ///   AH = minor version number
     ///   BL:CX = 24-bit user serial number (usually 0)
     fn int21_get_dos_version(&mut self) {
+        log::warn!("get dos version should be handled by DOS");
+
         // Return DOS 3.30 (a common and well-supported version)
         let major = 3;
         let minor = 30;
@@ -321,7 +323,7 @@ impl Cpu {
 
     /// INT 21h, AH=4Ch - Exit Program
     /// Input: AL = return code
-    fn int21_exit<T: Bios>(&mut self, memory: &Memory, io: &T) {
+    fn int21_exit<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
         // INT 21h AH=4Ch - Terminate Program
         // Read the terminate address (INT 22h) from the PSP at offset 0x0A
         let psp_segment = io.get_psp();
@@ -330,10 +332,18 @@ impl Cpu {
         let terminate_cs = memory.read_u16(terminate_offset_addr + 2);
 
         log::info!(
-            "INT 21h AH=4Ch: Terminating, jumping to {:04X}:{:04X}",
+            "INT 21h AH=4Ch: Terminating from PSP {:04X}, jumping to {:04X}:{:04X}",
+            psp_segment,
             terminate_cs,
             terminate_ip
         );
+
+        // Restore parent's PSP
+        let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
+        let parent_psp = memory.read_u16(parent_psp_addr);
+        if parent_psp != 0 {
+            io.set_psp(parent_psp);
+        }
 
         // Jump to the terminate address
         if terminate_cs == 0 && terminate_ip == 0 {
@@ -355,7 +365,7 @@ impl Cpu {
     /// This function terminates the current program but keeps it resident in memory.
     /// The specified number of paragraphs (DX) starting from the PSP are kept allocated.
     /// TSR programs use this to install themselves and return control to DOS.
-    fn int21_terminate_stay_resident<T: Bios>(&mut self, memory: &Memory, io: &T) {
+    fn int21_terminate_stay_resident<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
         let exit_code = (self.ax & 0xFF) as u8;
         let paragraphs_to_keep = self.dx;
 
@@ -382,10 +392,18 @@ impl Cpu {
         let terminate_cs = memory.read_u16(terminate_offset_addr + 2);
 
         log::info!(
-            "INT 21h AH=31h: Returning to {:04X}:{:04X}",
+            "INT 21h AH=31h: Terminating from PSP {:04X}, jumping to {:04X}:{:04X}",
+            psp_segment,
             terminate_cs,
             terminate_ip
         );
+
+        // Restore parent's PSP
+        let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
+        let parent_psp = memory.read_u16(parent_psp_addr);
+        if parent_psp != 0 {
+            io.set_psp(parent_psp);
+        }
 
         // Jump to the terminate address
         if terminate_cs == 0 && terminate_ip == 0 {
@@ -1647,13 +1665,14 @@ impl Cpu {
                 self.ip = 0x0100;
                 self.sp = 0xFFFE;
 
-                // Push return address (0000:0000) for proper termination
+                // Push return address (PSP:0000) for proper termination
+                // PSP:0000 contains INT 20h instruction (CD 20)
                 self.sp = self.sp.wrapping_sub(2);
                 let stack_addr = Self::physical_address(self.ss, self.sp);
-                memory.write_u16(stack_addr, 0x0000); // Return offset
+                memory.write_u16(stack_addr, 0x0000); // Return offset = 0
                 self.sp = self.sp.wrapping_sub(2);
                 let stack_addr = Self::physical_address(self.ss, self.sp);
-                memory.write_u16(stack_addr, 0x0000); // Return segment
+                memory.write_u16(stack_addr, psp_segment); // Return segment = PSP
 
                 // Store parent PSP at offset 0x16 in child's PSP
                 let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
@@ -1876,9 +1895,23 @@ impl Cpu {
         memory.write_u8(psp_addr + 0x07, 0xCB); // RETF
 
         // Offset 0x0A: Terminate address (INT 22h vector)
+        // Read current INT 22h vector from IVT (address 0x0088)
+        let int22_ip = memory.read_u16(0x22 * 4);
+        let int22_cs = memory.read_u16(0x22 * 4 + 2);
+        memory.write_u16(psp_addr + 0x0A, int22_ip);
+        memory.write_u16(psp_addr + 0x0C, int22_cs);
+
         // Offset 0x0E: Break address (INT 23h vector)
+        let int23_ip = memory.read_u16(0x23 * 4);
+        let int23_cs = memory.read_u16(0x23 * 4 + 2);
+        memory.write_u16(psp_addr + 0x0E, int23_ip);
+        memory.write_u16(psp_addr + 0x10, int23_cs);
+
         // Offset 0x12: Critical error address (INT 24h vector)
-        // These would normally point to parent's handlers
+        let int24_ip = memory.read_u16(0x24 * 4);
+        let int24_cs = memory.read_u16(0x24 * 4 + 2);
+        memory.write_u16(psp_addr + 0x12, int24_ip);
+        memory.write_u16(psp_addr + 0x14, int24_cs);
 
         // Offset 0x16: Parent PSP segment
         memory.write_u16(psp_addr + 0x16, io.get_psp());
