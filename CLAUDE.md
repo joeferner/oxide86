@@ -12,6 +12,7 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 - Run ./scripts/pre-commit.sh when done; update CLAUDE.md for future edits
 - logs are written to /tmp/emu86.log
 - use Rust crates when possible
+- when logging unimplemented features use log::warn!
 
 ## Architecture
 
@@ -107,7 +108,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 ### Implemented Interrupts
 | INT | Service | Key Functions |
 |-----|---------|---------------|
-| 10h | Video | 00h set mode, 02h cursor, 0Eh teletype |
+| 10h | Video | 00h set mode, 02h cursor, 0Eh teletype, 11h char gen, 15h display params, 1Ah display code, FEh get buffer |
 | 12h | Memory | Returns AX = KB (typically 640) |
 | 13h | Disk | 00h reset, 02h read, 03h write, 04h verify, 05h format, 08h params, 15h type, 16h change, 18h DASD |
 | 14h | Serial | 00h init, 01h write, 02h read, 03h status |

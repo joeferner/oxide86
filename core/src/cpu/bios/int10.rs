@@ -20,9 +20,13 @@ impl Cpu {
             0x0B => self.int10_set_color_palette(),
             0x0F => self.int10_get_video_mode(video),
             0x10 => self.int10_palette_registers(),
+            0x11 => self.int10_character_generator(memory),
             0x12 => self.int10_alternate_function_select(),
             0x13 => self.int10_write_string(memory, video),
+            0x15 => self.int10_return_physical_display_params(),
+            0x1A => self.int10_display_combination_code(memory),
             0x1B => self.int10_functionality_state_info(memory, video),
+            0xFE => self.int10_get_video_buffer(memory),
             _ => {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
             }
@@ -443,7 +447,7 @@ impl Cpu {
                 // Bit 4 enables high-intensity background colors (instead of blinking)
                 let border_color = value & 0x0F;
                 let intensity = (value & 0x10) != 0;
-                log::debug!(
+                log::warn!(
                     "INT 10h/AH=0Bh/BH=00h: Set border color={}, intensity={}",
                     border_color,
                     intensity
@@ -454,7 +458,7 @@ impl Cpu {
                 // BL = 0: palette 0 (green/red/brown)
                 // BL = 1: palette 1 (cyan/magenta/white)
                 let palette_id = value & 0x01;
-                log::debug!("INT 10h/AH=0Bh/BH=01h: Set CGA palette={}", palette_id);
+                log::warn!("INT 10h/AH=0Bh/BH=01h: Set CGA palette={}", palette_id);
             }
             _ => {
                 log::warn!(
@@ -487,32 +491,32 @@ impl Cpu {
             0x00 => {
                 // Set individual palette register
                 // BL = palette register number, BH = value
-                log::debug!("INT 10h/AH=10h/AL=00h: Set palette register");
+                log::warn!("INT 10h/AH=10h/AL=00h: Set palette register");
             }
             0x01 => {
                 // Set border (overscan) color
                 // BH = border color value
-                log::debug!("INT 10h/AH=10h/AL=01h: Set border color");
+                log::warn!("INT 10h/AH=10h/AL=01h: Set border color");
             }
             0x02 => {
                 // Set all palette registers and border
                 // ES:DX -> 17-byte table
-                log::debug!("INT 10h/AH=10h/AL=02h: Set all palette registers");
+                log::warn!("INT 10h/AH=10h/AL=02h: Set all palette registers");
             }
             0x03 => {
                 // Toggle intensity/blinking bit
                 // BL = 0 enable intensity, 1 enable blinking
-                log::debug!("INT 10h/AH=10h/AL=03h: Toggle blink/intensity");
+                log::warn!("INT 10h/AH=10h/AL=03h: Toggle blink/intensity");
             }
             0x10 => {
                 // Set individual DAC register
                 // BX = register number, CH = green, CL = blue, DH = red
-                log::debug!("INT 10h/AH=10h/AL=10h: Set DAC register");
+                log::warn!("INT 10h/AH=10h/AL=10h: Set DAC register");
             }
             0x12 => {
                 // Set block of DAC registers
                 // BX = first register, CX = count, ES:DX -> table
-                log::debug!("INT 10h/AH=10h/AL=12h: Set DAC register block");
+                log::warn!("INT 10h/AH=10h/AL=12h: Set DAC register block");
             }
             _ => {
                 log::warn!(
@@ -542,56 +546,56 @@ impl Cpu {
                 // Returns: BH = color/mono mode, BL = memory size, CH = feature bits, CL = switch setting
                 self.bx = 0x0003; // BH=0 (color mode), BL=3 (256KB video memory)
                 self.cx = 0x0000; // CH=0, CL=0
-                log::debug!("INT 10h/AH=12h/BL=10h: Get EGA info");
+                log::warn!("INT 10h/AH=12h/BL=10h: Get EGA info");
             }
             0x30 => {
                 // Select vertical resolution
                 // AL = resolution (0=200, 1=350, 2=400)
                 // Returns: AL = 12h if function supported
                 self.ax = (self.ax & 0xFF00) | 0x12;
-                log::debug!("INT 10h/AH=12h/BL=30h: Select vertical resolution");
+                log::warn!("INT 10h/AH=12h/BL=30h: Select vertical resolution");
             }
             0x31 => {
                 // Palette loading (enable/disable default palette loading)
                 // AL = 0 enable, 1 disable
                 // Returns: AL = 12h if supported
                 self.ax = (self.ax & 0xFF00) | 0x12;
-                log::debug!("INT 10h/AH=12h/BL=31h: Palette loading control");
+                log::warn!("INT 10h/AH=12h/BL=31h: Palette loading control");
             }
             0x32 => {
                 // Video enable/disable
                 // AL = 0 enable, 1 disable
                 // Returns: AL = 12h if supported
                 self.ax = (self.ax & 0xFF00) | 0x12;
-                log::debug!("INT 10h/AH=12h/BL=32h: Video enable/disable");
+                log::warn!("INT 10h/AH=12h/BL=32h: Video enable/disable");
             }
             0x33 => {
                 // Gray-scale summing enable/disable
                 // AL = 0 enable, 1 disable
                 // Returns: AL = 12h if supported
                 self.ax = (self.ax & 0xFF00) | 0x12;
-                log::debug!("INT 10h/AH=12h/BL=33h: Gray-scale summing");
+                log::warn!("INT 10h/AH=12h/BL=33h: Gray-scale summing");
             }
             0x34 => {
                 // Cursor emulation enable/disable
                 // AL = 0 enable, 1 disable
                 // Returns: AL = 12h if supported
                 self.ax = (self.ax & 0xFF00) | 0x12;
-                log::debug!("INT 10h/AH=12h/BL=34h: Cursor emulation");
+                log::warn!("INT 10h/AH=12h/BL=34h: Cursor emulation");
             }
             0x35 => {
                 // Display switch interface
                 // AL = 0 initial switch, 80h adapter off, FF disable
                 // Returns: AL = 12h if supported
                 self.ax = (self.ax & 0xFF00) | 0x12;
-                log::debug!("INT 10h/AH=12h/BL=35h: Display switch");
+                log::warn!("INT 10h/AH=12h/BL=35h: Display switch");
             }
             0x36 => {
                 // Video refresh control
                 // AL = 0 enable refresh, 1 disable refresh
                 // Returns: AL = 12h if supported
                 self.ax = (self.ax & 0xFF00) | 0x12;
-                log::debug!("INT 10h/AH=12h/BL=36h: Video refresh control");
+                log::warn!("INT 10h/AH=12h/BL=36h: Video refresh control");
             }
             _ => {
                 log::warn!(
@@ -759,5 +763,254 @@ impl Cpu {
         self.bx = saved_bx;
         self.cx = saved_cx;
         self.dx = saved_dx;
+    }
+
+    /// INT 10h, AH=11h - Character Generator
+    /// Subfunction in AL:
+    ///   00h = Load user-specified character set
+    ///   01h = Load ROM monochrome patterns (8x14)
+    ///   02h = Load ROM 8x8 double-dot patterns
+    ///   03h = Set block specifier
+    ///   04h = Load ROM 8x16 character set
+    ///   10h = Load user-specified character set and program mode
+    ///   11h = Load ROM monochrome patterns (8x14) and program mode
+    ///   12h = Load ROM 8x8 double-dot patterns and program mode
+    ///   14h = Load ROM 8x16 character set and program mode
+    ///   20h = Set user 8x8 graphics character table (INT 1Fh)
+    ///   21h = Set user graphics character table
+    ///   22h = Set ROM 8x14 graphics character table
+    ///   23h = Set ROM 8x8 graphics character table
+    ///   24h = Set ROM 8x16 graphics character table
+    ///   30h = Get font information
+    /// Output (for subfunction 30h):
+    ///   ES:BP = pointer to font
+    ///   CX = bytes per character
+    ///   DL = rows on screen - 1
+    fn int10_character_generator(&mut self, memory: &mut Memory) {
+        let subfunction = (self.ax & 0xFF) as u8; // AL
+
+        match subfunction {
+            0x00..=0x04 => {
+                // Load character set functions
+                log::warn!("INT 10h/AH=11h/AL={:02X}h: Load character set", subfunction);
+            }
+            0x10..=0x14 => {
+                // Load character set and program mode
+                log::warn!(
+                    "INT 10h/AH=11h/AL={:02X}h: Load character set and program mode",
+                    subfunction
+                );
+            }
+            0x20..=0x24 => {
+                // Set graphics character table
+                log::warn!(
+                    "INT 10h/AH=11h/AL={:02X}h: Set graphics character table",
+                    subfunction
+                );
+            }
+            0x30 => {
+                // Get font information
+                // BH = pointer specifier:
+                //   00h = INT 1Fh pointer
+                //   01h = INT 43h pointer (8x8 font)
+                //   02h = ROM 8x14 character font pointer
+                //   03h = ROM 8x8 double dot font pointer
+                //   04h = ROM 8x8 double dot font (top half) pointer
+                //   05h = ROM 9x14 alternate font pointer
+                //   06h = ROM 8x16 font pointer
+                //   07h = ROM 9x16 alternate font pointer
+                let pointer_type = (self.bx >> 8) as u8; // BH
+
+                // For simplicity, point to a location in BIOS ROM area (0xF000 segment)
+                // In a real BIOS, this would point to actual font data
+                let font_segment = 0xF000;
+                let font_offset = match pointer_type {
+                    0x01 | 0x03 | 0x04 => 0xFA6E, // 8x8 font (standard CGA)
+                    0x02 | 0x05 => 0xF000,        // 8x14 font (EGA)
+                    0x06 | 0x07 => 0xF100,        // 8x16 font (VGA)
+                    _ => 0xFA6E,                  // Default to 8x8
+                };
+
+                let bytes_per_char = match pointer_type {
+                    0x01 | 0x03 | 0x04 => 8, // 8x8 font
+                    0x02 | 0x05 => 14,       // 8x14 font
+                    0x06 | 0x07 => 16,       // 8x16 font
+                    _ => 8,
+                };
+
+                // Return font pointer in ES:BP
+                self.es = font_segment;
+                self.bp = font_offset;
+
+                // Return bytes per character in CX
+                self.cx = bytes_per_char;
+
+                // Return rows - 1 in DL
+                let rows = match pointer_type {
+                    0x01 | 0x03 | 0x04 => 24, // 25 rows - 1 for 8x8
+                    0x02 | 0x05 => 24,        // 25 rows - 1 for 8x14
+                    0x06 | 0x07 => 24,        // 25 rows - 1 for 8x16
+                    _ => 24,
+                };
+                self.dx = (self.dx & 0xFF00) | (rows as u16);
+
+                log::debug!(
+                    "INT 10h/AH=11h/AL=30h: Get font info (type={}) -> ES:BP={:04X}:{:04X}, CX={}, DL={}",
+                    pointer_type,
+                    self.es,
+                    self.bp,
+                    self.cx,
+                    rows
+                );
+
+                // Initialize a simple font pattern in memory if this area is empty
+                // This is a minimal implementation - just ensure the memory area is accessible
+                let font_addr = Self::physical_address(font_segment, font_offset);
+                if memory.read_u8(font_addr) == 0 {
+                    // Write a simple pattern for debugging (just to make memory non-zero)
+                    for i in 0..(256 * bytes_per_char as usize) {
+                        memory.write_u8(font_addr + i, 0xFF);
+                    }
+                }
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 10h/AH=11h subfunction: AL=0x{:02X}",
+                    subfunction
+                );
+            }
+        }
+    }
+
+    /// INT 10h, AH=15h - Return Physical Display Parameters (VGA)
+    /// Input: None
+    /// Output:
+    ///   AL = 15h if function supported
+    ///   BH = active display code
+    ///   BL = alternate display code
+    fn int10_return_physical_display_params(&mut self) {
+        // Active display code (08h = VGA with color display)
+        let active_display = 0x08;
+        // Alternate display code (00h = no alternate display)
+        let alternate_display = 0x00;
+
+        // Return AL = 15h to indicate function is supported
+        self.ax = (self.ax & 0xFF00) | 0x15;
+
+        // Return display codes in BH/BL
+        self.bx = ((active_display as u16) << 8) | (alternate_display as u16);
+
+        log::debug!(
+            "INT 10h/AH=15h: Return physical display params (active={:02X}h, alt={:02X}h)",
+            active_display,
+            alternate_display
+        );
+    }
+
+    /// INT 10h, AH=1Ah - Display Combination Code (VGA/MCGA)
+    /// Subfunction in AL:
+    ///   00h = Read display combination code
+    ///   01h = Write display combination code
+    /// Input (for AL=01h):
+    ///   BL = active display code
+    ///   BH = alternate display code
+    /// Output (for AL=00h):
+    ///   AL = 1Ah if function supported
+    ///   BL = active display code
+    ///   BH = alternate display code
+    ///
+    /// Display codes:
+    ///   00h = no display
+    ///   01h = MDA with monochrome display
+    ///   02h = CGA with color display
+    ///   04h = EGA with color display
+    ///   05h = EGA with monochrome display
+    ///   07h = VGA with monochrome analog display
+    ///   08h = VGA with color analog display
+    ///   0Bh = MCGA with color digital display
+    ///   0Ch = MCGA with monochrome analog display
+    fn int10_display_combination_code(&mut self, memory: &mut Memory) {
+        let subfunction = (self.ax & 0xFF) as u8; // AL
+
+        // Use BDA location to store display combination (not standard, but convenient)
+        const DISPLAY_CODE_ADDR: usize = crate::memory::BDA_START + 0x8A;
+
+        match subfunction {
+            0x00 => {
+                // Read display combination code
+                let code = memory.read_u16(DISPLAY_CODE_ADDR);
+                let active_display = (code & 0xFF) as u8;
+                let alternate_display = (code >> 8) as u8;
+
+                // If not initialized, return default (VGA with color)
+                let (active, alternate) = if code == 0 {
+                    (0x08, 0x00)
+                } else {
+                    (active_display, alternate_display)
+                };
+
+                // Return AL = 1Ah to indicate function is supported
+                self.ax = (self.ax & 0xFF00) | 0x1A;
+
+                // Return display codes in BL/BH
+                self.bx = (alternate as u16) << 8 | active as u16;
+
+                log::debug!(
+                    "INT 10h/AH=1Ah/AL=00h: Read display combination (active={:02X}h, alt={:02X}h)",
+                    active,
+                    alternate
+                );
+            }
+            0x01 => {
+                // Write display combination code
+                let active_display = (self.bx & 0xFF) as u8; // BL
+                let alternate_display = (self.bx >> 8) as u8; // BH
+
+                // Store in BDA
+                let code = (alternate_display as u16) << 8 | active_display as u16;
+                memory.write_u16(DISPLAY_CODE_ADDR, code);
+
+                // Return AL = 1Ah to indicate function is supported
+                self.ax = (self.ax & 0xFF00) | 0x1A;
+
+                log::debug!(
+                    "INT 10h/AH=1Ah/AL=01h: Write display combination (active={:02X}h, alt={:02X}h)",
+                    active_display,
+                    alternate_display
+                );
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 10h/AH=1Ah subfunction: AL=0x{:02X}",
+                    subfunction
+                );
+            }
+        }
+    }
+
+    /// INT 10h, AH=FEh - Get Video Buffer (TopView/DESQview/DOSSHELL)
+    /// Input: None
+    /// Output:
+    ///   ES:DI = segment:offset of video buffer for current page
+    ///
+    /// This function returns a pointer to the video buffer that applications
+    /// can write to directly for better performance. For standard text mode,
+    /// this is typically B800:0000 for color displays or B000:0000 for mono.
+    fn int10_get_video_buffer(&mut self, _memory: &mut Memory) {
+        // For color text mode, video buffer is at B800:0000
+        // For monochrome text mode, it's at B000:0000
+        // We'll assume color mode (most common)
+        let video_segment = 0xB800;
+        let video_offset = 0x0000;
+
+        // Return pointer in ES:DI
+        self.es = video_segment;
+        self.di = video_offset;
+
+        log::debug!(
+            "INT 10h/AH=FEh: Get video buffer -> ES:DI={:04X}:{:04X}",
+            self.es,
+            self.di
+        );
     }
 }
