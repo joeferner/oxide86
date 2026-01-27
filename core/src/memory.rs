@@ -40,6 +40,7 @@ pub const BDA_CRT_MODE_CONTROL: usize = 0x65; // CRT mode control register
 pub const BDA_CRT_PALETTE: usize = 0x66; // CRT palette register
 pub const BDA_TIMER_COUNTER: usize = 0x6C; // Timer counter (dword) - ticks since midnight
 pub const BDA_TIMER_OVERFLOW: usize = 0x70; // Timer midnight rollover flag (byte)
+pub const BDA_NUM_HARD_DRIVES: usize = 0x75; // Number of hard drives installed (byte)
 
 // Equipment list bits
 pub const EQUIPMENT_FLOPPY_INSTALLED: u16 = 0x0001;

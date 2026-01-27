@@ -163,8 +163,11 @@ impl<D: DiskController> Seek for DiskAdapter<D> {
 
 /// State for a single drive slot
 pub struct DriveState<D: DiskController> {
-    /// The disk adapter (None for empty floppy slot)
+    /// The disk adapter for filesystem operations (None for empty floppy slot)
     adapter: Option<DiskAdapter<D>>,
+    /// Raw disk adapter for INT 13h BIOS operations (Some for partitioned hard drives)
+    /// This allows reading the MBR which is not part of the partition
+    raw_adapter: Option<DiskAdapter<D>>,
     /// Current working directory for this drive (Unix-style path with forward slashes)
     current_dir: String,
     /// Disk change flag (true if disk was changed since last check)
@@ -178,6 +181,19 @@ impl<D: DiskController> DriveState<D> {
     pub fn new_with_disk(disk: D, removable: bool) -> Self {
         Self {
             adapter: Some(DiskAdapter::new(disk)),
+            raw_adapter: None,
+            current_dir: String::from("/"),
+            disk_changed: false,
+            removable,
+        }
+    }
+
+    /// Create a new drive state with both partitioned and raw disk adapters
+    /// Used for partitioned hard drives where INT 13h needs raw MBR access
+    pub fn new_with_partition(partition: D, raw_disk: D, removable: bool) -> Self {
+        Self {
+            adapter: Some(DiskAdapter::new(partition)),
+            raw_adapter: Some(DiskAdapter::new(raw_disk)),
             current_dir: String::from("/"),
             disk_changed: false,
             removable,
@@ -188,6 +204,7 @@ impl<D: DiskController> DriveState<D> {
     pub fn empty() -> Self {
         Self {
             adapter: None,
+            raw_adapter: None,
             current_dir: String::from("/"),
             disk_changed: false,
             removable: true,
@@ -326,6 +343,16 @@ impl<D: DiskController> DriveManager<D> {
         drive_number
     }
 
+    /// Add a partitioned hard drive with both partition and raw disk views
+    /// partition: Disk with partition offset (for DOS filesystem operations)
+    /// raw_disk: Raw disk without offset (for INT 13h MBR access)
+    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> u8 {
+        let drive_number = 0x80 + self.hard_drives.len() as u8;
+        self.hard_drives
+            .push(DriveState::new_with_partition(partition, raw_disk, false));
+        drive_number
+    }
+
     // === Drive Access ===
 
     /// Get mutable reference to a drive state
@@ -387,16 +414,21 @@ impl<D: DiskController> DriveManager<D> {
     // === Current Drive/Directory Management ===
 
     /// Get the current default drive
+    /// Returns DOS drive number (0=A, 1=B, 2=C, etc.)
     pub fn get_current_drive(&self) -> u8 {
-        self.current_drive
+        Self::internal_to_dos_drive(self.current_drive)
     }
 
     /// Set the current default drive
+    /// drive: DOS drive number (0=A, 1=B, 2=C, etc.)
     /// Returns the total number of logical drives on success
     pub fn set_current_drive(&mut self, drive: u8) -> Result<u8, u8> {
+        // Convert DOS drive number to internal format
+        let internal_drive = Self::dos_drive_to_internal(drive);
+
         // Verify drive exists
-        if self.get_drive(drive).is_some() {
-            self.current_drive = drive;
+        if self.get_drive(internal_drive).is_some() {
+            self.current_drive = internal_drive;
             // Return number of logical drives (floppies + hard drives)
             let floppy_count = 2u8; // Always report 2 floppy slots
             let hd_count = self.hard_drives.len() as u8;
@@ -430,6 +462,15 @@ impl<D: DiskController> DriveManager<D> {
             dos_drive // A: and B: are 0x00 and 0x01
         } else {
             0x80 + (dos_drive - 2) // C: onwards are 0x80+
+        }
+    }
+
+    /// Convert internal drive number (0x00, 0x01, 0x80, ...) to DOS (0=A, 1=B, 2=C, ...)
+    fn internal_to_dos_drive(internal_drive: u8) -> u8 {
+        if internal_drive < 0x80 {
+            internal_drive // A: (0x00) -> 0, B: (0x01) -> 1
+        } else {
+            2 + (internal_drive - 0x80) // C: (0x80) -> 2, D: (0x81) -> 3, etc.
         }
     }
 
@@ -1017,10 +1058,17 @@ impl<D: DiskController> DriveManager<D> {
         count: u8,
     ) -> Result<Vec<u8>, u8> {
         let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
-        let adapter = drive_state
-            .adapter
-            .as_ref()
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+
+        // Use raw_adapter for INT 13h if available (partitioned hard drives)
+        // This allows reading the MBR at sector 0
+        let adapter = if let Some(ref raw) = drive_state.raw_adapter {
+            raw
+        } else {
+            drive_state
+                .adapter
+                .as_ref()
+                .ok_or(disk_errors::DRIVE_NOT_READY)?
+        };
 
         let mut result = Vec::new();
 
@@ -1047,10 +1095,17 @@ impl<D: DiskController> DriveManager<D> {
         let drive_state = self
             .get_drive_mut(drive)
             .ok_or(disk_errors::DRIVE_NOT_READY)?;
-        let adapter = drive_state
-            .adapter
-            .as_mut()
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+
+        // Use raw_adapter for INT 13h if available (partitioned hard drives)
+        let use_raw = drive_state.raw_adapter.is_some();
+        let adapter = if use_raw {
+            drive_state.raw_adapter.as_mut().unwrap()
+        } else {
+            drive_state
+                .adapter
+                .as_mut()
+                .ok_or(disk_errors::DRIVE_NOT_READY)?
+        };
 
         if adapter.disk().is_read_only() {
             return Err(disk_errors::WRITE_PROTECTED);
@@ -1088,10 +1143,16 @@ impl<D: DiskController> DriveManager<D> {
 
     pub fn disk_get_params(&self, drive: u8) -> Result<DriveParams, u8> {
         let drive_state = self.get_drive(drive).ok_or(disk_errors::DRIVE_NOT_READY)?;
-        let adapter = drive_state
-            .adapter
-            .as_ref()
-            .ok_or(disk_errors::DRIVE_NOT_READY)?;
+
+        // Use raw_adapter for INT 13h if available (partitioned hard drives)
+        let adapter = if let Some(ref raw) = drive_state.raw_adapter {
+            raw
+        } else {
+            drive_state
+                .adapter
+                .as_ref()
+                .ok_or(disk_errors::DRIVE_NOT_READY)?
+        };
 
         let geometry = adapter.disk().geometry();
 

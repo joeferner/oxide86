@@ -537,6 +537,12 @@ impl<D: DiskController> DiskController for PartitionedDisk<D> {
 
         // Offset LBA by partition start
         let absolute_lba = self.partition_start + lba;
+        log::debug!(
+            "PartitionedDisk::read_sector_lba: partition LBA {} → absolute LBA {} (partition starts at {})",
+            lba,
+            absolute_lba,
+            self.partition_start
+        );
         self.disk.read_sector_lba(absolute_lba)
     }
 

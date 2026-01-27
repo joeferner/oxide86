@@ -59,6 +59,22 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             (initial_ticks >> 16) as u16,
         );
 
+        // Initialize BDA hard drive count
+        // Query drive 0x80 to get the number of installed hard drives
+        let hard_drive_count = bios
+            .disk_get_params(0x80)
+            .map(|params| params.drive_count)
+            .unwrap_or(0);
+        memory.write_byte(
+            memory::BDA_START + memory::BDA_NUM_HARD_DRIVES,
+            hard_drive_count,
+        );
+        log::info!(
+            "BDA: Set hard drive count to {} at offset 0x{:04X}",
+            hard_drive_count,
+            memory::BDA_START + memory::BDA_NUM_HARD_DRIVES
+        );
+
         Self {
             cpu: Cpu::new(),
             memory,
@@ -202,21 +218,6 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         let current_cs = self.cpu.cs;
         let addr = Cpu::physical_address(current_cs, current_ip);
         let opcode = self.memory.read_byte(addr);
-
-        // Log instruction execution with step counter
-        log::trace!(
-            "[{:06}] {:04X}:{:04X} op={:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X} SP={:04X} SS={:04X}",
-            self.step_count,
-            current_cs,
-            current_ip,
-            opcode,
-            self.cpu.ax,
-            self.cpu.bx,
-            self.cpu.cx,
-            self.cpu.dx,
-            self.cpu.sp,
-            self.cpu.ss
-        );
 
         // Check if it's an INT instruction
         match opcode {

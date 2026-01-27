@@ -56,6 +56,13 @@ impl<D: DiskController> NativeBios<D> {
         self.drive_manager.add_hard_drive(disk)
     }
 
+    /// Add a partitioned hard drive with both partition and raw disk views
+    /// This allows INT 13h to read the MBR while DOS file operations use the partition
+    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> u8 {
+        self.drive_manager
+            .add_hard_drive_with_partition(partition, raw_disk)
+    }
+
     /// Check if a filename is a DOS device name
     fn is_dos_device(filename: &str) -> Option<DosDevice> {
         // DOS device names are case-insensitive and may have extensions

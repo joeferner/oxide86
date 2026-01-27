@@ -279,22 +279,10 @@ impl Cpu {
     /// IRET - Interrupt Return (opcode CF)
     /// Returns from interrupt handler
     pub(in crate::cpu) fn iret(&mut self, memory: &mut Memory) {
-        let old_cs = self.cs;
-        let old_ip = self.ip;
-
         // Pop IP, CS, and flags
         let new_ip = self.pop(memory);
         let new_cs = self.pop(memory);
         let new_flags = self.pop(memory);
-
-        log::trace!(
-            "IRET from {:04X}:{:04X} -> {:04X}:{:04X} flags={:04X}",
-            old_cs,
-            old_ip,
-            new_cs,
-            new_ip,
-            new_flags
-        );
 
         self.ip = new_ip;
         self.cs = new_cs;

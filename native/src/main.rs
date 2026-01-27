@@ -117,10 +117,18 @@ fn main() -> Result<()> {
                 partition.start_sector,
                 partition.sector_count
             );
+            // Open the file again for raw disk access
+            let raw_backend = FileDiskBackend::open(path, false)?;
+            let raw_disk = BackedDisk::new(raw_backend)
+                .with_context(|| format!("Failed to create raw disk from: {}", path))?;
+
             use emu86_core::PartitionedDisk;
             let partitioned =
                 PartitionedDisk::new(disk, partition.start_sector, partition.sector_count);
-            bios.add_hard_drive(MaybePartitionedDisk::Partitioned(partitioned))
+            bios.add_hard_drive_with_partition(
+                MaybePartitionedDisk::Partitioned(partitioned),
+                MaybePartitionedDisk::Raw(raw_disk),
+            )
         } else {
             log::info!("No MBR detected on {}, using raw disk", path);
             bios.add_hard_drive(MaybePartitionedDisk::Raw(disk))

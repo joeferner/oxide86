@@ -47,14 +47,18 @@ impl Cpu {
         video: &mut crate::video::Video,
     ) {
         let function = (self.ax >> 8) as u8; // Get AH directly
-        log::trace!(
-            "INT 21h AH=0x{:02X}, AX=0x{:04X}, BX=0x{:04X}, CX=0x{:04X}, DX=0x{:04X}",
-            function,
-            self.ax,
-            self.bx,
-            self.cx,
-            self.dx
-        );
+
+        // Log all DOS calls at debug level for easier troubleshooting
+        if function != 0x01 && function != 0x02 && function != 0x06 && function != 0x09 {
+            log::debug!(
+                "INT 21h AH=0x{:02X}, AX=0x{:04X}, BX=0x{:04X}, CX=0x{:04X}, DX=0x{:04X}",
+                function,
+                self.ax,
+                self.bx,
+                self.cx,
+                self.dx
+            );
+        }
 
         match function {
             0x01 => self.int21_read_char_with_echo(io, video),
@@ -69,6 +73,7 @@ impl Cpu {
             0x19 => self.int21_get_current_drive(io),
             0x25 => self.int21_set_interrupt_vector(memory),
             0x30 => self.int21_get_dos_version(),
+            0x32 => self.int21_get_dpb(memory, io),
             0x35 => self.int21_get_interrupt_vector(memory),
             0x36 => self.int21_get_disk_free_space(io),
             0x37 => self.int21_switch_char(),
@@ -820,8 +825,140 @@ impl Cpu {
     ///   AL = number of logical drives in system
     fn int21_select_disk<T: Bios>(&mut self, io: &mut T) {
         let drive = (self.dx & 0xFF) as u8; // DL
+        log::debug!("INT 21h AH=0Eh: Select disk {}", drive);
         let num_drives = io.set_default_drive(drive);
+        log::debug!(
+            "INT 21h AH=0Eh: Selected drive {}, returning {} total drives",
+            drive,
+            num_drives
+        );
         self.ax = (self.ax & 0xFF00) | (num_drives as u16);
+    }
+
+    /// INT 21h, AH=32h - Get Drive Parameter Block (DPB) (undocumented)
+    /// Input:
+    ///   DL = drive number (0=default, 1=A, 2=B, 3=C, etc.)
+    /// Output:
+    ///   AL = 00h if drive valid, FFh if invalid
+    ///   DS:BX = pointer to Drive Parameter Block (DPB)
+    fn int21_get_dpb<T: Bios>(&mut self, memory: &mut Memory, io: &T) {
+        let drive_num = (self.dx & 0xFF) as u8; // DL
+
+        // Convert to internal drive number
+        let internal_drive = if drive_num == 0 {
+            io.get_current_drive()
+        } else if drive_num == 1 {
+            0x00 // A:
+        } else if drive_num == 2 {
+            0x01 // B:
+        } else {
+            0x80 + (drive_num - 3) // C:=0x80, D:=0x81, etc.
+        };
+
+        log::debug!(
+            "INT 21h AH=32h: Get DPB for drive {} (internal 0x{:02X})",
+            drive_num,
+            internal_drive
+        );
+
+        // Check if drive exists
+        match io.disk_get_params(internal_drive) {
+            Ok(_params) => {
+                // Drive exists - create a DPB structure in memory
+                // We'll use a fixed location in high memory for DPB storage
+                // Offset 0x500 (just after BDA) is a safe area
+                let dpb_addr = 0x0500 + (internal_drive as usize * 64); // 64 bytes per DPB
+
+                // Build a minimal DPB structure
+                // +0: Drive number (0=A, 1=B, 2=C, etc.)
+                let dos_drive = if internal_drive < 0x80 {
+                    internal_drive
+                } else {
+                    2 + (internal_drive - 0x80)
+                };
+                memory.write_byte(dpb_addr, dos_drive);
+
+                // +1: Unit number within driver
+                memory.write_byte(dpb_addr + 1, 0);
+
+                // +2: Bytes per sector (word)
+                memory.write_word(dpb_addr + 2, 512);
+
+                // +4: Sectors per cluster - 1 (byte)
+                memory.write_byte(dpb_addr + 4, 3); // 4 sectors per cluster
+
+                // +5: Cluster to sector shift (byte)
+                memory.write_byte(dpb_addr + 5, 2); // log2(4) = 2
+
+                // +6: Reserved sectors (word)
+                memory.write_word(dpb_addr + 6, 1); // Boot sector
+
+                // +8: Number of FATs (byte)
+                memory.write_byte(dpb_addr + 8, 2);
+
+                // +9: Root directory entries (word)
+                memory.write_word(dpb_addr + 9, 512);
+
+                // +11: First data sector (word)
+                memory.write_word(dpb_addr + 11, 33); // After boot, FATs, and root
+
+                // +13: Highest cluster number + 1 (word)
+                if let Ok((_drive_type, total_sectors)) = io.disk_get_type(internal_drive) {
+                    let clusters = (total_sectors / 4) as u16;
+                    memory.write_word(dpb_addr + 13, clusters);
+                } else {
+                    memory.write_word(dpb_addr + 13, 1000); // Default
+                }
+
+                // +15: Sectors per FAT (byte in DOS 2.x, word in DOS 3+)
+                memory.write_word(dpb_addr + 15, 9); // Typical for small disk
+
+                // +17: First directory sector (word)
+                memory.write_word(dpb_addr + 17, 19); // After boot and FATs
+
+                // +19: Device driver header (dword)
+                memory.write_word(dpb_addr + 19, 0xFFFF);
+                memory.write_word(dpb_addr + 21, 0xFFFF);
+
+                // +23: Media descriptor (byte)
+                let media_id = if internal_drive < 0x80 {
+                    0xF0 // Floppy
+                } else {
+                    0xF8 // Hard disk
+                };
+                memory.write_byte(dpb_addr + 23, media_id);
+
+                // +24: Access flag (byte) - 0 = accessed
+                memory.write_byte(dpb_addr + 24, 0);
+
+                // +25: Next DPB pointer (dword)
+                memory.write_word(dpb_addr + 25, 0xFFFF);
+                memory.write_word(dpb_addr + 27, 0xFFFF);
+
+                // Return pointer in DS:BX
+                let dpb_seg = (dpb_addr >> 4) as u16;
+                let dpb_off = (dpb_addr & 0x0F) as u16;
+                self.ds = dpb_seg;
+                self.bx = dpb_off;
+                self.ax &= 0xFF00; // AL = 00h (success)
+
+                log::debug!(
+                    "INT 21h AH=32h: DPB created at {:04X}:{:04X} for drive {}",
+                    dpb_seg,
+                    dpb_off,
+                    dos_drive
+                );
+            }
+            Err(_) => {
+                // Drive doesn't exist
+                self.ax = (self.ax & 0xFF00) | 0xFF; // AL = FFh (invalid)
+                log::warn!(
+                    "INT 21h AH=32h: Invalid drive {} (internal 0x{:02X})",
+                    drive_num,
+                    internal_drive
+                );
+            }
+        }
     }
 
     /// INT 21h, AH=37h - Get/Set Switch Character (DOS 2.x)

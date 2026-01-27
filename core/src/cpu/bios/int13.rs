@@ -103,6 +103,15 @@ impl Cpu {
         // For 8086, we only support 8-bit cylinders (compatibility mode)
         let cylinder_8bit = cylinder_low;
 
+        log::debug!(
+            "INT 13h AH=02h: Read {} sectors from drive 0x{:02X}, C/H/S={}/{}/{}",
+            count,
+            drive,
+            cylinder_8bit,
+            head,
+            sector
+        );
+
         match io.disk_read_sectors(drive, cylinder_8bit, head, sector, count) {
             Ok(data) => {
                 // Write data to ES:BX
@@ -114,11 +123,24 @@ impl Cpu {
                 // Calculate actual sectors read
                 let sectors_read = (data.len() / 512).min(count as usize) as u8;
 
+                log::debug!(
+                    "INT 13h AH=02h: Successfully read {} sectors from drive 0x{:02X} to {:04X}:{:04X}",
+                    sectors_read,
+                    drive,
+                    self.es,
+                    self.bx
+                );
+
                 self.ax = (self.ax & 0xFF00) | (sectors_read as u16); // AL = sectors read
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
+                log::warn!(
+                    "INT 13h AH=02h: Read failed for drive 0x{:02X}, error code 0x{:02X}",
+                    drive,
+                    error_code
+                );
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.ax &= 0xFF00; // AL = 0 (no sectors read)
                 self.set_flag(cpu_flag::CARRY, true);
