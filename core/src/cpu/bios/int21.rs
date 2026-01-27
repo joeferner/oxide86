@@ -959,6 +959,14 @@ impl Cpu {
         let subfunction = (self.ax & 0xFF) as u8; // AL
         let handle = self.bx;
 
+        log::info!(
+            "INT 21h AH=44h: IOCTL AL=0x{:02X}, BX=0x{:04X}, CX=0x{:04X}, DX=0x{:04X}",
+            subfunction,
+            self.bx,
+            self.cx,
+            self.dx
+        );
+
         match subfunction {
             0x00 => {
                 // Get device information
@@ -1055,6 +1063,31 @@ impl Cpu {
                 );
 
                 match (category, function) {
+                    (0x08, 0x40) => {
+                        // Set device parameters
+                        log::info!("  Set device parameters for DOS drive {}", drive);
+                        // For now, just acknowledge success without modifying anything
+                        self.set_flag(cpu_flag::CARRY, false);
+                    }
+                    (0x08, 0x42) => {
+                        // Format and verify track
+                        log::info!("  Format and verify track for DOS drive {}", drive);
+                        match self.int21_ioctl_format_track(memory, io, drive) {
+                            Ok(()) => {
+                                self.set_flag(cpu_flag::CARRY, false);
+                            }
+                            Err(error_code) => {
+                                self.ax = error_code as u16;
+                                self.set_flag(cpu_flag::CARRY, true);
+                            }
+                        }
+                    }
+                    (0x08, 0x47) => {
+                        // Set access flag (for volume label writes during format)
+                        log::info!("  Set access flag for DOS drive {}", drive);
+                        // Just acknowledge success
+                        self.set_flag(cpu_flag::CARRY, false);
+                    }
                     (0x08, 0x60) => {
                         // Get device parameters
                         log::info!("  Get device parameters for DOS drive {}", drive);
@@ -1200,6 +1233,68 @@ impl Cpu {
             hidden_sectors
         );
 
+        Ok(())
+    }
+
+    /// INT 21h, AH=44h AL=0Dh CL=42h - Format and Verify Track
+    /// Input:
+    ///   drive = DOS drive number
+    ///   DS:DX = pointer to format parameter block:
+    ///     Byte 0: Special functions (0 = default)
+    ///     Bytes 1-2: Track/cylinder number (word)
+    ///     Bytes 3-4: Head number (word)
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code
+    fn int21_ioctl_format_track<T: Bios>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut T,
+        drive: DriveNumber,
+    ) -> Result<(), u8> {
+        // Get pointer to parameter block (DS:DX)
+        let seg = self.ds;
+        let offset = self.dx;
+        let addr = (seg as usize) * 16 + offset as usize;
+
+        // Read parameters from parameter block
+        let _special_functions = memory.read_u8(addr);
+        let cylinder = memory.read_u16(addr + 1);
+        let head = memory.read_u16(addr + 3);
+
+        log::info!(
+            "  Format track: drive={}, cyl={}, head={}",
+            drive,
+            cylinder,
+            head
+        );
+
+        // Get drive parameters to determine sectors per track
+        let params = io
+            .disk_get_params(drive)
+            .map_err(|_| dos_errors::INVALID_DRIVE)?;
+
+        let sectors_per_track = params.max_sector;
+
+        // Format the track using INT 13h function
+        io.disk_format_track(drive, cylinder as u8, head as u8, sectors_per_track)
+            .map_err(|error_code| {
+                log::warn!(
+                    "  Format track failed: drive={}, cyl={}, head={}, error=0x{:02X}",
+                    drive,
+                    cylinder,
+                    head,
+                    error_code
+                );
+                // Map disk error codes to DOS error codes
+                match error_code {
+                    0x03 => dos_errors::ACCESS_DENIED, // Write protected
+                    0xAA => dos_errors::ACCESS_DENIED, // Drive not ready
+                    _ => dos_errors::ACCESS_DENIED,
+                }
+            })?;
+
+        log::info!("  Format track succeeded");
         Ok(())
     }
 

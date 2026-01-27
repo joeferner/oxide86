@@ -453,6 +453,7 @@ impl Cpu {
             }
             0x21 => {
                 if !Self::is_bios_handler(memory, int_num) {
+                    log::debug!("INT 0x21 handled by dos");
                     return false; // Let DOS handle it
                 }
                 self.handle_int21(memory, io, video);
