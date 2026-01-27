@@ -208,6 +208,51 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         // Get current IP to check what opcode we're about to execute
         let current_ip = self.cpu.ip;
         let current_cs = self.cpu.cs;
+
+        // Check if we're executing in BIOS ROM area (0xF000 segment)
+        // This handles DOS interrupt handlers that chain back to BIOS via PUSHF + CALL FAR
+        if current_cs == 0xF000 {
+            // The IVT was initialized with unique offsets for each interrupt:
+            // INT 0x13 -> F000:0013, INT 0x21 -> F000:0021, etc.
+            // The offset tells us which interrupt this is!
+            let int_num = (current_ip & 0xFF) as u8;
+
+            log::debug!(
+                "BIOS ROM execution detected at {:04X}:{:04X}, handling as INT 0x{:02X}",
+                current_cs,
+                current_ip,
+                int_num
+            );
+
+            // DOS typically does: PUSHF, CALL FAR old_handler
+            // The stack has: [SP] = IP, [SP+2] = CS, [SP+4] = FLAGS
+            // Pop the return address (simulating return from CALL FAR)
+            let ret_offset = self.cpu.pop(&self.memory);
+            let ret_segment = self.cpu.pop(&self.memory);
+
+            // Call our BIOS handler directly
+            // We need to bypass the IVT check since we're already being called via CALL FAR from DOS
+            // Handle the interrupt directly based on int_num
+            self.cpu.handle_bios_interrupt_direct(
+                int_num,
+                &mut self.memory,
+                &mut self.bios,
+                &mut self.video,
+            );
+
+            // Pop the FLAGS that DOS pushed before CALL FAR
+            let saved_flags = self.cpu.pop(&self.memory);
+            // BIOS may have modified flags (especially CF for error indication)
+            // Merge: keep the modified CF, ZF, etc. from BIOS, but restore IF from DOS
+            self.cpu.flags = (self.cpu.flags & 0xF8FF) | (saved_flags & 0x0700); // Restore IF, TF, DF
+
+            // Return to DOS
+            self.cpu.ip = ret_offset;
+            self.cpu.cs = ret_segment;
+
+            return;
+        }
+
         let addr = Cpu::physical_address(current_cs, current_ip);
         let opcode = self.memory.read_u8(addr);
 
@@ -216,26 +261,6 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             0xCD => {
                 // INT with immediate - need to fetch the interrupt number
                 let int_num = self.memory.read_u8(addr + 1);
-
-                // Log the interrupt with register state
-                if int_num != 0x16
-                    && int_num != 0x28
-                    && int_num != 0x2A
-                    && int_num != 0x1A
-                    && int_num != 0x10
-                    && int_num != 0x29
-                {
-                    log::info!(
-                        "INT 0x{:02X} - AX=0x{:04X} BX=0x{:04X} CX=0x{:04X} DX=0x{:04X} DS=0x{:04X} ES=0x{:04X}",
-                        int_num,
-                        self.cpu.ax,
-                        self.cpu.bx,
-                        self.cpu.cx,
-                        self.cpu.dx,
-                        self.cpu.ds,
-                        self.cpu.es
-                    );
-                }
 
                 // Manually advance IP past the INT instruction
                 self.cpu.ip = self.cpu.ip.wrapping_add(2);

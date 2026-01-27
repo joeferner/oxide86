@@ -392,119 +392,91 @@ impl Cpu {
     /// Returns true if the vector is in BIOS ROM area, false if DOS has installed its own handler
     fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
         let ivt_addr = (int_num as usize) * 4;
+        let offset = memory.read_u16(ivt_addr);
         let segment = memory.read_u16(ivt_addr + 2);
+        let is_bios = segment == 0xF000;
+
+        // Log for INT 13h to debug boot issues
+        if int_num == 0x13 {
+            log::debug!(
+                "is_bios_handler: INT 0x{:02X} points to {:04X}:{:04X}, is_bios={}",
+                int_num,
+                segment,
+                offset,
+                is_bios
+            );
+        }
+
         // BIOS handlers are in the F000 segment (ROM area)
-        segment == 0xF000
+        is_bios
+    }
+
+    /// Handle BIOS interrupt directly without checking IVT
+    /// Used when DOS chains back to BIOS via CALL FAR to F000:XXXX
+    pub(crate) fn handle_bios_interrupt_direct<T: Bios>(
+        &mut self,
+        int_num: u8,
+        memory: &mut Memory,
+        io: &mut T,
+        video: &mut crate::video::Video,
+    ) {
+        self.handle_bios_interrupt_impl(int_num, memory, io, video);
     }
 
     /// Handle BIOS/DOS interrupts with provided I/O handler
     /// Returns true if the interrupt was handled, false if it should proceed normally
-    pub(super) fn handle_bios_interrupt<T: Bios>(
+    pub(crate) fn handle_bios_interrupt<T: Bios>(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
         io: &mut T,
         video: &mut crate::video::Video,
     ) -> bool {
+        // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
+        // let DOS handle it instead of intercepting
+        if !Self::is_bios_handler(memory, int_num) {
+            if int_num == 0x13 {
+                log::debug!(
+                    "INT 0x{:02X}: DOS handler detected, letting normal INT mechanism proceed",
+                    int_num
+                );
+            }
+            return false;
+        }
+
+        self.handle_bios_interrupt_impl(int_num, memory, io, video);
+        true
+    }
+
+    /// Internal implementation of BIOS interrupt handling
+    fn handle_bios_interrupt_impl<T: Bios>(
+        &mut self,
+        int_num: u8,
+        memory: &mut Memory,
+        io: &mut T,
+        video: &mut crate::video::Video,
+    ) {
         match int_num {
-            0x10 => {
-                self.handle_int10(memory, video);
-                true
-            }
-            0x11 => {
-                self.handle_int11(memory);
-                true
-            }
-            0x12 => {
-                self.handle_int12(memory);
-                true
-            }
-            0x13 => {
-                self.handle_int13(memory, io);
-                true
-            }
-            0x14 => {
-                self.handle_int14(memory, io);
-                true
-            }
-            0x15 => {
-                self.handle_int15(memory, io);
-                true
-            }
-            0x16 => {
-                self.handle_int16(memory, io);
-                true
-            }
-            0x17 => {
-                self.handle_int17(memory, io);
-                true
-            }
-            0x1A => {
-                self.handle_int1a(memory, io);
-                true
-            }
-            // DOS interrupts: only handle if DOS hasn't installed its own handler
-            0x20 => {
-                if !Self::is_bios_handler(memory, int_num) {
-                    return false; // Let DOS handle it
-                }
-                self.handle_int20();
-                true
-            }
-            0x21 => {
-                if !Self::is_bios_handler(memory, int_num) {
-                    log::debug!("INT 0x21 handled by dos");
-                    return false; // Let DOS handle it
-                }
-                self.handle_int21(memory, io, video);
-                true
-            }
-            0x25 => {
-                if !Self::is_bios_handler(memory, int_num) {
-                    return false; // Let DOS handle it
-                }
-                self.handle_int25(memory, io);
-                true
-            }
-            0x28 => {
-                if !Self::is_bios_handler(memory, int_num) {
-                    return false; // Let DOS handle it
-                }
-                self.handle_int28();
-                true
-            }
-            0x29 => {
-                if !Self::is_bios_handler(memory, int_num) {
-                    return false; // Let DOS handle it
-                }
-                self.handle_int29(video);
-                true
-            }
-            0x2A => {
-                if !Self::is_bios_handler(memory, int_num) {
-                    return false; // Let DOS handle it
-                }
-                self.handle_int2a();
-                true
-            }
-            0x2F => {
-                if !Self::is_bios_handler(memory, int_num) {
-                    return false; // Let DOS handle it
-                }
-                self.handle_int2f(memory, io);
-                true
-            }
-            0x35..=0x3F => {
-                if !Self::is_bios_handler(memory, int_num) {
-                    return false; // Let DOS handle it
-                }
-                self.handle_int35_3f(int_num);
-                true
-            }
+            0x10 => self.handle_int10(memory, video),
+            0x11 => self.handle_int11(memory),
+            0x12 => self.handle_int12(memory),
+            0x13 => self.handle_int13(memory, io),
+            0x14 => self.handle_int14(memory, io),
+            0x15 => self.handle_int15(memory, io),
+            0x16 => self.handle_int16(memory, io),
+            0x17 => self.handle_int17(memory, io),
+            0x1A => self.handle_int1a(memory, io),
+            0x20 => self.handle_int20(),
+            0x21 => self.handle_int21(memory, io, video),
+            0x25 => self.handle_int25(memory, io),
+            0x28 => self.handle_int28(),
+            0x29 => self.handle_int29(video),
+            0x2A => self.handle_int2a(),
+            0x2F => self.handle_int2f(memory, io),
+            0x35..=0x3F => self.handle_int35_3f(int_num),
             // Other BIOS interrupts can be added here
             _ => {
                 log::warn!("Unhandled BIOS interrupt: 0x{:02X}", int_num);
-                false // Not handled, proceed with normal interrupt mechanism
             }
         }
     }

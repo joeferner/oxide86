@@ -96,6 +96,30 @@ impl Memory {
 
     pub fn write_u8(&mut self, address: usize, value: u8) {
         let addr = address % MEMORY_SIZE;
+
+        // Log writes to Interrupt Vector Table (IVT)
+        if (IVT_START..=IVT_END).contains(&addr) {
+            // Determine which interrupt vector is being modified
+            let int_num = addr / IVT_ENTRY_SIZE;
+            let byte_offset = addr % IVT_ENTRY_SIZE;
+
+            // Only log when the first byte of a vector is written to reduce noise
+            if byte_offset == 0 {
+                // Read the complete vector (will be partially old, partially new after this write)
+                let offset_low = value as u16; // This byte being written now
+                let offset_high = self.data[addr + 1] as u16;
+                let segment_low = self.data[addr + 2] as u16;
+                let segment_high = self.data[addr + 3] as u16;
+                log::debug!(
+                    "IVT Write: INT 0x{:02X} vector being modified (addr 0x{:04X}), will be {:04X}:{:04X}+",
+                    int_num,
+                    addr,
+                    (segment_high << 8) | segment_low,
+                    (offset_high << 8) | offset_low
+                );
+            }
+        }
+
         self.data[addr] = value;
 
         // Check if write is in video memory range
@@ -121,28 +145,30 @@ impl Memory {
     /// Initialize the Interrupt Vector Table (IVT)
     /// Sets up interrupt handlers for BIOS and DOS-like services
     pub fn initialize_ivt(&mut self) {
+        log::debug!("BEGIN initialize_ivt");
+
         // IVT is at 0x0000-0x03FF (256 entries * 4 bytes each)
         // Each entry contains: [offset_low, offset_high, segment_low, segment_high]
 
-        // Default handler for unimplemented interrupts (points to IRET)
-        // We'll place a simple IRET handler at F000:0000
-        let default_offset = 0x0000;
+        // Initialize each interrupt vector to a unique offset in the F000 segment
+        // This allows us to identify which interrupt was called when DOS chains back to BIOS
+        // Format: F000:XXYY where XX is the interrupt number high byte, YY is low byte
+        // For example: INT 13h -> F000:0013, INT 21h -> F000:0021
         let default_segment = 0xF000;
 
-        // Initialize all 256 interrupt vectors to default handler
+        // Initialize all 256 interrupt vectors with unique offsets
         for int_num in 0..256 {
             let ivt_addr = int_num * IVT_ENTRY_SIZE;
-            self.write_u16(ivt_addr, default_offset);
+            let offset = int_num as u16; // Use interrupt number as offset
             self.write_u16(ivt_addr + 2, default_segment);
+            self.write_u16(ivt_addr, offset);
+
+            // Write IRET instruction at each handler location
+            let handler_addr = ((default_segment as usize) << 4) + (offset as usize);
+            self.write_u8(handler_addr, 0xCF); // IRET instruction
         }
 
-        // Set up specific interrupt handlers
-        // INT 0x21: DOS-like services (at F000:0100)
-        self.set_interrupt_vector(0x21, 0xF000, 0x0100);
-
-        // Write the default IRET handler at F000:0000
-        let iret_addr = ((default_segment as usize) << 4) + (default_offset as usize);
-        self.write_u8(iret_addr, 0xCF); // IRET instruction
+        log::debug!("END initialize_ivt");
     }
 
     /// Set an interrupt vector in the IVT

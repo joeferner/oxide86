@@ -248,9 +248,24 @@ impl Cpu {
         let segment = self.ds;
         let offset = self.dx;
 
+        // Read old vector for logging
+        let ivt_addr = (int_num as usize) * 4;
+        let old_offset =
+            memory.read_u8(ivt_addr) as u16 | ((memory.read_u8(ivt_addr + 1) as u16) << 8);
+        let old_segment =
+            memory.read_u8(ivt_addr + 2) as u16 | ((memory.read_u8(ivt_addr + 3) as u16) << 8);
+
+        log::debug!(
+            "INT 21h AH=25h: Set INT 0x{:02X} vector from {:04X}:{:04X} to {:04X}:{:04X}",
+            int_num,
+            old_segment,
+            old_offset,
+            segment,
+            offset
+        );
+
         // Interrupt vector table is at 0000:0000
         // Each entry is 4 bytes: offset (2 bytes) + segment (2 bytes)
-        let ivt_addr = (int_num as usize) * 4;
 
         // Write offset (low word)
         memory.write_u8(ivt_addr, (offset & 0xFF) as u8);

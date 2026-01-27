@@ -408,13 +408,12 @@ impl Cpu {
         let tracks_high = (sectors_and_tracks_high >> 6) & 0x03; // Bits 6-7
         let tracks = ((tracks_high as u16) << 8) | (tracks_low as u16);
 
-        // Only support floppy drives (0x00-0x7F)
-        if !drive.is_floppy() {
-            // Hard disks don't support this function
-            self.ax = (self.ax & 0x00FF) | (0x80_u16 << 8); // AH = 0x80 (not supported)
-            self.set_flag(cpu_flag::CARRY, true);
-            return;
-        }
+        log::debug!(
+            "INT 13h AH=18h: Set DASD Type for drive {}, tracks={}, sectors_per_track={}",
+            drive,
+            tracks,
+            sectors_per_track
+        );
 
         // Verify drive exists and get its parameters
         match io.disk_get_params(drive) {
@@ -459,9 +458,15 @@ impl Cpu {
                 self.di = DBT_OFFSET;
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
+                log::debug!(
+                    "INT 13h AH=18h: Success, DBT at {:04X}:{:04X}",
+                    DBT_SEGMENT,
+                    DBT_OFFSET
+                );
             }
             Err(_) => {
                 // Drive not present
+                log::debug!("INT 13h AH=18h: Drive {} not present", drive);
                 self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
                 self.set_flag(cpu_flag::CARRY, true);
             }
