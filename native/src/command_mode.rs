@@ -1,7 +1,10 @@
 use anyhow::Result;
-use crossterm::event::{self, Event, KeyCode};
+use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
+use crossterm::style::Print;
+use crossterm::terminal::ClearType;
+use crossterm::{cursor, execute, terminal};
 use emu86_core::{BackedDisk, Computer, DriveNumber};
-use std::io::{self, Write};
+use std::io::{self, Stdout, Write, stdout};
 
 use crate::bios::NativeBios;
 use crate::disk_backend::FileDiskBackend;
@@ -12,36 +15,34 @@ fn read_line_raw() -> Option<String> {
     let mut stdout = io::stdout();
 
     loop {
+        // event::read() blocks until an event occurs
         if let Ok(Event::Key(key_event)) = event::read() {
+            // Ignore key 'Release' events (mostly relevant for Windows)
+            if key_event.kind == KeyEventKind::Release {
+                continue;
+            }
+
             match key_event.code {
                 KeyCode::Enter => {
-                    print!("\r\n");
-                    stdout.flush().ok()?;
+                    let _ = execute!(stdout, Print("\r\n"));
                     return Some(line);
                 }
                 KeyCode::Backspace => {
                     if !line.is_empty() {
                         line.pop();
-                        // Move back, print space, move back again
-                        print!("\x08 \x08");
-                        stdout.flush().ok()?;
+                        // Move back, overwrite with space, move back again
+                        let _ =
+                            execute!(stdout, cursor::MoveLeft(1), Print(" "), cursor::MoveLeft(1));
                     }
                 }
-                KeyCode::Char('c')
-                    if key_event
-                        .modifiers
-                        .contains(crossterm::event::KeyModifiers::CONTROL) =>
-                {
-                    print!("^C\r\n");
-                    stdout.flush().ok()?;
+                KeyCode::Char('c') if key_event.modifiers.contains(KeyModifiers::CONTROL) => {
+                    let _ = execute!(stdout, Print("^C\r\n"));
                     return None;
                 }
-                KeyCode::Char(c) if (0x20..=0x7E).contains(&(c as u8)) => {
+                KeyCode::Char(c) => {
                     line.push(c);
-                    print!("{}", c);
-                    stdout.flush().ok()?;
+                    let _ = execute!(stdout, Print(c));
                 }
-                // Ignore other keys (arrows, function keys, etc.)
                 _ => {}
             }
         }
@@ -123,46 +124,53 @@ fn parse_command(input: &str) -> Result<Command> {
     Err(anyhow::anyhow!("Invalid command. Type 'help' for usage."))
 }
 
-fn show_help() {
-    println!("Commands:");
-    println!("  load a path/to/disk.img   - Insert disk into drive A:");
-    println!("  load b path/to/disk.img   - Insert disk into drive B:");
-    println!("  eject a                   - Eject floppy from drive A:");
-    println!("  eject b                   - Eject floppy from drive B:");
-    println!("  resume (or Enter)         - Resume emulation");
-    println!("  quit                      - Halt emulator and exit\r");
+fn show_help(stdout: &mut Stdout) -> Result<()> {
+    execute!(
+        stdout,
+        Print("Commands:\r\n"),
+        Print("  load a path/to/disk.img   - Insert disk into drive A:\r\n"),
+        Print("  load b path/to/disk.img   - Insert disk into drive B:\r\n"),
+        Print("  eject a                   - Eject floppy from drive A:\r\n"),
+        Print("  eject b                   - Eject floppy from drive B:\r\n"),
+        Print("  resume (or Enter)         - Resume emulation\r\n"),
+        Print("  q, quit, exit             - Halt emulator and exit\r\n"),
+    )?;
+    Ok(())
 }
 
 /// Handle command mode for runtime operations (floppy swapping, etc.)
 /// Returns true to continue emulation, false to halt
 pub fn handle_command_mode<I, V>(
     computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, I, V>,
-) -> bool
+) -> Result<bool>
 where
     I: emu86_core::IoDevice,
     V: emu86_core::VideoController,
 {
+    let mut stdout = stdout();
+
     // Save current screen state
     // We'll use an alternate screen buffer approach: clear screen, show menu,
     // then restore by redrawing the video buffer
 
-    // Use ANSI escape codes to save cursor position and clear screen
-    print!("\x1b[s"); // Save cursor position
-    print!("\x1b[2J"); // Clear screen
-    print!("\x1b[H"); // Move to home position
-    io::stdout().flush().ok();
+    execute!(
+        stdout,
+        cursor::SavePosition,
+        terminal::Clear(ClearType::All),
+        cursor::MoveTo(0, 0),
+    )?;
 
-    println!("=== Command Mode (F12) ===\r");
-    show_help();
+    execute!(stdout, Print("=== Command Mode (F12) ===\r\n"))?;
+    show_help(&mut stdout)?;
 
     let should_continue = loop {
-        print!("\r\nCommand> ");
+        execute!(stdout, Print("\r\nCommand> "))?;
         io::stdout().flush().ok();
 
         let input = match read_line_raw() {
             Some(line) => line,
             None => {
-                println!("Cancelled.\r");
+                execute!(stdout, Print("Cancelled.\r\n"))?;
                 break true; // Continue emulation
             }
         };
@@ -170,44 +178,53 @@ where
         let command = match parse_command(&input) {
             Ok(cmd) => cmd,
             Err(e) => {
-                println!("Error: {}\r", e);
+                execute!(stdout, Print(format!("Error: {}\r\n", e)))?;
                 continue;
             }
         };
 
         match command {
             Command::Help => {
-                show_help();
+                show_help(&mut stdout)?;
             }
             Command::Resume => {
-                println!("Resuming emulation...\r");
+                execute!(stdout, Print("Resuming emulation...\r\n"))?;
                 break true;
             }
             Command::Quit => {
-                println!("Halting emulator...\r");
+                execute!(stdout, Print("Halting emulator...\r\n"))?;
                 break false;
             }
             Command::Insert { drive, path } => match insert_floppy(computer, drive, &path) {
                 Ok(()) => {
-                    println!(
-                        "Successfully inserted {} into drive {}\r",
-                        path,
-                        format_drive(drive)
-                    );
+                    execute!(
+                        stdout,
+                        Print(format!(
+                            "Successfully inserted {} into drive {}\r\n",
+                            path,
+                            format_drive(drive)
+                        ))
+                    )?;
                     log::info!("Inserted {} into drive 0x{:02X}", path, drive.to_standard());
                 }
                 Err(e) => {
-                    println!("Error: {}\r", e);
+                    execute!(stdout, Print(format!("Error: {}\r\n", e)))?;
                     log::error!("Failed to insert {}: {}", path, e);
                 }
             },
             Command::Eject { drive } => match eject_floppy(computer, drive) {
                 Ok(()) => {
-                    println!("Successfully ejected drive {}\r", format_drive(drive));
+                    execute!(
+                        stdout,
+                        Print(format!(
+                            "Successfully ejected drive {}\r",
+                            format_drive(drive)
+                        ))
+                    )?;
                     log::info!("Ejected drive 0x{:02X}", drive.to_standard());
                 }
                 Err(e) => {
-                    println!("Error: {}\r", e);
+                    execute!(stdout, Print(format!("Error: {}\r", e)))?;
                     log::error!("Failed to eject: {}", e);
                 }
             },
@@ -215,14 +232,16 @@ where
     };
 
     // Restore screen: clear, then force a full video update
-    print!("\x1b[2J"); // Clear screen
-    print!("\x1b[H"); // Move to home
-    io::stdout().flush().ok();
+    execute!(
+        stdout,
+        terminal::Clear(ClearType::All),
+        cursor::RestorePosition,
+    )?;
 
     // Force video controller to redraw the entire screen
     computer.update_video();
 
-    should_continue
+    Ok(should_continue)
 }
 
 fn format_drive(drive: DriveNumber) -> String {

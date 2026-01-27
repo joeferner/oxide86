@@ -242,7 +242,12 @@ fn run_throttled<I, V>(
             log::info!("F12 detected - entering command mode");
 
             // Enter command mode and check if we should continue
-            if !command_mode::handle_command_mode(computer) {
+            let should_continue =
+                command_mode::handle_command_mode(computer).unwrap_or_else(|err| {
+                    log::error!("failed to handle command mode: {err}");
+                    true
+                });
+            if !should_continue {
                 // User chose to quit
                 break;
             }
