@@ -810,68 +810,10 @@ impl Cpu {
             }
             0x30 => {
                 // Get font information
-                // BH = pointer specifier:
-                //   00h = INT 1Fh pointer
-                //   01h = INT 43h pointer (8x8 font)
-                //   02h = ROM 8x14 character font pointer
-                //   03h = ROM 8x8 double dot font pointer
-                //   04h = ROM 8x8 double dot font (top half) pointer
-                //   05h = ROM 9x14 alternate font pointer
-                //   06h = ROM 8x16 font pointer
-                //   07h = ROM 9x16 alternate font pointer
-                let pointer_type = (self.bx >> 8) as u8; // BH
-
-                // For simplicity, point to a location in BIOS ROM area (0xF000 segment)
-                // In a real BIOS, this would point to actual font data
-                let font_segment = 0xF000;
-                let font_offset = match pointer_type {
-                    0x01 | 0x03 | 0x04 => 0xFA6E, // 8x8 font (standard CGA)
-                    0x02 | 0x05 => 0xF000,        // 8x14 font (EGA)
-                    0x06 | 0x07 => 0xF100,        // 8x16 font (VGA)
-                    _ => 0xFA6E,                  // Default to 8x8
-                };
-
-                let bytes_per_char = match pointer_type {
-                    0x01 | 0x03 | 0x04 => 8, // 8x8 font
-                    0x02 | 0x05 => 14,       // 8x14 font
-                    0x06 | 0x07 => 16,       // 8x16 font
-                    _ => 8,
-                };
-
-                // Return font pointer in ES:BP
-                self.es = font_segment;
-                self.bp = font_offset;
-
-                // Return bytes per character in CX
-                self.cx = bytes_per_char;
-
-                // Return rows - 1 in DL
-                let rows = match pointer_type {
-                    0x01 | 0x03 | 0x04 => 24, // 25 rows - 1 for 8x8
-                    0x02 | 0x05 => 24,        // 25 rows - 1 for 8x14
-                    0x06 | 0x07 => 24,        // 25 rows - 1 for 8x16
-                    _ => 24,
-                };
-                self.dx = (self.dx & 0xFF00) | (rows as u16);
-
-                log::debug!(
-                    "INT 10h/AH=11h/AL=30h: Get font info (type={}) -> ES:BP={:04X}:{:04X}, CX={}, DL={}",
-                    pointer_type,
-                    self.es,
-                    self.bp,
-                    self.cx,
-                    rows
+                log::warn!(
+                    "INT 10h/AH=11h/AL={:02X}h: Get font information",
+                    subfunction
                 );
-
-                // Initialize a simple font pattern in memory if this area is empty
-                // This is a minimal implementation - just ensure the memory area is accessible
-                let font_addr = Self::physical_address(font_segment, font_offset);
-                if memory.read_u8(font_addr) == 0 {
-                    // Write a simple pattern for debugging (just to make memory non-zero)
-                    for i in 0..(256 * bytes_per_char as usize) {
-                        memory.write_u8(font_addr + i, 0xFF);
-                    }
-                }
             }
             _ => {
                 log::warn!(
