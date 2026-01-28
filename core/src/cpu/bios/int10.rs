@@ -786,7 +786,7 @@ impl Cpu {
     ///   ES:BP = pointer to font
     ///   CX = bytes per character
     ///   DL = rows on screen - 1
-    fn int10_character_generator(&mut self, memory: &mut Memory) {
+    fn int10_character_generator(&mut self, _memory: &mut Memory) {
         let subfunction = (self.ax & 0xFF) as u8; // AL
 
         match subfunction {

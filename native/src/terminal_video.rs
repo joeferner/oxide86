@@ -1,7 +1,7 @@
 use crossterm::{
-    ExecutableCommand, QueueableCommand, cursor,
+    ExecutableCommand, QueueableCommand, cursor, execute,
     style::{Color, SetBackgroundColor, SetForegroundColor},
-    terminal::{self, EnterAlternateScreen, LeaveAlternateScreen},
+    terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use emu86_core::video::{
     CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController,
@@ -66,12 +66,15 @@ impl TerminalVideo {
 
         // Enable raw mode and alternate screen
         terminal::enable_raw_mode().unwrap();
-        stdout.execute(EnterAlternateScreen).unwrap();
-        stdout
-            .execute(terminal::Clear(terminal::ClearType::All))
-            .unwrap();
-        stdout.execute(cursor::Hide).unwrap();
-        stdout.flush().unwrap();
+        execute!(
+            stdout,
+            EnterAlternateScreen,
+            SetForegroundColor(Color::White),
+            SetBackgroundColor(Color::Black),
+            terminal::Clear(ClearType::All),
+            cursor::Hide
+        )
+        .unwrap();
 
         Self {
             last_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
@@ -136,6 +139,14 @@ impl VideoController for TerminalVideo {
             .execute(terminal::Clear(terminal::ClearType::All))
             .unwrap();
         stdout.flush().unwrap();
+    }
+
+    fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
+        // Reset cached buffer to force a full redraw
+        self.last_buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
+
+        // Now update_display will redraw everything since all cells will differ
+        self.update_display(buffer);
     }
 }
 

@@ -310,6 +310,14 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         self.video_controller.update_cursor(self.video.get_cursor());
     }
 
+    /// Force a full video redraw regardless of dirty state
+    /// Used when terminal state is known to be out of sync (e.g., after clearing screen)
+    pub fn force_video_redraw(&mut self) {
+        self.video_controller.force_redraw(self.video.get_buffer());
+        self.video.clear_dirty();
+        self.video_controller.update_cursor(self.video.get_cursor());
+    }
+
     /// Get video buffer for inspection
     pub fn get_video_buffer(
         &self,

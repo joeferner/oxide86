@@ -1,6 +1,6 @@
 use anyhow::Result;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
-use crossterm::style::Print;
+use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
 use crossterm::terminal::ClearType;
 use crossterm::{cursor, execute, terminal};
 use emu86_core::{BackedDisk, Computer, DriveNumber};
@@ -156,6 +156,8 @@ where
     execute!(
         stdout,
         cursor::SavePosition,
+        SetForegroundColor(Color::White),
+        SetBackgroundColor(Color::Black),
         terminal::Clear(ClearType::All),
         cursor::MoveTo(0, 0),
     )?;
@@ -239,7 +241,9 @@ where
     )?;
 
     // Force video controller to redraw the entire screen
-    computer.update_video();
+    // Use force_video_redraw() instead of update_video() because the terminal
+    // was just cleared and the video controller's cached state is out of sync
+    computer.force_video_redraw();
 
     Ok(should_continue)
 }

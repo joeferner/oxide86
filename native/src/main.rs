@@ -214,7 +214,7 @@ fn main() -> Result<()> {
         run_throttled(&mut computer, clock_hz);
     }
 
-    log::info!("\n=== Execution complete ===");
+    log::info!("=== Execution complete ===");
     computer.dump_registers();
 
     Ok(())

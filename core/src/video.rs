@@ -102,6 +102,10 @@ pub trait VideoController {
 
     /// Called on mode changes (future: support multiple video modes)
     fn set_video_mode(&mut self, mode: u8);
+
+    /// Force a full redraw of the entire screen, ignoring cached state
+    /// Used when the terminal state is known to be out of sync (e.g., after clearing screen)
+    fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]);
 }
 
 /// Null video controller (no display)
@@ -112,6 +116,7 @@ impl VideoController for NullVideoController {
     fn update_display(&mut self, _buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {}
     fn update_cursor(&mut self, _position: CursorPosition) {}
     fn set_video_mode(&mut self, _mode: u8) {}
+    fn force_redraw(&mut self, _buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {}
 }
 
 /// Core video state management
