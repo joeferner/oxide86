@@ -16,6 +16,7 @@ pub mod computer;
 pub mod cpu;
 pub mod disk;
 pub mod drive_manager;
+pub mod io;
 pub mod io_port;
 pub mod memory;
 pub mod video;

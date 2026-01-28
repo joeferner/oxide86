@@ -134,6 +134,8 @@ impl Cpu {
         io: &mut T,
         video: &mut crate::video::Video,
     ) {
+        // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
+        // let DOS handle it instead of intercepting
         let is_bios_handler = Self::is_bios_handler(memory, int_num);
 
         if int_num != 0x10
@@ -154,8 +156,6 @@ impl Cpu {
             );
         }
 
-        // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
-        // let DOS handle it instead of intercepting
         if is_bios_handler {
             self.handle_bios_interrupt_impl(int_num, memory, io, video);
         } else {

@@ -253,6 +253,17 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         let addr = Cpu::physical_address(current_cs, current_ip);
         let opcode = self.memory.read_u8(addr);
 
+        // log::trace!(
+        //     "OP {:04X}:{:04X} 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X}",
+        //     current_cs,
+        //     current_ip,
+        //     opcode,
+        //     self.cpu.ax,
+        //     self.cpu.bx,
+        //     self.cpu.cx,
+        //     self.cpu.dx,
+        // );
+
         // Check if it's an INT instruction
         match opcode {
             0xCD => {
