@@ -207,11 +207,11 @@ fn main() -> Result<()> {
     // Run the program with optional speed throttling
     if cli.turbo {
         log::info!("Running in turbo mode (no speed limit)");
-        run_with_command_mode(&mut computer, None);
+        run(&mut computer, None);
     } else {
         let clock_hz = (cli.speed * 1_000_000.0) as u64;
         log::info!("Running at {:.2} MHz ({} Hz)", cli.speed, clock_hz);
-        run_with_command_mode(&mut computer, Some(clock_hz));
+        run(&mut computer, Some(clock_hz));
     }
 
     log::info!("=== Execution complete ===");
@@ -223,7 +223,7 @@ fn main() -> Result<()> {
 /// Run the emulator with F12 command mode support
 /// Specific to NativeBios to support F12 command mode detection
 /// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
-fn run_with_command_mode<I, V>(
+fn run<I, V>(
     computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, I, V>,
     clock_hz: Option<u64>,
 ) where

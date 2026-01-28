@@ -134,6 +134,8 @@ impl Cpu {
         io: &mut T,
         video: &mut crate::video::Video,
     ) {
+        let is_bios_handler = Self::is_bios_handler(memory, int_num);
+
         if int_num != 0x10
             && int_num != 0x16
             && int_num != 0x1a
@@ -142,35 +144,36 @@ impl Cpu {
             && int_num != 0x29
         {
             log::trace!(
-                "INT 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X}",
+                "INT 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X} BIOS={}",
                 int_num,
                 self.ax,
                 self.bx,
                 self.cx,
-                self.dx
+                self.dx,
+                is_bios_handler
             );
         }
 
-        // Try to handle with BIOS I/O first
-        if self.handle_bios_interrupt(int_num, memory, io, video) {
-            // Handled by BIOS, don't do the normal INT
-            return;
+        // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
+        // let DOS handle it instead of intercepting
+        if is_bios_handler {
+            self.handle_bios_interrupt_impl(int_num, memory, io, video);
+        } else {
+            // Not handled, do normal INT
+            // Push flags, CS, and IP
+            self.push(self.flags, memory);
+            self.push(self.cs, memory);
+            self.push(self.ip, memory);
+            // Clear IF and TF
+            self.set_flag(cpu_flag::INTERRUPT, false);
+            self.set_flag(cpu_flag::TRAP, false);
+            // Load interrupt vector from IVT
+            let ivt_addr = (int_num as usize) * 4;
+            let offset = memory.read_u16(ivt_addr);
+            let segment = memory.read_u16(ivt_addr + 2);
+            self.ip = offset;
+            self.cs = segment;
         }
-
-        // Not handled, do normal INT
-        // Push flags, CS, and IP
-        self.push(self.flags, memory);
-        self.push(self.cs, memory);
-        self.push(self.ip, memory);
-        // Clear IF and TF
-        self.set_flag(cpu_flag::INTERRUPT, false);
-        self.set_flag(cpu_flag::TRAP, false);
-        // Load interrupt vector from IVT
-        let ivt_addr = (int_num as usize) * 4;
-        let offset = memory.read_u16(ivt_addr);
-        let segment = memory.read_u16(ivt_addr + 2);
-        self.ip = offset;
-        self.cs = segment;
     }
 
     // Decode and execute instruction with I/O port support

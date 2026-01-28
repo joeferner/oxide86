@@ -7,7 +7,7 @@ impl Cpu {
     pub(super) fn handle_int15<T: super::Bios>(&mut self, memory: &mut Memory, _io: &mut T) {
         let function = (self.ax >> 8) as u8; // Get AH
         match function {
-            0x10 => self.int15_topview_multidos(),
+            0x10 => self.int15_top_view_multi_dos(),
             0x41 => self.int15_wait_external_event(),
             0x86 => self.int15_wait(memory),
             0x88 => self.int15_get_extended_memory(),
@@ -32,7 +32,7 @@ impl Cpu {
     ///
     /// Note: This is a vendor-specific function not available on standard 8086 systems.
     /// Standard 8086 BIOS does not implement this function.
-    fn int15_topview_multidos(&mut self) {
+    fn int15_top_view_multi_dos(&mut self) {
         // This is a vendor-specific function (TopView/MultiDOS Plus)
         // not available on standard 8086 BIOS
         // Return function not supported

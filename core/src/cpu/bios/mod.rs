@@ -395,7 +395,7 @@ pub trait Bios {
 impl Cpu {
     /// Check if an interrupt vector still points to the BIOS area (F000 segment)
     /// Returns true if the vector is in BIOS ROM area, false if DOS has installed its own handler
-    fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
+    pub(super) fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
         let ivt_addr = (int_num as usize) * 4;
         let segment = memory.read_u16(ivt_addr + 2);
         segment == 0xF000 // BIOS handlers are in the F000 segment (ROM area)
@@ -413,27 +413,8 @@ impl Cpu {
         self.handle_bios_interrupt_impl(int_num, memory, io, video);
     }
 
-    /// Handle BIOS/DOS interrupts with provided I/O handler
-    /// Returns true if the interrupt was handled, false if it should proceed normally
-    pub(crate) fn handle_bios_interrupt<T: Bios>(
-        &mut self,
-        int_num: u8,
-        memory: &mut Memory,
-        io: &mut T,
-        video: &mut crate::video::Video,
-    ) -> bool {
-        // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
-        // let DOS handle it instead of intercepting
-        if !Self::is_bios_handler(memory, int_num) {
-            return false;
-        }
-
-        self.handle_bios_interrupt_impl(int_num, memory, io, video);
-        true
-    }
-
     /// Internal implementation of BIOS interrupt handling
-    fn handle_bios_interrupt_impl<T: Bios>(
+    pub(super) fn handle_bios_interrupt_impl<T: Bios>(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
