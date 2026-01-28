@@ -10,9 +10,10 @@ use emu86_core::cpu::bios::{
     SeekMethod, SerialParams, SerialStatus,
 };
 use emu86_core::{Bios, DiskController, DriveManager, DriveNumber};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read, Write};
 
+use crate::bios::console::SCAN_CODE_F12;
 use crate::bios::memory_allocator::MemoryAllocator;
 
 /// DOS device types
@@ -31,6 +32,8 @@ pub struct NativeBios<D: DiskController> {
     next_device_handle: u16,
     /// Flag set when F12 is pressed (command mode request)
     command_mode_requested: bool,
+    /// Buffer for keyboard input read during polling (not F12)
+    keyboard_buffer: VecDeque<KeyPress>,
 }
 
 impl<D: DiskController> NativeBios<D> {
@@ -42,6 +45,7 @@ impl<D: DiskController> NativeBios<D> {
             device_handles: HashMap::new(),
             next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
             command_mode_requested: false,
+            keyboard_buffer: VecDeque::new(),
         }
     }
 
@@ -107,6 +111,24 @@ impl<D: DiskController> NativeBios<D> {
     pub fn clear_command_mode_request(&mut self) {
         self.command_mode_requested = false;
     }
+
+    /// Poll for F12 key press without blocking
+    /// This is called from the main loop to detect command mode requests
+    /// even when the emulated program doesn't call keyboard BIOS functions.
+    /// Keys other than F12 are buffered for later retrieval by BIOS functions.
+    pub fn poll_for_command_key(&mut self) {
+        // Drain all available keys from the terminal
+        while let Some(key) = console::check_key() {
+            if key.scan_code == SCAN_CODE_F12 {
+                // F12 - set command mode flag and don't buffer it
+                self.command_mode_requested = true;
+                break; // Stop processing once F12 is detected
+            } else {
+                // Not F12 - buffer it for later retrieval by BIOS functions
+                self.keyboard_buffer.push_back(key);
+            }
+        }
+    }
 }
 
 impl<D: DiskController> Default for NativeBios<D> {
@@ -138,9 +160,15 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     fn read_key(&mut self) -> Option<KeyPress> {
+        // First check if we have a buffered key (from poll_for_command_key)
+        if let Some(key) = self.keyboard_buffer.pop_front() {
+            return Some(key);
+        }
+
+        // No buffered key, read from terminal (blocking)
         let key = console::read_key()?;
         // Intercept F12 for command mode
-        if key.scan_code == 0x86 {
+        if key.scan_code == SCAN_CODE_F12 {
             self.command_mode_requested = true;
             // Return None so the emulated program doesn't see F12
             return None;
@@ -149,9 +177,15 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     fn check_key(&mut self) -> Option<KeyPress> {
+        // First check if we have a buffered key (from poll_for_command_key)
+        if let Some(key) = self.keyboard_buffer.front() {
+            return Some(*key);
+        }
+
+        // No buffered key, check terminal (non-blocking)
         let key = console::check_key()?;
         // Intercept F12 for command mode
-        if key.scan_code == 0x86 {
+        if key.scan_code == SCAN_CODE_F12 {
             self.command_mode_requested = true;
             // Return None so the emulated program doesn't see F12
             return None;

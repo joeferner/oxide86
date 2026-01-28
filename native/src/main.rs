@@ -207,11 +207,11 @@ fn main() -> Result<()> {
     // Run the program with optional speed throttling
     if cli.turbo {
         log::info!("Running in turbo mode (no speed limit)");
-        computer.run();
+        run_with_command_mode(&mut computer, None);
     } else {
         let clock_hz = (cli.speed * 1_000_000.0) as u64;
         log::info!("Running at {:.2} MHz ({} Hz)", cli.speed, clock_hz);
-        run_throttled(&mut computer, clock_hz);
+        run_with_command_mode(&mut computer, Some(clock_hz));
     }
 
     log::info!("=== Execution complete ===");
@@ -220,17 +220,18 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Run the emulator with clock speed throttling
-/// Now specific to NativeBios to support F12 command mode
-fn run_throttled<I, V>(
+/// Run the emulator with F12 command mode support
+/// Specific to NativeBios to support F12 command mode detection
+/// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
+fn run_with_command_mode<I, V>(
     computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, I, V>,
-    clock_hz: u64,
+    clock_hz: Option<u64>,
 ) where
     I: emu86_core::IoDevice,
     V: emu86_core::VideoController,
 {
-    let start_time = Instant::now();
-    let nanos_per_cycle = 1_000_000_000u64 / clock_hz;
+    let start_time = clock_hz.map(|_| Instant::now());
+    let nanos_per_cycle = clock_hz.map(|hz| 1_000_000_000u64 / hz);
 
     // Run instructions in batches to reduce timing overhead
     const BATCH_SIZE: u32 = 1000;
@@ -244,6 +245,10 @@ fn run_throttled<I, V>(
             computer.step();
             computer.update_video();
         }
+
+        // Poll for F12 key press (command mode trigger)
+        // This allows F12 to be detected even if the program doesn't call keyboard BIOS functions
+        computer.bios_mut().poll_for_command_key();
 
         // Check if F12 was pressed (intercepted by BIOS)
         if computer.bios_mut().is_command_mode_requested() {
@@ -262,18 +267,21 @@ fn run_throttled<I, V>(
             }
         }
 
-        // Calculate how much time should have elapsed
-        let cycles_executed = computer.get_cycle_count();
-        let expected_nanos = cycles_executed * nanos_per_cycle;
-        let expected_duration = Duration::from_nanos(expected_nanos);
+        // Throttle if clock speed is specified
+        if let (Some(start), Some(nanos)) = (start_time, nanos_per_cycle) {
+            // Calculate how much time should have elapsed
+            let cycles_executed = computer.get_cycle_count();
+            let expected_nanos = cycles_executed * nanos;
+            let expected_duration = Duration::from_nanos(expected_nanos);
 
-        // Sleep if we're running ahead of schedule
-        let actual_elapsed = start_time.elapsed();
-        if actual_elapsed < expected_duration {
-            let sleep_duration = expected_duration - actual_elapsed;
-            // Only sleep if it's worth it (> 100 microseconds)
-            if sleep_duration > Duration::from_micros(100) {
-                std::thread::sleep(sleep_duration);
+            // Sleep if we're running ahead of schedule
+            let actual_elapsed = start.elapsed();
+            if actual_elapsed < expected_duration {
+                let sleep_duration = expected_duration - actual_elapsed;
+                // Only sleep if it's worth it (> 100 microseconds)
+                if sleep_duration > Duration::from_micros(100) {
+                    std::thread::sleep(sleep_duration);
+                }
             }
         }
     }

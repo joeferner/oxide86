@@ -5,6 +5,8 @@ use std::time::Duration;
 
 // Console I/O operations for NativeBios
 
+pub const SCAN_CODE_F12: u8 = 0x86;
+
 /// Translate Unix line endings to DOS
 fn translate_newline(ch: u8) -> u8 {
     if ch == 0x0A {
@@ -97,7 +99,7 @@ fn key_code_to_scan_code(code: &KeyCode) -> u8 {
         KeyCode::F(9) => 0x43,
         KeyCode::F(10) => 0x44,
         KeyCode::F(11) => 0x85,
-        KeyCode::F(12) => 0x86,
+        KeyCode::F(12) => SCAN_CODE_F12,
 
         // Arrow keys
         KeyCode::Up => 0x48,
