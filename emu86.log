@@ -1,0 +1,446 @@
+[2026-01-29T12:27:56Z DEBUG emu86_native::bios::console] key press (check_key): KeyPress { scan_code: 75, ascii_code: 0 }
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E63 mov bx, [0x63c6]               
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E67 mov [bx+0x06], ax              AX=0DA9
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E6A mov [bx+0x08], dx              DX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E6D mov ax, 0x0001                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E70 jmp 0x3ea0                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA0 pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA1 pop di                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA2 mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA4 pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA5 retf 0x0008                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A762 pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A763 pop di                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A764 mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A766 pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A767 retf 0x0008                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F0E or ax, ax                      AX=0001
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F10 jnz 0x3f1f                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F1F pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F20 mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F22 pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F23 retf 0x0008                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14AD pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14AE mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14B0 pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14B1 ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:09CF jmp 0x0970                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0970 mov bx, [di]                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0972 mov [bx+0x12], 0x0001          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0977 push bx                        BX=6096
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0978 call far [bx+0x04]             
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:4290 cmp [0x60ae], 0x0000           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:4295 jz 0x42a2                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:4297 cmp [0x61fa], 0x000c           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:429C jb 0x42bb                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:42BB mov ax, 0x0001                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:42BE retf                           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:097B pop bx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:097C or ax, ax                      AX=0001
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:097E jz 0x09d1                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0980 test [bx+0x1e], 0x0001         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0985 jz 0x098c                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:098C mov [bx+0x12], 0x0000          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0991 mov cx, 0x0003                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0994 push cx                        CX=0003
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0995 call 0x0de5                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DE5 push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DE6 mov bx, [di]                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DE8 mov cx, [bx+0x18]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DEB jcxz 0x0e1a                    CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DED xor ax, ax                     AX=0001
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DEF call 0x1091                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1091 lea si, [di+0x02]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1094 inc [si+0x09]                  
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1097 jz 0x109c                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:109C ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DF2 mov dx, [di+0x12]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DF5 jnz 0x0e18                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DF7 mov bx, [si+0x04]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DFA cmp bx, [si+0x06]              BX=0A7A
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DFD jnz 0x0e08                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DFF call 0x0e29                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E29 call 0x0d8a                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D8A mov dh, [di+0x13]              CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D8D and dh, 0xf0                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D90 mov ah, [di+0x1d]              CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D93 add ah, 0x02                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D96 int 0x16                       
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1113 push ds                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1114 push di                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1115 push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1116 push dx                        DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1117 push cx                        CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1118 push bx                        BX=0A7A
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1119 push ax                        AX=0200
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:111A cs: lds di, cs:[0x0874]        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:111F cmp [di+0x21], 0x00            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1123 jnz 0x1138                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1125 or ah, ah                      AX=0200
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1127 jz 0x1144                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1129 cmp ah, 0x01                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:112C jz 0x1192                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:112E cmp ah, 0x10                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1131 jz 0x1144                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1133 cmp ah, 0x11                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1136 jz 0x1192                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1138 pop ax                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1139 pop bx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113A pop cx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113B pop dx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113C pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113D pop di                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113E pop ds                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113F cs: jmp far cs:[0x0a6e]        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] BIOS ROM execution detected at F000:0016, handling as INT 0x16
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D98 cmp [di+0x1d], 0x00            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D9C jnz 0x0da0                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D9E xor ah, ah                     AX=0200
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA0 and ah, 0x0f                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA3 or ah, dh                      AX=0000 DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA5 push ds                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA6 push bx                        BX=0A7A
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA7 mov bx, [di]                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA9 lds bx, [bx+0x22]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DAC cmp [bx], 0x0000               
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DAF pop bx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DB0 pop ds                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DB1 jz 0x0dbf                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DBF mov [di+0x12], ax              AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DC2 ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E2C mov ah, [di+0x1d]              CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E2F mov dh, ah                     AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E31 inc ah                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E33 pushf                          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E34 cs: call far cs:[0x0a6e]       
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] BIOS ROM execution detected at F000:0016, handling as INT 0x16
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E39 jz 0x0e66                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E3B mov ah, dh                     DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E3D inc ah                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E3F inc ah                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E41 pushf                          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E42 cs: call far cs:[0x0a6e]       
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] BIOS ROM execution detected at F000:0016, handling as INT 0x16
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E47 mov ah, dh                     DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E49 inc ah                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E4B pushf                          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E4C cs: call far cs:[0x0a6e]       
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] BIOS ROM execution detected at F000:0016, handling as INT 0x16
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E51 jz 0x0e66                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E53 mov ah, dh                     DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E55 pushf                          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E56 cs: call far cs:[0x0a6e]       
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] BIOS ROM execution detected at F000:0016, handling as INT 0x16
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E5B cmp [di+0x26], 0x00            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E5F jz 0x0e64                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E64 or sp, sp                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E66 mov dx, [di+0x12]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E69 ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E02 jnz 0x0e15                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E15 call 0x10a3                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:10A3 pushf                          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:10A4 dec [si+0x09]                  
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:10A7 popf                           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:10A8 ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E18 pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E19 ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0998 pop cx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0999 or ax, ax                      AX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:099B jnz 0x09c6                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:09C6 mov [di+0x18], ax              AX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:09C9 mov [di+0x1a], dx              DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:09CC call 0x1203                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1203 push bp                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1204 mov bp, sp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1206 sub sp, 0x0004                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1209 push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:120A mov cx, ax                     AX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:120C mov [bp-0x04], dx              DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:120F xor bx, bx                     BX=0A7A
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1211 mov [bp-0x02], bx              BX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1214 xor si, si                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1216 or ch, ch                      CX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1218 jnz 0x1223                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1223 cmp ch, 0xe0                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1226 jnz 0x1244                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1244 test [bp-0x04], 0x0008         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1249 jz 0x127e                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:127E mov ax, 0x2a6a                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1281 cmp ch, 0x37                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1284 jz 0x1296                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1286 mov ax, 0x2b6b                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1289 cmp ch, 0x4e                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:128C jz 0x1296                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:128E mov ax, 0x2d6d                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1291 cmp ch, 0x4a                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1294 jnz 0x129f                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:129F mov al, 0x0d                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12A1 cmp ch, 0x1c                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12A4 jz 0x12c4                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12A6 mov al, 0x1b                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12A8 cmp ch, 0x01                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12AB jz 0x12c4                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12AD mov al, 0x08                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12AF cmp ch, 0x0e                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12B2 jz 0x12c4                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12B4 mov al, 0x20                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12B6 cmp ch, 0x39                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12B9 jz 0x12c4                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12BB cmp ch, 0x0f                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12BE jnz 0x12c9                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12C9 mov ax, cx                     CX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12CB cmp al, 0x41                   AX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12CD jb 0x12e7                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12E7 cmp al, 0x01                   AX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12E9 jb 0x12fb                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:12FB test [bp-0x04], 0x0003         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1300 jnz 0x130f                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1302 cmp cl, 0x1f                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1305 jnz 0x130f                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:130F cmp ch, 0x47                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1312 jb 0x138f                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1314 cmp ch, 0x54                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1317 jnb 0x138f                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1319 mov bl, ch                     CX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:131B cs: mov bl, cs:[bx+0x0831]     BX=004B
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1320 cmp cl, 0xe0                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1323 jnz 0x132f                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:132F or cl, cl                      CX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1331 jnz 0x133f                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1333 test [bp-0x04], 0x0020         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1338 jz 0x1381                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1381 or cl, cl                      CX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1383 jnz 0x138c                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1385 cmp ch, 0x53                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1388 jnz 0x138c                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:138C jmp 0x1483                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1483 mov ax, si                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1485 not ax                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1487 and ax, [bp-0x04]              AX=FFFF
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:148A or ax, [bp-0x02]               AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:148D mov dx, ax                     AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:148F mov al, bl                     BX=0025
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1491 or al, cl                      AX=0025 CX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1493 jz 0x14ad                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1495 push bx                        BX=0025
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1496 xor ch, ch                     CX=4B00
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1498 or cl, cl                      CX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:149A jnz 0x14a0                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:149C mov cl, bl                     BX=0025
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:149E inc ch                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14A0 push cx                        CX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14A1 push dx                        DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14A2 call 0x1552                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1552 push bp                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1553 mov bp, sp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1555 mov ax, [bp+0x04]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1558 test al, 0x01                  
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:155A jz 0x155e                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:155E and al, 0x7e                   AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1560 xchg al, ah                    AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1562 test al, 0x20                  
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1564 jz 0x1569                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1569 xor al, al                     AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:156B pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:156C ret 0x0002                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14A5 push ax                        AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14A6 xor bx, bx                     BX=0025
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14A8 push bx                        BX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14A9 mov bx, [di]                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14AB call far [bx]                  
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA8 push bp                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA9 mov bp, sp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EAB sub sp, 0x0004                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EAE push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EAF mov si, [bp+0x08]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EB2 mov al, [bp+0x0c]              DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EB5 sub ah, ah                     AX=0025
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EB7 add ah, 0x01                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EBA mov [bp-0x02], ax              AX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EBD cmp [bp+0x06], 0x0000          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EC1 jnz 0x3ecc                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EC3 mov [bp-0x04], 0x0102          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EC8 or si, ax                      AX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3ECA jmp 0x3efa                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EFA push [bp-0x04]                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EFD push [bp+0x0a]                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F00 mov ax, si                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F02 mov dx, ax                     AX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F04 sub ax, ax                     AX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F06 or al, 0x01                    AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F08 push dx                        DX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F09 push ax                        AX=0001
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F0A call far [0x60fc]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6C8 push bp                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6C9 mov bp, sp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6CB sub sp, 0x000e                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6CE push di                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6CF push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6D0 cmp [0x1a3c], 0x0000           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6D5 jg 0xa751                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6D7 call 0x1083:0x244e             
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:244E push bp                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:244F mov bp, sp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2451 push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2452 push di                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2453 push es                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2454 push ds                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2455 cs: mov al, [0x2447]           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2459 cs: mov ah, cs:[0x2449]        DX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:245E test ah, 0x03                  
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2461 jz 0x2466                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2466 pop ds                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2467 pop es                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2468 pop di                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:2469 pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:246A mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:246C pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 1083:246D retf                           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6DC and ah, 0x0f                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6DF mov [bp-0x02], ax              AX=00FF
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6E2 cmp [0x1ae2], 0x0000           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A6E7 jz 0xa751                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A751 push [bp+0x0c]                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A754 push [bp+0x0a]                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A757 push [bp+0x08]                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A75A push [bp+0x06]                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A75D nop                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A75E push cs                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A75F call 0x3e27                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E27 push bp                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E28 mov bp, sp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E2A sub sp, 0x0002                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E2D push di                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E2E push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E2F mov bx, [0x63c6]               
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E33 mov ax, [bp+0x0c]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E36 cmp [bx+0x02], ax              AX=0102
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E39 jnz 0x3e72                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E3B mov ax, [bp+0x0a]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E3E cmp [bx+0x04], ax              AX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E41 jnz 0x3e72                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E43 mov ax, [bx+0x08]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E46 sub dx, dx                     DX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E48 mov di, ax                     AX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E4A cmp [bp+0x08], di              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E4D jnz 0x3e72                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E4F cmp [bp+0x0a], 0x000d          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E53 jz 0x3e72                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E55 mov ax, [bx+0x06]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E58 add ax, [bp+0x06]              AX=0DA9
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E5B mov cx, di                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E5D mov bx, cx                     CX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E5F sub cx, cx                     CX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E61 mov dx, bx                     BX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E63 mov bx, [0x63c6]               
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E67 mov [bx+0x06], ax              AX=0DAA
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E6A mov [bx+0x08], dx              DX=0125
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E6D mov ax, 0x0001                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3E70 jmp 0x3ea0                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA0 pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA1 pop di                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA2 mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA4 pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3EA5 retf 0x0008                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A762 pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A763 pop di                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A764 mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A766 pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:A767 retf 0x0008                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F0E or ax, ax                      AX=0001
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F10 jnz 0x3f1f                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F1F pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F20 mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F22 pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:3F23 retf 0x0008                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14AD pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14AE mov sp, bp                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14B0 pop bp                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:14B1 ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:09CF jmp 0x0970                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0970 mov bx, [di]                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0972 mov [bx+0x12], 0x0001          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0977 push bx                        BX=6096
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0978 call far [bx+0x04]             
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:4290 cmp [0x60ae], 0x0000           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:4295 jz 0x42a2                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:4297 cmp [0x61fa], 0x000c           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:429C jb 0x42bb                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:42BB mov ax, 0x0001                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 2D0E:42BE retf                           
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:097B pop bx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:097C or ax, ax                      AX=0001
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:097E jz 0x09d1                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0980 test [bx+0x1e], 0x0001         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0985 jz 0x098c                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:098C mov [bx+0x12], 0x0000          
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0991 mov cx, 0x0003                 
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0994 push cx                        CX=0003
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0995 call 0x0de5                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DE5 push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DE6 mov bx, [di]                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DE8 mov cx, [bx+0x18]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DEB jcxz 0x0e1a                    CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DED xor ax, ax                     AX=0001
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DEF call 0x1091                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1091 lea si, [di+0x02]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1094 inc [si+0x09]                  
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1097 jz 0x109c                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:109C ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DF2 mov dx, [di+0x12]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DF5 jnz 0x0e18                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DF7 mov bx, [si+0x04]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DFA cmp bx, [si+0x06]              BX=0A7A
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DFD jnz 0x0e08                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DFF call 0x0e29                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E29 call 0x0d8a                    
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D8A mov dh, [di+0x13]              CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D8D and dh, 0xf0                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D90 mov ah, [di+0x1d]              CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D93 add ah, 0x02                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D96 int 0x16                       
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1113 push ds                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1114 push di                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1115 push si                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1116 push dx                        DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1117 push cx                        CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1118 push bx                        BX=0A7A
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1119 push ax                        AX=0200
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:111A cs: lds di, cs:[0x0874]        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:111F cmp [di+0x21], 0x00            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1123 jnz 0x1138                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1125 or ah, ah                      AX=0200
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1127 jz 0x1144                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1129 cmp ah, 0x01                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:112C jz 0x1192                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:112E cmp ah, 0x10                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1131 jz 0x1144                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1133 cmp ah, 0x11                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1136 jz 0x1192                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1138 pop ax                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:1139 pop bx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113A pop cx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113B pop dx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113C pop si                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113D pop di                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113E pop ds                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:113F cs: jmp far cs:[0x0a6e]        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] BIOS ROM execution detected at F000:0016, handling as INT 0x16
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D98 cmp [di+0x1d], 0x00            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D9C jnz 0x0da0                     
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0D9E xor ah, ah                     AX=0200
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA0 and ah, 0x0f                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA3 or ah, dh                      AX=0000 DX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA5 push ds                        
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA6 push bx                        BX=0A7A
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA7 mov bx, [di]                   
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DA9 lds bx, [bx+0x22]              
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DAC cmp [bx], 0x0000               
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DAF pop bx                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DB0 pop ds                         
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DB1 jz 0x0dbf                      
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DBF mov [di+0x12], ax              AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0DC2 ret                            
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E2C mov ah, [di+0x1d]              CX=18B5
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E2F mov dh, ah                     AX=0000
+[2026-01-29T12:27:56Z INFO  emu86_core::computer] OP 3CA0:0E31 inc ah                         

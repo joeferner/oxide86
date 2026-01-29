@@ -1,5 +1,6 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use emu86_core::cpu::bios::KeyPress;
+use log::debug;
 use std::io::{self, Write};
 use std::time::Duration;
 
@@ -127,7 +128,9 @@ pub fn read_key() -> Option<KeyPress> {
     // Block until we get a key press
     loop {
         if let Ok(Event::Key(key_event)) = event::read() {
-            return Some(key_event_to_keypress(&key_event));
+            let key_press = key_event_to_keypress(&key_event);
+            debug!("key press (read_key): {key_press:?}");
+            return Some(key_press);
         }
     }
 }
@@ -137,7 +140,9 @@ pub fn check_key() -> Option<KeyPress> {
     if event::poll(Duration::from_millis(0)).unwrap_or(false)
         && let Ok(Event::Key(key_event)) = event::read()
     {
-        return Some(key_event_to_keypress(&key_event));
+        let key_press = key_event_to_keypress(&key_event);
+        debug!("key press (check_key): {key_press:?}");
+        return Some(key_press);
     }
     None
 }

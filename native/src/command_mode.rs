@@ -54,12 +54,14 @@ enum Command {
     Insert { drive: DriveNumber, path: String },
     Eject { drive: DriveNumber },
     ToggleLogging { enable: bool, log: Log },
+    LogSteps { steps: u32 },
     Resume,
     Quit,
     Help,
 }
 
 enum Log {
+    All,
     Execution,
     Interrupt,
 }
@@ -133,11 +135,15 @@ fn parse_command(input: &str) -> Result<Command> {
             (true, rest)
         } else if let Some(rest) = rest.strip_prefix("disable ") {
             (false, rest)
+        } else if let Ok(steps) = rest.parse::<u32>() {
+            return Ok(Command::LogSteps { steps });
         } else {
             return Err(anyhow::anyhow!("Invalid log command"));
         };
 
-        let log = if rest == "exec" {
+        let log = if rest.is_empty() {
+            Log::All
+        } else if rest == "exec" {
             Log::Execution
         } else if rest == "int" {
             Log::Interrupt
@@ -161,6 +167,7 @@ fn show_help(stdout: &mut Stdout) -> Result<()> {
         Print("  eject b                   - Eject floppy from drive B:\r\n"),
         Print("  log enable/disable exec   - Enable/Disable execution logging\r\n"),
         Print("  log enable/disable int    - Enable/Disable interrupt logging\r\n"),
+        Print("  log <number of steps>     - Enable logging for the number of steps\r\n"),
         Print("  resume (or Enter)         - Resume emulation\r\n"),
         Print("  q, quit, exit             - Halt emulator and exit\r\n"),
     )?;
@@ -262,7 +269,14 @@ where
             Command::ToggleLogging { enable, log } => match log {
                 Log::Execution => computer.exec_logging_enabled = enable,
                 Log::Interrupt => computer.set_log_interrupts(enable),
+                Log::All => {
+                    computer.exec_logging_enabled = enable;
+                    computer.set_log_interrupts(enable);
+                }
             },
+            Command::LogSteps { steps } => {
+                computer.set_log_steps(steps);
+            }
         }
     };
 

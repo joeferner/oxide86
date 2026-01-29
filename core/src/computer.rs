@@ -33,6 +33,7 @@ pub struct Computer<
     pub exec_logging_enabled: bool,
     /// if set to true, interrupts will be logged as info level
     log_interrupts_enabled: bool,
+    log_steps: u32,
 }
 
 impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
@@ -83,6 +84,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             step_count: 0,
             exec_logging_enabled: false,
             log_interrupts_enabled: false,
+            log_steps: 0,
         }
     }
 
@@ -207,6 +209,14 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
 
     /// Execute a single instruction
     pub fn step(&mut self) {
+        if self.log_steps > 0 {
+            self.log_steps -= 1;
+            if self.log_steps == 0 {
+                self.set_log_interrupts(false);
+                self.exec_logging_enabled = false;
+            }
+        }
+
         self.step_count += 1;
 
         // Get current IP to check what opcode we're about to execute
@@ -410,5 +420,11 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
     pub fn set_log_interrupts(&mut self, enable: bool) {
         self.log_interrupts_enabled = enable;
         self.cpu.log_interrupts_enabled = enable;
+    }
+
+    pub fn set_log_steps(&mut self, steps: u32) {
+        self.exec_logging_enabled = true;
+        self.set_log_interrupts(true);
+        self.log_steps = steps;
     }
 }
