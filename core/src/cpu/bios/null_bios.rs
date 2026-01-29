@@ -74,14 +74,6 @@ impl Bios for NullBios {
         false
     }
 
-    fn write_char(&mut self, _ch: u8) {
-        // Do nothing
-    }
-
-    fn write_str(&mut self, _s: &str) {
-        // Do nothing
-    }
-
     fn read_key(&mut self) -> Option<KeyPress> {
         None
     }

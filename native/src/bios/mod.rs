@@ -151,14 +151,6 @@ impl<D: DiskController> Bios for NativeBios<D> {
         console::has_char_available()
     }
 
-    fn write_char(&mut self, ch: u8) {
-        console::write_char(ch);
-    }
-
-    fn write_str(&mut self, s: &str) {
-        console::write_str(s);
-    }
-
     fn read_key(&mut self) -> Option<KeyPress> {
         // First check if we have a buffered key (from poll_for_command_key)
         if let Some(key) = self.keyboard_buffer.pop_front() {

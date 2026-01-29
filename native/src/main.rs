@@ -243,8 +243,11 @@ fn run<I, V>(
                 break;
             }
             computer.step();
-            computer.update_video();
         }
+
+        // Update video once per batch instead of after every instruction
+        // This dramatically reduces terminal I/O overhead
+        computer.update_video();
 
         // Poll for F12 key press (command mode trigger)
         // This allows F12 to be detected even if the program doesn't call keyboard BIOS functions

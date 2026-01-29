@@ -131,15 +131,16 @@ fn parse_command(input: &str) -> Result<Command> {
 
     // enable/disable logging
     if let Some(rest) = input.strip_prefix("log ") {
-        let (enable, rest) = if let Some(rest) = rest.strip_prefix("enable ") {
+        let (enable, rest) = if let Some(rest) = rest.strip_prefix("enable") {
             (true, rest)
-        } else if let Some(rest) = rest.strip_prefix("disable ") {
+        } else if let Some(rest) = rest.strip_prefix("disable") {
             (false, rest)
         } else if let Ok(steps) = rest.parse::<u32>() {
             return Ok(Command::LogSteps { steps });
         } else {
             return Err(anyhow::anyhow!("Invalid log command"));
         };
+        let rest = rest.trim();
 
         let log = if rest.is_empty() {
             Log::All
@@ -165,6 +166,7 @@ fn show_help(stdout: &mut Stdout) -> Result<()> {
         Print("  load b path/to/disk.img   - Insert disk into drive B:\r\n"),
         Print("  eject a                   - Eject floppy from drive A:\r\n"),
         Print("  eject b                   - Eject floppy from drive B:\r\n"),
+        Print("  log enable/disable        - Enable/Disable all additional logging\r\n"),
         Print("  log enable/disable exec   - Enable/Disable execution logging\r\n"),
         Print("  log enable/disable int    - Enable/Disable interrupt logging\r\n"),
         Print("  log <number of steps>     - Enable logging for the number of steps\r\n"),

@@ -58,6 +58,7 @@ fn vga_to_crossterm_color(vga_color: u8) -> Color {
 /// Terminal-based video controller using crossterm
 pub struct TerminalVideo {
     last_buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
+    last_cursor: Option<CursorPosition>,
 }
 
 impl TerminalVideo {
@@ -78,6 +79,7 @@ impl TerminalVideo {
 
         Self {
             last_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            last_cursor: None,
         }
     }
 }
@@ -111,7 +113,9 @@ impl VideoController for TerminalVideo {
                         .unwrap();
 
                     // Print character (convert CP437 to Unicode)
-                    write!(stdout, "{}", cp437_to_unicode(cell.character)).unwrap();
+                    stdout
+                        .queue(crossterm::style::Print(cp437_to_unicode(cell.character)))
+                        .unwrap();
                 }
             }
         }
@@ -121,6 +125,11 @@ impl VideoController for TerminalVideo {
     }
 
     fn update_cursor(&mut self, position: CursorPosition) {
+        // Only update if cursor position has changed
+        if self.last_cursor == Some(position) {
+            return;
+        }
+
         let mut stdout = io::stdout();
 
         // Position cursor and show it
@@ -129,6 +138,8 @@ impl VideoController for TerminalVideo {
             .unwrap();
         stdout.queue(cursor::Show).unwrap();
         stdout.flush().unwrap();
+
+        self.last_cursor = Some(position);
     }
 
     fn set_video_mode(&mut self, _mode: u8) {
@@ -142,8 +153,9 @@ impl VideoController for TerminalVideo {
     }
 
     fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
-        // Reset cached buffer to force a full redraw
+        // Reset cached buffer and cursor to force a full redraw
         self.last_buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
+        self.last_cursor = None;
 
         // Now update_display will redraw everything since all cells will differ
         self.update_display(buffer);

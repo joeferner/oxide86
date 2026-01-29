@@ -158,12 +158,6 @@ pub trait Bios {
     /// Used by INT 21h, AH=0Bh (Check Input Status)
     fn has_char_available(&self) -> bool;
 
-    /// Write a character to standard output
-    fn write_char(&mut self, ch: u8);
-
-    /// Write a string to standard output
-    fn write_str(&mut self, s: &str);
-
     // --- INT 16h - Keyboard Services ---
 
     /// Read a keystroke (INT 16h, AH=00h) - blocking

@@ -1,7 +1,6 @@
 use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
 use emu86_core::cpu::bios::KeyPress;
 use log::debug;
-use std::io::{self, Write};
 use std::time::Duration;
 
 // Console I/O operations for NativeBios
@@ -44,18 +43,6 @@ pub fn check_char() -> Option<u8> {
 /// Used by INT 21h, AH=0Bh (Check Input Status)
 pub fn has_char_available() -> bool {
     event::poll(Duration::from_millis(0)).unwrap_or(false)
-}
-
-pub fn write_char(ch: u8) {
-    let mut stdout = io::stdout();
-    let _ = write!(stdout, "{}", ch as char);
-    let _ = stdout.flush();
-}
-
-pub fn write_str(s: &str) {
-    let mut stdout = io::stdout();
-    let _ = write!(stdout, "{}", s);
-    let _ = stdout.flush();
 }
 
 /// Convert crossterm KeyEvent to ASCII character (for simple key presses)
