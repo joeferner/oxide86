@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display};
 
 pub use crate::cpu::bios::{Bios, DriveParams, KeyPress, NullBios};
+pub use crate::decoder::{DecodedInstruction, decode_instruction, decode_instruction_with_regs};
 pub use crate::disk::{
     BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, PartitionedDisk, SECTOR_SIZE,
     parse_mbr,
@@ -14,6 +15,7 @@ pub use computer::Computer;
 
 pub mod computer;
 pub mod cpu;
+pub mod decoder;
 pub mod disk;
 pub mod drive_manager;
 pub mod io;
