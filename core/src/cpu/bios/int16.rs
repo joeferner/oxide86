@@ -14,6 +14,10 @@ impl Cpu {
             0x00 => self.int16_read_char(memory, io),
             0x01 => self.int16_check_keystroke(memory, io),
             0x02 => self.int16_get_shift_flags(memory),
+            0x10 => self.int16_read_char(memory, io), // Extended read (same as 00h)
+            0x11 => self.int16_check_keystroke(memory, io), // Extended check (same as 01h)
+            0x12 => self.int16_get_shift_flags(memory), // Extended shift flags (same as 02h)
+            0x55 => self.int16_word_tsr_check(),
             0x92 => self.int16_get_keyboard_capabilities(),
             0xA2 => self.int16_122_key_capability_check(),
             _ => {
@@ -167,6 +171,16 @@ impl Cpu {
         // Return AH with bit 7 set to indicate INT 15h keyboard intercept is supported
         self.ax = (self.ax & 0x00FF) | 0x8000;
         self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 16h, AH=55h - Microsoft Word TSR Detection
+    /// Used by Microsoft Word for DOS to detect if its TSR utility is installed.
+    /// If the TSR were installed, it would return "MS" (0x4D53) in AX.
+    /// Input: None
+    /// Output: AX unchanged (signals TSR NOT installed)
+    fn int16_word_tsr_check(&mut self) {
+        // Intentionally do nothing - leave AX unchanged to indicate
+        // that the Microsoft Word TSR is NOT installed
     }
 
     /// INT 16h, AH=A2h - 122-Key Keyboard Capability Check

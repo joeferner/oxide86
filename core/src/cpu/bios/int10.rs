@@ -27,6 +27,7 @@ impl Cpu {
             0x15 => self.int10_return_physical_display_params(),
             0x1A => self.int10_display_combination_code(memory),
             0x1B => self.int10_functionality_state_info(memory, video),
+            0xFA => self.int10_installation_checks(),
             0xFE => self.int10_get_video_buffer(memory),
             _ => {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
@@ -951,6 +952,37 @@ impl Cpu {
                     subfunction
                 );
             }
+        }
+    }
+
+    /// INT 10h, AH=FAh - Installation Checks (EGA RIL / FASTBUFF.COM)
+    /// This function has two uses depending on BX value:
+    ///
+    /// When BX=0000h: EGA Register Interface Library - INTERROGATE DRIVER
+    /// Input:
+    ///   AH = FAh, BX = 0000h
+    /// Output:
+    ///   BX = 0000h (if RIL driver not present)
+    ///   ES:BX -> version number (if present): byte 0=major, byte 1=minor
+    ///
+    /// When BX!=0000h: FASTBUFF.COM - INSTALLATION CHECK
+    /// Input:
+    ///   AH = FAh
+    /// Output:
+    ///   AX = 00FAh (if installed), ES = segment of resident code
+    ///
+    /// This emulator returns "not installed" for both.
+    fn int10_installation_checks(&mut self) {
+        if self.bx == 0x0000 {
+            // EGA Register Interface Library - INTERROGATE DRIVER
+            // Return BX = 0000h to indicate driver not present
+            self.bx = 0x0000;
+            log::debug!("INT 10h/AH=FAh/BX=0000h: EGA Register Interface not present");
+        } else {
+            // FASTBUFF.COM - INSTALLATION CHECK
+            // Don't modify AX (leave it as is to indicate not installed)
+            // The check looks for AX = 00FAh, so leaving AX unchanged signals "not installed"
+            log::debug!("INT 10h/AH=FAh: FASTBUFF.COM not installed");
         }
     }
 

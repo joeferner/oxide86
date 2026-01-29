@@ -46,13 +46,15 @@ pub fn has_char_available() -> bool {
 }
 
 pub fn write_char(ch: u8) {
-    print!("{}", ch as char);
-    let _ = io::stdout().flush();
+    let mut stdout = io::stdout();
+    let _ = write!(stdout, "{}", ch as char);
+    let _ = stdout.flush();
 }
 
 pub fn write_str(s: &str) {
-    print!("{}", s);
-    let _ = io::stdout().flush();
+    let mut stdout = io::stdout();
+    let _ = write!(stdout, "{}", s);
+    let _ = stdout.flush();
 }
 
 /// Convert crossterm KeyEvent to ASCII character (for simple key presses)

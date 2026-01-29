@@ -113,7 +113,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 | 13h | Disk | 00h reset, 02h read, 03h write, 04h verify, 05h format, 08h params, 15h type, 16h change, 18h DASD |
 | 14h | Serial | 00h init, 01h write, 02h read, 03h status |
 | 15h | System | 86h wait, 88h ext mem, C0h config |
-| 16h | Keyboard | 00h read, 01h check, 02h shift flags |
+| 16h | Keyboard | 00h read, 01h check, 02h shift flags, 10h ext read, 11h ext check, 12h ext flags |
 | 17h | Printer | 00h write, 01h init, 02h status |
 | 1Ah | Time | 00h get ticks, 01h set, 02h RTC |
 | 20h | Terminate | Program terminate (halt CPU) |

@@ -111,7 +111,7 @@ impl VideoController for TerminalVideo {
                         .unwrap();
 
                     // Print character (convert CP437 to Unicode)
-                    print!("{}", cp437_to_unicode(cell.character));
+                    write!(stdout, "{}", cp437_to_unicode(cell.character)).unwrap();
                 }
             }
         }
