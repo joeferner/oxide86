@@ -116,7 +116,7 @@ pub fn read_key() -> Option<KeyPress> {
     loop {
         if let Ok(Event::Key(key_event)) = event::read() {
             let key_press = key_event_to_keypress(&key_event);
-            debug!("key press (read_key): {key_press:?}");
+            debug!("key press (read_key): 0x{:02X}", key_press.scan_code);
             return Some(key_press);
         }
     }
@@ -128,7 +128,7 @@ pub fn check_key() -> Option<KeyPress> {
         && let Ok(Event::Key(key_event)) = event::read()
     {
         let key_press = key_event_to_keypress(&key_event);
-        debug!("key press (check_key): {key_press:?}");
+        debug!("key press (check_key): 0x{:02X}", key_press.scan_code);
         return Some(key_press);
     }
     None

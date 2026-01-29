@@ -11,7 +11,7 @@ use emu86_core::cpu::bios::{
 };
 use emu86_core::{Bios, DiskController, DriveManager, DriveNumber};
 use std::collections::{HashMap, VecDeque};
-use std::io::{self, Read, Write};
+use std::io::{self, Read};
 
 use crate::bios::console::SCAN_CODE_F12;
 use crate::bios::memory_allocator::MemoryAllocator;
@@ -170,8 +170,9 @@ impl<D: DiskController> Bios for NativeBios<D> {
 
     fn check_key(&mut self) -> Option<KeyPress> {
         // First check if we have a buffered key (from poll_for_command_key)
-        if let Some(key) = self.keyboard_buffer.front() {
-            return Some(*key);
+        // Note: We remove it here to prevent infinite re-detection
+        if let Some(key) = self.keyboard_buffer.pop_front() {
+            return Some(key);
         }
 
         // No buffered key, check terminal (non-blocking)
@@ -329,24 +330,16 @@ impl<D: DiskController> Bios for NativeBios<D> {
     }
 
     fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, DosError> {
-        // Handle stdout/stderr separately
-        if handle == 1 {
-            match io::stdout().write(data) {
-                Ok(n) => {
-                    let _ = io::stdout().flush();
-                    Ok(n as u16)
-                }
-                Err(_) => Err(DosError::AccessDenied),
-            }
-        } else if handle == 2 {
-            match io::stderr().write(data) {
-                Ok(n) => {
-                    let _ = io::stderr().flush();
-                    Ok(n as u16)
-                }
-                Err(_) => Err(DosError::AccessDenied),
-            }
-        } else if let Some(device) = self.device_handles.get(&handle) {
+        // Note: stdout (1) and stderr (2) are handled by INT 21h, AH=40h
+        // which routes them through the video system via teletype output.
+        // We should never receive handle 1 or 2 here.
+        if handle == 1 || handle == 2 {
+            // This shouldn't happen - INT 21h already handles these
+            log::warn!("Unexpected direct write to stdout/stderr handle {}", handle);
+            return Ok(data.len() as u16);
+        }
+
+        if let Some(device) = self.device_handles.get(&handle) {
             // Handle DOS devices
             match device {
                 DosDevice::Null => {
@@ -354,14 +347,11 @@ impl<D: DiskController> Bios for NativeBios<D> {
                     Ok(data.len() as u16)
                 }
                 DosDevice::Console => {
-                    // CON writes to stdout
-                    match io::stdout().write(data) {
-                        Ok(n) => {
-                            let _ = io::stdout().flush();
-                            Ok(n as u16)
-                        }
-                        Err(_) => Err(DosError::AccessDenied),
-                    }
+                    // CON device writes should also go through video system
+                    // For now, just report success without output
+                    // TODO: Route CON writes through video in INT 21h handler
+                    log::warn!("CON device write not yet routed through video system");
+                    Ok(data.len() as u16)
                 }
             }
         } else {

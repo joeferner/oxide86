@@ -46,6 +46,17 @@ impl Cpu {
             let scan_code = memory.read_u8(char_addr);
             let ascii_code = memory.read_u8(char_addr + 1);
 
+            log::debug!(
+                "INT 16h AH=00h: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+                scan_code,
+                ascii_code,
+                if (0x20..0x7F).contains(&ascii_code) {
+                    ascii_code as char
+                } else {
+                    '.'
+                }
+            );
+
             // Update head pointer (circular buffer)
             let new_head = if head == buffer_start + 30 {
                 buffer_start // Wrap around
@@ -59,9 +70,20 @@ impl Cpu {
         } else {
             // Buffer is empty - read from I/O
             if let Some(key) = io.read_key() {
+                log::debug!(
+                    "INT 16h AH=00h: Read key from I/O - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+                    key.scan_code,
+                    key.ascii_code,
+                    if key.ascii_code >= 0x20 && key.ascii_code < 0x7F {
+                        key.ascii_code as char
+                    } else {
+                        '.'
+                    }
+                );
                 self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
             } else {
                 // No key available - return zero (this shouldn't happen in blocking mode)
+                log::warn!("INT 16h AH=00h: No key available (unexpected in blocking mode)");
                 self.ax = 0;
             }
         }
@@ -89,6 +111,17 @@ impl Cpu {
             let scan_code = memory.read_u8(char_addr);
             let ascii_code = memory.read_u8(char_addr + 1);
 
+            log::debug!(
+                "INT 16h AH=01h: Key available in buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+                scan_code,
+                ascii_code,
+                if (0x20..0x7F).contains(&ascii_code) {
+                    ascii_code as char
+                } else {
+                    '.'
+                }
+            );
+
             // Set return values
             self.ax = ((scan_code as u16) << 8) | (ascii_code as u16);
 
@@ -97,6 +130,16 @@ impl Cpu {
         } else {
             // Buffer is empty - check if a key is available from the host (non-blocking)
             if let Some(key) = io.check_key() {
+                log::debug!(
+                    "INT 16h AH=01h: Key detected from I/O - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}'), adding to buffer",
+                    key.scan_code,
+                    key.ascii_code,
+                    if key.ascii_code >= 0x20 && key.ascii_code < 0x7F {
+                        key.ascii_code as char
+                    } else {
+                        '.'
+                    }
+                );
                 // Calculate what tail would be after adding this key
                 let buffer_start: u16 = 0x001E; // Relative to BDA
                 let new_tail = if tail == buffer_start + 30 {
