@@ -53,9 +53,15 @@ fn read_line_raw() -> Option<String> {
 enum Command {
     Insert { drive: DriveNumber, path: String },
     Eject { drive: DriveNumber },
+    ToggleLogging { enable: bool, log: Log },
     Resume,
     Quit,
     Help,
+}
+
+enum Log {
+    Execution,
+    Interrupt,
 }
 
 /// Parse a command from user input
@@ -121,6 +127,27 @@ fn parse_command(input: &str) -> Result<Command> {
         return Ok(Command::Insert { drive, path });
     }
 
+    // enable/disable logging
+    if let Some(rest) = input.strip_prefix("log ") {
+        let (enable, rest) = if let Some(rest) = rest.strip_prefix("enable ") {
+            (true, rest)
+        } else if let Some(rest) = rest.strip_prefix("disable ") {
+            (false, rest)
+        } else {
+            return Err(anyhow::anyhow!("Invalid log command"));
+        };
+
+        let log = if rest == "exec" {
+            Log::Execution
+        } else if rest == "int" {
+            Log::Interrupt
+        } else {
+            return Err(anyhow::anyhow!("Invalid log command"));
+        };
+
+        return Ok(Command::ToggleLogging { enable, log });
+    }
+
     Err(anyhow::anyhow!("Invalid command. Type 'help' for usage."))
 }
 
@@ -132,6 +159,8 @@ fn show_help(stdout: &mut Stdout) -> Result<()> {
         Print("  load b path/to/disk.img   - Insert disk into drive B:\r\n"),
         Print("  eject a                   - Eject floppy from drive A:\r\n"),
         Print("  eject b                   - Eject floppy from drive B:\r\n"),
+        Print("  log enable/disable exec   - Enable/Disable execution logging\r\n"),
+        Print("  log enable/disable int    - Enable/Disable interrupt logging\r\n"),
         Print("  resume (or Enter)         - Resume emulation\r\n"),
         Print("  q, quit, exit             - Halt emulator and exit\r\n"),
     )?;
@@ -229,6 +258,10 @@ where
                     execute!(stdout, Print(format!("Error: {}\r", e)))?;
                     log::error!("Failed to eject: {}", e);
                 }
+            },
+            Command::ToggleLogging { enable, log } => match log {
+                Log::Execution => computer.exec_logging_enabled = enable,
+                Log::Interrupt => computer.set_log_interrupts(enable),
             },
         }
     };

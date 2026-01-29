@@ -38,6 +38,9 @@ pub struct Cpu {
 
     // Repeat prefix for string instructions
     repeat_prefix: Option<RepeatPrefix>,
+
+    /// if true logs interrupts at info level
+    pub log_interrupts_enabled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -83,6 +86,7 @@ impl Cpu {
             halted: false,
             segment_override: None,
             repeat_prefix: None,
+            log_interrupts_enabled: false,
         }
     }
 
@@ -138,14 +142,15 @@ impl Cpu {
         // let DOS handle it instead of intercepting
         let is_bios_handler = Self::is_bios_handler(memory, int_num);
 
-        if int_num != 0x10
+        if self.log_interrupts_enabled
+            && int_num != 0x10
             && int_num != 0x16
             && int_num != 0x1a
             && int_num != 0x2a
             && int_num != 0x28
             && int_num != 0x29
         {
-            log::trace!(
+            log::info!(
                 "INT 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X} BIOS={}",
                 int_num,
                 self.ax,

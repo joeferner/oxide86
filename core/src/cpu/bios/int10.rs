@@ -16,6 +16,7 @@ impl Cpu {
             0x07 => self.int10_scroll_down(video),
             0x08 => self.int10_read_char_attr(video),
             0x09 => self.int10_write_char_attr(memory, video),
+            0x0A => self.int10_write_char(video),
             0x0E => self.int10_teletype_output(video),
             0x0B => self.int10_set_color_palette(),
             0x0F => self.int10_get_video_mode(video),
@@ -212,6 +213,29 @@ impl Cpu {
             let offset = pos * 2;
             video.write_byte(offset, ch);
             video.write_byte(offset + 1, attr);
+        }
+        // Cursor position is NOT updated by this function
+    }
+
+    /// INT 10h, AH=0Ah - Write Character at Cursor
+    /// Input:
+    ///   AL = character to write
+    ///   BH = page number (0 for text mode)
+    ///   CX = number of times to write character
+    /// Output: None (cursor position unchanged, attribute preserved)
+    fn int10_write_char(&mut self, video: &mut crate::video::Video) {
+        let ch = (self.ax & 0xFF) as u8; // AL
+        let count = self.cx;
+        let cursor = video.get_cursor();
+
+        for i in 0..count {
+            let pos = cursor.row * 80 + cursor.col + (i as usize);
+            if pos >= 80 * 25 {
+                break; // Don't write beyond screen
+            }
+            let offset = pos * 2;
+            video.write_byte(offset, ch);
+            // Don't modify attribute byte (offset + 1) - preserve existing color
         }
         // Cursor position is NOT updated by this function
     }

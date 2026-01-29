@@ -28,6 +28,11 @@ pub struct Computer<
     cycles_per_tick: u64,
     /// Instruction step counter for debugging
     step_count: u64,
+
+    /// if set to true, opcode execution will be logged as info level
+    pub exec_logging_enabled: bool,
+    /// if set to true, interrupts will be logged as info level
+    log_interrupts_enabled: bool,
 }
 
 impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
@@ -76,6 +81,8 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             // This is approximate: 4770000 / 18.2 ≈ 262088
             cycles_per_tick: 262088,
             step_count: 0,
+            exec_logging_enabled: false,
+            log_interrupts_enabled: false,
         }
     }
 
@@ -214,12 +221,14 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             // The offset tells us which interrupt this is!
             let int_num = (current_ip & 0xFF) as u8;
 
-            log::debug!(
-                "BIOS ROM execution detected at {:04X}:{:04X}, handling as INT 0x{:02X}",
-                current_cs,
-                current_ip,
-                int_num
-            );
+            if self.log_interrupts_enabled {
+                log::info!(
+                    "BIOS ROM execution detected at {:04X}:{:04X}, handling as INT 0x{:02X}",
+                    current_cs,
+                    current_ip,
+                    int_num
+                );
+            }
 
             // DOS typically does: PUSHF, CALL FAR old_handler
             // The stack has: [SP] = IP, [SP+2] = CS, [SP+4] = FLAGS
@@ -253,16 +262,18 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
         let addr = Cpu::physical_address(current_cs, current_ip);
         let opcode = self.memory.read_u8(addr);
 
-        // log::trace!(
-        //     "OP {:04X}:{:04X} 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X}",
-        //     current_cs,
-        //     current_ip,
-        //     opcode,
-        //     self.cpu.ax,
-        //     self.cpu.bx,
-        //     self.cpu.cx,
-        //     self.cpu.dx,
-        // );
+        if self.exec_logging_enabled {
+            log::info!(
+                "OP {:04X}:{:04X} 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X}",
+                current_cs,
+                current_ip,
+                opcode,
+                self.cpu.ax,
+                self.cpu.bx,
+                self.cpu.cx,
+                self.cpu.dx,
+            );
+        }
 
         // Check if it's an INT instruction
         match opcode {
@@ -391,5 +402,10 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             self.memory
                 .write_u16(counter_addr + 2, (tick_count >> 16) as u16);
         }
+    }
+
+    pub fn set_log_interrupts(&mut self, enable: bool) {
+        self.log_interrupts_enabled = enable;
+        self.cpu.log_interrupts_enabled = enable;
     }
 }

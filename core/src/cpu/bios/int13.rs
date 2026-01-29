@@ -73,14 +73,16 @@ impl Cpu {
         // For 8086, we only support 8-bit cylinders (compatibility mode)
         let cylinder_8bit = cylinder_low;
 
-        log::debug!(
-            "INT 13h AH=02h: Read {} sectors from drive {}, C/H/S={}/{}/{}",
-            count,
-            drive,
-            cylinder_8bit,
-            head,
-            sector
-        );
+        if self.log_interrupts_enabled {
+            log::info!(
+                "INT 13h AH=02h: Read {} sectors from drive {}, C/H/S={}/{}/{}",
+                count,
+                drive,
+                cylinder_8bit,
+                head,
+                sector
+            );
+        }
 
         match io.disk_read_sectors(drive, cylinder_8bit, head, sector, count) {
             Ok(data) => {
@@ -93,13 +95,15 @@ impl Cpu {
                 // Calculate actual sectors read
                 let sectors_read = (data.len() / 512).min(count as usize) as u8;
 
-                log::debug!(
-                    "INT 13h AH=02h: Successfully read {} sectors from drive {} to {:04X}:{:04X}",
-                    sectors_read,
-                    drive,
-                    self.es,
-                    self.bx
-                );
+                if self.log_interrupts_enabled {
+                    log::info!(
+                        "INT 13h AH=02h: Successfully read {} sectors from drive {} to {:04X}:{:04X}",
+                        sectors_read,
+                        drive,
+                        self.es,
+                        self.bx
+                    );
+                }
 
                 self.ax = (self.ax & 0xFF00) | (sectors_read as u16); // AL = sectors read
                 self.ax &= 0x00FF; // AH = 0 (success)
@@ -252,18 +256,22 @@ impl Cpu {
     fn int13_get_drive_params<T: Bios>(&mut self, io: &T) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
-        log::debug!("INT 13h AH=08h: Get Drive Parameters for drive {}", drive);
+        if self.log_interrupts_enabled {
+            log::info!("INT 13h AH=08h: Get Drive Parameters for drive {}", drive);
+        }
 
         match io.disk_get_params(drive) {
             Ok(params) => {
-                log::debug!(
-                    "INT 13h AH=08h: Drive {} params: cyl={}, head={}, sec={}, drives={}",
-                    drive,
-                    params.max_cylinder,
-                    params.max_head,
-                    params.max_sector,
-                    params.drive_count
-                );
+                if self.log_interrupts_enabled {
+                    log::info!(
+                        "INT 13h AH=08h: Drive {} params: cyl={}, head={}, sec={}, drives={}",
+                        drive,
+                        params.max_cylinder,
+                        params.max_head,
+                        params.max_sector,
+                        params.drive_count
+                    );
+                }
                 // Pack cylinder into CH and CL
                 let cylinder = params.max_cylinder as u16;
                 let cylinder_low = (cylinder & 0xFF) as u8;
@@ -378,12 +386,14 @@ impl Cpu {
         let tracks_high = (sectors_and_tracks_high >> 6) & 0x03; // Bits 6-7
         let tracks = ((tracks_high as u16) << 8) | (tracks_low as u16);
 
-        log::debug!(
-            "INT 13h AH=18h: Set DASD Type for drive {}, tracks={}, sectors_per_track={}",
-            drive,
-            tracks,
-            sectors_per_track
-        );
+        if self.log_interrupts_enabled {
+            log::info!(
+                "INT 13h AH=18h: Set DASD Type for drive {}, tracks={}, sectors_per_track={}",
+                drive,
+                tracks,
+                sectors_per_track
+            );
+        }
 
         // Verify drive exists and get its parameters
         match io.disk_get_params(drive) {
@@ -428,15 +438,19 @@ impl Cpu {
                 self.di = DBT_OFFSET;
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
-                log::debug!(
-                    "INT 13h AH=18h: Success, DBT at {:04X}:{:04X}",
-                    DBT_SEGMENT,
-                    DBT_OFFSET
-                );
+                if self.log_interrupts_enabled {
+                    log::info!(
+                        "INT 13h AH=18h: Success, DBT at {:04X}:{:04X}",
+                        DBT_SEGMENT,
+                        DBT_OFFSET
+                    );
+                }
             }
             Err(_) => {
                 // Drive not present
-                log::debug!("INT 13h AH=18h: Drive {} not present", drive);
+                if self.log_interrupts_enabled {
+                    log::info!("INT 13h AH=18h: Drive {} not present", drive);
+                }
                 self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
                 self.set_flag(cpu_flag::CARRY, true);
             }
