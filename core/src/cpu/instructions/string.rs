@@ -1,6 +1,6 @@
 use super::super::{Cpu, RepeatPrefix};
 use crate::cpu::cpu_flag;
-use crate::io_port::{IoDevice, IoPort};
+use crate::io::IoDevice;
 use crate::memory::Memory;
 
 impl Cpu {
@@ -321,36 +321,31 @@ impl Cpu {
     /// 6D: INSW - Input word from port DX to ES:DI
     ///
     /// Reads data from I/O port DX into ES:DI, then increments/decrements DI based on DF.
-    pub(in crate::cpu) fn ins<I: IoDevice>(
+    pub(in crate::cpu) fn ins(
         &mut self,
         opcode: u8,
         memory: &mut Memory,
-        io_port: &mut IoPort<I>,
+        io_device: &mut IoDevice,
     ) {
         let is_word = opcode & 0x01 != 0;
 
         // Handle repeat prefix
         if self.repeat_prefix.is_some() {
             while self.cx != 0 {
-                self.ins_once(is_word, memory, io_port);
+                self.ins_once(is_word, memory, io_device);
                 self.cx = self.cx.wrapping_sub(1);
             }
         } else {
-            self.ins_once(is_word, memory, io_port);
+            self.ins_once(is_word, memory, io_device);
         }
     }
 
-    fn ins_once<I: IoDevice>(
-        &mut self,
-        is_word: bool,
-        memory: &mut Memory,
-        io_port: &mut IoPort<I>,
-    ) {
+    fn ins_once(&mut self, is_word: bool, memory: &mut Memory, io_device: &mut IoDevice) {
         let port = self.dx;
 
         if is_word {
             // INSW - Input word
-            let value = io_port.read_word(port);
+            let value = io_device.read_word(port);
             let addr = Self::physical_address(self.es, self.di);
             memory.write_u16(addr, value);
 
@@ -362,7 +357,7 @@ impl Cpu {
             }
         } else {
             // INSB - Input byte
-            let value = io_port.read_byte(port);
+            let value = io_device.read_byte(port);
             let addr = Self::physical_address(self.es, self.di);
             memory.write_u8(addr, value);
 
@@ -380,26 +375,21 @@ impl Cpu {
     /// 6F: OUTSW - Output word from DS:SI to port DX
     ///
     /// Writes data from DS:SI to I/O port DX, then increments/decrements SI based on DF.
-    pub(in crate::cpu) fn outs<I: IoDevice>(
-        &mut self,
-        opcode: u8,
-        memory: &Memory,
-        io_port: &mut IoPort<I>,
-    ) {
+    pub(in crate::cpu) fn outs(&mut self, opcode: u8, memory: &Memory, io_device: &mut IoDevice) {
         let is_word = opcode & 0x01 != 0;
 
         // Handle repeat prefix
         if self.repeat_prefix.is_some() {
             while self.cx != 0 {
-                self.outs_once(is_word, memory, io_port);
+                self.outs_once(is_word, memory, io_device);
                 self.cx = self.cx.wrapping_sub(1);
             }
         } else {
-            self.outs_once(is_word, memory, io_port);
+            self.outs_once(is_word, memory, io_device);
         }
     }
 
-    fn outs_once<I: IoDevice>(&mut self, is_word: bool, memory: &Memory, io_port: &mut IoPort<I>) {
+    fn outs_once(&mut self, is_word: bool, memory: &Memory, io_device: &mut IoDevice) {
         let port = self.dx;
 
         if is_word {
@@ -407,7 +397,7 @@ impl Cpu {
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
             let value = memory.read_u16(addr);
-            io_port.write_word(port, value);
+            io_device.write_word(port, value);
 
             // Update SI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -420,7 +410,7 @@ impl Cpu {
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
             let value = memory.read_u8(addr);
-            io_port.write_byte(port, value);
+            io_device.write_byte(port, value);
 
             // Update SI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {

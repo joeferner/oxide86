@@ -177,11 +177,10 @@ fn show_help(stdout: &mut Stdout) -> Result<()> {
 
 /// Handle command mode for runtime operations (floppy swapping, etc.)
 /// Returns true to continue emulation, false to halt
-pub fn handle_command_mode<I, V>(
-    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, I, V>,
+pub fn handle_command_mode<V>(
+    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, V>,
 ) -> Result<bool>
 where
-    I: emu86_core::IoDevice,
     V: emu86_core::VideoController,
 {
     let mut stdout = stdout();
@@ -304,13 +303,12 @@ fn format_drive(drive: DriveNumber) -> String {
     }
 }
 
-fn insert_floppy<I, V>(
-    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, I, V>,
+fn insert_floppy<V>(
+    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, V>,
     drive: DriveNumber,
     path: &str,
 ) -> Result<()>
 where
-    I: emu86_core::IoDevice,
     V: emu86_core::VideoController,
 {
     // Verify drive is a floppy
@@ -330,12 +328,11 @@ where
     Ok(())
 }
 
-fn eject_floppy<I, V>(
-    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, I, V>,
+fn eject_floppy<V>(
+    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, V>,
     drive: DriveNumber,
 ) -> Result<()>
 where
-    I: emu86_core::IoDevice,
     V: emu86_core::VideoController,
 {
     // Verify drive is a floppy

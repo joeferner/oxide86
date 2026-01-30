@@ -1,22 +1,17 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, DriveNumber, IoDevice, NullBios, NullIoDevice, NullVideoController, TextCell, Video,
-    VideoController,
+    Bios, DriveNumber, NullBios, NullVideoController, TextCell, Video, VideoController,
     cpu::Cpu,
-    io_port::IoPort,
+    io::IoDevice,
     memory::{self, Memory},
 };
 
-pub struct Computer<
-    B: Bios = NullBios,
-    I: IoDevice = NullIoDevice,
-    V: VideoController = NullVideoController,
-> {
+pub struct Computer<B: Bios = NullBios, V: VideoController = NullVideoController> {
     cpu: Cpu,
     memory: Memory,
     bios: B,
-    io_port: IoPort<I>,
+    io_device: IoDevice,
     video: Video,
     video_controller: V,
     /// Cycle counter for timer emulation (resets each tick)
@@ -36,8 +31,8 @@ pub struct Computer<
     log_steps: u32,
 }
 
-impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
-    pub fn new(bios: B, io_device: I, video_controller: V) -> Self {
+impl<B: Bios, V: VideoController> Computer<B, V> {
+    pub fn new(bios: B, video_controller: V) -> Self {
         let mut memory = Memory::new();
         memory.initialize_ivt();
         memory.initialize_bda();
@@ -73,7 +68,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
             cpu: Cpu::new(),
             memory,
             bios,
-            io_port: IoPort::new(io_device),
+            io_device: IoDevice::new(),
             video: Video::new(),
             video_controller,
             cycle_count: 0,
@@ -315,7 +310,7 @@ impl<B: Bios, I: IoDevice, V: VideoController> Computer<B, I, V> {
                 // Normal instruction - use execute_with_io
                 let opcode = self.cpu.fetch_byte(&self.memory);
                 self.cpu
-                    .execute_with_io(opcode, &mut self.memory, &mut self.io_port);
+                    .execute_with_io(opcode, &mut self.memory, &mut self.io_device);
             }
         }
 

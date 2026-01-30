@@ -10,9 +10,6 @@ use std::time::{Duration, Instant};
 mod bios;
 use bios::NativeBios;
 
-mod simple_io_device;
-use simple_io_device::SimpleIoDevice;
-
 mod terminal_keyboard;
 
 mod terminal_video;
@@ -46,10 +43,6 @@ struct Cli {
     /// Starting offset address (default: 0x0100, like .COM files)
     #[arg(long, default_value = "0x0100")]
     offset: String,
-
-    /// Enable verbose I/O port logging
-    #[arg(long)]
-    verbose_io: bool,
 
     /// Path to disk image file for floppy A:
     #[arg(long = "floppy-a")]
@@ -160,9 +153,8 @@ fn main() -> Result<()> {
         ));
     }
 
-    let io_device = SimpleIoDevice::new(cli.verbose_io);
     let video = TerminalVideo::new();
-    let mut computer = Computer::new(bios, io_device, video);
+    let mut computer = Computer::new(bios, video);
 
     if cli.boot {
         // Boot from disk
@@ -223,11 +215,10 @@ fn main() -> Result<()> {
 /// Run the emulator with F12 command mode support
 /// Specific to NativeBios to support F12 command mode detection
 /// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
-fn run<I, V>(
-    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, I, V>,
+fn run<V>(
+    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, V>,
     clock_hz: Option<u64>,
 ) where
-    I: emu86_core::IoDevice,
     V: emu86_core::VideoController,
 {
     let start_time = clock_hz.map(|_| Instant::now());
