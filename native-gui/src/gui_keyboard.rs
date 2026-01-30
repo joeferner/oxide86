@@ -134,10 +134,18 @@ impl KeyboardInput for GuiKeyboard {
 
 /// Convert winit KeyEvent to KeyPress with scan code and ASCII code
 fn key_event_to_keypress(key_event: &KeyEvent) -> KeyPress {
-    let scan_code = if let PhysicalKey::Code(key_code) = key_event.physical_key {
-        key_code_to_scan_code(&key_code)
-    } else {
-        0x00
+    // For named keys (arrow keys, function keys, etc.), use the logical key
+    // For regular character keys, use the physical key
+    let scan_code = match &key_event.logical_key {
+        winit::keyboard::Key::Named(named_key) => logical_key_to_scan_code(named_key),
+        _ => {
+            // For regular keys, use physical key code
+            if let PhysicalKey::Code(key_code) = key_event.physical_key {
+                key_code_to_scan_code(&key_code)
+            } else {
+                0x00
+            }
+        }
     };
 
     // Extract ASCII from the text field if available (this handles shift, etc.)
@@ -151,6 +159,56 @@ fn key_event_to_keypress(key_event: &KeyEvent) -> KeyPress {
     KeyPress {
         scan_code,
         ascii_code,
+    }
+}
+
+/// Map winit Named logical key to 8086 scan code
+fn logical_key_to_scan_code(named_key: &winit::keyboard::NamedKey) -> u8 {
+    use winit::keyboard::NamedKey;
+    match named_key {
+        // Arrow keys
+        NamedKey::ArrowUp => 0x48,
+        NamedKey::ArrowDown => 0x50,
+        NamedKey::ArrowLeft => 0x4B,
+        NamedKey::ArrowRight => 0x4D,
+
+        // Navigation keys
+        NamedKey::Home => 0x47,
+        NamedKey::End => 0x4F,
+        NamedKey::PageUp => 0x49,
+        NamedKey::PageDown => 0x51,
+        NamedKey::Insert => 0x52,
+        NamedKey::Delete => 0x53,
+
+        // Editing keys
+        NamedKey::Backspace => 0x0E,
+        NamedKey::Tab => 0x0F,
+        NamedKey::Enter => 0x1C,
+        NamedKey::Escape => 0x01,
+
+        // Function keys
+        NamedKey::F1 => 0x3B,
+        NamedKey::F2 => 0x3C,
+        NamedKey::F3 => 0x3D,
+        NamedKey::F4 => 0x3E,
+        NamedKey::F5 => 0x3F,
+        NamedKey::F6 => 0x40,
+        NamedKey::F7 => 0x41,
+        NamedKey::F8 => 0x42,
+        NamedKey::F9 => 0x43,
+        NamedKey::F10 => 0x44,
+        NamedKey::F11 => 0x85,
+        NamedKey::F12 => 0x86,
+
+        // Lock keys
+        NamedKey::CapsLock => 0x3A,
+        NamedKey::NumLock => 0x45,
+        NamedKey::ScrollLock => 0x46,
+
+        _ => {
+            log::warn!("unhandled named key {:?}", named_key);
+            0x00
+        }
     }
 }
 
@@ -263,7 +321,10 @@ fn key_code_to_scan_code(code: &KeyCode) -> u8 {
         KeyCode::Numpad0 => 0x52,       // Insert
         KeyCode::NumpadDecimal => 0x53, // Delete
 
-        _ => 0x00,
+        _ => {
+            log::warn!("unhandled key code {code:?}");
+            0x00
+        }
     }
 }
 

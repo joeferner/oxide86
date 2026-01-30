@@ -1,6 +1,6 @@
 mod font;
 mod gui_keyboard;
-mod video_controller;
+mod gui_video;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -10,14 +10,13 @@ use emu86_core::{
     parse_mbr,
 };
 use gui_keyboard::GuiKeyboard;
+use gui_video::{PixelsVideoController, SCREEN_HEIGHT, SCREEN_WIDTH};
 use pixels::{Pixels, SurfaceTexture};
 use std::fs::File;
-use video_controller::{PixelsVideoController, SCREEN_HEIGHT, SCREEN_WIDTH};
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
-use winit::event::{ElementState, WindowEvent};
+use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
 
 #[derive(Parser)]
@@ -248,16 +247,6 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                // Check for Escape key to exit
-                if let PhysicalKey::Code(KeyCode::Escape) = event.physical_key
-                    && event.state == ElementState::Pressed
-                {
-                    log::info!("Escape key pressed - exiting");
-                    event_loop.exit();
-                    return;
-                }
-
-                // Forward keyboard events to the emulator
                 state.computer.bios_mut().keyboard.process_event(&event);
             }
             WindowEvent::RedrawRequested => {
