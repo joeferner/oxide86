@@ -22,22 +22,12 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 ### ~~2.1 Define KeyboardInput Trait~~ ✓ COMPLETED
 **Status:** KeyboardInput trait has been successfully created in `core/src/keyboard.rs` with platform-independent abstractions for keyboard input.
 
-### 2.2 Create SharedBiosState in Core
-**File:** `core/src/cpu/bios/mod.rs` (add to existing file)
-
-**Structure:**
-```rust
-pub struct SharedBiosState<D: DiskController> {
-    pub drive_manager: DriveManager<D>,
-    pub memory_allocator: MemoryAllocator,
-    pub device_handles: HashMap<u16, DosDevice>,
-    pub next_device_handle: u16,
-}
-```
-
-Includes helper methods for:
-- Device handle allocation
-- DOS device name detection (NUL, CON, etc.)
+### ~~2.2 Create SharedBiosState in Core~~ ✓ COMPLETED
+**Status:** SharedBiosState has been successfully created in `core/src/cpu/bios/mod.rs` with:
+- `DosDevice` enum moved to core for platform-independent device type definitions
+- `SharedBiosState<D>` struct containing drive_manager, memory_allocator, device_handles, and next_device_handle
+- Helper methods: `new()`, `is_dos_device()`, and `allocate_device_handle()`
+- Properly exported from core/src/lib.rs for use by native and GUI implementations
 
 ### 2.3 Implement TerminalKeyboard (CLI)
 **File:** `native/src/terminal_keyboard.rs` (new file)

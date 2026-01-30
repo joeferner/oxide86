@@ -24,7 +24,7 @@ pub mod null_bios;
 
 use super::Cpu;
 use crate::{
-    DriveNumber,
+    DiskController, DriveManager, DriveNumber, MemoryAllocator,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
     memory::Memory,
 };
@@ -32,6 +32,7 @@ pub use int14::{SerialParams, SerialStatus};
 pub use int17::PrinterStatus;
 pub use int21::FileAccess;
 pub use null_bios::NullBios;
+use std::collections::HashMap;
 
 /// Drive parameters returned by INT 13h, AH=08h
 #[derive(Debug, Clone, Copy)]
@@ -142,6 +143,71 @@ pub struct ExecResult {
     pub entry_offset: u16,
     /// Entry point segment (only for AL=01h)
     pub entry_segment: u16,
+}
+
+/// DOS device types
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DosDevice {
+    Null,    // NUL device
+    Console, // CON device
+}
+
+/// Shared BIOS state used by both native CLI and GUI implementations
+/// Contains platform-independent components that can be reused across different frontends
+pub struct SharedBiosState<D: DiskController> {
+    pub drive_manager: DriveManager<D>,
+    pub memory_allocator: MemoryAllocator,
+    pub device_handles: HashMap<u16, DosDevice>,
+    /// Next device handle to allocate. Shared between device handles and file handles.
+    pub next_device_handle: u16,
+}
+
+impl<D: DiskController> SharedBiosState<D> {
+    /// Create a new SharedBiosState with no drives attached
+    pub fn new() -> Self {
+        Self {
+            drive_manager: DriveManager::new(),
+            memory_allocator: MemoryAllocator::new(),
+            device_handles: HashMap::new(),
+            next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
+        }
+    }
+
+    /// Check if a filename is a DOS device name
+    pub fn is_dos_device(filename: &str) -> Option<DosDevice> {
+        // DOS device names are case-insensitive and may have extensions
+        let name = filename.to_uppercase();
+        let base_name = name.split('.').next().unwrap_or(&name);
+        // Also strip any path prefix
+        let base_name = base_name.rsplit(['\\', '/']).next().unwrap_or(base_name);
+
+        match base_name {
+            "NUL" => Some(DosDevice::Null),
+            "CON" => Some(DosDevice::Console),
+            "AUX" | "COM1" | "COM2" | "COM3" | "COM4" => Some(DosDevice::Null), // Serial ports - stub as null
+            "PRN" | "LPT1" | "LPT2" | "LPT3" => Some(DosDevice::Null), // Printer ports - stub as null
+            _ => None,
+        }
+    }
+
+    /// Allocate a new device handle
+    /// This is shared between device handles and drive_manager file handles to avoid collisions
+    pub fn allocate_device_handle(&mut self) -> Option<u16> {
+        let handle = self.next_device_handle;
+        self.next_device_handle = self.next_device_handle.wrapping_add(1);
+        if self.next_device_handle < 3 {
+            self.next_device_handle = 3; // Wrap around but skip reserved handles
+        }
+        // Sync the handle counter with the drive manager
+        self.drive_manager.set_next_handle(self.next_device_handle);
+        Some(handle)
+    }
+}
+
+impl<D: DiskController> Default for SharedBiosState<D> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Trait for handling BIOS interrupt I/O operations
