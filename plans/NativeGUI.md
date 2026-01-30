@@ -37,12 +37,14 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 - Key buffering during polling to prevent key loss
 - NativeBios refactored to delegate all keyboard operations to TerminalKeyboard
 
-### 2.4 Refactor NativeBios
-**File:** `native/src/bios/mod.rs`
-
-- Replace duplicated code with composition of `SharedBiosState`
-- Delegate keyboard operations to `TerminalKeyboard`
-- Keep CLI-specific methods: `poll_for_command_key()`, `is_command_mode_requested()`
+### ~~2.4 Refactor NativeBios~~ ✓ COMPLETED
+**Status:** NativeBios has been successfully refactored to use SharedBiosState with:
+- Individual fields (drive_manager, memory_allocator, device_handles, next_device_handle) replaced with single `shared: SharedBiosState<D>` field
+- All method implementations updated to delegate to `self.shared.*`
+- Keyboard operations continue to delegate to `TerminalKeyboard`
+- CLI-specific methods retained: `poll_for_command_key()`, `is_command_mode_requested()`, `clear_command_mode_request()`
+- Drive management methods continue to work through `self.shared.drive_manager`
+- Code compiles successfully and passes all tests
 
 ## Phase 3: Implement GUI Components
 

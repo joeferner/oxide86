@@ -1,31 +1,20 @@
 use emu86_core::cpu::bios::disk_error::DiskError;
 use emu86_core::cpu::bios::dos_error::DosError;
 use emu86_core::cpu::bios::{
-    DriveParams, ExecParams, FileAccess, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime,
-    SeekMethod, SerialParams, SerialStatus,
+    DosDevice, DriveParams, ExecParams, FileAccess, FindData, KeyPress, PrinterStatus, RtcDate,
+    RtcTime, SeekMethod, SerialParams, SerialStatus, SharedBiosState,
 };
 use emu86_core::keyboard::KeyboardInput;
-use emu86_core::{Bios, DiskController, DriveManager, DriveNumber, MemoryAllocator};
+use emu86_core::{Bios, DiskController, DriveNumber};
 use emu86_core::{peripheral, time};
-use std::collections::HashMap;
 use std::io::{self, Read};
 
 use crate::terminal_keyboard::TerminalKeyboard;
 
-/// DOS device types
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DosDevice {
-    Null,    // NUL device
-    Console, // CON device
-}
-
 /// Native platform implementation of BIOS
 pub struct NativeBios<D: DiskController> {
-    drive_manager: DriveManager<D>,
-    memory_allocator: MemoryAllocator,
-    device_handles: HashMap<u16, DosDevice>,
-    /// Next device handle to allocate. Shared between device handles and file handles.
-    next_device_handle: u16,
+    /// Shared BIOS state (drive manager, memory allocator, device handles)
+    shared: SharedBiosState<D>,
     /// Terminal keyboard input handler
     keyboard: TerminalKeyboard,
 }
@@ -34,65 +23,33 @@ impl<D: DiskController> NativeBios<D> {
     /// Create a new NativeBios with no drives attached
     pub fn new() -> Self {
         Self {
-            drive_manager: DriveManager::new(),
-            memory_allocator: MemoryAllocator::new(),
-            device_handles: HashMap::new(),
-            next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
+            shared: SharedBiosState::new(),
             keyboard: TerminalKeyboard::new(),
         }
     }
 
     /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
     pub fn insert_floppy(&mut self, slot: DriveNumber, disk: D) -> Result<(), String> {
-        self.drive_manager.insert_floppy(slot, disk)
+        self.shared.drive_manager.insert_floppy(slot, disk)
     }
 
     /// Eject a floppy disk from a slot (for runtime disk swapping)
     #[allow(dead_code)]
     pub fn eject_floppy(&mut self, slot: DriveNumber) -> Result<Option<D>, String> {
-        self.drive_manager.eject_floppy(slot)
+        self.shared.drive_manager.eject_floppy(slot)
     }
 
     /// Add a hard drive (returns assigned drive number: 0x80, 0x81, etc.)
     pub fn add_hard_drive(&mut self, disk: D) -> DriveNumber {
-        self.drive_manager.add_hard_drive(disk)
+        self.shared.drive_manager.add_hard_drive(disk)
     }
 
     /// Add a partitioned hard drive with both partition and raw disk views
     /// This allows INT 13h to read the MBR while DOS file operations use the partition
     pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> DriveNumber {
-        self.drive_manager
+        self.shared
+            .drive_manager
             .add_hard_drive_with_partition(partition, raw_disk)
-    }
-
-    /// Check if a filename is a DOS device name
-    fn is_dos_device(filename: &str) -> Option<DosDevice> {
-        // DOS device names are case-insensitive and may have extensions
-        let name = filename.to_uppercase();
-        let base_name = name.split('.').next().unwrap_or(&name);
-        // Also strip any path prefix
-        let base_name = base_name.rsplit(['\\', '/']).next().unwrap_or(base_name);
-
-        match base_name {
-            "NUL" => Some(DosDevice::Null),
-            "CON" => Some(DosDevice::Console),
-            "AUX" | "COM1" | "COM2" | "COM3" | "COM4" => Some(DosDevice::Null), // Serial ports - stub as null
-            "PRN" | "LPT1" | "LPT2" | "LPT3" => Some(DosDevice::Null), // Printer ports - stub as null
-            _ => None,
-        }
-    }
-
-    /// Allocate a new device handle
-    /// This is shared between device handles and drive_manager file handles to avoid collisions
-    fn allocate_device_handle(&mut self) -> Option<u16> {
-        let handle = self.next_device_handle;
-        self.next_device_handle = self.next_device_handle.wrapping_add(1);
-        if self.next_device_handle < 3 {
-            self.next_device_handle = 3; // Wrap around but skip reserved handles
-        }
-        // Sync the handle counter with the drive manager
-        self.drive_manager.set_next_handle(self.next_device_handle);
-        Some(handle)
     }
 
     /// Check if command mode has been requested via F12
@@ -144,7 +101,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
 
     // Disk operations - delegate to DriveManager
     fn disk_reset(&mut self, drive: DriveNumber) -> bool {
-        self.drive_manager.disk_reset(drive)
+        self.shared.drive_manager.disk_reset(drive)
     }
 
     fn disk_read_sectors(
@@ -155,7 +112,8 @@ impl<D: DiskController> Bios for NativeBios<D> {
         sector: u8,
         count: u8,
     ) -> Result<Vec<u8>, DiskError> {
-        self.drive_manager
+        self.shared
+            .drive_manager
             .disk_read_sectors(drive, cylinder, head, sector, count)
     }
 
@@ -168,20 +126,21 @@ impl<D: DiskController> Bios for NativeBios<D> {
         count: u8,
         data: &[u8],
     ) -> Result<u8, DiskError> {
-        self.drive_manager
+        self.shared
+            .drive_manager
             .disk_write_sectors(drive, cylinder, head, sector, count, data)
     }
 
     fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError> {
-        self.drive_manager.disk_get_params(drive)
+        self.shared.drive_manager.disk_get_params(drive)
     }
 
     fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError> {
-        self.drive_manager.disk_get_type(drive)
+        self.shared.drive_manager.disk_get_type(drive)
     }
 
     fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, DiskError> {
-        self.drive_manager.disk_detect_change(drive)
+        self.shared.drive_manager.disk_detect_change(drive)
     }
 
     fn disk_format_track(
@@ -191,7 +150,8 @@ impl<D: DiskController> Bios for NativeBios<D> {
         head: u8,
         sectors_per_track: u8,
     ) -> Result<(), DiskError> {
-        self.drive_manager
+        self.shared
+            .drive_manager
             .disk_format_track(drive, cylinder, head, sectors_per_track)
     }
 
@@ -201,37 +161,40 @@ impl<D: DiskController> Bios for NativeBios<D> {
         start_sector: u32,
         count: u16,
     ) -> Result<Vec<u8>, DiskError> {
-        self.drive_manager
+        self.shared
+            .drive_manager
             .disk_read_sectors_lba(drive, start_sector, count)
     }
 
     // File operations
     fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, DosError> {
         // Check if it's a DOS device
-        if let Some(device) = Self::is_dos_device(filename) {
+        if let Some(device) = SharedBiosState::<D>::is_dos_device(filename) {
             let handle = self
+                .shared
                 .allocate_device_handle()
                 .ok_or(DosError::TooManyOpenFiles)?;
-            self.device_handles.insert(handle, device);
+            self.shared.device_handles.insert(handle, device);
             return Ok(handle);
         }
 
         // Delegate to drive manager
-        self.drive_manager.file_create(filename, attributes)
+        self.shared.drive_manager.file_create(filename, attributes)
     }
 
     fn file_open(&mut self, filename: &str, access_mode: FileAccess) -> Result<u16, DosError> {
         // Check if it's a DOS device
-        if let Some(device) = Self::is_dos_device(filename) {
+        if let Some(device) = SharedBiosState::<D>::is_dos_device(filename) {
             let handle = self
+                .shared
                 .allocate_device_handle()
                 .ok_or(DosError::TooManyOpenFiles)?;
-            self.device_handles.insert(handle, device);
+            self.shared.device_handles.insert(handle, device);
             return Ok(handle);
         }
 
         // Delegate to drive manager
-        self.drive_manager.file_open(filename, access_mode)
+        self.shared.drive_manager.file_open(filename, access_mode)
     }
 
     fn file_close(&mut self, handle: u16) -> Result<(), DosError> {
@@ -241,12 +204,12 @@ impl<D: DiskController> Bios for NativeBios<D> {
         }
 
         // Try removing from device handles first
-        if self.device_handles.remove(&handle).is_some() {
+        if self.shared.device_handles.remove(&handle).is_some() {
             return Ok(());
         }
 
         // Delegate to drive manager
-        self.drive_manager.file_close(handle)
+        self.shared.drive_manager.file_close(handle)
     }
 
     fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, DosError> {
@@ -260,7 +223,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
                 }
                 Err(_) => Err(DosError::AccessDenied),
             }
-        } else if let Some(device) = self.device_handles.get(&handle) {
+        } else if let Some(device) = self.shared.device_handles.get(&handle) {
             // Handle DOS devices
             match device {
                 DosDevice::Null => {
@@ -281,7 +244,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
             }
         } else {
             // Delegate to drive manager
-            self.drive_manager.file_read(handle, max_bytes)
+            self.shared.drive_manager.file_read(handle, max_bytes)
         }
     }
 
@@ -295,7 +258,7 @@ impl<D: DiskController> Bios for NativeBios<D> {
             return Ok(data.len() as u16);
         }
 
-        if let Some(device) = self.device_handles.get(&handle) {
+        if let Some(device) = self.shared.device_handles.get(&handle) {
             // Handle DOS devices
             match device {
                 DosDevice::Null => {
@@ -312,24 +275,25 @@ impl<D: DiskController> Bios for NativeBios<D> {
             }
         } else {
             // Delegate to drive manager
-            self.drive_manager.file_write(handle, data)
+            self.shared.drive_manager.file_write(handle, data)
         }
     }
 
     fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, DosError> {
         // Standard handles and device handles don't support seeking
-        if handle < 3 || self.device_handles.contains_key(&handle) {
+        if handle < 3 || self.shared.device_handles.contains_key(&handle) {
             return Err(DosError::InvalidHandle);
         }
 
         // Delegate to drive manager
-        self.drive_manager.file_seek(handle, offset, method)
+        self.shared.drive_manager.file_seek(handle, offset, method)
     }
 
     fn file_duplicate(&mut self, handle: u16) -> Result<u16, DosError> {
         // Standard handles (0, 1, 2) can be duplicated
         if handle < 3 {
             let new_handle = self
+                .shared
                 .allocate_device_handle()
                 .ok_or(DosError::TooManyOpenFiles)?;
             // We don't actually store anything for standard handles
@@ -337,66 +301,67 @@ impl<D: DiskController> Bios for NativeBios<D> {
         }
 
         // Check if it's a device handle
-        if let Some(device) = self.device_handles.get(&handle).copied() {
+        if let Some(device) = self.shared.device_handles.get(&handle).copied() {
             let new_handle = self
+                .shared
                 .allocate_device_handle()
                 .ok_or(DosError::TooManyOpenFiles)?;
-            self.device_handles.insert(new_handle, device);
+            self.shared.device_handles.insert(new_handle, device);
             return Ok(new_handle);
         }
 
         // Delegate to drive manager
-        self.drive_manager.file_duplicate(handle)
+        self.shared.drive_manager.file_duplicate(handle)
     }
 
     // Directory operations
     fn dir_create(&mut self, dirname: &str) -> Result<(), DosError> {
-        self.drive_manager.dir_create(dirname)
+        self.shared.drive_manager.dir_create(dirname)
     }
 
     fn dir_remove(&mut self, dirname: &str) -> Result<(), DosError> {
-        self.drive_manager.dir_remove(dirname)
+        self.shared.drive_manager.dir_remove(dirname)
     }
 
     fn dir_change(&mut self, dirname: &str) -> Result<(), DosError> {
-        self.drive_manager.dir_change(dirname)
+        self.shared.drive_manager.dir_change(dirname)
     }
 
     fn dir_get_current(&self, drive: DriveNumber) -> Result<String, DosError> {
-        self.drive_manager.get_current_dir(drive)
+        self.shared.drive_manager.get_current_dir(drive)
     }
 
     fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), DosError> {
-        self.drive_manager.find_first(pattern, attributes)
+        self.shared.drive_manager.find_first(pattern, attributes)
     }
 
     fn find_next(&mut self, search_id: usize) -> Result<FindData, DosError> {
-        self.drive_manager.find_next(search_id)
+        self.shared.drive_manager.find_next(search_id)
     }
 
     // Drive management
     fn get_current_drive(&self) -> DriveNumber {
-        self.drive_manager.get_current_drive()
+        self.shared.drive_manager.get_current_drive()
     }
 
     fn set_default_drive(&mut self, drive: DriveNumber) -> u8 {
-        match self.drive_manager.set_current_drive(drive) {
+        match self.shared.drive_manager.set_current_drive(drive) {
             Ok(count) => count,
-            Err(_) => self.drive_manager.get_drive_count(),
+            Err(_) => self.shared.drive_manager.get_drive_count(),
         }
     }
 
     // Memory management
     fn memory_allocate(&mut self, paragraphs: u16) -> Result<u16, (DosError, u16)> {
-        self.memory_allocator.allocate(paragraphs)
+        self.shared.memory_allocator.allocate(paragraphs)
     }
 
     fn memory_free(&mut self, segment: u16) -> Result<(), DosError> {
-        self.memory_allocator.free(segment)
+        self.shared.memory_allocator.free(segment)
     }
 
     fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (DosError, u16)> {
-        self.memory_allocator.resize(segment, paragraphs)
+        self.shared.memory_allocator.resize(segment, paragraphs)
     }
 
     // PSP management
@@ -423,13 +388,13 @@ impl<D: DiskController> Bios for NativeBios<D> {
             2 => Ok(0x80D2), // STDERR: device (bit 7), console output (bit 1)
             _ => {
                 // Check if it's a DOS device handle
-                if let Some(device) = self.device_handles.get(&handle) {
+                if let Some(device) = self.shared.device_handles.get(&handle) {
                     // Return device info based on device type
                     match device {
                         DosDevice::Null => Ok(0x8004),    // NUL device (bit 7), special device
                         DosDevice::Console => Ok(0x80D3), // CON device (bit 7), console I/O
                     }
-                } else if self.drive_manager.contains_handle(handle) {
+                } else if self.shared.drive_manager.contains_handle(handle) {
                     // It's a regular file (bit 7 = 0)
                     Ok(0x0000)
                 } else {
@@ -448,8 +413,8 @@ impl<D: DiskController> Bios for NativeBios<D> {
             }
             _ => {
                 // Check if it's a valid file handle
-                if self.drive_manager.contains_handle(handle)
-                    || self.device_handles.contains_key(&handle)
+                if self.shared.drive_manager.contains_handle(handle)
+                    || self.shared.device_handles.contains_key(&handle)
                 {
                     // Allow setting but ignore for files and devices
                     Ok(())
