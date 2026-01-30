@@ -48,33 +48,20 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 
 ## Phase 3: Implement GUI Components
 
-### 3.1 Font Rendering
-**File:** `native-gui/src/font.rs`
-
-**Approach:** Use `vga` crate for standard VGA 8x16 font
-- Add dependency: `vga = "0.2"` to `native-gui/Cargo.toml`
-- Create `Cp437Font` wrapper around `vga::fonts::FONT_8X16`
-- Method: `render_glyph(char_code: u8) -> [[bool; 8]; 16]`
-
-**Alternative:** Embed custom font if vga crate unavailable
-
-### 3.2 PixelsVideoController
-**File:** `native-gui/src/video_controller.rs`
-
-**Implementation:**
-- Struct fields: `pixels: Pixels`, `font: Cp437Font`, cached buffer/cursor
-- Constants: `CHAR_WIDTH=8`, `CHAR_HEIGHT=16`, screen size `640x400`
-- VGA color palette → RGB mapping (reference: `native/src/terminal_video.rs`)
-- Dirty cell tracking: only redraw changed cells
-- Cursor rendering: white block in bottom 2 rows of character cell
-
-**VideoController trait methods:**
-- `update_display()`: Convert 80×25 `TextCell` buffer to RGBA pixels
-- `update_cursor()`: Render cursor, clear previous position
-- `set_video_mode()`: Clear screen, reset cache
-- `force_redraw()`: Reset cache to force full redraw
-
-**Performance:** Target 60 FPS with dirty cell optimization
+### ~~3.2 PixelsVideoController~~ ✓ COMPLETED
+**Status:** PixelsVideoController has been successfully implemented in `native-gui/src/video_controller.rs` with:
+- Embedded VGA 8x16 font via `font/mod.rs` and `font/IBM_VGA_8x16.bin`
+- Screen dimensions: 640x400 pixels (80×25 text cells)
+- VGA color palette to RGB mapping with all 16 colors
+- Dirty cell tracking for performance optimization
+- Cursor rendering in bottom 2 rows of character cell
+- VideoController trait implementation:
+  - `update_display()`: Updates internal buffer state
+  - `update_cursor()`: Updates cursor position
+  - `set_video_mode()`: Resets screen state
+  - `force_redraw()`: Forces full redraw
+- Public `render()` method for main loop to call with Pixels object
+- Designed to work with both native and WASM (Pixels is passed as parameter, not stored)
 
 ### 3.3 GuiKeyboard
 **File:** `native-gui/src/gui_keyboard.rs`
