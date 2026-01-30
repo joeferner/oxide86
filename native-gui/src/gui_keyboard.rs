@@ -25,7 +25,7 @@ use emu86_core::cpu::bios::KeyPress;
 use emu86_core::keyboard::KeyboardInput;
 use std::collections::VecDeque;
 use winit::event::{ElementState, KeyEvent};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 
 /// GUI keyboard input for native GUI using winit.
 ///
@@ -34,6 +34,8 @@ use winit::keyboard::{KeyCode, PhysicalKey};
 pub struct GuiKeyboard {
     /// Buffer for keyboard input from winit events
     keyboard_buffer: VecDeque<KeyPress>,
+    /// Current modifier key state (Shift, Ctrl, Alt, etc.)
+    modifiers: ModifiersState,
 }
 
 impl GuiKeyboard {
@@ -41,7 +43,16 @@ impl GuiKeyboard {
     pub fn new() -> Self {
         Self {
             keyboard_buffer: VecDeque::new(),
+            modifiers: ModifiersState::empty(),
         }
+    }
+
+    /// Update the modifier key state.
+    ///
+    /// This method should be called from the main event loop when a
+    /// `WindowEvent::ModifiersChanged` event is received.
+    pub fn update_modifiers(&mut self, modifiers: ModifiersState) {
+        self.modifiers = modifiers;
     }
 
     /// Process a winit keyboard event and buffer the key press.
@@ -65,7 +76,7 @@ impl GuiKeyboard {
         }
 
         // Convert the winit key event to a KeyPress
-        let key_press = key_event_to_keypress(event);
+        let key_press = key_event_to_keypress(event, self.modifiers);
 
         // Buffer the key press
         self.keyboard_buffer.push_back(key_press);
@@ -80,7 +91,10 @@ impl GuiKeyboard {
 
 impl Default for GuiKeyboard {
     fn default() -> Self {
-        Self::new()
+        Self {
+            keyboard_buffer: VecDeque::new(),
+            modifiers: ModifiersState::empty(),
+        }
     }
 }
 
@@ -133,10 +147,10 @@ impl KeyboardInput for GuiKeyboard {
 }
 
 /// Convert winit KeyEvent to KeyPress with scan code and ASCII code
-fn key_event_to_keypress(key_event: &KeyEvent) -> KeyPress {
+fn key_event_to_keypress(key_event: &KeyEvent, modifiers: ModifiersState) -> KeyPress {
     // For named keys (arrow keys, function keys, etc.), use the logical key
     // For regular character keys, use the physical key
-    let scan_code = match &key_event.logical_key {
+    let base_scan_code = match &key_event.logical_key {
         winit::keyboard::Key::Named(named_key) => logical_key_to_scan_code(named_key),
         _ => {
             // For regular keys, use physical key code
@@ -149,16 +163,171 @@ fn key_event_to_keypress(key_event: &KeyEvent) -> KeyPress {
     };
 
     // Extract ASCII from the text field if available (this handles shift, etc.)
-    let ascii_code = key_event
+    let mut ascii_code = key_event
         .text
         .as_ref()
         .and_then(|text| text.chars().next())
         .map(|c| c as u8)
         .unwrap_or_else(|| key_code_to_ascii(&key_event.physical_key));
 
+    // Apply modifier key adjustments for function keys and Alt combinations
+    let scan_code = apply_modifier_to_scan_code(
+        base_scan_code,
+        &key_event.logical_key,
+        &key_event.physical_key,
+        modifiers,
+        &mut ascii_code,
+    );
+
     KeyPress {
         scan_code,
         ascii_code,
+    }
+}
+
+/// Apply modifier keys (Shift, Ctrl, Alt) to scan codes
+/// This is needed for function keys and Alt+letter combinations
+fn apply_modifier_to_scan_code(
+    base_scan_code: u8,
+    logical_key: &winit::keyboard::Key,
+    physical_key: &PhysicalKey,
+    modifiers: ModifiersState,
+    ascii_code: &mut u8,
+) -> u8 {
+    use winit::keyboard::{Key, NamedKey};
+
+    // Check for function keys with modifiers
+    if let Key::Named(NamedKey::F1) = logical_key {
+        return apply_function_key_modifiers(1, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F2) = logical_key {
+        return apply_function_key_modifiers(2, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F3) = logical_key {
+        return apply_function_key_modifiers(3, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F4) = logical_key {
+        return apply_function_key_modifiers(4, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F5) = logical_key {
+        return apply_function_key_modifiers(5, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F6) = logical_key {
+        return apply_function_key_modifiers(6, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F7) = logical_key {
+        return apply_function_key_modifiers(7, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F8) = logical_key {
+        return apply_function_key_modifiers(8, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F9) = logical_key {
+        return apply_function_key_modifiers(9, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F10) = logical_key {
+        return apply_function_key_modifiers(10, modifiers, ascii_code);
+    } else if let Key::Named(NamedKey::F11) = logical_key {
+        *ascii_code = 0x00;
+        return 0x85;
+    } else if let Key::Named(NamedKey::F12) = logical_key {
+        *ascii_code = 0x00;
+        return 0x86;
+    }
+
+    // Handle Alt+letter and Alt+number combinations
+    if modifiers.alt_key()
+        && let PhysicalKey::Code(code) = physical_key
+    {
+        // Alt+letter combinations
+        match code {
+            KeyCode::KeyA
+            | KeyCode::KeyB
+            | KeyCode::KeyC
+            | KeyCode::KeyD
+            | KeyCode::KeyE
+            | KeyCode::KeyF
+            | KeyCode::KeyG
+            | KeyCode::KeyH
+            | KeyCode::KeyI
+            | KeyCode::KeyJ
+            | KeyCode::KeyK
+            | KeyCode::KeyL
+            | KeyCode::KeyM
+            | KeyCode::KeyN
+            | KeyCode::KeyO
+            | KeyCode::KeyP
+            | KeyCode::KeyQ
+            | KeyCode::KeyR
+            | KeyCode::KeyS
+            | KeyCode::KeyT
+            | KeyCode::KeyU
+            | KeyCode::KeyV
+            | KeyCode::KeyW
+            | KeyCode::KeyX
+            | KeyCode::KeyY
+            | KeyCode::KeyZ => {
+                // For Alt+letter, scan code is the letter's scan code, ASCII is 0
+                *ascii_code = 0x00;
+                return base_scan_code;
+            }
+            // Alt+number combinations (top row 1-0)
+            KeyCode::Digit1 => {
+                *ascii_code = 0x00;
+                return 0x78;
+            }
+            KeyCode::Digit2 => {
+                *ascii_code = 0x00;
+                return 0x79;
+            }
+            KeyCode::Digit3 => {
+                *ascii_code = 0x00;
+                return 0x7A;
+            }
+            KeyCode::Digit4 => {
+                *ascii_code = 0x00;
+                return 0x7B;
+            }
+            KeyCode::Digit5 => {
+                *ascii_code = 0x00;
+                return 0x7C;
+            }
+            KeyCode::Digit6 => {
+                *ascii_code = 0x00;
+                return 0x7D;
+            }
+            KeyCode::Digit7 => {
+                *ascii_code = 0x00;
+                return 0x7E;
+            }
+            KeyCode::Digit8 => {
+                *ascii_code = 0x00;
+                return 0x7F;
+            }
+            KeyCode::Digit9 => {
+                *ascii_code = 0x00;
+                return 0x80;
+            }
+            KeyCode::Digit0 => {
+                *ascii_code = 0x00;
+                return 0x81;
+            }
+            _ => {}
+        }
+    }
+
+    base_scan_code
+}
+
+/// Apply modifiers to function keys F1-F10
+fn apply_function_key_modifiers(fn_num: u8, modifiers: ModifiersState, ascii_code: &mut u8) -> u8 {
+    // Base scan code for F1-F10: 0x3B + (fn_num - 1)
+    let base = 0x3B + fn_num - 1;
+
+    *ascii_code = 0x00;
+
+    if modifiers.alt_key() {
+        // Alt+F1..F10: 0x68-0x71
+        0x68 + fn_num - 1
+    } else if modifiers.control_key() {
+        // Ctrl+F1..F10: 0x5E-0x67
+        0x5E + fn_num - 1
+    } else if modifiers.shift_key() {
+        // Shift+F1..F10: 0x54-0x5D
+        0x54 + fn_num - 1
+    } else {
+        // No modifier
+        base
     }
 }
 

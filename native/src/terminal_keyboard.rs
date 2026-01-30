@@ -205,13 +205,120 @@ fn translate_newline(ch: u8) -> u8 {
 
 /// Convert crossterm KeyEvent to KeyPress with scan code and ASCII code
 fn key_event_to_keypress(key_event: &KeyEvent) -> KeyPress {
-    let scan_code = key_code_to_scan_code(&key_event.code);
-    let ascii_code = key_event_to_ascii(key_event).unwrap_or(0x00);
+    let base_scan_code = key_code_to_scan_code(&key_event.code);
+    let mut ascii_code = key_event_to_ascii(key_event).unwrap_or(0x00);
+
+    // Apply modifier key adjustments for function keys
+    let scan_code = apply_modifier_to_scan_code(
+        base_scan_code,
+        &key_event.code,
+        &key_event.modifiers,
+        &mut ascii_code,
+    );
 
     KeyPress {
         scan_code,
         ascii_code,
     }
+}
+
+/// Apply modifier keys (Shift, Ctrl, Alt) to scan codes
+/// This is needed for function keys and Alt+letter combinations
+fn apply_modifier_to_scan_code(
+    base_scan_code: u8,
+    key_code: &KeyCode,
+    modifiers: &KeyModifiers,
+    ascii_code: &mut u8,
+) -> u8 {
+    // Handle function keys with modifiers (F1-F10)
+    if let KeyCode::F(n) = key_code {
+        if *n >= 1 && *n <= 10 {
+            // Base scan codes for F1-F10: 0x3B-0x44
+            let base = 0x3B + *n - 1;
+
+            return if modifiers.contains(KeyModifiers::ALT) {
+                // Alt+F1..F10: 0x68-0x71
+                *ascii_code = 0x00;
+                0x68 + *n - 1
+            } else if modifiers.contains(KeyModifiers::CONTROL) {
+                // Ctrl+F1..F10: 0x5E-0x67
+                *ascii_code = 0x00;
+                0x5E + *n - 1
+            } else if modifiers.contains(KeyModifiers::SHIFT) {
+                // Shift+F1..F10: 0x54-0x5D
+                *ascii_code = 0x00;
+                0x54 + *n - 1
+            } else {
+                // No modifier
+                *ascii_code = 0x00;
+                base
+            };
+        } else if *n == 11 || *n == 12 {
+            // F11 and F12 don't have standard shifted scan codes in BIOS
+            // Just clear ASCII for these
+            *ascii_code = 0x00;
+            return base_scan_code;
+        }
+    }
+
+    // Handle Alt+letter combinations
+    if modifiers.contains(KeyModifiers::ALT)
+        && let KeyCode::Char(c) = key_code
+        && c.is_ascii_alphabetic()
+    {
+        // For Alt+letter, scan code is the letter's scan code, ASCII is 0
+        *ascii_code = 0x00;
+        return base_scan_code;
+    }
+
+    // Handle Alt+number combinations (top row 1-0)
+    if modifiers.contains(KeyModifiers::ALT) {
+        match key_code {
+            KeyCode::Char('1') => {
+                *ascii_code = 0x00;
+                return 0x78;
+            } // Alt+1
+            KeyCode::Char('2') => {
+                *ascii_code = 0x00;
+                return 0x79;
+            } // Alt+2
+            KeyCode::Char('3') => {
+                *ascii_code = 0x00;
+                return 0x7A;
+            } // Alt+3
+            KeyCode::Char('4') => {
+                *ascii_code = 0x00;
+                return 0x7B;
+            } // Alt+4
+            KeyCode::Char('5') => {
+                *ascii_code = 0x00;
+                return 0x7C;
+            } // Alt+5
+            KeyCode::Char('6') => {
+                *ascii_code = 0x00;
+                return 0x7D;
+            } // Alt+6
+            KeyCode::Char('7') => {
+                *ascii_code = 0x00;
+                return 0x7E;
+            } // Alt+7
+            KeyCode::Char('8') => {
+                *ascii_code = 0x00;
+                return 0x7F;
+            } // Alt+8
+            KeyCode::Char('9') => {
+                *ascii_code = 0x00;
+                return 0x80;
+            } // Alt+9
+            KeyCode::Char('0') => {
+                *ascii_code = 0x00;
+                return 0x81;
+            } // Alt+0
+            _ => {}
+        }
+    }
+
+    base_scan_code
 }
 
 /// Map crossterm KeyCode to 8086 scan code

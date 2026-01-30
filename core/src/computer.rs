@@ -382,6 +382,44 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         &mut self.video_controller
     }
 
+    /// Update keyboard shift flags in the BIOS Data Area
+    /// This should be called when modifier key state changes (Shift, Ctrl, Alt)
+    ///
+    /// # Arguments
+    ///
+    /// * `shift` - Shift key is pressed
+    /// * `ctrl` - Ctrl key is pressed
+    /// * `alt` - Alt key is pressed
+    pub fn update_keyboard_flags(&mut self, shift: bool, ctrl: bool, alt: bool) {
+        let flags_addr = memory::BDA_START + memory::BDA_KEYBOARD_FLAGS1;
+        let mut flags = self.memory.read_u8(flags_addr);
+
+        // Bit 0: Right Shift pressed
+        // Bit 1: Left Shift pressed
+        // We don't distinguish between left/right shift, so set both if shift is pressed
+        if shift {
+            flags |= 0x03; // Set both left and right shift bits
+        } else {
+            flags &= !0x03; // Clear both shift bits
+        }
+
+        // Bit 2: Ctrl pressed
+        if ctrl {
+            flags |= 0x04;
+        } else {
+            flags &= !0x04;
+        }
+
+        // Bit 3: Alt pressed
+        if alt {
+            flags |= 0x08;
+        } else {
+            flags &= !0x08;
+        }
+
+        self.memory.write_u8(flags_addr, flags);
+    }
+
     /// Increment cycle counter and update system timer if needed
     /// This simulates the PIT (Programmable Interval Timer) running at 18.2 Hz
     fn increment_cycles(&mut self, cycles: u64) {

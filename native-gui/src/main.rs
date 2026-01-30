@@ -249,6 +249,21 @@ impl ApplicationHandler for App {
             WindowEvent::KeyboardInput { event, .. } => {
                 state.computer.bios_mut().keyboard.process_event(&event);
             }
+            WindowEvent::ModifiersChanged(modifiers) => {
+                let mod_state = modifiers.state();
+                state
+                    .computer
+                    .bios_mut()
+                    .keyboard
+                    .update_modifiers(mod_state);
+
+                // Update BDA keyboard flags so INT 16h AH=02h works correctly
+                state.computer.update_keyboard_flags(
+                    mod_state.shift_key(),
+                    mod_state.control_key(),
+                    mod_state.alt_key(),
+                );
+            }
             WindowEvent::RedrawRequested => {
                 const BATCH_SIZE: u32 = 10000;
 
