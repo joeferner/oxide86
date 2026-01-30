@@ -63,21 +63,19 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 - Public `render()` method for main loop to call with Pixels object
 - Designed to work with both native and WASM (Pixels is passed as parameter, not stored)
 
-### 3.3 GuiKeyboard
-**File:** `native-gui/src/gui_keyboard.rs`
-
-**Implementation:**
-- Queue of `KeyPress` structures from winit events
-- `process_event(&mut self, event: &KeyEvent)` - buffer incoming keys
-- Convert `winit::keyboard::KeyCode` → 8086 scan codes
-- Extract ASCII from `event.text` field
-- Implement `KeyboardInput` trait
-
-**Key mappings:**
-- Standard keys: A-Z, 0-9, Enter, Backspace, Tab, Esc
-- Function keys: F1-F12 (scan codes 0x3B-0x86)
-- Arrow keys: Up/Down/Left/Right
-- Navigation: Home, End, PageUp, PageDown, Insert, Delete
+### ~~3.3 GuiKeyboard~~ ✓ COMPLETED
+**Status:** GuiKeyboard has been successfully implemented in `native-gui/src/gui_keyboard.rs` with:
+- KeyboardInput trait implementation with non-blocking behavior for GUI context
+- Queue-based buffering of KeyPress structures from winit events
+- `process_event(&mut self, event: &KeyEvent)` method for buffering incoming keys
+- Complete winit::keyboard::KeyCode → 8086 scan code mappings
+- ASCII extraction from event.text field with fallback to key_code_to_ascii
+- Full key mappings for standard keys (A-Z, 0-9, Enter, Backspace, Tab, Esc)
+- Function keys F1-F12 with correct scan codes (0x3B-0x86)
+- Arrow keys (Up/Down/Left/Right) and navigation keys (Home, End, PageUp, PageDown, Insert, Delete)
+- Comprehensive numpad support
+- Documentation explaining non-blocking behavior in GUI vs blocking in terminal context
+- Ready for use by GuiBios in phase 3.4
 
 ### 3.4 GuiBios
 **File:** `native-gui/src/gui_bios.rs`

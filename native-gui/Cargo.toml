@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 pixels = "0.15.0"
+winit = "0.30"
 emu86-core = { path = "../core" }
 anyhow = { workspace = true }
 env_logger = "0.11"

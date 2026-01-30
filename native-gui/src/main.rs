@@ -1,4 +1,5 @@
 mod font;
+mod gui_keyboard;
 mod video_controller;
 
 use anyhow::{Context, Result};

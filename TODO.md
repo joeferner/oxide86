@@ -10,3 +10,4 @@
   [ ] WordStar
 [ ] 8086 Test CGI games
   [ ] Flight Simulator 1.0
+[ ] Refactor read_char to be blocking in GUI
