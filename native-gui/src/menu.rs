@@ -1,11 +1,12 @@
 use anyhow::{Context, Result};
 use emu86_core::DriveNumber;
-use muda::{accelerator::Accelerator, Menu, MenuEvent, MenuItem, Submenu};
+use muda::{Menu, MenuEvent, MenuItem, Submenu, accelerator::Accelerator};
 
 /// Custom event types for the application
 #[derive(Debug)]
 pub enum AppEvent {
     MenuEvent(MenuEvent),
+    #[allow(dead_code)]
     DiskInserted {
         slot: DriveNumber,
         result: Result<(), String>,
@@ -20,6 +21,7 @@ const MENU_EJECT_FLOPPY_B: &str = "eject_floppy_b";
 
 /// Application menu structure with references to menu items
 pub struct AppMenu {
+    #[allow(dead_code)]
     pub menu: Menu,
     insert_floppy_a: MenuItem,
     eject_floppy_a: MenuItem,
@@ -94,18 +96,20 @@ pub fn create_menu() -> Result<AppMenu> {
         MENU_INSERT_FLOPPY_A,
         "Insert Disk...",
         true,
-        Some(
-            Accelerator::new(Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::SHIFT), muda::accelerator::Code::KeyA)
-        ),
+        Some(Accelerator::new(
+            Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::SHIFT),
+            muda::accelerator::Code::KeyA,
+        )),
     );
 
     let eject_floppy_a = MenuItem::with_id(
         MENU_EJECT_FLOPPY_A,
         "Eject Disk",
         false, // Initially disabled
-        Some(
-            Accelerator::new(Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::ALT), muda::accelerator::Code::KeyA)
-        ),
+        Some(Accelerator::new(
+            Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::ALT),
+            muda::accelerator::Code::KeyA,
+        )),
     );
 
     floppy_a_menu
@@ -122,18 +126,20 @@ pub fn create_menu() -> Result<AppMenu> {
         MENU_INSERT_FLOPPY_B,
         "Insert Disk...",
         true,
-        Some(
-            Accelerator::new(Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::SHIFT), muda::accelerator::Code::KeyB)
-        ),
+        Some(Accelerator::new(
+            Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::SHIFT),
+            muda::accelerator::Code::KeyB,
+        )),
     );
 
     let eject_floppy_b = MenuItem::with_id(
         MENU_EJECT_FLOPPY_B,
         "Eject Disk",
         false, // Initially disabled
-        Some(
-            Accelerator::new(Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::ALT), muda::accelerator::Code::KeyB)
-        ),
+        Some(Accelerator::new(
+            Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::ALT),
+            muda::accelerator::Code::KeyB,
+        )),
     );
 
     floppy_b_menu

@@ -1,6 +1,7 @@
 mod font;
 mod gui_keyboard;
 mod gui_video;
+mod menu;
 
 use anyhow::{Context, Result};
 use clap::Parser;
@@ -11,12 +12,13 @@ use emu86_core::{
 };
 use gui_keyboard::GuiKeyboard;
 use gui_video::{PixelsVideoController, SCREEN_HEIGHT, SCREEN_WIDTH};
+use menu::{AppEvent, AppMenu};
 use pixels::{Pixels, SurfaceTexture};
 use std::fs::File;
 use winit::application::ApplicationHandler;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Window, WindowId};
 
 #[derive(Parser)]
@@ -52,11 +54,24 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // Create event loop
-    let event_loop = EventLoop::new().context("Failed to create event loop")?;
+    // Create event loop with custom event type
+    let event_loop = EventLoop::<AppEvent>::with_user_event()
+        .build()
+        .context("Failed to create event loop")?;
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = App::new(cli)?;
+    // Get event loop proxy
+    let event_proxy = event_loop.create_proxy();
+
+    // Set up muda event handler (must be before event loop starts)
+    muda::MenuEvent::set_event_handler(Some({
+        let proxy = event_proxy.clone();
+        move |event: muda::MenuEvent| {
+            let _ = proxy.send_event(AppEvent::MenuEvent(event));
+        }
+    }));
+
+    let mut app = App::new(cli, event_proxy)?;
     event_loop.run_app(&mut app)?;
 
     Ok(())
@@ -65,6 +80,11 @@ fn main() -> Result<()> {
 struct App {
     cli: Cli,
     state: Option<AppState>,
+    menu: Option<AppMenu>,
+    #[allow(dead_code)]
+    event_proxy: EventLoopProxy<AppEvent>,
+    floppy_a_present: bool,
+    floppy_b_present: bool,
 }
 
 struct AppState {
@@ -74,8 +94,15 @@ struct AppState {
 }
 
 impl App {
-    fn new(cli: Cli) -> Result<Self> {
-        Ok(Self { cli, state: None })
+    fn new(cli: Cli, event_proxy: EventLoopProxy<AppEvent>) -> Result<Self> {
+        Ok(Self {
+            cli,
+            state: None,
+            menu: None,
+            event_proxy,
+            floppy_a_present: false,
+            floppy_b_present: false,
+        })
     }
 
     fn create_computer(&self) -> Result<Computer<GuiKeyboard, PixelsVideoController>> {
@@ -180,9 +207,106 @@ impl App {
 
         Ok(computer)
     }
+
+    fn handle_menu_event(&mut self, menu_event: muda::MenuEvent) {
+        let Some(menu) = &self.menu else {
+            return;
+        };
+
+        let Some(action) = menu.get_menu_action(&menu_event) else {
+            log::warn!("Unknown menu event: {:?}", menu_event.id());
+            return;
+        };
+
+        if action.is_insert() {
+            self.show_insert_dialog(action.drive_number());
+        } else {
+            self.eject_disk(action.drive_number());
+        }
+    }
+
+    fn show_insert_dialog(&mut self, slot: DriveNumber) {
+        let drive_label = if slot == DriveNumber::floppy_a() {
+            "A:"
+        } else {
+            "B:"
+        };
+
+        let result = rfd::FileDialog::new()
+            .add_filter("Disk Images", &["img"])
+            .set_directory(".")
+            .set_title(format!("Select Disk for Floppy {}", drive_label))
+            .pick_file();
+
+        if let Some(file) = result {
+            let path = file.to_string_lossy().to_string();
+            self.load_and_insert_disk(slot, &path);
+        }
+    }
+
+    fn load_and_insert_disk(&mut self, slot: DriveNumber, path: &str) {
+        let result = (|| -> Result<()> {
+            let backend = FileDiskBackend::open(path, false)?;
+            let disk = BackedDisk::new(backend)
+                .with_context(|| format!("Invalid disk image: {}", path))?;
+
+            let state = self.state.as_mut().unwrap();
+            state
+                .computer
+                .bios_mut()
+                .insert_floppy(slot, Box::new(disk))
+                .map_err(|e| anyhow::anyhow!(e))?;
+
+            log::info!("Inserted floppy {} from {}", slot, path);
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                // Update state
+                if slot == DriveNumber::floppy_a() {
+                    self.floppy_a_present = true;
+                } else {
+                    self.floppy_b_present = true;
+                }
+                // Update menu
+                if let Some(menu) = &self.menu {
+                    menu.update_menu_states(self.floppy_a_present, self.floppy_b_present);
+                }
+            }
+            Err(e) => {
+                log::error!("Failed to insert disk: {}", e);
+            }
+        }
+    }
+
+    fn eject_disk(&mut self, slot: DriveNumber) {
+        let state = self.state.as_mut().unwrap();
+        match state.computer.bios_mut().eject_floppy(slot) {
+            Ok(Some(_disk)) => {
+                log::info!("Ejected floppy {}", slot);
+                // Update state
+                if slot == DriveNumber::floppy_a() {
+                    self.floppy_a_present = false;
+                } else {
+                    self.floppy_b_present = false;
+                }
+                // Update menu
+                if let Some(menu) = &self.menu {
+                    menu.update_menu_states(self.floppy_a_present, self.floppy_b_present);
+                }
+            }
+            Ok(None) => {
+                log::warn!("No disk in floppy {} to eject", slot);
+            }
+            Err(e) => {
+                log::error!("Failed to eject disk: {}", e);
+            }
+        }
+    }
 }
 
-impl ApplicationHandler for App {
+impl ApplicationHandler<AppEvent> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         if self.state.is_some() {
             return;
@@ -217,6 +341,65 @@ impl ApplicationHandler for App {
                 return;
             }
         };
+
+        // Create menu
+        let menu = match menu::create_menu() {
+            Ok(m) => m,
+            Err(e) => {
+                log::error!("Failed to create menu: {}", e);
+                event_loop.exit();
+                return;
+            }
+        };
+
+        // Initialize menu for window (platform-specific)
+        #[cfg(target_os = "windows")]
+        {
+            use winit::raw_window_handle::HasWindowHandle;
+            match window_ref.window_handle() {
+                Ok(handle) => {
+                    if let raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
+                        if let Err(e) = menu.menu.init_for_hwnd(h.hwnd.get() as isize) {
+                            log::error!("Failed to init menu for Windows: {}", e);
+                            event_loop.exit();
+                            return;
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("Failed to get window handle: {}", e);
+                    event_loop.exit();
+                    return;
+                }
+            }
+        }
+
+        #[cfg(target_os = "linux")]
+        {
+            // Linux menu initialization may require GTK window handle
+            log::info!("Linux menu initialization - using default setup");
+        }
+
+        #[cfg(target_os = "macos")]
+        {
+            if let Err(e) = menu.menu.init_for_nsapp() {
+                log::error!("Failed to init menu for macOS: {}", e);
+                event_loop.exit();
+                return;
+            }
+        }
+
+        // Check initial disk presence from CLI args
+        let floppy_a_present = self.cli.floppy_a.is_some();
+        let floppy_b_present = self.cli.floppy_b.is_some();
+
+        // Update menu states
+        menu.update_menu_states(floppy_a_present, floppy_b_present);
+
+        // Store menu and disk presence state
+        self.menu = Some(menu);
+        self.floppy_a_present = floppy_a_present;
+        self.floppy_b_present = floppy_b_present;
 
         self.state = Some(AppState {
             window: window_ref,
@@ -305,6 +488,22 @@ impl ApplicationHandler for App {
         // Request redraw to keep the emulation running continuously
         if let Some(state) = &self.state {
             state.window.request_redraw();
+        }
+    }
+
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, event: AppEvent) {
+        match event {
+            AppEvent::MenuEvent(menu_event) => {
+                self.handle_menu_event(menu_event);
+            }
+            AppEvent::DiskInserted { slot, result } => match result {
+                Ok(()) => {
+                    log::info!("Disk inserted successfully into {}", slot);
+                }
+                Err(e) => {
+                    log::error!("Failed to insert disk into {}: {}", slot, e);
+                }
+            },
         }
     }
 }

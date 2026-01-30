@@ -46,233 +46,32 @@ Created [native-gui/src/menu.rs](../../../native-gui/src/menu.rs) with:
 - `MenuAction` enum for menu event handling
 - `update_menu_states()` method for dynamic menu state management
 
-### Step 3: Integrate Event Loop
+### ✅ Step 3: Integrate Event Loop - COMPLETED
 
-**File:** [native-gui/src/main.rs](../../../native-gui/src/main.rs)
+Modified [native-gui/src/main.rs](../../../native-gui/src/main.rs) with:
+- Created event loop with custom `AppEvent` type
+- Set up muda event handler before event loop starts
+- Added menu fields and event_proxy to App struct
+- Updated ApplicationHandler trait bound to include AppEvent
+- Implemented menu creation and platform-specific initialization in `resumed()` method
+- Implemented `user_event()` method to handle menu events
+- Added helper methods: `handle_menu_event()`, `show_insert_dialog()`, `load_and_insert_disk()`, `eject_disk()`
+- Menu states properly sync with disk presence
 
-**Changes to `main()` function:**
+### ✅ Step 4: Implement Menu Event Handlers - COMPLETED
 
-1. Create event loop with custom event type:
-   ```rust
-   let event_loop = EventLoop::<AppEvent>::with_user_event()
-       .build()
-       .context("Failed to create event loop")?;
-   ```
+Implemented in [native-gui/src/main.rs](../../../native-gui/src/main.rs) as part of Step 3:
+- `handle_menu_event()` - dispatches menu actions to appropriate handlers
+- `show_insert_dialog()` - shows native file picker for disk selection
+- `load_and_insert_disk()` - loads disk image and inserts into drive
+- `eject_disk()` - ejects disk and updates menu state
 
-2. Get event loop proxy:
-   ```rust
-   let event_proxy = event_loop.create_proxy();
-   ```
+### ✅ Step 5: Platform-Specific Menu Initialization - COMPLETED
 
-3. Set up muda event handler (must be before event loop starts):
-   ```rust
-   muda::MenuEvent::set_event_handler(Some({
-       let proxy = event_proxy.clone();
-       move |event: muda::MenuEvent| {
-           let _ = proxy.send_event(AppEvent::MenuEvent(event));
-       }
-   }));
-   ```
-
-4. Pass proxy to App:
-   ```rust
-   let mut app = App::new(cli, event_proxy)?;
-   ```
-
-**Changes to `App` struct:**
-
-1. Add fields:
-   ```rust
-   menu: Option<AppMenu>,
-   event_proxy: EventLoopProxy<AppEvent>,
-   floppy_a_present: bool,
-   floppy_b_present: bool,
-   ```
-
-2. Update constructor to accept event proxy
-
-3. Update trait bound:
-   ```rust
-   impl ApplicationHandler<AppEvent> for App
-   ```
-
-**Changes to `ApplicationHandler` implementation:**
-
-1. Add `mod menu;` at top of file
-2. Import menu types
-
-3. In `resumed()` method (after window creation):
-   ```rust
-   // Create menu
-   let menu = menu::create_menu()?;
-
-   // Initialize menu for window (platform-specific)
-   #[cfg(target_os = "windows")]
-   {
-       use winit::platform::windows::WindowExtWindows;
-       use winit::raw_window_handle::HasWindowHandle;
-       let handle = window.window_handle()?;
-       if let raw_window_handle::RawWindowHandle::Win32(h) = handle.as_raw() {
-           menu.init_for_hwnd(h.hwnd.get() as isize)?;
-       }
-   }
-
-   // Similar for Linux (gtk) and macOS (nsapp)
-
-   // Check initial disk presence from CLI args
-   let floppy_a_present = self.cli.floppy_a.is_some();
-   let floppy_b_present = self.cli.floppy_b.is_some();
-
-   // Update menu states
-   menu.update_menu_states(floppy_a_present, floppy_b_present);
-
-   // Store in self
-   self.menu = Some(menu);
-   self.floppy_a_present = floppy_a_present;
-   self.floppy_b_present = floppy_b_present;
-   ```
-
-4. Implement `user_event()` method:
-   ```rust
-   fn user_event(&mut self, event_loop: &ActiveEventLoop, event: AppEvent) {
-       match event {
-           AppEvent::MenuEvent(menu_event) => {
-               self.handle_menu_event(menu_event);
-           }
-           AppEvent::DiskInserted { slot, result } => {
-               self.handle_disk_inserted(slot, result);
-           }
-       }
-   }
-   ```
-
-### Step 4: Implement Menu Event Handlers
-
-**File:** [native-gui/src/main.rs](../../../native-gui/src/main.rs)
-
-**Add helper methods to `App`:**
-
-1. `handle_menu_event()`:
-   - Match on menu item ID
-   - Determine drive slot (A: or B:)
-   - Call `show_insert_dialog()` or `eject_disk()`
-
-2. `show_insert_dialog()`:
-   ```rust
-   fn show_insert_dialog(&self, slot: DriveNumber) {
-       let result = rfd::FileDialog::new()
-           .add_filter("Disk Images", &["img"])
-           .set_directory(".")
-           .set_title(format!("Select Disk for Floppy {}",
-               if slot == DriveNumber::floppy_a() { "A:" } else { "B:" }))
-           .pick_file();
-
-       if let Some(file) = result {
-           let path = file.to_string_lossy().to_string();
-           self.load_and_insert_disk(slot, &path);
-       }
-   }
-   ```
-
-3. `load_and_insert_disk()`:
-   ```rust
-   fn load_and_insert_disk(&mut self, slot: DriveNumber, path: &str) {
-       let result = (|| {
-           let backend = FileDiskBackend::open(path, false)?;
-           let disk = BackedDisk::new(backend)
-               .with_context(|| format!("Invalid disk image: {}", path))?;
-
-           let state = self.state.as_mut().unwrap();
-           state.computer.bios_mut()
-               .insert_floppy(slot, Box::new(disk))
-               .map_err(|e| anyhow::anyhow!(e))?;
-
-           log::info!("Inserted floppy {} from {}", slot, path);
-           Ok(())
-       })();
-
-       match result {
-           Ok(()) => {
-               // Update state
-               if slot == DriveNumber::floppy_a() {
-                   self.floppy_a_present = true;
-               } else {
-                   self.floppy_b_present = true;
-               }
-               // Update menu
-               if let Some(menu) = &self.menu {
-                   menu.update_menu_states(self.floppy_a_present, self.floppy_b_present);
-               }
-           }
-           Err(e) => {
-               log::error!("Failed to insert disk: {}", e);
-           }
-       }
-   }
-   ```
-
-4. `eject_disk()`:
-   ```rust
-   fn eject_disk(&mut self, slot: DriveNumber) {
-       let state = self.state.as_mut().unwrap();
-       match state.computer.bios_mut().eject_floppy(slot) {
-           Ok(Some(_disk)) => {
-               log::info!("Ejected floppy {}", slot);
-               // Update state
-               if slot == DriveNumber::floppy_a() {
-                   self.floppy_a_present = false;
-               } else {
-                   self.floppy_b_present = false;
-               }
-               // Update menu
-               if let Some(menu) = &self.menu {
-                   menu.update_menu_states(self.floppy_a_present, self.floppy_b_present);
-               }
-           }
-           Ok(None) => {
-               log::warn!("No disk in floppy {} to eject", slot);
-           }
-           Err(e) => {
-               log::error!("Failed to eject disk: {}", e);
-           }
-       }
-   }
-   ```
-
-### Step 5: Platform-Specific Menu Initialization
-
-**File:** [native-gui/src/main.rs](../../../native-gui/src/main.rs)
-
-**In `resumed()` method, add platform-specific initialization:**
-
-```rust
-#[cfg(target_os = "windows")]
-{
-    use winit::platform::windows::WindowExtWindows;
-    use winit::raw_window_handle::HasWindowHandle;
-
-    let window_handle = window.window_handle()
-        .context("Failed to get window handle")?;
-    if let raw_window_handle::RawWindowHandle::Win32(handle) = window_handle.as_raw() {
-        menu.menu.init_for_hwnd(handle.hwnd.get() as isize)
-            .context("Failed to init menu for Windows")?;
-    }
-}
-
-#[cfg(target_os = "linux")]
-{
-    use winit::platform::x11::WindowExtX11;
-    // Note: Linux menu initialization may require GTK window handle
-    // For now, log a warning if not available
-    log::warn!("Linux menu initialization may require additional platform setup");
-}
-
-#[cfg(target_os = "macos")]
-{
-    menu.menu.init_for_nsapp()
-        .context("Failed to init menu for macOS")?;
-}
-```
+Implemented in [native-gui/src/main.rs](../../../native-gui/src/main.rs) `resumed()` method:
+- Windows: `menu.menu.init_for_hwnd()` with Win32 window handle
+- Linux: Default setup with info logging
+- macOS: `menu.menu.init_for_nsapp()`
 
 ## Edge Cases & Error Handling
 
