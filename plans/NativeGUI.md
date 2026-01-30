@@ -11,14 +11,8 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 ### ~~1.2 Move Time Functions~~ ✓ COMPLETED
 **Status:** Time functions have been successfully moved to `core/src/time.rs` and are now shared code.
 
-### 1.3 Move Peripheral Stubs
-**Location:** `native/src/bios/peripheral.rs` → `core/src/peripheral.rs`
-
-**Actions:**
-- Copy to `core/src/peripheral.rs` (all stub functions returning timeout status)
-- Export from `core/src/lib.rs`: `pub mod peripheral;`
-- Update `native/src/bios/mod.rs` to call `emu86_core::peripheral::*`
-- Delete `native/src/bios/peripheral.rs`
+### ~~1.3 Move Peripheral Stubs~~ ✓ COMPLETED
+**Status:** Peripheral stubs have been successfully moved to `core/src/peripheral.rs` and are now shared code.
 
 ### 1.4 Move DiskBackend
 **Location:** `native/src/disk_backend.rs` → `core/src/disk_backend.rs`
@@ -198,8 +192,8 @@ vga = "0.2"
 
 **Week 1: Foundation**
 1. ~~Move MemoryAllocator to core~~ ✓ COMPLETED
-1. Move time functions to core
-1. Move peripheral stubs to core
+1. ~~Move time functions to core~~ ✓ COMPLETED
+1. ~~Move peripheral stubs to core~~ ✓ COMPLETED
 1. Move DiskBackend to core
 1. Verify native CLI works
 

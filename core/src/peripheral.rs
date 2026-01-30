@@ -1,9 +1,10 @@
-use emu86_core::cpu::bios::int14::line_status;
-use emu86_core::cpu::bios::int17::printer_status;
-use emu86_core::cpu::bios::{PrinterStatus, SerialParams, SerialStatus};
+use crate::cpu::bios::int14::line_status;
+use crate::cpu::bios::int17::printer_status;
+use crate::cpu::bios::{PrinterStatus, SerialParams, SerialStatus};
 
-// Serial port and printer operations for NativeBios
-// These are stub implementations as actual hardware is not available
+// Serial port and printer operations stub implementations
+// These return timeout status as actual hardware is not available
+// Used by both native CLI and GUI frontends
 
 pub fn serial_init(_port: u8, _params: SerialParams) -> SerialStatus {
     // Serial port not available in stdio implementation

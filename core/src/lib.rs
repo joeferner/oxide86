@@ -23,6 +23,7 @@ pub mod io;
 pub mod io_port;
 pub mod memory;
 pub mod memory_allocator;
+pub mod peripheral;
 pub mod time;
 pub mod video;
 
