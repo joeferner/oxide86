@@ -1,6 +1,5 @@
 mod console;
 mod peripheral;
-mod time;
 
 use emu86_core::cpu::bios::disk_error::DiskError;
 use emu86_core::cpu::bios::dos_error::DosError;
@@ -8,6 +7,7 @@ use emu86_core::cpu::bios::{
     DriveParams, ExecParams, FileAccess, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime,
     SeekMethod, SerialParams, SerialStatus,
 };
+use emu86_core::time;
 use emu86_core::{Bios, DiskController, DriveManager, DriveNumber, MemoryAllocator};
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read};

@@ -1,7 +1,7 @@
-use emu86_core::cpu::bios::{RtcDate, RtcTime};
+use crate::cpu::bios::{RtcDate, RtcTime};
 use std::time::SystemTime;
 
-// Time and RTC operations for NativeBios
+// Time and RTC operations for BIOS implementations
 
 pub fn get_system_ticks() -> u32 {
     // Get current system time

@@ -8,14 +8,8 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 ### ~~1.1 Move MemoryAllocator~~ ✓ COMPLETED
 **Status:** MemoryAllocator has been successfully moved to `core/src/memory_allocator.rs` and is now shared code.
 
-### 1.2 Move Time Functions
-**Location:** `native/src/bios/time.rs` → `core/src/time.rs`
-
-**Actions:**
-- Copy to `core/src/time.rs` (uses `std::time::SystemTime` - available on all platforms)
-- Export from `core/src/lib.rs`: `pub mod time;`
-- Update `native/src/bios/mod.rs`: Replace implementations with calls to `emu86_core::time::*`
-- Delete `native/src/bios/time.rs`
+### ~~1.2 Move Time Functions~~ ✓ COMPLETED
+**Status:** Time functions have been successfully moved to `core/src/time.rs` and are now shared code.
 
 ### 1.3 Move Peripheral Stubs
 **Location:** `native/src/bios/peripheral.rs` → `core/src/peripheral.rs`
