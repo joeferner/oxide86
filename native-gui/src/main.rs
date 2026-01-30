@@ -376,8 +376,46 @@ impl ApplicationHandler<AppEvent> for App {
 
         #[cfg(target_os = "linux")]
         {
-            // Linux menu initialization may require GTK window handle
-            log::info!("Linux menu initialization - using default setup");
+            use winit::raw_window_handle::{HasDisplayHandle, HasWindowHandle};
+
+            log::info!("Attempting Linux menu initialization with GTK");
+
+            match (window_ref.window_handle(), window_ref.display_handle()) {
+                (Ok(window_handle), Ok(display_handle)) => {
+                    log::info!("Got window handle: {:?}", window_handle.as_raw());
+                    log::info!("Got display handle: {:?}", display_handle.as_raw());
+
+                    // Try to create a GTK window from the raw handle
+                    // This is experimental - winit may not provide GTK handles
+                    use raw_window_handle::RawWindowHandle;
+                    match window_handle.as_raw() {
+                        RawWindowHandle::Xlib(xlib_handle) => {
+                            log::info!("Detected X11/Xlib window (XID: {})", xlib_handle.window);
+                            log::warn!("muda requires GTK windows, but winit provided X11. Attempting GTK wrapping...");
+
+                            // Try to initialize GTK and wrap the X11 window
+                            if let Err(e) = gtk::init() {
+                                log::error!("Failed to initialize GTK: {}", e);
+                            } else {
+                                log::info!("GTK initialized successfully");
+                                // Note: We cannot easily wrap an X11 window as a GTK window
+                                // This would require unsafe FFI and is not straightforward
+                                log::error!("Cannot wrap X11 window as GTK window - unsupported");
+                            }
+                        }
+                        RawWindowHandle::Wayland(wayland_handle) => {
+                            log::info!("Detected Wayland window (surface: {:?})", wayland_handle.surface);
+                            log::warn!("muda requires GTK windows, but winit provided Wayland. Menus not supported.");
+                        }
+                        _ => {
+                            log::warn!("Unknown window handle type on Linux: {:?}", window_handle.as_raw());
+                        }
+                    }
+                }
+                _ => {
+                    log::error!("Failed to get window/display handles on Linux");
+                }
+            }
         }
 
         #[cfg(target_os = "macos")]

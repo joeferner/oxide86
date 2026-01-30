@@ -837,9 +837,11 @@ dependencies = [
  "clap",
  "emu86-core",
  "env_logger",
+ "gtk",
  "log",
  "muda",
  "pixels",
+ "raw-window-handle",
  "rfd",
  "winit",
 ]

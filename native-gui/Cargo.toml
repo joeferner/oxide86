@@ -14,5 +14,9 @@ clap = { workspace = true }
 muda = "0.17.1"
 rfd = "0.17.2"
 
+[target.'cfg(target_os = "linux")'.dependencies]
+gtk = "0.18"
+raw-window-handle = "0.6"
+
 [lints]
 workspace = true
