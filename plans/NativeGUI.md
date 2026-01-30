@@ -77,7 +77,8 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 - Documentation explaining non-blocking behavior in GUI vs blocking in terminal context
 - Ready for use by GuiBios in phase 3.4
 
-### 3.5 Main Event Loop
+### ~~3.5 Main Event Loop~~ ✓ COMPLETED
+**Status:** Main event loop has been successfully implemented with CLI args, window management, event handling, disk loading with MBR detection, and continuous emulation loop (1000 instructions/batch). Escape key exits. Designed for WASM portability.
 **File:** `native-gui/src/main.rs`
 
 **CLI Arguments (using clap):**

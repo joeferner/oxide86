@@ -29,6 +29,7 @@ pub mod memory;
 pub mod memory_allocator;
 pub mod peripheral;
 pub mod time;
+pub mod utils;
 pub mod video;
 
 /// Drive numbering:

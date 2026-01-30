@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
+use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{BackedDisk, Bios, Computer, DiskController, DriveNumber, FileDiskBackend};
 use std::fs::File;
 use std::panic;
@@ -277,14 +278,5 @@ fn run<V>(
                 }
             }
         }
-    }
-}
-
-fn parse_hex_or_dec(s: &str) -> Result<u16> {
-    if let Some(hex) = s.strip_prefix("0x") {
-        u16::from_str_radix(hex, 16).with_context(|| format!("Invalid hex value: {}", s))
-    } else {
-        s.parse::<u16>()
-            .with_context(|| format!("Invalid decimal value: {}", s))
     }
 }

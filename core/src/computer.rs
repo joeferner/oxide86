@@ -378,6 +378,11 @@ impl<K: KeyboardInput, D: DiskController, V: VideoController> Computer<K, D, V> 
         &mut self.bios
     }
 
+    /// Get a mutable reference to the video controller (for platform-specific rendering)
+    pub fn video_controller_mut(&mut self) -> &mut V {
+        &mut self.video_controller
+    }
+
     /// Increment cycle counter and update system timer if needed
     /// This simulates the PIT (Programmable Interval Timer) running at 18.2 Hz
     fn increment_cycles(&mut self, cycles: u64) {
