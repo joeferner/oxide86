@@ -14,36 +14,13 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 ### ~~1.3 Move Peripheral Stubs~~ ✓ COMPLETED
 **Status:** Peripheral stubs have been successfully moved to `core/src/peripheral.rs` and are now shared code.
 
-### 1.4 Move DiskBackend
-**Location:** `native/src/disk_backend.rs` → `core/src/disk_backend.rs`
-
-**Actions:**
-- Copy `FileDiskBackend` to `core/src/disk_backend.rs`
-- Add feature gate: `#[cfg(not(target_arch = "wasm32"))]`
-- Export from `core/src/lib.rs` with cfg gate
-- Update `native/src/main.rs` to import from core
-- Delete `native/src/disk_backend.rs`
-
-**Verification:**
-- Run native CLI: `cargo run -p emu86-native -- --boot --floppy-a <dos.img>`
-- Verify DIR, TYPE, file operations work identically
-- No regressions in functionality
+### ~~1.4 Move DiskBackend~~ ✓ COMPLETED
+**Status:** DiskBackend has been successfully moved to `core/src/disk_backend.rs` with proper cfg gates and is now shared code.
 
 ## Phase 2: Create Abstractions for Code Sharing
 
-### 2.1 Define KeyboardInput Trait
-**File:** `core/src/keyboard.rs`
-
-**Interface:**
-```rust
-pub trait KeyboardInput {
-    fn read_char(&mut self) -> Option<u8>;
-    fn check_char(&mut self) -> Option<u8>;
-    fn has_char_available(&self) -> bool;
-    fn read_key(&mut self) -> Option<KeyPress>;
-    fn check_key(&mut self) -> Option<KeyPress>;
-}
-```
+### ~~2.1 Define KeyboardInput Trait~~ ✓ COMPLETED
+**Status:** KeyboardInput trait has been successfully created in `core/src/keyboard.rs` with platform-independent abstractions for keyboard input.
 
 ### 2.2 Create SharedBiosState in Core
 **File:** `core/src/cpu/bios/mod.rs` (add to existing file)
@@ -194,7 +171,7 @@ vga = "0.2"
 1. ~~Move MemoryAllocator to core~~ ✓ COMPLETED
 1. ~~Move time functions to core~~ ✓ COMPLETED
 1. ~~Move peripheral stubs to core~~ ✓ COMPLETED
-1. Move DiskBackend to core
+1. ~~Move DiskBackend to core~~ ✓ COMPLETED
 1. Verify native CLI works
 
 **Week 2: Abstractions**

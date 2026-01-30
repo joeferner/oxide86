@@ -3,11 +3,10 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
 use crossterm::terminal::ClearType;
 use crossterm::{cursor, execute, terminal};
-use emu86_core::{BackedDisk, Computer, DriveNumber};
+use emu86_core::{BackedDisk, Computer, DriveNumber, FileDiskBackend};
 use std::io::{self, Stdout, Write, stdout};
 
 use crate::bios::NativeBios;
-use crate::disk_backend::FileDiskBackend;
 
 /// Read a line of input in raw terminal mode with basic editing support
 fn read_line_raw() -> Option<String> {

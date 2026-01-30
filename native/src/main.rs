@@ -2,16 +2,13 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
-use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber};
+use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend};
 use std::fs::File;
 use std::panic;
 use std::time::{Duration, Instant};
 
 mod bios;
 use bios::NativeBios;
-
-mod disk_backend;
-use disk_backend::FileDiskBackend;
 
 mod simple_io_device;
 use simple_io_device::SimpleIoDevice;

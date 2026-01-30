@@ -6,8 +6,11 @@ pub use crate::disk::{
     BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, PartitionedDisk, SECTOR_SIZE,
     parse_mbr,
 };
+#[cfg(not(target_arch = "wasm32"))]
+pub use crate::disk_backend::FileDiskBackend;
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 pub use crate::io_port::{IoDevice, NullIoDevice};
+pub use crate::keyboard::KeyboardInput;
 pub use crate::memory_allocator::MemoryAllocator;
 pub use crate::video::{
     CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
@@ -18,9 +21,12 @@ pub mod computer;
 pub mod cpu;
 pub mod decoder;
 pub mod disk;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod disk_backend;
 pub mod drive_manager;
 pub mod io;
 pub mod io_port;
+pub mod keyboard;
 pub mod memory;
 pub mod memory_allocator;
 pub mod peripheral;
