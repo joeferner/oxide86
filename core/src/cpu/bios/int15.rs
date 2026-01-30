@@ -4,10 +4,10 @@ use crate::{
 };
 
 impl Cpu {
-    pub(super) fn handle_int15<K: crate::KeyboardInput, D: crate::DiskController>(
+    pub(super) fn handle_int15<K: crate::KeyboardInput>(
         &mut self,
         memory: &mut Memory,
-        _io: &mut super::Bios<K, D>,
+        _io: &mut super::Bios<K>,
     ) {
         let function = (self.ax >> 8) as u8; // Get AH
         match function {

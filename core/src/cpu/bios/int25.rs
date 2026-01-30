@@ -28,10 +28,10 @@ impl Cpu {
     ///
     /// Note: INT 25h/26h leave FLAGS on the stack. The caller must POP them.
     /// This is handled by the calling code, not the interrupt handler.
-    pub(super) fn handle_int25<K: crate::KeyboardInput, D: crate::DiskController>(
+    pub(super) fn handle_int25<K: crate::KeyboardInput>(
         &mut self,
         memory: &mut Memory,
-        io: &mut super::Bios<K, D>,
+        io: &mut super::Bios<K>,
     ) {
         let drive = DriveNumber::from_dos((self.ax & 0xFF) as u8); // AL = drive number
         let count = self.cx;

@@ -154,15 +154,15 @@ pub enum DosDevice {
 
 /// Shared BIOS state used by both native CLI and GUI implementations
 /// Contains platform-independent components that can be reused across different frontends
-pub struct SharedBiosState<D: DiskController> {
-    pub drive_manager: DriveManager<D>,
+pub struct SharedBiosState {
+    pub drive_manager: DriveManager,
     pub memory_allocator: MemoryAllocator,
     pub device_handles: HashMap<u16, DosDevice>,
     /// Next device handle to allocate. Shared between device handles and file handles.
     pub next_device_handle: u16,
 }
 
-impl<D: DiskController> SharedBiosState<D> {
+impl SharedBiosState {
     /// Create a new SharedBiosState with no drives attached
     pub fn new() -> Self {
         Self {
@@ -204,7 +204,7 @@ impl<D: DiskController> SharedBiosState<D> {
     }
 }
 
-impl<D: DiskController> Default for SharedBiosState<D> {
+impl Default for SharedBiosState {
     fn default() -> Self {
         Self::new()
     }
@@ -212,14 +212,14 @@ impl<D: DiskController> Default for SharedBiosState<D> {
 
 /// BIOS implementation for handling interrupt I/O operations
 /// Generic over KeyboardInput (for platform-specific keyboard handling) and DiskController
-pub struct Bios<K: KeyboardInput, D: DiskController> {
+pub struct Bios<K: KeyboardInput> {
     /// Shared BIOS state (drive manager, memory allocator, device handles)
-    pub shared: SharedBiosState<D>,
+    pub shared: SharedBiosState,
     /// Keyboard input handler (platform-specific)
     pub keyboard: K,
 }
 
-impl<K: KeyboardInput, D: DiskController> Bios<K, D> {
+impl<K: KeyboardInput> Bios<K> {
     /// Create a new Bios with the provided keyboard input handler
     pub fn new(keyboard: K) -> Self {
         Self {
@@ -229,23 +229,34 @@ impl<K: KeyboardInput, D: DiskController> Bios<K, D> {
     }
 
     /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
-    pub fn insert_floppy(&mut self, slot: DriveNumber, disk: D) -> Result<(), String> {
+    pub fn insert_floppy(
+        &mut self,
+        slot: DriveNumber,
+        disk: Box<dyn DiskController>,
+    ) -> Result<(), String> {
         self.shared.drive_manager.insert_floppy(slot, disk)
     }
 
     /// Eject a floppy disk from a slot (for runtime disk swapping)
-    pub fn eject_floppy(&mut self, slot: DriveNumber) -> Result<Option<D>, String> {
+    pub fn eject_floppy(
+        &mut self,
+        slot: DriveNumber,
+    ) -> Result<Option<Box<dyn DiskController>>, String> {
         self.shared.drive_manager.eject_floppy(slot)
     }
 
     /// Add a hard drive (returns assigned drive number: 0x80, 0x81, etc.)
-    pub fn add_hard_drive(&mut self, disk: D) -> DriveNumber {
+    pub fn add_hard_drive(&mut self, disk: Box<dyn DiskController>) -> DriveNumber {
         self.shared.drive_manager.add_hard_drive(disk)
     }
 
     /// Add a partitioned hard drive with both partition and raw disk views
     /// This allows INT 13h to read the MBR while DOS file operations use the partition
-    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> DriveNumber {
+    pub fn add_hard_drive_with_partition(
+        &mut self,
+        partition: Box<dyn DiskController>,
+        raw_disk: Box<dyn DiskController>,
+    ) -> DriveNumber {
         self.shared
             .drive_manager
             .add_hard_drive_with_partition(partition, raw_disk)
@@ -342,7 +353,7 @@ impl<K: KeyboardInput, D: DiskController> Bios<K, D> {
     // File operations
     pub fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, DosError> {
         // Check if it's a DOS device
-        if let Some(device) = SharedBiosState::<D>::is_dos_device(filename) {
+        if let Some(device) = SharedBiosState::is_dos_device(filename) {
             let handle = self
                 .shared
                 .allocate_device_handle()
@@ -357,7 +368,7 @@ impl<K: KeyboardInput, D: DiskController> Bios<K, D> {
 
     pub fn file_open(&mut self, filename: &str, access_mode: FileAccess) -> Result<u16, DosError> {
         // Check if it's a DOS device
-        if let Some(device) = SharedBiosState::<D>::is_dos_device(filename) {
+        if let Some(device) = SharedBiosState::is_dos_device(filename) {
             let handle = self
                 .shared
                 .allocate_device_handle()
@@ -693,22 +704,22 @@ impl Cpu {
 
     /// Handle BIOS interrupt directly without checking IVT
     /// Used when DOS chains back to BIOS via CALL FAR to F000:XXXX
-    pub(crate) fn handle_bios_interrupt_direct<K: KeyboardInput, D: DiskController>(
+    pub(crate) fn handle_bios_interrupt_direct<K: KeyboardInput>(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
-        io: &mut Bios<K, D>,
+        io: &mut Bios<K>,
         video: &mut crate::video::Video,
     ) {
         self.handle_bios_interrupt_impl(int_num, memory, io, video);
     }
 
     /// Internal implementation of BIOS interrupt handling
-    pub(super) fn handle_bios_interrupt_impl<K: KeyboardInput, D: DiskController>(
+    pub(super) fn handle_bios_interrupt_impl<K: KeyboardInput>(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
-        io: &mut Bios<K, D>,
+        io: &mut Bios<K>,
         video: &mut crate::video::Video,
     ) {
         match int_num {

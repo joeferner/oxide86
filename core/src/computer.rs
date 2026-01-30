@@ -1,17 +1,16 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, DiskController, DriveNumber, KeyboardInput, NullVideoController, TextCell, Video,
-    VideoController,
+    Bios, DriveNumber, KeyboardInput, NullVideoController, TextCell, Video, VideoController,
     cpu::Cpu,
     io::IoDevice,
     memory::{self, Memory},
 };
 
-pub struct Computer<K: KeyboardInput, D: DiskController, V: VideoController = NullVideoController> {
+pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> {
     cpu: Cpu,
     memory: Memory,
-    bios: Bios<K, D>,
+    bios: Bios<K>,
     io_device: IoDevice,
     video: Video,
     video_controller: V,
@@ -32,8 +31,8 @@ pub struct Computer<K: KeyboardInput, D: DiskController, V: VideoController = Nu
     log_steps: u32,
 }
 
-impl<K: KeyboardInput, D: DiskController, V: VideoController> Computer<K, D, V> {
-    pub fn new(bios: Bios<K, D>, video_controller: V) -> Self {
+impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
+    pub fn new(bios: Bios<K>, video_controller: V) -> Self {
         let mut memory = Memory::new();
         memory.initialize_ivt();
         memory.initialize_bda();
@@ -369,12 +368,12 @@ impl<K: KeyboardInput, D: DiskController, V: VideoController> Computer<K, D, V> 
     }
 
     /// Get a reference to the BIOS (for disk saving on exit, etc.)
-    pub fn bios(&self) -> &Bios<K, D> {
+    pub fn bios(&self) -> &Bios<K> {
         &self.bios
     }
 
     /// Get a mutable reference to the BIOS (for runtime operations like disk swapping)
-    pub fn bios_mut(&mut self) -> &mut Bios<K, D> {
+    pub fn bios_mut(&mut self) -> &mut Bios<K> {
         &mut self.bios
     }
 

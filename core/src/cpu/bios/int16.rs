@@ -7,10 +7,10 @@ use crate::{cpu::Cpu, memory::Memory};
 impl Cpu {
     /// INT 0x16 - Keyboard Services
     /// AH register contains the function number
-    pub(super) fn handle_int16<K: crate::KeyboardInput, D: crate::DiskController>(
+    pub(super) fn handle_int16<K: crate::KeyboardInput>(
         &mut self,
         memory: &mut Memory,
-        io: &mut super::Bios<K, D>,
+        io: &mut super::Bios<K>,
     ) {
         let function = (self.ax >> 8) as u8; // Get AH
 
@@ -36,10 +36,10 @@ impl Cpu {
     /// Output:
     ///   AH = BIOS scan code
     ///   AL = ASCII character
-    fn int16_read_char<K: crate::KeyboardInput, D: crate::DiskController>(
+    fn int16_read_char<K: crate::KeyboardInput>(
         &mut self,
         memory: &mut Memory,
-        io: &mut super::Bios<K, D>,
+        io: &mut super::Bios<K>,
     ) {
         // Check if there's already a character in the keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
@@ -106,10 +106,10 @@ impl Cpu {
     ///   If keystroke available:
     ///     AH = BIOS scan code
     ///     AL = ASCII character
-    fn int16_check_keystroke<K: crate::KeyboardInput, D: crate::DiskController>(
+    fn int16_check_keystroke<K: crate::KeyboardInput>(
         &mut self,
         memory: &mut Memory,
-        io: &mut super::Bios<K, D>,
+        io: &mut super::Bios<K>,
     ) {
         // Check keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;

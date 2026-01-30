@@ -81,7 +81,7 @@ fn main() -> Result<()> {
 
     // Create BIOS with no drives attached
     let keyboard = TerminalKeyboard::new();
-    let mut bios: Bios<TerminalKeyboard, Box<dyn DiskController>> = Bios::new(keyboard);
+    let mut bios: Bios<TerminalKeyboard> = Bios::new(keyboard);
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {
@@ -215,10 +215,8 @@ fn main() -> Result<()> {
 /// Run the emulator with F12 command mode support
 /// Specific to TerminalKeyboard to support F12 command mode detection
 /// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
-fn run<V>(
-    computer: &mut Computer<TerminalKeyboard, Box<dyn emu86_core::DiskController>, V>,
-    clock_hz: Option<u64>,
-) where
+fn run<V>(computer: &mut Computer<TerminalKeyboard, V>, clock_hz: Option<u64>)
+where
     V: emu86_core::VideoController,
 {
     let start_time = clock_hz.map(|_| Instant::now());

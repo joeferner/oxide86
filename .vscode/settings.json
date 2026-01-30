@@ -41,7 +41,9 @@
         "OUTSB",
         "OUTSW",
         "POPF",
+        "PUSHA",
         "PUSHF",
+        "regs",
         "reloc",
         "REPE",
         "REPNE",
@@ -61,6 +63,7 @@
         "STOSB",
         "STOSW",
         "subfunc",
+        "winit",
         "XCHG",
         "XLAT"
     ]

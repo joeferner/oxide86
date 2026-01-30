@@ -19,13 +19,13 @@ use alloc::string::String;
 use alloc::vec::Vec;
 
 /// Adapter to make DiskController work with fatfs crate's ReadWriteSeek trait
-pub struct DiskAdapter<D: DiskController> {
-    disk: D,
+pub struct DiskAdapter {
+    disk: Box<dyn DiskController>,
     position: u64,
 }
 
-impl<D: DiskController> DiskAdapter<D> {
-    pub fn new(disk: D) -> Self {
+impl DiskAdapter {
+    pub fn new(disk: Box<dyn DiskController>) -> Self {
         Self { disk, position: 0 }
     }
 
@@ -35,12 +35,12 @@ impl<D: DiskController> DiskAdapter<D> {
     }
 
     /// Get mutable access to the underlying disk (for pass-through operations)
-    pub fn disk_mut(&mut self) -> &mut D {
+    pub fn disk_mut(&mut self) -> &mut Box<dyn DiskController> {
         &mut self.disk
     }
 
     /// Get immutable access to the underlying disk
-    pub fn disk(&self) -> &D {
+    pub fn disk(&self) -> &dyn DiskController {
         &self.disk
     }
 
@@ -50,12 +50,12 @@ impl<D: DiskController> DiskAdapter<D> {
     }
 
     /// Consume adapter and return the underlying disk
-    pub fn into_disk(self) -> D {
+    pub fn into_disk(self) -> Box<dyn DiskController> {
         self.disk
     }
 }
 
-impl<D: DiskController> Read for DiskAdapter<D> {
+impl Read for DiskAdapter {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
         if self.position >= self.size() {
             return Ok(0); // EOF
@@ -91,7 +91,7 @@ impl<D: DiskController> Read for DiskAdapter<D> {
     }
 }
 
-impl<D: DiskController> Write for DiskAdapter<D> {
+impl Write for DiskAdapter {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
         if self.disk.is_read_only() {
             return Err(Error::new(ErrorKind::PermissionDenied, "Disk is read-only"));
@@ -147,7 +147,7 @@ impl<D: DiskController> Write for DiskAdapter<D> {
     }
 }
 
-impl<D: DiskController> Seek for DiskAdapter<D> {
+impl Seek for DiskAdapter {
     fn seek(&mut self, pos: SeekFrom) -> io::Result<u64> {
         let new_position = match pos {
             SeekFrom::Start(offset) => offset as i64,
@@ -165,12 +165,12 @@ impl<D: DiskController> Seek for DiskAdapter<D> {
 }
 
 /// State for a single drive slot
-pub struct DriveState<D: DiskController> {
+pub struct DriveState {
     /// The disk adapter for filesystem operations (None for empty floppy slot)
-    adapter: Option<DiskAdapter<D>>,
+    adapter: Option<DiskAdapter>,
     /// Raw disk adapter for INT 13h BIOS operations (Some for partitioned hard drives)
     /// This allows reading the MBR which is not part of the partition
-    raw_adapter: Option<DiskAdapter<D>>,
+    raw_adapter: Option<DiskAdapter>,
     /// Current working directory for this drive (Unix-style path with forward slashes)
     current_dir: String,
     /// Disk change flag (true if disk was changed since last check)
@@ -179,9 +179,9 @@ pub struct DriveState<D: DiskController> {
     removable: bool,
 }
 
-impl<D: DiskController> DriveState<D> {
+impl DriveState {
     /// Create a new drive state with a disk
-    pub fn new_with_disk(disk: D, removable: bool) -> Self {
+    pub fn new_with_disk(disk: Box<dyn DiskController>, removable: bool) -> Self {
         Self {
             adapter: Some(DiskAdapter::new(disk)),
             raw_adapter: None,
@@ -193,7 +193,11 @@ impl<D: DiskController> DriveState<D> {
 
     /// Create a new drive state with both partitioned and raw disk adapters
     /// Used for partitioned hard drives where INT 13h needs raw MBR access
-    pub fn new_with_partition(partition: D, raw_disk: D, removable: bool) -> Self {
+    pub fn new_with_partition(
+        partition: Box<dyn DiskController>,
+        raw_disk: Box<dyn DiskController>,
+        removable: bool,
+    ) -> Self {
         Self {
             adapter: Some(DiskAdapter::new(partition)),
             raw_adapter: Some(DiskAdapter::new(raw_disk)),
@@ -250,12 +254,12 @@ struct SearchState {
 /// - 0x80 = Hard drive C:
 /// - 0x81 = Hard drive D:
 /// - etc.
-pub struct DriveManager<D: DiskController> {
+pub struct DriveManager {
     /// Floppy drive slots (A: = 0, B: = 1)
-    floppy_drives: [DriveState<D>; 2],
+    floppy_drives: [DriveState; 2],
 
     /// Hard drives (C: = 0x80, D: = 0x81, etc.)
-    hard_drives: Vec<DriveState<D>>,
+    hard_drives: Vec<DriveState>,
 
     /// Current default drive (0 = A:, 1 = B:, 0x80 = C:, etc.)
     current_drive: DriveNumber,
@@ -273,13 +277,13 @@ pub struct DriveManager<D: DiskController> {
     next_search_id: usize,
 }
 
-impl<D: DiskController> Default for DriveManager<D> {
+impl Default for DriveManager {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<D: DiskController> DriveManager<D> {
+impl DriveManager {
     /// Create a new drive manager with empty floppy slots and no hard drives
     pub fn new() -> Self {
         Self {
@@ -306,7 +310,11 @@ impl<D: DiskController> DriveManager<D> {
     // === Floppy Management ===
 
     /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
-    pub fn insert_floppy(&mut self, slot: DriveNumber, disk: D) -> Result<(), String> {
+    pub fn insert_floppy(
+        &mut self,
+        slot: DriveNumber,
+        disk: Box<dyn DiskController>,
+    ) -> Result<(), String> {
         if !slot.is_floppy() {
             return Err(format!("Invalid floppy slot: {} (must be 0 or 1)", slot));
         }
@@ -321,7 +329,10 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Eject a floppy disk from a slot, returning the disk if present
-    pub fn eject_floppy(&mut self, slot: DriveNumber) -> Result<Option<D>, String> {
+    pub fn eject_floppy(
+        &mut self,
+        slot: DriveNumber,
+    ) -> Result<Option<Box<dyn DiskController>>, String> {
         if !slot.is_floppy() {
             return Err(format!("Invalid floppy slot: {} (must be 0 or 1)", slot));
         }
@@ -341,7 +352,7 @@ impl<D: DiskController> DriveManager<D> {
     // === Hard Drive Management ===
 
     /// Add a hard drive (returns the assigned drive number: 0x80, 0x81, etc.)
-    pub fn add_hard_drive(&mut self, disk: D) -> DriveNumber {
+    pub fn add_hard_drive(&mut self, disk: Box<dyn DiskController>) -> DriveNumber {
         let drive_number = DriveNumber::from_hard_drive_index(self.hard_drives.len());
         self.hard_drives
             .push(DriveState::new_with_disk(disk, false));
@@ -351,7 +362,11 @@ impl<D: DiskController> DriveManager<D> {
     /// Add a partitioned hard drive with both partition and raw disk views
     /// partition: Disk with partition offset (for DOS filesystem operations)
     /// raw_disk: Raw disk without offset (for INT 13h MBR access)
-    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> DriveNumber {
+    pub fn add_hard_drive_with_partition(
+        &mut self,
+        partition: Box<dyn DiskController>,
+        raw_disk: Box<dyn DiskController>,
+    ) -> DriveNumber {
         let drive_number = DriveNumber::from_hard_drive_index(self.hard_drives.len());
         self.hard_drives
             .push(DriveState::new_with_partition(partition, raw_disk, false));
@@ -361,7 +376,7 @@ impl<D: DiskController> DriveManager<D> {
     // === Drive Access ===
 
     /// Get mutable reference to a drive state
-    fn get_drive_mut(&mut self, drive: DriveNumber) -> Option<&mut DriveState<D>> {
+    fn get_drive_mut(&mut self, drive: DriveNumber) -> Option<&mut DriveState> {
         if drive.is_floppy() {
             // Floppy drive
             if drive.to_floppy_index() < 2 {
@@ -376,7 +391,7 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Get immutable reference to a drive state
-    fn get_drive(&self, drive: DriveNumber) -> Option<&DriveState<D>> {
+    fn get_drive(&self, drive: DriveNumber) -> Option<&DriveState> {
         if drive.is_floppy() {
             if drive.to_floppy_index() < 2 {
                 Some(&self.floppy_drives[drive.to_floppy_index()])
@@ -1291,7 +1306,7 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Get immutable access to a floppy disk (for saving)
-    pub fn get_floppy_disk(&self, drive: DriveNumber) -> Option<&D> {
+    pub fn get_floppy_disk(&self, drive: DriveNumber) -> Option<&dyn DiskController> {
         if !drive.is_floppy() {
             return None;
         }
@@ -1302,7 +1317,7 @@ impl<D: DiskController> DriveManager<D> {
     }
 
     /// Get immutable access to a hard drive (for saving)
-    pub fn get_hard_drive_disk(&self, drive: DriveNumber) -> Option<&D> {
+    pub fn get_hard_drive_disk(&self, drive: DriveNumber) -> Option<&dyn DiskController> {
         self.hard_drives
             .get(drive.to_hard_drive_index())
             .and_then(|d| d.adapter.as_ref())

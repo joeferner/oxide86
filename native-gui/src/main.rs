@@ -71,7 +71,7 @@ struct App {
 struct AppState {
     window: &'static Window,
     pixels: Pixels<'static>,
-    computer: Computer<GuiKeyboard, Box<dyn DiskController>, PixelsVideoController>,
+    computer: Computer<GuiKeyboard, PixelsVideoController>,
 }
 
 impl App {
@@ -79,12 +79,10 @@ impl App {
         Ok(Self { cli, state: None })
     }
 
-    fn create_computer(
-        &self,
-    ) -> Result<Computer<GuiKeyboard, Box<dyn DiskController>, PixelsVideoController>> {
+    fn create_computer(&self) -> Result<Computer<GuiKeyboard, PixelsVideoController>> {
         // Create BIOS with no drives attached
         let keyboard = GuiKeyboard::new();
-        let mut bios: Bios<GuiKeyboard, Box<dyn DiskController>> = Bios::new(keyboard);
+        let mut bios: Bios<GuiKeyboard> = Bios::new(keyboard);
 
         // Load floppy A:
         if let Some(path) = &self.cli.floppy_a {
