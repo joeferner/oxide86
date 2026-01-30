@@ -1,5 +1,3 @@
-pub(crate) mod console;
-
 use emu86_core::cpu::bios::disk_error::DiskError;
 use emu86_core::cpu::bios::dos_error::DosError;
 use emu86_core::cpu::bios::{
