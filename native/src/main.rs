@@ -13,6 +13,8 @@ use bios::NativeBios;
 mod simple_io_device;
 use simple_io_device::SimpleIoDevice;
 
+mod terminal_keyboard;
+
 mod terminal_video;
 use terminal_video::TerminalVideo;
 

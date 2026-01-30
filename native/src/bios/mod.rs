@@ -1,4 +1,4 @@
-mod console;
+pub(crate) mod console;
 
 use emu86_core::cpu::bios::disk_error::DiskError;
 use emu86_core::cpu::bios::dos_error::DosError;
@@ -6,12 +6,13 @@ use emu86_core::cpu::bios::{
     DriveParams, ExecParams, FileAccess, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime,
     SeekMethod, SerialParams, SerialStatus,
 };
+use emu86_core::keyboard::KeyboardInput;
 use emu86_core::{Bios, DiskController, DriveManager, DriveNumber, MemoryAllocator};
 use emu86_core::{peripheral, time};
-use std::collections::{HashMap, VecDeque};
+use std::collections::HashMap;
 use std::io::{self, Read};
 
-use crate::bios::console::SCAN_CODE_F12;
+use crate::terminal_keyboard::TerminalKeyboard;
 
 /// DOS device types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -27,10 +28,8 @@ pub struct NativeBios<D: DiskController> {
     device_handles: HashMap<u16, DosDevice>,
     /// Next device handle to allocate. Shared between device handles and file handles.
     next_device_handle: u16,
-    /// Flag set when F12 is pressed (command mode request)
-    command_mode_requested: bool,
-    /// Buffer for keyboard input read during polling (not F12)
-    keyboard_buffer: VecDeque<KeyPress>,
+    /// Terminal keyboard input handler
+    keyboard: TerminalKeyboard,
 }
 
 impl<D: DiskController> NativeBios<D> {
@@ -41,8 +40,7 @@ impl<D: DiskController> NativeBios<D> {
             memory_allocator: MemoryAllocator::new(),
             device_handles: HashMap::new(),
             next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
-            command_mode_requested: false,
-            keyboard_buffer: VecDeque::new(),
+            keyboard: TerminalKeyboard::new(),
         }
     }
 
@@ -101,12 +99,12 @@ impl<D: DiskController> NativeBios<D> {
 
     /// Check if command mode has been requested via F12
     pub fn is_command_mode_requested(&self) -> bool {
-        self.command_mode_requested
+        self.keyboard.is_command_mode_requested()
     }
 
     /// Clear the command mode request flag
     pub fn clear_command_mode_request(&mut self) {
-        self.command_mode_requested = false;
+        self.keyboard.clear_command_mode_request();
     }
 
     /// Poll for F12 key press without blocking
@@ -114,17 +112,7 @@ impl<D: DiskController> NativeBios<D> {
     /// even when the emulated program doesn't call keyboard BIOS functions.
     /// Keys other than F12 are buffered for later retrieval by BIOS functions.
     pub fn poll_for_command_key(&mut self) {
-        // Drain all available keys from the terminal
-        while let Some(key) = console::check_key() {
-            if key.scan_code == SCAN_CODE_F12 {
-                // F12 - set command mode flag and don't buffer it
-                self.command_mode_requested = true;
-                break; // Stop processing once F12 is detected
-            } else {
-                // Not F12 - buffer it for later retrieval by BIOS functions
-                self.keyboard_buffer.push_back(key);
-            }
-        }
+        self.keyboard.poll_for_command_key();
     }
 }
 
@@ -135,52 +123,25 @@ impl<D: DiskController> Default for NativeBios<D> {
 }
 
 impl<D: DiskController> Bios for NativeBios<D> {
-    // Console I/O
+    // Console I/O - delegate to keyboard
     fn read_char(&mut self) -> Option<u8> {
-        console::read_char()
+        self.keyboard.read_char()
     }
 
     fn check_char(&mut self) -> Option<u8> {
-        console::check_char()
+        self.keyboard.check_char()
     }
 
     fn has_char_available(&self) -> bool {
-        console::has_char_available()
+        self.keyboard.has_char_available()
     }
 
     fn read_key(&mut self) -> Option<KeyPress> {
-        // First check if we have a buffered key (from poll_for_command_key)
-        if let Some(key) = self.keyboard_buffer.pop_front() {
-            return Some(key);
-        }
-
-        // No buffered key, read from terminal (blocking)
-        let key = console::read_key()?;
-        // Intercept F12 for command mode
-        if key.scan_code == SCAN_CODE_F12 {
-            self.command_mode_requested = true;
-            // Return None so the emulated program doesn't see F12
-            return None;
-        }
-        Some(key)
+        self.keyboard.read_key()
     }
 
     fn check_key(&mut self) -> Option<KeyPress> {
-        // First check if we have a buffered key (from poll_for_command_key)
-        // Note: We remove it here to prevent infinite re-detection
-        if let Some(key) = self.keyboard_buffer.pop_front() {
-            return Some(key);
-        }
-
-        // No buffered key, check terminal (non-blocking)
-        let key = console::check_key()?;
-        // Intercept F12 for command mode
-        if key.scan_code == SCAN_CODE_F12 {
-            self.command_mode_requested = true;
-            // Return None so the emulated program doesn't see F12
-            return None;
-        }
-        Some(key)
+        self.keyboard.check_key()
     }
 
     // Disk operations - delegate to DriveManager

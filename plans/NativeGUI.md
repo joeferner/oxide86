@@ -29,13 +29,13 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 - Helper methods: `new()`, `is_dos_device()`, and `allocate_device_handle()`
 - Properly exported from core/src/lib.rs for use by native and GUI implementations
 
-### 2.3 Implement TerminalKeyboard (CLI)
-**File:** `native/src/terminal_keyboard.rs` (new file)
-
-- Extract keyboard logic from `native/src/bios/mod.rs`
-- Implement `KeyboardInput` trait
-- Handle F12 interception for command mode
-- Buffer keys during polling
+### ~~2.3 Implement TerminalKeyboard (CLI)~~ ✓ COMPLETED
+**Status:** TerminalKeyboard has been successfully implemented in `native/src/terminal_keyboard.rs` with:
+- Extraction of keyboard logic from NativeBios to TerminalKeyboard struct
+- Full implementation of KeyboardInput trait (read_char, check_char, has_char_available, read_key, check_key)
+- CLI-specific methods for F12 command mode handling (is_command_mode_requested, clear_command_mode_request, poll_for_command_key)
+- Key buffering during polling to prevent key loss
+- NativeBios refactored to delegate all keyboard operations to TerminalKeyboard
 
 ### 2.4 Refactor NativeBios
 **File:** `native/src/bios/mod.rs`
