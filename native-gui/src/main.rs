@@ -250,8 +250,8 @@ impl ApplicationHandler for App {
                 state.computer.bios_mut().keyboard.process_event(&event);
             }
             WindowEvent::RedrawRequested => {
-                // Execute a batch of instructions
-                const BATCH_SIZE: u32 = 1000;
+                const BATCH_SIZE: u32 = 10000;
+
                 for _ in 0..BATCH_SIZE {
                     if state.computer.is_halted() {
                         log::info!("Computer halted");
@@ -261,22 +261,25 @@ impl ApplicationHandler for App {
                     state.computer.step();
                 }
 
-                // Update video from emulator state
+                // Update video from emulator state (only updates if video is dirty)
                 state.computer.update_video();
 
-                // Render to pixels buffer
-                state
-                    .computer
-                    .video_controller_mut()
-                    .render(&mut state.pixels);
+                // Only render if there are actual updates to display
+                if state.computer.video_controller_mut().has_pending_updates() {
+                    // Render to pixels buffer
+                    state
+                        .computer
+                        .video_controller_mut()
+                        .render(&mut state.pixels);
 
-                // Present to window
-                if let Err(e) = state.pixels.render() {
-                    log::error!("Failed to render: {}", e);
-                    event_loop.exit();
+                    // Present to window
+                    if let Err(e) = state.pixels.render() {
+                        log::error!("Failed to render: {}", e);
+                        event_loop.exit();
+                    }
                 }
 
-                // Request next frame
+                // Request next frame to keep emulation running
                 state.window.request_redraw();
             }
             _ => {}

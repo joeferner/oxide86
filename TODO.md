@@ -8,6 +8,7 @@
 [ ] 8086 Test applications
   [ ] Lotus 1-2-3
   [ ] WordStar
-[ ] 8086 Test CGI games
+[ ] Implement CGA video mode
+[ ] 8086 Test CGA games
   [ ] Flight Simulator 1.0
 [ ] Refactor read_char to be blocking in GUI

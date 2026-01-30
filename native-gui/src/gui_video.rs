@@ -52,6 +52,8 @@ pub struct PixelsVideoController {
     last_rendered_cursor: Option<CursorPosition>,
     /// Flag to force full redraw
     needs_full_redraw: bool,
+    /// Flag to indicate if there are pending updates since last render
+    has_pending_updates: bool,
 }
 
 #[allow(dead_code)]
@@ -65,7 +67,13 @@ impl PixelsVideoController {
             last_rendered_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
             last_rendered_cursor: None,
             needs_full_redraw: true,
+            has_pending_updates: true,
         }
+    }
+
+    /// Check if there are pending updates that need rendering
+    pub fn has_pending_updates(&self) -> bool {
+        self.has_pending_updates
     }
 
     /// Render a single character cell at the given screen position
@@ -167,27 +175,44 @@ impl PixelsVideoController {
 
             self.last_rendered_cursor = self.current_cursor;
         }
+
+        // Clear the pending updates flag after rendering
+        self.has_pending_updates = false;
     }
 }
 
 impl Default for PixelsVideoController {
     fn default() -> Self {
-        Self::new()
+        Self {
+            font: Cp437Font::new(),
+            current_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            current_cursor: None,
+            last_rendered_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            last_rendered_cursor: None,
+            needs_full_redraw: true,
+            has_pending_updates: true,
+        }
     }
 }
 
 impl VideoController for PixelsVideoController {
     fn update_display(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
         self.current_buffer.copy_from_slice(buffer);
+        self.has_pending_updates = true;
     }
 
     fn update_cursor(&mut self, position: CursorPosition) {
-        self.current_cursor = Some(position);
+        // Only mark as pending if cursor actually moved
+        if self.current_cursor != Some(position) {
+            self.current_cursor = Some(position);
+            self.has_pending_updates = true;
+        }
     }
 
     fn set_video_mode(&mut self, _mode: u8) {
         // Mark for full redraw
         self.needs_full_redraw = true;
+        self.has_pending_updates = true;
         self.current_buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
         self.current_cursor = None;
     }
@@ -195,5 +220,6 @@ impl VideoController for PixelsVideoController {
     fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
         self.current_buffer.copy_from_slice(buffer);
         self.needs_full_redraw = true;
+        self.has_pending_updates = true;
     }
 }
