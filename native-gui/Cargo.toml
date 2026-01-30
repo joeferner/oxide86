@@ -1,0 +1,15 @@
+[package]
+name = "emu86-native-gui"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+pixels = "0.15.0"
+emu86-core = { path = "../core" }
+anyhow = { workspace = true }
+env_logger = "0.11"
+log = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true
