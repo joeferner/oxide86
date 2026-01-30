@@ -2,15 +2,13 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
-use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend};
+use emu86_core::{BackedDisk, Bios, Computer, DiskController, DriveNumber, FileDiskBackend};
 use std::fs::File;
 use std::panic;
 use std::time::{Duration, Instant};
 
-mod bios;
-use bios::NativeBios;
-
 mod terminal_keyboard;
+use terminal_keyboard::TerminalKeyboard;
 
 mod terminal_video;
 use terminal_video::TerminalVideo;
@@ -81,7 +79,8 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Create BIOS with no drives attached
-    let mut bios: NativeBios<Box<dyn DiskController>> = NativeBios::new();
+    let keyboard = TerminalKeyboard::new();
+    let mut bios: Bios<TerminalKeyboard, Box<dyn DiskController>> = Bios::new(keyboard);
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {
@@ -213,10 +212,10 @@ fn main() -> Result<()> {
 }
 
 /// Run the emulator with F12 command mode support
-/// Specific to NativeBios to support F12 command mode detection
+/// Specific to TerminalKeyboard to support F12 command mode detection
 /// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
 fn run<V>(
-    computer: &mut Computer<NativeBios<Box<dyn emu86_core::DiskController>>, V>,
+    computer: &mut Computer<TerminalKeyboard, Box<dyn emu86_core::DiskController>, V>,
     clock_hz: Option<u64>,
 ) where
     V: emu86_core::VideoController,
@@ -242,11 +241,11 @@ fn run<V>(
 
         // Poll for F12 key press (command mode trigger)
         // This allows F12 to be detected even if the program doesn't call keyboard BIOS functions
-        computer.bios_mut().poll_for_command_key();
+        computer.bios_mut().keyboard.poll_for_command_key();
 
         // Check if F12 was pressed (intercepted by BIOS)
-        if computer.bios_mut().is_command_mode_requested() {
-            computer.bios_mut().clear_command_mode_request();
+        if computer.bios_mut().keyboard.is_command_mode_requested() {
+            computer.bios_mut().keyboard.clear_command_mode_request();
             log::info!("F12 detected - entering command mode");
 
             // Enter command mode and check if we should continue

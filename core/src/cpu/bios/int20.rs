@@ -3,7 +3,7 @@
 // CS must contain the PSP segment when this interrupt is called.
 
 use super::Cpu;
-use crate::Bios;
+
 use crate::memory::Memory;
 
 impl Cpu {
@@ -11,7 +11,11 @@ impl Cpu {
     /// Terminates the current program and returns control to the parent process.
     /// Note: CS must contain the PSP segment (this is handled automatically by
     /// COM programs since CS=PSP at start)
-    pub(super) fn handle_int20<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    pub(super) fn handle_int20<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         // INT 20h terminates by jumping to the address stored at PSP:0x0A (terminate address)
         // CS should contain the PSP segment
         let psp_segment = self.cs;

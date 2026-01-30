@@ -77,22 +77,6 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 - Documentation explaining non-blocking behavior in GUI vs blocking in terminal context
 - Ready for use by GuiBios in phase 3.4
 
-### 3.4 GuiBios
-**File:** `native-gui/src/gui_bios.rs`
-
-**Structure:**
-```rust
-pub struct GuiBios<D: DiskController> {
-    shared: SharedBiosState<D>,
-    keyboard: GuiKeyboard,
-}
-```
-
-**Methods:**
-- Implement full `Bios` trait (delegate to `shared` and `keyboard`)
-- Drive management: `insert_floppy()`, `add_hard_drive()`, etc.
-- GUI-specific: `process_winit_event()` for keyboard input
-
 ### 3.5 Main Event Loop
 **File:** `native-gui/src/main.rs`
 

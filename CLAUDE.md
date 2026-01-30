@@ -17,21 +17,22 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 ## Architecture
 
 ### Workspace Structure
-- **core/** - Platform-independent emulation (CPU, memory, instructions, drive management)
-- **native/** - CLI with NativeBios implementation
+- **core/** - Platform-independent emulation (CPU, memory, instructions, drive management, BIOS)
+- **native/** - CLI with TerminalKeyboard implementation
 - **wasm/** - WebAssembly bindings for browser
 
 ### Key Files
 | Path | Purpose |
 |------|---------|
 | `core/src/cpu/mod.rs` | CPU state, instruction dispatch, segment overrides |
-| `core/src/cpu/bios/mod.rs` | Bios trait, interrupt dispatch |
+| `core/src/cpu/bios/mod.rs` | Bios struct (generic over KeyboardInput & DiskController), interrupt dispatch |
 | `core/src/cpu/bios/int*.rs` | Individual interrupt handlers |
 | `core/src/memory.rs` | Memory model, BDA initialization |
 | `core/src/drive_manager.rs` | Multi-drive management (DriveManager, DiskAdapter) |
 | `core/src/disk.rs` | DiskImage, DiskGeometry, DiskController trait |
+| `core/src/keyboard.rs` | KeyboardInput trait for platform-specific keyboard handling |
 | `core/src/lib.rs` | Computer struct, boot process |
-| `native/src/bios/mod.rs` | NativeBios implementing Bios trait |
+| `native/src/terminal_keyboard.rs` | TerminalKeyboard implementing KeyboardInput trait |
 
 ## Implementation Notes
 
@@ -92,11 +93,15 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 - Boot sector (MBR) remains accessible via raw disk for booting
 - DOS file operations see only the partition, not the full disk
 
-### NativeBios Handle Management
+### Bios Structure and Handle Management
+- `Bios<K: KeyboardInput, D: DiskController>` - concrete struct in core (not a trait)
+- Generic over keyboard input handler and disk controller for platform flexibility
+- Contains `SharedBiosState<D>` with drive manager, memory allocator, device handles
 - Device handles (CON, NUL, etc.) and file handles share same number space
-- `device_handles: HashMap<u16, DosDevice>` for devices
+- `device_handles: HashMap<u16, DosDevice>` for devices in SharedBiosState
 - File handles managed by DriveManager
 - Sync via `set_next_handle()` to prevent collisions
+- Platform-specific implementations provide KeyboardInput (e.g., TerminalKeyboard for CLI)
 
 ### Timer Emulation
 - BDA offset 0x6C: 32-bit tick counter (18.2 Hz)

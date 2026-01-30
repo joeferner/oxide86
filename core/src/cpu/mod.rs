@@ -131,11 +131,11 @@ impl Cpu {
     }
 
     // Execute an INT instruction with BIOS I/O handler
-    pub fn execute_int_with_io<T: crate::cpu::bios::Bios>(
+    pub fn execute_int_with_io<K: crate::KeyboardInput, D: crate::DiskController>(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut crate::cpu::bios::Bios<K, D>,
         video: &mut crate::video::Video,
     ) {
         // If DOS has installed its own handler (IVT not pointing to BIOS ROM),

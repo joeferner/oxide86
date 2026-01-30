@@ -1,7 +1,7 @@
 use strum_macros::{Display, FromRepr};
 
 use crate::{
-    Bios, DriveNumber,
+    DriveNumber,
     cpu::{
         Cpu,
         bios::{ExecParams, FindData, SeekMethod, dos_error::DosError},
@@ -22,10 +22,10 @@ pub enum FileAccess {
 impl Cpu {
     /// INT 0x21 - DOS Services
     /// AH register contains the function number
-    pub(super) fn handle_int21<T: Bios>(
+    pub(super) fn handle_int21<K: crate::KeyboardInput, D: crate::DiskController>(
         &mut self,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut super::Bios<K, D>,
         video: &mut crate::video::Video,
     ) {
         let function = (self.ax >> 8) as u8; // Get AH directly
@@ -89,7 +89,11 @@ impl Cpu {
 
     /// INT 21h, AH=01h - Read Character from STDIN with Echo
     /// Returns: AL = character read
-    fn int21_read_char_with_echo<T: Bios>(&mut self, io: &mut T, video: &mut crate::video::Video) {
+    fn int21_read_char_with_echo<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+        video: &mut crate::video::Video,
+    ) {
         if let Some(ch) = io.read_char() {
             // Echo the character via teletype output
             let saved_ax = self.ax;
@@ -116,7 +120,11 @@ impl Cpu {
     /// Output: If DL = 0xFF on entry:
     ///   ZF clear: AL = character read from input
     ///   ZF set: No character available (AL = 0)
-    fn int21_direct_console_io<T: Bios>(&mut self, io: &mut T, video: &mut crate::video::Video) {
+    fn int21_direct_console_io<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+        video: &mut crate::video::Video,
+    ) {
         let dl = (self.dx & 0xFF) as u8;
 
         if dl == 0xFF {
@@ -140,7 +148,10 @@ impl Cpu {
     /// INT 21h, AH=07h - Direct Console Input Without Echo
     /// Waits for a character from stdin without echoing it
     /// Output: AL = character read
-    fn int21_direct_console_input<T: Bios>(&mut self, io: &mut T) {
+    fn int21_direct_console_input<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         if let Some(ch) = io.read_char() {
             self.ax = (self.ax & 0xFF00) | (ch as u16);
         }
@@ -150,7 +161,10 @@ impl Cpu {
     /// INT 21h, AH=08h - Console Input Without Echo
     /// Same as 07h but checks for Ctrl-Break
     /// Output: AL = character read
-    fn int21_console_input_no_echo<T: Bios>(&mut self, io: &mut T) {
+    fn int21_console_input_no_echo<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         if let Some(ch) = io.read_char() {
             self.ax = (self.ax & 0xFF00) | (ch as u16);
         }
@@ -181,7 +195,10 @@ impl Cpu {
     /// Output:
     ///   AL = 0xFF if character available
     ///   AL = 0x00 if no character available
-    fn int21_check_input_status<T: Bios>(&mut self, io: &T) {
+    fn int21_check_input_status<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &super::Bios<K, D>,
+    ) {
         if io.has_char_available() {
             self.ax = (self.ax & 0xFF00) | 0xFF;
         } else {
@@ -193,7 +210,11 @@ impl Cpu {
     /// Input:
     ///   AL = keyboard function to invoke (01h, 06h, 07h, 08h, or 0Ah)
     /// Output: As per the specified function
-    fn int21_flush_and_input<T: Bios>(&mut self, io: &mut T, video: &mut crate::video::Video) {
+    fn int21_flush_and_input<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+        video: &mut crate::video::Video,
+    ) {
         // Clear the keyboard buffer (consume any pending input)
         while io.check_char().is_some() {}
 
@@ -216,7 +237,10 @@ impl Cpu {
 
     /// INT 21h, AH=19h - Get Current Default Drive
     /// Output: AL = current drive (0=A, 1=B, etc.)
-    fn int21_get_current_drive<T: Bios>(&mut self, io: &T) {
+    fn int21_get_current_drive<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &super::Bios<K, D>,
+    ) {
         let drive = io.get_current_drive();
         self.ax = (self.ax & 0xFF00) | (drive.to_standard() as u16);
     }
@@ -305,7 +329,11 @@ impl Cpu {
 
     /// INT 21h, AH=4Ch - Exit Program
     /// Input: AL = return code
-    fn int21_exit<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_exit<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         // INT 21h AH=4Ch - Terminate Program
         // Read the terminate address (INT 22h) from the PSP at offset 0x0A
         let psp_segment = io.get_psp();
@@ -347,7 +375,11 @@ impl Cpu {
     /// This function terminates the current program but keeps it resident in memory.
     /// The specified number of paragraphs (DX) starting from the PSP are kept allocated.
     /// TSR programs use this to install themselves and return control to DOS.
-    fn int21_terminate_stay_resident<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_terminate_stay_resident<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let exit_code = (self.ax & 0xFF) as u8;
         let paragraphs_to_keep = self.dx;
 
@@ -405,7 +437,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = file handle
     ///   CF set if error: AX = error code
-    fn int21_create_file<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_create_file<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
         let attributes = (self.cx & 0xFF) as u8;
 
@@ -428,7 +464,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = file handle
     ///   CF set if error: AX = error code
-    fn int21_open_file<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_open_file<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
         let access_mode =
             FileAccess::from_repr((self.ax & 0xFF) as u8).unwrap_or(FileAccess::ReadOnly);
@@ -462,7 +502,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_close_file<T: Bios>(&mut self, io: &mut T) {
+    fn int21_close_file<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         let handle = self.bx;
 
         match io.file_close(handle) {
@@ -484,7 +527,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = number of bytes read
     ///   CF set if error: AX = error code
-    fn int21_read_file<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    fn int21_read_file<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let handle = self.bx;
         let max_bytes = self.cx;
 
@@ -529,10 +576,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = number of bytes written
     ///   CF set if error: AX = error code
-    fn int21_write_file<T: Bios>(
+    fn int21_write_file<K: crate::KeyboardInput, D: crate::DiskController>(
         &mut self,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut super::Bios<K, D>,
         video: &mut crate::video::Video,
     ) {
         let handle = self.bx;
@@ -582,7 +629,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: DX:AX = new file position
     ///   CF set if error: AX = error code
-    fn int21_seek_file<T: Bios>(&mut self, io: &mut T) {
+    fn int21_seek_file<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         let handle = self.bx;
         let method_code = (self.ax & 0xFF) as u8;
 
@@ -630,7 +680,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = new file handle (duplicate of BX)
     ///   CF set if error: AX = error code
-    fn int21_duplicate_file<T: Bios>(&mut self, io: &mut T) {
+    fn int21_duplicate_file<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         let handle = self.bx;
 
         match io.file_duplicate(handle) {
@@ -651,7 +704,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_create_dir<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_create_dir<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
 
         match io.dir_create(&dirname) {
@@ -671,7 +728,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_remove_dir<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_remove_dir<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
 
         match io.dir_remove(&dirname) {
@@ -691,7 +752,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_change_dir<T: Bios>(&mut self, memory: &Memory, io: &mut T) {
+    fn int21_change_dir<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
 
         match io.dir_change(&dirname) {
@@ -713,7 +778,10 @@ impl Cpu {
     ///   BX = number of available clusters
     ///   CX = bytes per sector
     ///   DX = total clusters on drive
-    fn int21_get_disk_free_space<T: Bios>(&mut self, io: &T) {
+    fn int21_get_disk_free_space<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &super::Bios<K, D>,
+    ) {
         let drive = DriveNumber::from_dos_with_current((self.dx & 0xFF) as u8); // DL
         let drive = drive.unwrap_or(io.get_current_drive());
 
@@ -771,7 +839,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: buffer filled with path (without drive or leading backslash)
     ///   CF set if error: AX = error code
-    fn int21_get_current_dir<T: Bios>(&mut self, memory: &mut Memory, io: &T) {
+    fn int21_get_current_dir<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &super::Bios<K, D>,
+    ) {
         let drive = DriveNumber::from_dos_with_current((self.dx & 0xFF) as u8); // DL
         let drive = drive.unwrap_or(io.get_current_drive());
 
@@ -806,7 +878,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: DTA filled with file information
     ///   CF set if error: AX = error code
-    fn int21_find_first<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    fn int21_find_first<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let pattern = self.read_null_terminated_string(memory, self.ds, self.dx);
         let attributes = (self.cx & 0xFF) as u8;
 
@@ -844,7 +920,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: DTA filled with file information
     ///   CF set if error: AX = error code
-    fn int21_find_next<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    fn int21_find_next<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let dta_addr = Self::physical_address(self.es, self.bx);
 
         // Read search_id from DTA
@@ -899,7 +979,10 @@ impl Cpu {
     ///   DL = drive number (0=A, 1=B, etc.)
     /// Output:
     ///   AL = number of logical drives in system
-    fn int21_select_disk<T: Bios>(&mut self, io: &mut T) {
+    fn int21_select_disk<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         let drive = DriveNumber::from_dos((self.dx & 0xFF) as u8); // DL
         log::debug!("INT 21h AH=0Eh: Select disk {}", drive);
         let num_drives = io.set_default_drive(drive);
@@ -917,7 +1000,11 @@ impl Cpu {
     /// Output:
     ///   AL = 00h if drive valid, FFh if invalid
     ///   DS:BX = pointer to Drive Parameter Block (DPB)
-    fn int21_get_dpb<T: Bios>(&mut self, memory: &mut Memory, io: &T) {
+    fn int21_get_dpb<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &super::Bios<K, D>,
+    ) {
         let drive = DriveNumber::from_dos_with_current((self.dx & 0xFF) as u8); // DL
         let drive = drive.unwrap_or(io.get_current_drive());
 
@@ -1041,7 +1128,11 @@ impl Cpu {
     ///   AL = subfunction
     ///   BX = file handle (for most subfunctions)
     /// Output: Varies by subfunction
-    fn int21_ioctl<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    fn int21_ioctl<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let subfunction = (self.ax & 0xFF) as u8; // AL
         let handle = self.bx;
 
@@ -1213,10 +1304,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success, parameter block filled
     ///   CF set if error: AX = error code
-    fn int21_ioctl_get_device_params<T: Bios>(
+    fn int21_ioctl_get_device_params<K: crate::KeyboardInput, D: crate::DiskController>(
         &mut self,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut super::Bios<K, D>,
         drive: DriveNumber,
     ) -> Result<(), DosError> {
         // Get drive parameters from INT 13h
@@ -1332,10 +1423,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_ioctl_format_track<T: Bios>(
+    fn int21_ioctl_format_track<K: crate::KeyboardInput, D: crate::DiskController>(
         &mut self,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut super::Bios<K, D>,
         drive: DriveNumber,
     ) -> Result<(), DosError> {
         // Get pointer to parameter block (DS:DX)
@@ -1385,7 +1476,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = segment of allocated memory
     ///   CF set if error: AX = error code, BX = size of largest available block
-    fn int21_allocate_memory<T: Bios>(&mut self, io: &mut T) {
+    fn int21_allocate_memory<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         let paragraphs = self.bx;
         log::info!(
             "INT 21h AH=48h: Allocate memory request: {} paragraphs ({} bytes)",
@@ -1419,7 +1513,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_free_memory<T: Bios>(&mut self, io: &mut T) {
+    fn int21_free_memory<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         let segment = self.es;
         log::info!("INT 21h AH=49h: Free memory at segment 0x{:04X}", segment);
 
@@ -1446,7 +1543,10 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code, BX = maximum size available
-    fn int21_resize_memory<T: Bios>(&mut self, io: &mut T) {
+    fn int21_resize_memory<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         let segment = self.es;
         let paragraphs = self.bx;
         log::info!(
@@ -1485,7 +1585,11 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_exec<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    fn int21_exec<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let subfunction = (self.ax & 0xFF) as u8;
         let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
 
@@ -1565,10 +1669,10 @@ impl Cpu {
     }
 
     /// Load and execute a COM file
-    fn exec_load_com<T: Bios>(
+    fn exec_load_com<K: crate::KeyboardInput, D: crate::DiskController>(
         &mut self,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut super::Bios<K, D>,
         program_data: &[u8],
         params: &ExecParams,
     ) {
@@ -1687,10 +1791,10 @@ impl Cpu {
     }
 
     /// Load and execute an EXE file
-    fn exec_load_exe<T: Bios>(
+    fn exec_load_exe<K: crate::KeyboardInput, D: crate::DiskController>(
         &mut self,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut super::Bios<K, D>,
         program_data: &[u8],
         params: &ExecParams,
     ) {
@@ -1842,10 +1946,10 @@ impl Cpu {
     }
 
     /// Build a Program Segment Prefix (PSP)
-    fn build_psp<T: Bios>(
+    fn build_psp<K: crate::KeyboardInput, D: crate::DiskController>(
         &mut self,
         memory: &mut Memory,
-        io: &T,
+        io: &super::Bios<K, D>,
         psp_segment: u16,
         params: &ExecParams,
     ) {
@@ -1935,7 +2039,10 @@ impl Cpu {
     /// Input:
     ///   BX = segment of new PSP
     /// Output: None
-    fn int21_set_psp<T: Bios>(&mut self, io: &mut T) {
+    fn int21_set_psp<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &mut super::Bios<K, D>,
+    ) {
         let segment = self.bx;
         io.set_psp(segment);
     }

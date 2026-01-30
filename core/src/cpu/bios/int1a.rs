@@ -1,4 +1,3 @@
-use crate::Bios;
 use crate::cpu::cpu_flag;
 use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW};
 use crate::{cpu::Cpu, memory::Memory};
@@ -12,7 +11,11 @@ pub const TIMER_TICKS_PER_DAY: u32 = 0x001800B0;
 impl Cpu {
     /// INT 0x1A - Time Services
     /// AH register contains the function number
-    pub(super) fn handle_int1a<T: super::Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    pub(super) fn handle_int1a<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
@@ -78,7 +81,10 @@ impl Cpu {
     ///   CL = minutes (BCD format, 0-59)
     ///   DH = seconds (BCD format, 0-59)
     ///   DL = daylight saving time flag (0 = standard time, 1 = daylight time)
-    fn int1a_read_rtc_time<T: Bios>(&mut self, io: &T) {
+    fn int1a_read_rtc_time<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &super::Bios<K, D>,
+    ) {
         match io.get_rtc_time() {
             Some(time) => {
                 // Convert decimal values to BCD format
@@ -110,7 +116,10 @@ impl Cpu {
     ///   CL = year (BCD format, 0-99)
     ///   DH = month (BCD format, 1-12)
     ///   DL = day (BCD format, 1-31)
-    fn int1a_read_rtc_date<T: Bios>(&mut self, io: &T) {
+    fn int1a_read_rtc_date<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        io: &super::Bios<K, D>,
+    ) {
         match io.get_rtc_date() {
             Some(date) => {
                 // Convert decimal values to BCD format

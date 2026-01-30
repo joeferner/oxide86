@@ -1,5 +1,5 @@
 use crate::{
-    Bios, DriveNumber,
+    DriveNumber,
     cpu::{Cpu, cpu_flag},
     memory::Memory,
 };
@@ -28,7 +28,11 @@ impl Cpu {
     ///
     /// Note: INT 25h/26h leave FLAGS on the stack. The caller must POP them.
     /// This is handled by the calling code, not the interrupt handler.
-    pub(super) fn handle_int25<T: Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    pub(super) fn handle_int25<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let drive = DriveNumber::from_dos((self.ax & 0xFF) as u8); // AL = drive number
         let count = self.cx;
         let buffer_addr: usize;

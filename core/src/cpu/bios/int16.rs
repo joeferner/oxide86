@@ -7,7 +7,11 @@ use crate::{cpu::Cpu, memory::Memory};
 impl Cpu {
     /// INT 0x16 - Keyboard Services
     /// AH register contains the function number
-    pub(super) fn handle_int16<T: super::Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    pub(super) fn handle_int16<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
@@ -32,7 +36,11 @@ impl Cpu {
     /// Output:
     ///   AH = BIOS scan code
     ///   AL = ASCII character
-    fn int16_read_char<T: super::Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    fn int16_read_char<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         // Check if there's already a character in the keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
@@ -98,7 +106,11 @@ impl Cpu {
     ///   If keystroke available:
     ///     AH = BIOS scan code
     ///     AL = ASCII character
-    fn int16_check_keystroke<T: super::Bios>(&mut self, memory: &mut Memory, io: &mut T) {
+    fn int16_check_keystroke<K: crate::KeyboardInput, D: crate::DiskController>(
+        &mut self,
+        memory: &mut Memory,
+        io: &mut super::Bios<K, D>,
+    ) {
         // Check keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;

@@ -20,19 +20,19 @@ mod int29;
 mod int2a;
 mod int2f;
 mod int35_3f;
-pub mod null_bios;
 
 use super::Cpu;
 use crate::{
-    DiskController, DriveManager, DriveNumber, MemoryAllocator,
+    DiskController, DriveManager, DriveNumber, KeyboardInput, MemoryAllocator,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
     memory::Memory,
+    peripheral, time,
 };
 pub use int14::{SerialParams, SerialStatus};
 pub use int17::PrinterStatus;
 pub use int21::FileAccess;
-pub use null_bios::NullBios;
 use std::collections::HashMap;
+use std::io::{self, Read};
 
 /// Drive parameters returned by INT 13h, AH=08h
 #[derive(Debug, Clone, Copy)]
@@ -210,50 +210,87 @@ impl<D: DiskController> Default for SharedBiosState<D> {
     }
 }
 
-/// Trait for handling BIOS interrupt I/O operations
-/// Platform-specific code (native, WASM) implements this to provide actual I/O
-pub trait Bios {
-    /// Read a character from standard input (blocking)
-    fn read_char(&mut self) -> Option<u8>;
+/// BIOS implementation for handling interrupt I/O operations
+/// Generic over KeyboardInput (for platform-specific keyboard handling) and DiskController
+pub struct Bios<K: KeyboardInput, D: DiskController> {
+    /// Shared BIOS state (drive manager, memory allocator, device handles)
+    pub shared: SharedBiosState<D>,
+    /// Keyboard input handler (platform-specific)
+    pub keyboard: K,
+}
 
-    /// Check if a character is available and return it (non-blocking)
-    /// Used by INT 21h, AH=06h (Direct Console I/O)
-    fn check_char(&mut self) -> Option<u8>;
+impl<K: KeyboardInput, D: DiskController> Bios<K, D> {
+    /// Create a new Bios with the provided keyboard input handler
+    pub fn new(keyboard: K) -> Self {
+        Self {
+            shared: SharedBiosState::new(),
+            keyboard,
+        }
+    }
 
-    /// Check if a character is available without consuming it
-    /// Used by INT 21h, AH=0Bh (Check Input Status)
-    fn has_char_available(&self) -> bool;
+    /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
+    pub fn insert_floppy(&mut self, slot: DriveNumber, disk: D) -> Result<(), String> {
+        self.shared.drive_manager.insert_floppy(slot, disk)
+    }
 
-    // --- INT 16h - Keyboard Services ---
+    /// Eject a floppy disk from a slot (for runtime disk swapping)
+    pub fn eject_floppy(&mut self, slot: DriveNumber) -> Result<Option<D>, String> {
+        self.shared.drive_manager.eject_floppy(slot)
+    }
 
-    /// Read a keystroke (INT 16h, AH=00h) - blocking
-    /// Returns key press data if available, None otherwise
-    fn read_key(&mut self) -> Option<KeyPress>;
+    /// Add a hard drive (returns assigned drive number: 0x80, 0x81, etc.)
+    pub fn add_hard_drive(&mut self, disk: D) -> DriveNumber {
+        self.shared.drive_manager.add_hard_drive(disk)
+    }
 
-    /// Check if a key is available without blocking (INT 16h, AH=01h)
-    /// Returns key press data if available, None if no key is waiting
-    fn check_key(&mut self) -> Option<KeyPress>;
+    /// Add a partitioned hard drive with both partition and raw disk views
+    /// This allows INT 13h to read the MBR while DOS file operations use the partition
+    pub fn add_hard_drive_with_partition(&mut self, partition: D, raw_disk: D) -> DriveNumber {
+        self.shared
+            .drive_manager
+            .add_hard_drive_with_partition(partition, raw_disk)
+    }
 
-    // --- INT 13h - Disk Services ---
+    // Console I/O - delegate to keyboard
+    pub fn read_char(&mut self) -> Option<u8> {
+        self.keyboard.read_char()
+    }
 
-    /// Reset disk system (INT 13h, AH=00h)
-    /// Returns true if successful
-    fn disk_reset(&mut self, drive: DriveNumber) -> bool;
+    pub fn check_char(&mut self) -> Option<u8> {
+        self.keyboard.check_char()
+    }
 
-    /// Read sectors from disk (INT 13h, AH=02h)
-    /// Returns the read data on success, or error code on failure
-    fn disk_read_sectors(
+    pub fn has_char_available(&self) -> bool {
+        self.keyboard.has_char_available()
+    }
+
+    pub fn read_key(&mut self) -> Option<KeyPress> {
+        self.keyboard.read_key()
+    }
+
+    pub fn check_key(&mut self) -> Option<KeyPress> {
+        self.keyboard.check_key()
+    }
+
+    // Disk operations - delegate to DriveManager
+    pub fn disk_reset(&mut self, drive: DriveNumber) -> bool {
+        self.shared.drive_manager.disk_reset(drive)
+    }
+
+    pub fn disk_read_sectors(
         &mut self,
         drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sector: u8,
         count: u8,
-    ) -> Result<Vec<u8>, DiskError>;
+    ) -> Result<Vec<u8>, DiskError> {
+        self.shared
+            .drive_manager
+            .disk_read_sectors(drive, cylinder, head, sector, count)
+    }
 
-    /// Write sectors to disk (INT 13h, AH=03h)
-    /// Returns number of sectors written on success, or error code on failure
-    fn disk_write_sectors(
+    pub fn disk_write_sectors(
         &mut self,
         drive: DriveNumber,
         cylinder: u8,
@@ -261,195 +298,388 @@ pub trait Bios {
         sector: u8,
         count: u8,
         data: &[u8],
-    ) -> Result<u8, DiskError>;
+    ) -> Result<u8, DiskError> {
+        self.shared
+            .drive_manager
+            .disk_write_sectors(drive, cylinder, head, sector, count, data)
+    }
 
-    /// Get drive parameters (INT 13h, AH=08h)
-    /// Returns drive parameters on success, or error code on failure
-    fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError>;
+    pub fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError> {
+        self.shared.drive_manager.disk_get_params(drive)
+    }
 
-    /// Get disk type (INT 13h, AH=15h)
-    /// Returns (drive_type, sector_count) where:
-    /// - drive_type: 0x00 = not present, 0x01 = floppy no change-line,
-    ///   0x02 = floppy with change-line, 0x03 = fixed disk
-    /// - sector_count: total 512-byte sectors (only for type 0x03)
-    fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError>;
+    pub fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError> {
+        self.shared.drive_manager.disk_get_type(drive)
+    }
 
-    /// Detect disk change (INT 13h, AH=16h)
-    /// Returns Ok(false) if disk not changed, Ok(true) if disk changed,
-    /// or Err(error_code) on error
-    fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, DiskError>;
+    pub fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, DiskError> {
+        self.shared.drive_manager.disk_detect_change(drive)
+    }
 
-    /// Format track (INT 13h, AH=05h)
-    /// Formats a track by filling sectors with zeros
-    /// Returns Ok(()) on success, or Err(error_code) on failure
-    fn disk_format_track(
+    pub fn disk_format_track(
         &mut self,
         drive: DriveNumber,
         cylinder: u8,
         head: u8,
         sectors_per_track: u8,
-    ) -> Result<(), DiskError>;
+    ) -> Result<(), DiskError> {
+        self.shared
+            .drive_manager
+            .disk_format_track(drive, cylinder, head, sectors_per_track)
+    }
 
-    /// Read sectors using logical sector addressing (INT 25h)
-    /// drive: DOS drive number (0=A, 1=B, 2=C, etc.)
-    /// start_sector: starting logical sector number
-    /// count: number of sectors to read
-    /// Returns the read data on success, or error code on failure
-    fn disk_read_sectors_lba(
+    pub fn disk_read_sectors_lba(
         &mut self,
         drive: DriveNumber,
         start_sector: u32,
         count: u16,
-    ) -> Result<Vec<u8>, DiskError>;
+    ) -> Result<Vec<u8>, DiskError> {
+        self.shared
+            .drive_manager
+            .disk_read_sectors_lba(drive, start_sector, count)
+    }
 
-    // --- INT 21h - DOS File Services ---
+    // File operations
+    pub fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, DosError> {
+        // Check if it's a DOS device
+        if let Some(device) = SharedBiosState::<D>::is_dos_device(filename) {
+            let handle = self
+                .shared
+                .allocate_device_handle()
+                .ok_or(DosError::TooManyOpenFiles)?;
+            self.shared.device_handles.insert(handle, device);
+            return Ok(handle);
+        }
 
-    /// Create or truncate file (INT 21h, AH=3Ch)
-    /// Returns file handle on success, or error code on failure
-    fn file_create(&mut self, filename: &str, attributes: u8) -> Result<u16, DosError>;
+        // Delegate to drive manager
+        self.shared.drive_manager.file_create(filename, attributes)
+    }
 
-    /// Open existing file (INT 21h, AH=3Dh)
-    /// Returns file handle on success, or error code on failure
-    fn file_open(&mut self, filename: &str, access_mode: FileAccess) -> Result<u16, DosError>;
+    pub fn file_open(&mut self, filename: &str, access_mode: FileAccess) -> Result<u16, DosError> {
+        // Check if it's a DOS device
+        if let Some(device) = SharedBiosState::<D>::is_dos_device(filename) {
+            let handle = self
+                .shared
+                .allocate_device_handle()
+                .ok_or(DosError::TooManyOpenFiles)?;
+            self.shared.device_handles.insert(handle, device);
+            return Ok(handle);
+        }
 
-    /// Close file (INT 21h, AH=3Eh)
-    /// Returns success or error code
-    fn file_close(&mut self, handle: u16) -> Result<(), DosError>;
+        // Delegate to drive manager
+        self.shared.drive_manager.file_open(filename, access_mode)
+    }
 
-    /// Read from file or device (INT 21h, AH=3Fh)
-    /// Returns the data read on success, or error code on failure
-    fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, DosError>;
+    pub fn file_close(&mut self, handle: u16) -> Result<(), DosError> {
+        // Don't allow closing standard handles
+        if handle < 3 {
+            return Err(DosError::InvalidHandle);
+        }
 
-    /// Write to file or device (INT 21h, AH=40h)
-    /// Returns the number of bytes written on success, or error code on failure
-    fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, DosError>;
+        // Try removing from device handles first
+        if self.shared.device_handles.remove(&handle).is_some() {
+            return Ok(());
+        }
 
-    /// Seek within file (INT 21h, AH=42h)
-    /// Returns the new file position on success, or error code on failure
-    fn file_seek(&mut self, handle: u16, offset: i32, method: SeekMethod) -> Result<u32, DosError>;
+        // Delegate to drive manager
+        self.shared.drive_manager.file_close(handle)
+    }
 
-    /// Duplicate file handle (INT 21h, AH=45h)
-    /// Returns a new file handle that refers to the same file on success, or error code on failure
-    fn file_duplicate(&mut self, handle: u16) -> Result<u16, DosError>;
+    pub fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, DosError> {
+        // Handle stdin separately
+        if handle == 0 {
+            let mut buffer = vec![0u8; max_bytes as usize];
+            match io::stdin().read(&mut buffer) {
+                Ok(n) => {
+                    buffer.truncate(n);
+                    Ok(buffer)
+                }
+                Err(_) => Err(DosError::AccessDenied),
+            }
+        } else if let Some(device) = self.shared.device_handles.get(&handle) {
+            // Handle DOS devices
+            match device {
+                DosDevice::Null => {
+                    // NUL always returns EOF (0 bytes)
+                    Ok(Vec::new())
+                }
+                DosDevice::Console => {
+                    // CON reads from stdin
+                    let mut buffer = vec![0u8; max_bytes as usize];
+                    match io::stdin().read(&mut buffer) {
+                        Ok(n) => {
+                            buffer.truncate(n);
+                            Ok(buffer)
+                        }
+                        Err(_) => Err(DosError::AccessDenied),
+                    }
+                }
+            }
+        } else {
+            // Delegate to drive manager
+            self.shared.drive_manager.file_read(handle, max_bytes)
+        }
+    }
 
-    // --- INT 21h - DOS Directory Services ---
+    pub fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, DosError> {
+        // Note: stdout (1) and stderr (2) are handled by INT 21h, AH=40h
+        // which routes them through the video system via teletype output.
+        // We should never receive handle 1 or 2 here.
+        if handle == 1 || handle == 2 {
+            // This shouldn't happen - INT 21h already handles these
+            log::warn!("Unexpected direct write to stdout/stderr handle {}", handle);
+            return Ok(data.len() as u16);
+        }
 
-    /// Create directory (INT 21h, AH=39h)
-    /// Returns success or error code
-    fn dir_create(&mut self, dirname: &str) -> Result<(), DosError>;
+        if let Some(device) = self.shared.device_handles.get(&handle) {
+            // Handle DOS devices
+            match device {
+                DosDevice::Null => {
+                    // NUL discards all data but reports success
+                    Ok(data.len() as u16)
+                }
+                DosDevice::Console => {
+                    // CON device writes should also go through video system
+                    // For now, just report success without output
+                    // TODO: Route CON writes through video in INT 21h handler
+                    log::warn!("CON device write not yet routed through video system");
+                    Ok(data.len() as u16)
+                }
+            }
+        } else {
+            // Delegate to drive manager
+            self.shared.drive_manager.file_write(handle, data)
+        }
+    }
 
-    /// Remove directory (INT 21h, AH=3Ah)
-    /// Returns success or error code
-    fn dir_remove(&mut self, dirname: &str) -> Result<(), DosError>;
+    pub fn file_seek(
+        &mut self,
+        handle: u16,
+        offset: i32,
+        method: SeekMethod,
+    ) -> Result<u32, DosError> {
+        // Standard handles and device handles don't support seeking
+        if handle < 3 || self.shared.device_handles.contains_key(&handle) {
+            return Err(DosError::InvalidHandle);
+        }
 
-    /// Change current directory (INT 21h, AH=3Bh)
-    /// Returns success or error code
-    fn dir_change(&mut self, dirname: &str) -> Result<(), DosError>;
+        // Delegate to drive manager
+        self.shared.drive_manager.file_seek(handle, offset, method)
+    }
 
-    /// Get current directory (INT 21h, AH=47h)
-    /// Returns the current directory path (without drive letter)
-    fn dir_get_current(&self, drive: DriveNumber) -> Result<String, DosError>;
+    pub fn file_duplicate(&mut self, handle: u16) -> Result<u16, DosError> {
+        // Standard handles (0, 1, 2) can be duplicated
+        if handle < 3 {
+            let new_handle = self
+                .shared
+                .allocate_device_handle()
+                .ok_or(DosError::TooManyOpenFiles)?;
+            // We don't actually store anything for standard handles
+            return Ok(new_handle);
+        }
 
-    /// Find first matching file (INT 21h, AH=4Eh)
-    /// Returns file data on success, or error code on failure
-    /// The search_id is used to identify this search for subsequent find_next calls
-    fn find_first(&mut self, pattern: &str, attributes: u8) -> Result<(usize, FindData), DosError>;
+        // Check if it's a device handle
+        if let Some(device) = self.shared.device_handles.get(&handle).copied() {
+            let new_handle = self
+                .shared
+                .allocate_device_handle()
+                .ok_or(DosError::TooManyOpenFiles)?;
+            self.shared.device_handles.insert(new_handle, device);
+            return Ok(new_handle);
+        }
 
-    /// Find next matching file (INT 21h, AH=4Fh)
-    /// Returns file data on success, or error code on failure
-    fn find_next(&mut self, search_id: usize) -> Result<FindData, DosError>;
+        // Delegate to drive manager
+        self.shared.drive_manager.file_duplicate(handle)
+    }
 
-    // --- INT 21h - DOS System Functions ---
+    // Directory operations
+    pub fn dir_create(&mut self, dirname: &str) -> Result<(), DosError> {
+        self.shared.drive_manager.dir_create(dirname)
+    }
 
-    /// Get current default drive (INT 21h, AH=19h)
-    /// Returns the current drive number (0=A, 1=B, etc.)
-    fn get_current_drive(&self) -> DriveNumber;
+    pub fn dir_remove(&mut self, dirname: &str) -> Result<(), DosError> {
+        self.shared.drive_manager.dir_remove(dirname)
+    }
 
-    /// Set default drive (INT 21h, AH=0Eh)
-    /// Returns the total number of logical drives
-    fn set_default_drive(&mut self, drive: DriveNumber) -> u8;
+    pub fn dir_change(&mut self, dirname: &str) -> Result<(), DosError> {
+        self.shared.drive_manager.dir_change(dirname)
+    }
 
-    /// Allocate memory (INT 21h, AH=48h)
-    /// Returns segment of allocated memory on success, or (error_code, max_available) on failure
-    fn memory_allocate(&mut self, paragraphs: u16) -> Result<u16, (DosError, u16)>;
+    pub fn dir_get_current(&self, drive: DriveNumber) -> Result<String, DosError> {
+        self.shared.drive_manager.get_current_dir(drive)
+    }
 
-    /// Free memory (INT 21h, AH=49h)
-    /// Returns success or error code
-    fn memory_free(&mut self, segment: u16) -> Result<(), DosError>;
+    pub fn find_first(
+        &mut self,
+        pattern: &str,
+        attributes: u8,
+    ) -> Result<(usize, FindData), DosError> {
+        self.shared.drive_manager.find_first(pattern, attributes)
+    }
 
-    /// Resize memory block (INT 21h, AH=4Ah)
-    /// Returns success or (error_code, max_available) on failure
-    fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (DosError, u16)>;
+    pub fn find_next(&mut self, search_id: usize) -> Result<FindData, DosError> {
+        self.shared.drive_manager.find_next(search_id)
+    }
 
-    /// Get PSP segment (INT 21h, AH=50h/51h/62h)
-    /// Returns the current Program Segment Prefix segment
-    fn get_psp(&self) -> u16;
+    // Drive management
+    pub fn get_current_drive(&self) -> DriveNumber {
+        self.shared.drive_manager.get_current_drive()
+    }
 
-    /// Set PSP segment (INT 21h, AH=50h)
-    /// Sets the current Program Segment Prefix segment
-    fn set_psp(&mut self, segment: u16);
+    pub fn set_default_drive(&mut self, drive: DriveNumber) -> u8 {
+        match self.shared.drive_manager.set_current_drive(drive) {
+            Ok(count) => count,
+            Err(_) => self.shared.drive_manager.get_drive_count(),
+        }
+    }
 
-    /// Get device information for IOCTL (INT 21h, AH=44h, AL=00h)
-    /// Returns device information word for the given handle
-    fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, DosError>;
+    // Memory management
+    pub fn memory_allocate(&mut self, paragraphs: u16) -> Result<u16, (DosError, u16)> {
+        self.shared.memory_allocator.allocate(paragraphs)
+    }
 
-    /// Set device information for IOCTL (INT 21h, AH=44h, AL=01h)
-    /// Sets device information word for the given handle
-    fn ioctl_set_device_info(&mut self, handle: u16, info: u16) -> Result<(), DosError>;
+    pub fn memory_free(&mut self, segment: u16) -> Result<(), DosError> {
+        self.shared.memory_allocator.free(segment)
+    }
 
-    /// Load and/or execute a program (INT 21h, AH=4Bh)
-    /// Returns the program data to be loaded into memory on success,
-    /// or error code on failure
-    fn exec_load_program(&mut self, params: &ExecParams) -> Result<Vec<u8>, DosError>;
+    pub fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (DosError, u16)> {
+        self.shared.memory_allocator.resize(segment, paragraphs)
+    }
 
-    // --- INT 14h - Serial Port Services ---
+    // PSP management
+    pub fn get_psp(&self) -> u16 {
+        // Default PSP segment for simple programs
+        0x0100
+    }
 
-    /// Initialize serial port (INT 14h, AH=00h)
-    /// Returns the port status after initialization
-    fn serial_init(&mut self, port: u8, params: SerialParams) -> SerialStatus;
+    pub fn set_psp(&mut self, _segment: u16) {
+        // PSP tracking is not implemented in this simple BIOS
+    }
 
-    /// Write character to serial port (INT 14h, AH=01h)
-    /// Returns line status (bit 7 set if timeout)
-    fn serial_write(&mut self, port: u8, ch: u8) -> u8;
+    // IOCTL
+    pub fn ioctl_get_device_info(&self, handle: u16) -> Result<u16, DosError> {
+        // Return device information word
+        // Bit 7 = 1 for character device, 0 for disk file
+        // Bit 6 = 0 for EOF on input (for files)
+        // Bit 5 = 0 for binary mode (raw), 1 for cooked mode
+        // Bit 0 = 1 for console input (stdin)
+        // Bit 1 = 1 for console output (stdout)
+        match handle {
+            0 => Ok(0x80D1), // STDIN: device (bit 7), console input (bit 0)
+            1 => Ok(0x80D2), // STDOUT: device (bit 7), console output (bit 1)
+            2 => Ok(0x80D2), // STDERR: device (bit 7), console output (bit 1)
+            _ => {
+                // Check if it's a DOS device handle
+                if let Some(device) = self.shared.device_handles.get(&handle) {
+                    // Return device info based on device type
+                    match device {
+                        DosDevice::Null => Ok(0x8004),    // NUL device (bit 7), special device
+                        DosDevice::Console => Ok(0x80D3), // CON device (bit 7), console I/O
+                    }
+                } else if self.shared.drive_manager.contains_handle(handle) {
+                    // It's a regular file (bit 7 = 0)
+                    Ok(0x0000)
+                } else {
+                    Err(DosError::InvalidHandle)
+                }
+            }
+        }
+    }
 
-    /// Read character from serial port (INT 14h, AH=02h)
-    /// Returns (character, line_status) on success, or line_status with timeout bit on error
-    fn serial_read(&mut self, port: u8) -> Result<(u8, u8), u8>;
+    pub fn ioctl_set_device_info(&mut self, handle: u16, _info: u16) -> Result<(), DosError> {
+        // Allow setting device info for standard handles and open files
+        match handle {
+            0..=2 => {
+                // Standard handles - allow setting but ignore
+                Ok(())
+            }
+            _ => {
+                // Check if it's a valid file handle
+                if self.shared.drive_manager.contains_handle(handle)
+                    || self.shared.device_handles.contains_key(&handle)
+                {
+                    // Allow setting but ignore for files and devices
+                    Ok(())
+                } else {
+                    Err(DosError::InvalidHandle)
+                }
+            }
+        }
+    }
 
-    /// Get serial port status (INT 14h, AH=03h)
-    /// Returns line and modem status
-    fn serial_status(&self, port: u8) -> SerialStatus;
+    pub fn exec_load_program(&mut self, params: &ExecParams) -> Result<Vec<u8>, DosError> {
+        // Open the program file
+        let handle = self.file_open(&params.filename, FileAccess::ReadOnly)?;
 
-    // --- INT 17h - Printer Services ---
+        // Read the entire file
+        let mut program_data = Vec::new();
+        loop {
+            match self.file_read(handle, 4096) {
+                Ok(data) => {
+                    if data.is_empty() {
+                        break;
+                    }
+                    program_data.extend(data);
+                }
+                Err(e) => {
+                    let _ = self.file_close(handle);
+                    return Err(e);
+                }
+            }
+        }
 
-    /// Initialize printer port (INT 17h, AH=01h)
-    /// Returns the printer status after initialization
-    fn printer_init(&mut self, printer: u8) -> PrinterStatus;
+        // Close the file
+        let _ = self.file_close(handle);
 
-    /// Write character to printer (INT 17h, AH=00h)
-    /// Returns printer status
-    fn printer_write(&mut self, printer: u8, ch: u8) -> PrinterStatus;
+        if program_data.is_empty() {
+            return Err(DosError::FileNotFound);
+        }
 
-    /// Get printer status (INT 17h, AH=02h)
-    /// Returns printer status
-    fn printer_status(&self, printer: u8) -> PrinterStatus;
+        Ok(program_data)
+    }
 
-    // --- INT 1Ah - Time Services ---
+    // Serial port (stub implementations)
+    pub fn serial_init(&mut self, port: u8, params: SerialParams) -> SerialStatus {
+        peripheral::serial_init(port, params)
+    }
 
-    /// Get system time in BIOS ticks since midnight (INT 1Ah, AH=00h)
-    /// Returns the current time in ticks (18.2 Hz timer)
-    /// Platform implementations should read the host system time
-    fn get_system_ticks(&self) -> u32;
+    pub fn serial_write(&mut self, port: u8, ch: u8) -> u8 {
+        peripheral::serial_write(port, ch)
+    }
 
-    /// Get Real Time Clock time (INT 1Ah, AH=02h)
-    /// Returns current time in decimal format (not BCD - conversion is done by caller)
-    /// Returns None if RTC is not available (e.g., on original 8086 systems)
-    fn get_rtc_time(&self) -> Option<RtcTime>;
+    pub fn serial_read(&mut self, port: u8) -> Result<(u8, u8), u8> {
+        peripheral::serial_read(port)
+    }
 
-    /// Get Real Time Clock date (INT 1Ah, AH=04h)
-    /// Returns current date in decimal format (not BCD - conversion is done by caller)
-    /// Returns None if RTC is not available (e.g., on original 8086 systems)
-    fn get_rtc_date(&self) -> Option<RtcDate>;
+    pub fn serial_status(&self, port: u8) -> SerialStatus {
+        peripheral::serial_status(port)
+    }
+
+    // Printer (stub implementations)
+    pub fn printer_init(&mut self, printer: u8) -> PrinterStatus {
+        peripheral::printer_init(printer)
+    }
+
+    pub fn printer_write(&mut self, printer: u8, ch: u8) -> PrinterStatus {
+        peripheral::printer_write(printer, ch)
+    }
+
+    pub fn printer_status(&self, printer: u8) -> PrinterStatus {
+        peripheral::printer_status(printer)
+    }
+
+    // Time and RTC
+    pub fn get_system_ticks(&self) -> u32 {
+        time::get_system_ticks()
+    }
+
+    pub fn get_rtc_time(&self) -> Option<RtcTime> {
+        time::get_rtc_time()
+    }
+
+    pub fn get_rtc_date(&self) -> Option<RtcDate> {
+        time::get_rtc_date()
+    }
 }
 
 impl Cpu {
@@ -463,22 +693,22 @@ impl Cpu {
 
     /// Handle BIOS interrupt directly without checking IVT
     /// Used when DOS chains back to BIOS via CALL FAR to F000:XXXX
-    pub(crate) fn handle_bios_interrupt_direct<T: Bios>(
+    pub(crate) fn handle_bios_interrupt_direct<K: KeyboardInput, D: DiskController>(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut Bios<K, D>,
         video: &mut crate::video::Video,
     ) {
         self.handle_bios_interrupt_impl(int_num, memory, io, video);
     }
 
     /// Internal implementation of BIOS interrupt handling
-    pub(super) fn handle_bios_interrupt_impl<T: Bios>(
+    pub(super) fn handle_bios_interrupt_impl<K: KeyboardInput, D: DiskController>(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
-        io: &mut T,
+        io: &mut Bios<K, D>,
         video: &mut crate::video::Video,
     ) {
         match int_num {
