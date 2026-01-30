@@ -3,6 +3,7 @@
 - [ ] PC Speaker - Use the Rodio crate to create PC speaker like sounds
 - [ ] Mouse support
 - [ ] Add speed throttle and turbo to gui
+- [ ] Install FreeDOS
 - [ ] 8086 Test text games
   - [ ] Alley Cat
   - [ ] Zork

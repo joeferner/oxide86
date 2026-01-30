@@ -11,6 +11,8 @@ anyhow = { workspace = true }
 env_logger = "0.11"
 log = { workspace = true }
 clap = { workspace = true }
+muda = "0.17.1"
+rfd = "0.17.2"
 
 [lints]
 workspace = true
