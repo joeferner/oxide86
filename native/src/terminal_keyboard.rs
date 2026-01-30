@@ -80,7 +80,13 @@ impl TerminalKeyboard {
         loop {
             if let Ok(Event::Key(key_event)) = event::read() {
                 let key_press = key_event_to_keypress(&key_event);
-                log::debug!("key press (read_key): 0x{:02X}", key_press.scan_code);
+                log::debug!(
+                    "key press (read_key): code={:?}, modifiers={:?}, scan=0x{:02X}, ascii=0x{:02X}",
+                    key_event.code,
+                    key_event.modifiers,
+                    key_press.scan_code,
+                    key_press.ascii_code
+                );
                 return Some(key_press);
             }
         }
@@ -92,7 +98,13 @@ impl TerminalKeyboard {
             && let Ok(Event::Key(key_event)) = event::read()
         {
             let key_press = key_event_to_keypress(&key_event);
-            log::debug!("key press (check_key): 0x{:02X}", key_press.scan_code);
+            log::debug!(
+                "key press (check_key): code={:?}, modifiers={:?}, scan=0x{:02X}, ascii=0x{:02X}",
+                key_event.code,
+                key_event.modifiers,
+                key_press.scan_code,
+                key_press.ascii_code
+            );
             return Some(key_press);
         }
         None
@@ -182,6 +194,14 @@ fn key_event_to_ascii(key_event: &KeyEvent) -> Option<u8> {
                     'A'..='Z' => return Some(c as u8 - b'A' + 1),
                     _ => {}
                 }
+            }
+            // For Alt+letter combinations, return 0 (will be handled by apply_modifier_to_scan_code)
+            if key_event.modifiers.contains(KeyModifiers::ALT) && c.is_ascii_alphabetic() {
+                return Some(0x00);
+            }
+            // For Alt+number combinations, return 0 (will be handled by apply_modifier_to_scan_code)
+            if key_event.modifiers.contains(KeyModifiers::ALT) && c.is_ascii_digit() {
+                return Some(0x00);
             }
             Some(c as u8)
         }
@@ -357,8 +377,74 @@ fn key_code_to_scan_code(code: &KeyCode) -> u8 {
         KeyCode::PageDown => 0x51,
         KeyCode::Insert => 0x52,
 
-        // Regular characters - use ASCII value as scan code
-        KeyCode::Char(c) if (0x20..0x7F).contains(&(*c as u8)) => *c as u8,
+        // Character keys - map to physical keyboard scan codes
+        KeyCode::Char(c) => char_to_scan_code(*c),
+
+        _ => 0x00,
+    }
+}
+
+/// Map a character to its physical keyboard scan code
+/// This is based on the physical position of keys on an IBM PC keyboard
+fn char_to_scan_code(c: char) -> u8 {
+    match c.to_ascii_uppercase() {
+        // Top row (number keys)
+        '1' | '!' => 0x02,
+        '2' | '@' => 0x03,
+        '3' | '#' => 0x04,
+        '4' | '$' => 0x05,
+        '5' | '%' => 0x06,
+        '6' | '^' => 0x07,
+        '7' | '&' => 0x08,
+        '8' | '*' => 0x09,
+        '9' | '(' => 0x0A,
+        '0' | ')' => 0x0B,
+        '-' | '_' => 0x0C,
+        '=' | '+' => 0x0D,
+
+        // QWERTY row
+        'Q' => 0x10,
+        'W' => 0x11,
+        'E' => 0x12,
+        'R' => 0x13,
+        'T' => 0x14,
+        'Y' => 0x15,
+        'U' => 0x16,
+        'I' => 0x17,
+        'O' => 0x18,
+        'P' => 0x19,
+        '[' | '{' => 0x1A,
+        ']' | '}' => 0x1B,
+
+        // ASDF row
+        'A' => 0x1E,
+        'S' => 0x1F,
+        'D' => 0x20,
+        'F' => 0x21,
+        'G' => 0x22,
+        'H' => 0x23,
+        'J' => 0x24,
+        'K' => 0x25,
+        'L' => 0x26,
+        ';' | ':' => 0x27,
+        '\'' | '"' => 0x28,
+        '`' | '~' => 0x29,
+
+        // ZXCV row
+        '\\' | '|' => 0x2B,
+        'Z' => 0x2C,
+        'X' => 0x2D,
+        'C' => 0x2E,
+        'V' => 0x2F,
+        'B' => 0x30,
+        'N' => 0x31,
+        'M' => 0x32,
+        ',' | '<' => 0x33,
+        '.' | '>' => 0x34,
+        '/' | '?' => 0x35,
+
+        // Space bar
+        ' ' => 0x39,
 
         _ => 0x00,
     }
