@@ -8,6 +8,7 @@ pub use crate::disk::{
 };
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 pub use crate::io_port::{IoDevice, NullIoDevice};
+pub use crate::memory_allocator::MemoryAllocator;
 pub use crate::video::{
     CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
 };
@@ -21,6 +22,7 @@ pub mod drive_manager;
 pub mod io;
 pub mod io_port;
 pub mod memory;
+pub mod memory_allocator;
 pub mod video;
 
 /// Drive numbering:

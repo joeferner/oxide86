@@ -1,5 +1,4 @@
 mod console;
-mod memory_allocator;
 mod peripheral;
 mod time;
 
@@ -9,12 +8,11 @@ use emu86_core::cpu::bios::{
     DriveParams, ExecParams, FileAccess, FindData, KeyPress, PrinterStatus, RtcDate, RtcTime,
     SeekMethod, SerialParams, SerialStatus,
 };
-use emu86_core::{Bios, DiskController, DriveManager, DriveNumber};
+use emu86_core::{Bios, DiskController, DriveManager, DriveNumber, MemoryAllocator};
 use std::collections::{HashMap, VecDeque};
 use std::io::{self, Read};
 
 use crate::bios::console::SCAN_CODE_F12;
-use crate::bios::memory_allocator::MemoryAllocator;
 
 /// DOS device types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

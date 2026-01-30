@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use emu86_core::cpu::bios::dos_error::DosError;
+use crate::cpu::bios::dos_error::DosError;
 
 /// Memory allocation block
 #[derive(Debug, Clone)]

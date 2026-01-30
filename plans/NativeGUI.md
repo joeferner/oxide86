@@ -5,15 +5,8 @@ Implement a native GUI emulator using the pixels crate while maximizing code reu
 
 ## Phase 1: Extract Shared Code to Core (Reduce Duplication)
 
-### 1.1 Move MemoryAllocator (Priority: High)
-**Location:** `native/src/bios/memory_allocator.rs` → `core/src/memory_allocator.rs`
-
-**Actions:**
-- Copy entire 282-line file to `core/src/memory_allocator.rs` (no changes needed - pure platform-independent code)
-- Export from `core/src/lib.rs`: `pub mod memory_allocator; pub use memory_allocator::MemoryAllocator;`
-- Update `native/src/bios/mod.rs`: Replace `mod memory_allocator;` with `use emu86_core::MemoryAllocator;`
-- Delete `native/src/bios/memory_allocator.rs`
-- Verify: `cargo build -p emu86-native` succeeds
+### ~~1.1 Move MemoryAllocator~~ ✓ COMPLETED
+**Status:** MemoryAllocator has been successfully moved to `core/src/memory_allocator.rs` and is now shared code.
 
 ### 1.2 Move Time Functions
 **Location:** `native/src/bios/time.rs` → `core/src/time.rs`
@@ -210,7 +203,7 @@ vga = "0.2"
 ## Implementation Sequence
 
 **Week 1: Foundation**
-1. Move MemoryAllocator to core
+1. ~~Move MemoryAllocator to core~~ ✓ COMPLETED
 1. Move time functions to core
 1. Move peripheral stubs to core
 1. Move DiskBackend to core
@@ -247,8 +240,8 @@ vga = "0.2"
 ## Verification
 
 **After Phase 1:**
-- [ ] `cargo build -p emu86-core` succeeds
-- [ ] `cargo build -p emu86-native` succeeds
+- [x] `cargo build -p emu86-core` succeeds
+- [x] `cargo build -p emu86-native` succeeds
 - [ ] Native CLI boots DOS: `cargo run -p emu86-native -- --boot --floppy-a dos.img`
 - [ ] DIR command works
 - [ ] Can run programs (HELLO.COM, etc.)
