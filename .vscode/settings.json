@@ -11,6 +11,7 @@
         "dasd",
         "dbcs",
         "ebda",
+        "egui",
         "fatfs",
         "fdisk",
         "IDIV",
@@ -63,6 +64,7 @@
         "STOSB",
         "STOSW",
         "subfunc",
+        "wgpu",
         "winit",
         "XCHG",
         "XLAT"

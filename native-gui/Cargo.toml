@@ -4,19 +4,17 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-pixels = "0.15.0"
-winit = "0.30"
+winit = "0.29"
+pixels = "0.15"
 emu86-core = { path = "../core" }
 anyhow = { workspace = true }
 env_logger = "0.11"
 log = { workspace = true }
 clap = { workspace = true }
-muda = "0.17.1"
+egui = "0.27"
+egui-winit = { version = "0.27", default-features = false, features = ["links"] }
+egui-wgpu = "0.27"
 rfd = "0.17.2"
-
-[target.'cfg(target_os = "linux")'.dependencies]
-gtk = "0.18"
-raw-window-handle = "0.6"
 
 [lints]
 workspace = true

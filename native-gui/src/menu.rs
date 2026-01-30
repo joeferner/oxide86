@@ -1,62 +1,4 @@
-use anyhow::{Context, Result};
 use emu86_core::DriveNumber;
-use muda::{Menu, MenuEvent, MenuItem, Submenu, accelerator::Accelerator};
-
-/// Custom event types for the application
-#[derive(Debug)]
-pub enum AppEvent {
-    MenuEvent(MenuEvent),
-    #[allow(dead_code)]
-    DiskInserted {
-        slot: DriveNumber,
-        result: Result<(), String>,
-    },
-}
-
-/// Menu item identifiers
-const MENU_INSERT_FLOPPY_A: &str = "insert_floppy_a";
-const MENU_EJECT_FLOPPY_A: &str = "eject_floppy_a";
-const MENU_INSERT_FLOPPY_B: &str = "insert_floppy_b";
-const MENU_EJECT_FLOPPY_B: &str = "eject_floppy_b";
-
-/// Application menu structure with references to menu items
-pub struct AppMenu {
-    #[allow(dead_code)]
-    pub menu: Menu,
-    insert_floppy_a: MenuItem,
-    eject_floppy_a: MenuItem,
-    insert_floppy_b: MenuItem,
-    eject_floppy_b: MenuItem,
-}
-
-impl AppMenu {
-    /// Update menu item states based on disk presence
-    pub fn update_menu_states(&self, floppy_a_present: bool, floppy_b_present: bool) {
-        // Eject items are only enabled when disk is present
-        self.eject_floppy_a.set_enabled(floppy_a_present);
-        self.eject_floppy_b.set_enabled(floppy_b_present);
-
-        // Insert items are always enabled (allows disk swapping)
-        self.insert_floppy_a.set_enabled(true);
-        self.insert_floppy_b.set_enabled(true);
-    }
-
-    /// Get the menu item ID from a menu event
-    pub fn get_menu_action(&self, event: &MenuEvent) -> Option<MenuAction> {
-        let id = event.id();
-        if id == self.insert_floppy_a.id() {
-            Some(MenuAction::InsertFloppyA)
-        } else if id == self.eject_floppy_a.id() {
-            Some(MenuAction::EjectFloppyA)
-        } else if id == self.insert_floppy_b.id() {
-            Some(MenuAction::InsertFloppyB)
-        } else if id == self.eject_floppy_b.id() {
-            Some(MenuAction::EjectFloppyB)
-        } else {
-            None
-        }
-    }
-}
 
 /// Menu actions that can be triggered
 #[derive(Debug, Clone, Copy)]
@@ -82,90 +24,85 @@ impl MenuAction {
     }
 }
 
-/// Create the application menu structure
-pub fn create_menu() -> Result<AppMenu> {
-    let menu = Menu::new();
+/// Application menu structure
+pub struct AppMenu {
+    floppy_a_present: bool,
+    floppy_b_present: bool,
+}
 
-    // Create "Floppy" submenu
-    let floppy_menu = Submenu::new("Floppy", true);
+impl AppMenu {
+    /// Create a new menu
+    pub fn new() -> Self {
+        Self {
+            floppy_a_present: false,
+            floppy_b_present: false,
+        }
+    }
 
-    // Create "Floppy A:" submenu
-    let floppy_a_menu = Submenu::new("Floppy A:", true);
+    /// Update menu item states based on disk presence
+    pub fn update_menu_states(&mut self, floppy_a_present: bool, floppy_b_present: bool) {
+        self.floppy_a_present = floppy_a_present;
+        self.floppy_b_present = floppy_b_present;
+    }
 
-    let insert_floppy_a = MenuItem::with_id(
-        MENU_INSERT_FLOPPY_A,
-        "Insert Disk...",
-        true,
-        Some(Accelerator::new(
-            Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::SHIFT),
-            muda::accelerator::Code::KeyA,
-        )),
-    );
+    /// Render the menu bar using egui and return any triggered action
+    pub fn render(&mut self, ctx: &egui::Context) -> Option<MenuAction> {
+        let mut action = None;
 
-    let eject_floppy_a = MenuItem::with_id(
-        MENU_EJECT_FLOPPY_A,
-        "Eject Disk",
-        false, // Initially disabled
-        Some(Accelerator::new(
-            Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::ALT),
-            muda::accelerator::Code::KeyA,
-        )),
-    );
+        egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
+            egui::menu::bar(ui, |ui| {
+                ui.menu_button("Floppy", |ui| {
+                    ui.menu_button("Floppy A:", |ui| {
+                        if ui
+                            .add_enabled(
+                                true,
+                                egui::Button::new("Insert Disk...").shortcut_text("Ctrl+Shift+A"),
+                            )
+                            .clicked()
+                        {
+                            action = Some(MenuAction::InsertFloppyA);
+                            ui.close_menu();
+                        }
 
-    floppy_a_menu
-        .append(&insert_floppy_a)
-        .context("Failed to append insert floppy A menu item")?;
-    floppy_a_menu
-        .append(&eject_floppy_a)
-        .context("Failed to append eject floppy A menu item")?;
+                        if ui
+                            .add_enabled(
+                                self.floppy_a_present,
+                                egui::Button::new("Eject Disk").shortcut_text("Ctrl+Alt+A"),
+                            )
+                            .clicked()
+                        {
+                            action = Some(MenuAction::EjectFloppyA);
+                            ui.close_menu();
+                        }
+                    });
 
-    // Create "Floppy B:" submenu
-    let floppy_b_menu = Submenu::new("Floppy B:", true);
+                    ui.menu_button("Floppy B:", |ui| {
+                        if ui
+                            .add_enabled(
+                                true,
+                                egui::Button::new("Insert Disk...").shortcut_text("Ctrl+Shift+B"),
+                            )
+                            .clicked()
+                        {
+                            action = Some(MenuAction::InsertFloppyB);
+                            ui.close_menu();
+                        }
 
-    let insert_floppy_b = MenuItem::with_id(
-        MENU_INSERT_FLOPPY_B,
-        "Insert Disk...",
-        true,
-        Some(Accelerator::new(
-            Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::SHIFT),
-            muda::accelerator::Code::KeyB,
-        )),
-    );
+                        if ui
+                            .add_enabled(
+                                self.floppy_b_present,
+                                egui::Button::new("Eject Disk").shortcut_text("Ctrl+Alt+B"),
+                            )
+                            .clicked()
+                        {
+                            action = Some(MenuAction::EjectFloppyB);
+                            ui.close_menu();
+                        }
+                    });
+                });
+            });
+        });
 
-    let eject_floppy_b = MenuItem::with_id(
-        MENU_EJECT_FLOPPY_B,
-        "Eject Disk",
-        false, // Initially disabled
-        Some(Accelerator::new(
-            Some(muda::accelerator::Modifiers::CONTROL | muda::accelerator::Modifiers::ALT),
-            muda::accelerator::Code::KeyB,
-        )),
-    );
-
-    floppy_b_menu
-        .append(&insert_floppy_b)
-        .context("Failed to append insert floppy B menu item")?;
-    floppy_b_menu
-        .append(&eject_floppy_b)
-        .context("Failed to append eject floppy B menu item")?;
-
-    // Add submenus to main floppy menu
-    floppy_menu
-        .append(&floppy_a_menu)
-        .context("Failed to append floppy A submenu")?;
-    floppy_menu
-        .append(&floppy_b_menu)
-        .context("Failed to append floppy B submenu")?;
-
-    // Add floppy menu to main menu
-    menu.append(&floppy_menu)
-        .context("Failed to append floppy menu")?;
-
-    Ok(AppMenu {
-        menu,
-        insert_floppy_a,
-        eject_floppy_a,
-        insert_floppy_b,
-        eject_floppy_b,
-    })
+        action
+    }
 }

@@ -14,3 +14,4 @@
 - [ ] 8086 Test CGA games
   - [ ] Flight Simulator 1.0
 - [ ] Refactor read_char to be blocking in GUI
+- [ ] Upgrade to latest pixels/winit/egui (see https://github.com/parasyte/pixels/blob/main/examples/minimal-egui/Cargo.toml)
