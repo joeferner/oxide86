@@ -62,9 +62,18 @@ fn main() {
 
 fn run(cli: Cli) -> Result<()> {
     let event_loop = EventLoop::new().context("Failed to create event loop")?;
+
+    // Add extra height for the menu bar
+    // Since the scaling renderer centers content with letterboxing,
+    // we need 2x the menu height as extra space (menu height top + bottom letterbox)
+    const MENU_HEIGHT: u32 = 30;
+
     let window = WindowBuilder::new()
         .with_title("emu86 - 8086 Emulator")
-        .with_inner_size(LogicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32))
+        .with_inner_size(LogicalSize::new(
+            SCREEN_WIDTH as u32,
+            SCREEN_HEIGHT as u32 + (MENU_HEIGHT * 2),
+        ))
         .with_resizable(true)
         .build(&event_loop)
         .context("Failed to create window")?;
@@ -164,10 +173,24 @@ fn run(cli: Cli) -> Result<()> {
                             computer.video_controller_mut().render(&mut pixels);
                         }
 
-                        // Render egui (menu bar)
+                        // Render egui (menu bar and central panel for emulator)
                         let raw_input = egui_state.take_egui_input(window);
                         let full_output = egui_ctx.run(raw_input, |ctx| {
-                            if let Some(action) = menu.render(ctx) {
+                            let action = menu.render(ctx);
+
+                            // Add a central panel to reserve space for the emulator screen
+                            // This ensures the menu bar doesn't overlap the emulator display
+                            egui::CentralPanel::default()
+                                .frame(egui::Frame::none())
+                                .show(ctx, |ui| {
+                                    // Reserve exact space for the emulator
+                                    ui.allocate_space(egui::vec2(
+                                        SCREEN_WIDTH as f32,
+                                        SCREEN_HEIGHT as f32,
+                                    ));
+                                });
+
+                            if let Some(action) = action {
                                 if action.is_insert() {
                                     show_insert_dialog(
                                         action.drive_number(),
@@ -211,7 +234,9 @@ fn run(cli: Cli) -> Result<()> {
 
                         // Render both pixels (emulator) and egui (menu) together
                         if let Err(e) = pixels.render_with(|encoder, render_target, context| {
-                            // First render the emulator screen
+                            // Render the emulator screen
+                            // The scaling renderer will center the 640x400 content in the 640x460 window,
+                            // creating 30px letterbox at top and bottom, which perfectly aligns with the menu
                             context.scaling_renderer.render(encoder, render_target);
 
                             // Prepare egui buffers
