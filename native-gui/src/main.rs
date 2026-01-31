@@ -19,7 +19,8 @@ use std::fs::File;
 use winit::dpi::LogicalSize;
 use winit::event::{ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::window::WindowBuilder;
+use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::{CursorGrabMode, WindowBuilder};
 
 #[derive(Parser)]
 #[command(name = "emu86-gui")]
@@ -160,15 +161,40 @@ fn run(cli: Cli) -> Result<()> {
     // Update menu states
     menu.update_menu_states(floppy_a_present, floppy_b_present);
 
+    // Exclusive mode state - when true, hides cursor and disables menu
+    let mut exclusive_mode = false;
+
     event_loop
         .run(move |event, elwt| {
             elwt.set_control_flow(ControlFlow::Poll);
 
             if let Event::WindowEvent { event, .. } = event {
-                // Let egui handle the event first
-                let response = egui_state.on_window_event(window, &event);
-                if response.consumed {
-                    return;
+                // Check for mouse click to enter exclusive mode BEFORE egui handles it
+                if !exclusive_mode
+                    && let WindowEvent::MouseInput { state, .. } = &event
+                    && *state == ElementState::Pressed
+                {
+                    exclusive_mode = true;
+                    window.set_cursor_visible(false);
+
+                    // Confine cursor to window in exclusive mode
+                    if let Err(e) = window.set_cursor_grab(CursorGrabMode::Confined) {
+                        log::warn!("Failed to confine cursor: {}", e);
+                        // Try locked mode as fallback
+                        let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                    }
+
+                    log::info!("Entered exclusive mode (mouse click, press F12 to exit)");
+                    // Don't return - let the event continue to be processed
+                }
+
+                // In exclusive mode, skip egui event handling
+                if !exclusive_mode {
+                    // Let egui handle the event first
+                    let response = egui_state.on_window_event(window, &event);
+                    if response.consumed {
+                        return;
+                    }
                 }
 
                 match event {
@@ -188,10 +214,26 @@ fn run(cli: Cli) -> Result<()> {
                             .update_window_size(new_size.width as f64, new_size.height as f64);
                     }
                     WindowEvent::KeyboardInput { event: input, .. } => {
+                        // Check if F12 is pressed to exit exclusive mode
+                        if input.state == ElementState::Pressed
+                            && let PhysicalKey::Code(KeyCode::F12) = input.physical_key
+                            && exclusive_mode
+                        {
+                            // Exit exclusive mode
+                            exclusive_mode = false;
+                            window.set_cursor_visible(true);
+
+                            // Release cursor grab
+                            if let Err(e) = window.set_cursor_grab(CursorGrabMode::None) {
+                                log::warn!("Failed to release cursor grab: {}", e);
+                            }
+
+                            log::info!("Exited exclusive mode (F12)");
+                            return;
+                        }
+
                         // Convert the event to a KeyPress and fire INT 09h
                         if let Some(key) = computer.bios().keyboard.event_to_keypress(&input) {
-                            // F12 is reserved for emulator commands in the terminal version,
-                            // but in GUI we pass all keys to the emulated program
                             computer.process_keyboard_irq(key);
                         }
                     }
@@ -209,25 +251,31 @@ fn run(cli: Cli) -> Result<()> {
                         );
                     }
                     WindowEvent::CursorMoved { position, .. } => {
-                        // Process mouse movement
-                        computer
-                            .bios_mut()
-                            .mouse
-                            .process_cursor_moved(position.x, position.y);
+                        // Only process mouse movement when in exclusive mode
+                        if exclusive_mode {
+                            computer
+                                .bios_mut()
+                                .mouse
+                                .process_cursor_moved(position.x, position.y);
+                        }
                     }
                     WindowEvent::MouseInput { button, state, .. } => {
-                        // Convert winit button to mouse button code
-                        let button_code = match button {
-                            MouseButton::Left => 0,
-                            MouseButton::Right => 1,
-                            MouseButton::Middle => 2,
-                            _ => return, // Ignore other buttons
-                        };
-                        let pressed = state == ElementState::Pressed;
-                        computer
-                            .bios_mut()
-                            .mouse
-                            .process_button(button_code, pressed);
+                        // Only process mouse buttons when in exclusive mode
+                        // (The first click enters exclusive mode, handled earlier)
+                        if exclusive_mode {
+                            // Convert winit button to mouse button code
+                            let button_code = match button {
+                                MouseButton::Left => 0,
+                                MouseButton::Right => 1,
+                                MouseButton::Middle => 2,
+                                _ => return, // Ignore other buttons
+                            };
+                            let pressed = state == ElementState::Pressed;
+                            computer
+                                .bios_mut()
+                                .mouse
+                                .process_button(button_code, pressed);
+                        }
                     }
                     WindowEvent::RedrawRequested => {
                         const BATCH_SIZE: u32 = 10000;
@@ -249,39 +297,42 @@ fn run(cli: Cli) -> Result<()> {
                         }
 
                         // Render egui (menu bar and central panel for emulator)
+                        // Skip menu rendering when in exclusive mode
                         let raw_input = egui_state.take_egui_input(window);
                         let full_output = egui_ctx.run(raw_input, |ctx| {
-                            let action = menu.render(ctx);
+                            if !exclusive_mode {
+                                let action = menu.render(ctx);
 
-                            // Add a central panel to reserve space for the emulator screen
-                            // This ensures the menu bar doesn't overlap the emulator display
-                            egui::CentralPanel::default()
-                                .frame(egui::Frame::none())
-                                .show(ctx, |ui| {
-                                    // Reserve exact space for the emulator
-                                    ui.allocate_space(egui::vec2(
-                                        SCREEN_WIDTH as f32,
-                                        SCREEN_HEIGHT as f32,
-                                    ));
-                                });
+                                // Add a central panel to reserve space for the emulator screen
+                                // This ensures the menu bar doesn't overlap the emulator display
+                                egui::CentralPanel::default()
+                                    .frame(egui::Frame::none())
+                                    .show(ctx, |ui| {
+                                        // Reserve exact space for the emulator
+                                        ui.allocate_space(egui::vec2(
+                                            SCREEN_WIDTH as f32,
+                                            SCREEN_HEIGHT as f32,
+                                        ));
+                                    });
 
-                            if let Some(action) = action {
-                                if action.is_insert() {
-                                    show_insert_dialog(
-                                        action.drive_number(),
-                                        &mut computer,
-                                        &mut floppy_a_present,
-                                        &mut floppy_b_present,
-                                        &mut menu,
-                                    );
-                                } else {
-                                    eject_disk(
-                                        action.drive_number(),
-                                        &mut computer,
-                                        &mut floppy_a_present,
-                                        &mut floppy_b_present,
-                                        &mut menu,
-                                    );
+                                if let Some(action) = action {
+                                    if action.is_insert() {
+                                        show_insert_dialog(
+                                            action.drive_number(),
+                                            &mut computer,
+                                            &mut floppy_a_present,
+                                            &mut floppy_b_present,
+                                            &mut menu,
+                                        );
+                                    } else {
+                                        eject_disk(
+                                            action.drive_number(),
+                                            &mut computer,
+                                            &mut floppy_a_present,
+                                            &mut floppy_b_present,
+                                            &mut menu,
+                                        );
+                                    }
                                 }
                             }
                         });
