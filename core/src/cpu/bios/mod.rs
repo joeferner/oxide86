@@ -692,10 +692,20 @@ impl<K: KeyboardInput> Bios<K> {
     }
 
     /// Update all serial port devices (called periodically)
-    pub fn update_serial_devices(&mut self) {
+    pub fn update_serial_devices(&mut self) -> Vec<u8> {
+        let mut ports_with_interrupts = Vec::new();
+
         for port in &mut self.serial_ports {
             port.update_device();
+
+            // Check if this port has a pending interrupt
+            if port.has_pending_interrupt() {
+                ports_with_interrupts.push(port.get_port_number());
+                port.clear_pending_interrupt();
+            }
         }
+
+        ports_with_interrupts
     }
 
     // Serial port INT 14h services

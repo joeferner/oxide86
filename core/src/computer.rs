@@ -34,6 +34,7 @@ pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> 
 
     /// Queue of pending keyboard IRQs (INT 09h)
     pending_keyboard_irqs: std::collections::VecDeque<KeyPress>,
+    pending_serial_irqs: std::collections::VecDeque<u8>, // Serial port numbers (0=COM1, 1=COM2)
 }
 
 impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
@@ -88,6 +89,7 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             log_interrupts_enabled: false,
             log_steps: 0,
             pending_keyboard_irqs: std::collections::VecDeque::new(),
+            pending_serial_irqs: std::collections::VecDeque::new(),
         }
     }
 
@@ -291,6 +293,49 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         self.cpu.ip = offset;
     }
 
+    /// Queue a serial port interrupt (IRQ3 for COM2, IRQ4 for COM1)
+    ///
+    /// This should be called when serial data arrives and interrupts are enabled.
+    /// port_num: 0 for COM1, 1 for COM2
+    pub fn process_serial_irq(&mut self, port_num: u8) {
+        log::debug!("Queueing serial IRQ for COM{}", port_num + 1);
+        self.pending_serial_irqs.push_back(port_num);
+    }
+
+    /// Fire INT 0x0C (IRQ4, COM1) or INT 0x0B (IRQ3, COM2)
+    ///
+    /// This is the hardware interrupt for serial port data reception.
+    fn fire_serial_irq(&mut self, port_num: u8) {
+        // COM1 = IRQ4 = INT 0x0C, COM2 = IRQ3 = INT 0x0B
+        let int_num = if port_num == 0 { 0x0C } else { 0x0B };
+
+        let ivt_addr = (int_num as usize) * 4;
+        let offset = self.memory.read_u16(ivt_addr);
+        let segment = self.memory.read_u16(ivt_addr + 2);
+
+        log::debug!(
+            "INT 0x{:02X}: Firing serial IRQ for COM{} - handler at {:04X}:{:04X}",
+            int_num,
+            port_num + 1,
+            segment,
+            offset
+        );
+
+        // Push flags, CS, IP (simulating INT instruction)
+        self.cpu.push(self.cpu.flags, &mut self.memory);
+        self.cpu.push(self.cpu.cs, &mut self.memory);
+        self.cpu.push(self.cpu.ip, &mut self.memory);
+
+        // Clear IF and TF flags (standard INT behavior)
+        use crate::cpu::cpu_flag;
+        self.cpu.set_flag(cpu_flag::INTERRUPT, false);
+        self.cpu.set_flag(cpu_flag::TRAP, false);
+
+        // Jump to interrupt handler
+        self.cpu.cs = segment;
+        self.cpu.ip = offset;
+    }
+
     pub fn run(&mut self) {
         while !self.cpu.is_halted() {
             self.step();
@@ -316,6 +361,12 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             self.fire_keyboard_irq(key);
             // After firing the IRQ, return to let the INT 09h handler execute
             // The handler will run on subsequent step() calls
+            return;
+        }
+
+        // Process pending serial IRQs
+        if let Some(port_num) = self.pending_serial_irqs.pop_front() {
+            self.fire_serial_irq(port_num);
             return;
         }
 
@@ -435,7 +486,10 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
 
         // Update serial devices every 1000 instructions (~18 times per second)
         if self.step_count % 1000 == 0 {
-            self.bios.update_serial_devices();
+            let ports_with_interrupts = self.bios.update_serial_devices();
+            for port_num in ports_with_interrupts {
+                self.process_serial_irq(port_num);
+            }
         }
     }
 

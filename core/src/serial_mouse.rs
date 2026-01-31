@@ -37,7 +37,7 @@ impl SerialMouse {
             last_buttons: 0,
             accumulated_x: 0,
             accumulated_y: 0,
-            motion_threshold: 8,
+            motion_threshold: 1, // Send packets for every character of movement in text mode
             initialized: false,
         }
     }
@@ -75,12 +75,34 @@ impl SerialDevice for SerialMouse {
         let motion_exceeded = self.accumulated_x.abs() >= self.motion_threshold as i16
             || self.accumulated_y.abs() >= self.motion_threshold as i16;
 
+        if dx != 0 || dy != 0 {
+            log::debug!(
+                "SerialMouse: motion dx={}, dy={}, accum_x={}, accum_y={}, threshold={}",
+                dx,
+                dy,
+                self.accumulated_x,
+                self.accumulated_y,
+                self.motion_threshold
+            );
+        }
+
         if buttons_changed || motion_exceeded {
             let packet = generate_ms_mouse_packet(
                 state.left_button,
                 state.right_button,
                 self.accumulated_x,
                 self.accumulated_y,
+            );
+
+            log::debug!(
+                "SerialMouse: Sending packet: {:02X} {:02X} {:02X} (buttons={}/{}, dx={}, dy={})",
+                packet[0],
+                packet[1],
+                packet[2],
+                state.left_button,
+                state.right_button,
+                self.accumulated_x,
+                self.accumulated_y
             );
 
             self.accumulated_x = 0;

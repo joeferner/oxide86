@@ -153,14 +153,21 @@ impl MouseInput for TerminalMouse {
         let delta_col = (col as i16) - (shared.last_col as i16);
         let delta_row = (row as i16) - (shared.last_row as i16);
 
-        // Accumulate motion in mickeys (8 mickeys per pixel, 8 pixels per char = 64 mickeys per char)
-        // Motion in mickeys = delta in chars * pixels per char * mickeys per pixel
-        shared.motion_x = shared
-            .motion_x
-            .saturating_add(delta_col * (Self::CHAR_WIDTH as i16));
-        shared.motion_y = shared
-            .motion_y
-            .saturating_add(delta_row * (Self::CHAR_HEIGHT as i16));
+        if delta_col != 0 || delta_row != 0 {
+            log::debug!(
+                "TerminalMouse: cursor moved to col={}, row={} (delta: {}, {})",
+                col,
+                row,
+                delta_col,
+                delta_row
+            );
+        }
+
+        // Accumulate motion in mickeys
+        // For text mode mouse, use 1:1 ratio (1 mickey = 1 character cell)
+        // This matches what CTMOUSE expects in text mode
+        shared.motion_x = shared.motion_x.saturating_add(delta_col);
+        shared.motion_y = shared.motion_y.saturating_add(delta_row);
 
         // Update last position
         shared.last_col = col;

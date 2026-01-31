@@ -118,6 +118,9 @@ pub struct SerialPortController {
 
     // Attached device
     device: Option<Box<dyn SerialDevice>>,
+
+    // Interrupt flag
+    pending_interrupt: bool,
 }
 
 impl SerialPortController {
@@ -145,6 +148,7 @@ impl SerialPortController {
             params: SerialParams::default(),
             buffer_size: 256,
             device: None,
+            pending_interrupt: false,
         }
     }
 
@@ -159,6 +163,16 @@ impl SerialPortController {
 
         self.rx_buffer.push_back(byte);
         self.update_line_status();
+
+        // Check if "Received Data Available" interrupt is enabled (bit 0 of IER)
+        if self.interrupt_enable & 0x01 != 0 {
+            self.pending_interrupt = true;
+            log::debug!(
+                "COM{}: Data arrived, interrupt enabled, setting pending_interrupt flag",
+                self.port_number + 1
+            );
+        }
+
         true
     }
 
@@ -181,7 +195,18 @@ impl SerialPortController {
                     (self.divisor_latch & 0xFF) as u8
                 } else {
                     // DLAB=0: Read and consume byte from receive buffer
-                    self.dequeue_byte().unwrap_or(0)
+                    let byte = self.dequeue_byte().unwrap_or(0);
+
+                    // If more data remains in buffer and interrupts enabled, re-trigger interrupt
+                    if !self.rx_buffer.is_empty() && (self.interrupt_enable & 0x01 != 0) {
+                        self.pending_interrupt = true;
+                        log::debug!(
+                            "COM{}: Data still in buffer after read, re-triggering interrupt",
+                            self.port_number + 1
+                        );
+                    }
+
+                    byte
                 }
             }
             register::INTERRUPT_ENABLE => {
@@ -394,6 +419,7 @@ impl SerialPortController {
         self.scratch = 0;
         self.divisor_latch = 96;
         self.params = SerialParams::default();
+        self.pending_interrupt = false;
     }
 
     /// Get the base I/O port address
@@ -404,6 +430,16 @@ impl SerialPortController {
     /// Get the port number (0=COM1, 1=COM2)
     pub fn get_port_number(&self) -> u8 {
         self.port_number
+    }
+
+    /// Check if an interrupt is pending
+    pub fn has_pending_interrupt(&self) -> bool {
+        self.pending_interrupt
+    }
+
+    /// Clear the pending interrupt flag (should be called after firing the IRQ)
+    pub fn clear_pending_interrupt(&mut self) {
+        self.pending_interrupt = false;
     }
 
     /// Attach a device to this serial port
