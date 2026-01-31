@@ -73,16 +73,11 @@ fn main() {
 fn run(cli: Cli) -> Result<()> {
     let event_loop = EventLoop::new().context("Failed to create event loop")?;
 
-    // Add extra height for the menu bar
-    // Since the scaling renderer centers content with letterboxing,
-    // we need 2x the menu height as extra space (menu height top + bottom letterbox)
-    const MENU_HEIGHT: u32 = 30;
-
     let window = WindowBuilder::new()
         .with_title("emu86 - 8086 Emulator")
         .with_inner_size(LogicalSize::new(
             SCREEN_WIDTH as u32,
-            SCREEN_HEIGHT as u32 + (MENU_HEIGHT * 2),
+            SCREEN_HEIGHT as u32,
         ))
         .with_resizable(true)
         .build(&event_loop)
@@ -163,14 +158,34 @@ fn run(cli: Cli) -> Result<()> {
 
     // Exclusive mode state - when true, hides cursor and disables menu
     let mut exclusive_mode = false;
+    // Track cursor position to detect clicks in menu area
+    let mut cursor_y = 0.0;
 
     event_loop
         .run(move |event, elwt| {
             elwt.set_control_flow(ControlFlow::Poll);
 
             if let Event::WindowEvent { event, .. } = event {
-                // Check for mouse click to enter exclusive mode BEFORE egui handles it
+                // Track cursor position
+                if let WindowEvent::CursorMoved { position, .. } = &event {
+                    cursor_y = position.y;
+                }
+
+                // In exclusive mode, skip egui event handling
+                // When not in exclusive mode, let egui handle events first
+                if !exclusive_mode {
+                    let response = egui_state.on_window_event(window, &event);
+                    // If egui consumed the event (e.g., clicking on menu), don't process it further
+                    if response.consumed {
+                        return;
+                    }
+                }
+
+                // Check for mouse click to enter exclusive mode
+                // Don't enter if cursor is in menu bar area (top ~30 pixels)
+                const MENU_HEIGHT: f64 = 30.0;
                 if !exclusive_mode
+                    && cursor_y > MENU_HEIGHT
                     && let WindowEvent::MouseInput { state, .. } = &event
                     && *state == ElementState::Pressed
                 {
@@ -186,15 +201,6 @@ fn run(cli: Cli) -> Result<()> {
 
                     log::info!("Entered exclusive mode (mouse click, press F12 to exit)");
                     // Don't return - let the event continue to be processed
-                }
-
-                // In exclusive mode, skip egui event handling
-                if !exclusive_mode {
-                    // Let egui handle the event first
-                    let response = egui_state.on_window_event(window, &event);
-                    if response.consumed {
-                        return;
-                    }
                 }
 
                 match event {
@@ -296,24 +302,12 @@ fn run(cli: Cli) -> Result<()> {
                             computer.video_controller_mut().render(&mut pixels);
                         }
 
-                        // Render egui (menu bar and central panel for emulator)
+                        // Render egui (menu bar overlays emulator when not in exclusive mode)
                         // Skip menu rendering when in exclusive mode
                         let raw_input = egui_state.take_egui_input(window);
                         let full_output = egui_ctx.run(raw_input, |ctx| {
                             if !exclusive_mode {
                                 let action = menu.render(ctx);
-
-                                // Add a central panel to reserve space for the emulator screen
-                                // This ensures the menu bar doesn't overlap the emulator display
-                                egui::CentralPanel::default()
-                                    .frame(egui::Frame::none())
-                                    .show(ctx, |ui| {
-                                        // Reserve exact space for the emulator
-                                        ui.allocate_space(egui::vec2(
-                                            SCREEN_WIDTH as f32,
-                                            SCREEN_HEIGHT as f32,
-                                        ));
-                                    });
 
                                 if let Some(action) = action {
                                     if action.is_insert() {
@@ -361,8 +355,6 @@ fn run(cli: Cli) -> Result<()> {
                         // Render both pixels (emulator) and egui (menu) together
                         if let Err(e) = pixels.render_with(|encoder, render_target, context| {
                             // Render the emulator screen
-                            // The scaling renderer will center the 640x400 content in the 640x460 window,
-                            // creating 30px letterbox at top and bottom, which perfectly aligns with the menu
                             context.scaling_renderer.render(encoder, render_target);
 
                             // Prepare egui buffers
