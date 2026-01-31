@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
-    BackedDisk, Bios, Computer, DiskController, DriveNumber, FileDiskBackend, NullMouse,
-    PartitionedDisk, parse_mbr,
+    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullMouse, PartitionedDisk,
+    parse_mbr,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_video::{PixelsVideoController, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -293,17 +293,20 @@ fn run(cli: Cli) -> Result<()> {
 }
 
 fn create_computer(cli: &Cli) -> Result<Computer<GuiKeyboard, PixelsVideoController>> {
-    // Create BIOS with no drives attached
+    // Create computer with keyboard and mouse
     let keyboard = GuiKeyboard::new();
     let mouse = Box::new(NullMouse::new());
-    let mut bios: Bios<GuiKeyboard> = Bios::new(keyboard, mouse);
+    let video = PixelsVideoController::new();
+    let mut computer = Computer::new(keyboard, mouse, video);
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        bios.insert_floppy(DriveNumber::floppy_a(), Box::new(disk))
+        computer
+            .bios_mut()
+            .insert_floppy(DriveNumber::floppy_a(), Box::new(disk))
             .map_err(|e| anyhow::anyhow!("Failed to insert floppy A:: {}", e))?;
         log::info!("Opened floppy A: from {}", path);
     }
@@ -313,7 +316,9 @@ fn create_computer(cli: &Cli) -> Result<Computer<GuiKeyboard, PixelsVideoControl
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        bios.insert_floppy(DriveNumber::floppy_b(), Box::new(disk))
+        computer
+            .bios_mut()
+            .insert_floppy(DriveNumber::floppy_b(), Box::new(disk))
             .map_err(|e| anyhow::anyhow!("Failed to insert floppy B:: {}", e))?;
         log::info!("Opened floppy B: from {}", path);
     }
@@ -345,10 +350,12 @@ fn create_computer(cli: &Cli) -> Result<Computer<GuiKeyboard, PixelsVideoControl
 
             let partitioned =
                 PartitionedDisk::new(disk, partition.start_sector, partition.sector_count);
-            bios.add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk))
+            computer
+                .bios_mut()
+                .add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk))
         } else {
             log::info!("No MBR detected on {}, using raw disk", path);
-            bios.add_hard_drive(Box::new(disk))
+            computer.bios_mut().add_hard_drive(Box::new(disk))
         };
 
         log::info!(
@@ -365,9 +372,6 @@ fn create_computer(cli: &Cli) -> Result<Computer<GuiKeyboard, PixelsVideoControl
             "No disk images specified. Use --floppy-a, --floppy-b, or --hdd to specify disk images."
         ));
     }
-
-    let video = PixelsVideoController::new();
-    let mut computer = Computer::new(bios, video);
 
     if cli.boot {
         // Boot from disk

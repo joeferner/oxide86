@@ -1,7 +1,8 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, DriveNumber, KeyboardInput, NullVideoController, TextCell, Video, VideoController,
+    Bios, DriveNumber, KeyboardInput, MouseInput, NullVideoController, TextCell, Video,
+    VideoController,
     cpu::Cpu,
     io::IoDevice,
     memory::{self, Memory},
@@ -32,7 +33,9 @@ pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> 
 }
 
 impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
-    pub fn new(bios: Bios<K>, video_controller: V) -> Self {
+    pub fn new(keyboard: K, mouse: Box<dyn MouseInput>, video_controller: V) -> Self {
+        let bios = Bios::new(keyboard, mouse);
+
         let mut memory = Memory::new();
         memory.initialize_ivt();
         memory.initialize_bda();

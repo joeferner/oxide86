@@ -98,10 +98,11 @@ New mouse state fields in BIOS Data Area (0x40:0x80-0x8C):
 - Bios remains `pub struct Bios<K: KeyboardInput>` (no M generic needed)
 - Updated native/src/main.rs and native-gui/src/main.rs to pass NullMouse to Bios::new()
 
-**2.2 Update `core/src/computer.rs`**
+**2.2 Update `core/src/computer.rs`** ✓ COMPLETED
 - No changes to Computer struct signature (stays `Computer<K: KeyboardInput, V: VideoController>`)
 - Update `new()` to accept mouse parameter and pass to `Bios::new(keyboard, mouse)`
 - Minimal changes to method signatures
+- Updated native/src/main.rs and native-gui/src/main.rs to use new constructor pattern
 
 ### Phase 3: INT 33h Handler
 
