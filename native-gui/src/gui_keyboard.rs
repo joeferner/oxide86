@@ -55,6 +55,19 @@ impl GuiKeyboard {
         self.modifiers = modifiers;
     }
 
+    /// Convert a keyboard event to a KeyPress without buffering it.
+    ///
+    /// This is used by the event loop to extract the KeyPress for
+    /// firing INT 09h keyboard interrupts.
+    pub fn event_to_keypress(&self, event: &KeyEvent) -> Option<KeyPress> {
+        // Only process key press events, ignore key release
+        if event.state != ElementState::Pressed {
+            return None;
+        }
+
+        Some(key_event_to_keypress(event, self.modifiers))
+    }
+
     /// Process a winit keyboard event and buffer the key press.
     ///
     /// This method should be called from the main event loop when a
@@ -147,7 +160,7 @@ impl KeyboardInput for GuiKeyboard {
 }
 
 /// Convert winit KeyEvent to KeyPress with scan code and ASCII code
-fn key_event_to_keypress(key_event: &KeyEvent, modifiers: ModifiersState) -> KeyPress {
+pub fn key_event_to_keypress(key_event: &KeyEvent, modifiers: ModifiersState) -> KeyPress {
     // For named keys (arrow keys, function keys, etc.), use the logical key
     // For regular character keys, use the physical key
     let base_scan_code = match &key_event.logical_key {

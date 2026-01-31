@@ -666,7 +666,12 @@ impl<K: KeyboardInput> Bios<K> {
             return 0xFF;
         }
         let value = self.serial_ports[port as usize].read_register(offset);
-        log::debug!("Serial I/O Read: COM{} offset 0x{:X} -> 0x{:02X}", port + 1, offset, value);
+        log::debug!(
+            "Serial I/O Read: COM{} offset 0x{:X} -> 0x{:02X}",
+            port + 1,
+            offset,
+            value
+        );
         value
     }
 
@@ -677,7 +682,12 @@ impl<K: KeyboardInput> Bios<K> {
         if port > 1 {
             return;
         }
-        log::debug!("Serial I/O Write: COM{} offset 0x{:X} <- 0x{:02X}", port + 1, offset, value);
+        log::debug!(
+            "Serial I/O Write: COM{} offset 0x{:X} <- 0x{:02X}",
+            port + 1,
+            offset,
+            value
+        );
         self.serial_ports[port as usize].write_register(offset, value);
     }
 

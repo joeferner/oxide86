@@ -139,7 +139,12 @@ fn run(cli: Cli) -> Result<()> {
                         }
                     }
                     WindowEvent::KeyboardInput { event: input, .. } => {
-                        computer.bios_mut().keyboard.process_event(&input);
+                        // Convert the event to a KeyPress and fire INT 09h
+                        if let Some(key) = computer.bios().keyboard.event_to_keypress(&input) {
+                            // F12 is reserved for emulator commands in the terminal version,
+                            // but in GUI we pass all keys to the emulated program
+                            computer.process_keyboard_irq(key);
+                        }
                     }
                     WindowEvent::ModifiersChanged(modifiers) => {
                         computer

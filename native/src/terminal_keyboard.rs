@@ -228,7 +228,7 @@ fn translate_newline(ch: u8) -> u8 {
 }
 
 /// Convert crossterm KeyEvent to KeyPress with scan code and ASCII code
-fn key_event_to_keypress(key_event: &KeyEvent) -> KeyPress {
+pub fn key_event_to_keypress(key_event: &KeyEvent) -> KeyPress {
     let base_scan_code = key_code_to_scan_code(&key_event.code);
     let mut ascii_code = key_event_to_ascii(key_event).unwrap_or(0x00);
 

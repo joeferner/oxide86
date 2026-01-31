@@ -4,6 +4,7 @@ use crate::{
     Bios, DriveNumber, KeyboardInput, MouseInput, NullVideoController, SerialDevice, TextCell,
     Video, VideoController,
     cpu::Cpu,
+    cpu::bios::KeyPress,
     io::IoDevice,
     memory::{self, Memory},
 };
@@ -30,6 +31,9 @@ pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> 
     /// if set to true, interrupts will be logged as info level
     log_interrupts_enabled: bool,
     log_steps: u32,
+
+    /// Queue of pending keyboard IRQs (INT 09h)
+    pending_keyboard_irqs: std::collections::VecDeque<KeyPress>,
 }
 
 impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
@@ -83,6 +87,7 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             exec_logging_enabled: false,
             log_interrupts_enabled: false,
             log_steps: 0,
+            pending_keyboard_irqs: std::collections::VecDeque::new(),
         }
     }
 
@@ -198,6 +203,94 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         self.cpu.reset();
     }
 
+    /// Queue a keyboard IRQ to be processed before the next instruction
+    ///
+    /// This method should be called from the event loop when a keyboard event is detected.
+    /// The IRQ will be processed at the next opportunity (before the next instruction),
+    /// which simulates the asynchronous nature of hardware interrupts.
+    ///
+    /// The INT 09h handler will:
+    /// 1. Add the key to the BIOS keyboard buffer
+    /// 2. Call any custom INT 09h handlers installed by the program
+    ///
+    /// Programs like edit.exe install custom INT 09h handlers to implement enhanced
+    /// keyboard features and maintain their own keyboard buffers.
+    pub fn process_keyboard_irq(&mut self, key: KeyPress) {
+        log::debug!(
+            "Queueing keyboard IRQ: scan=0x{:02X}, ascii=0x{:02X}",
+            key.scan_code,
+            key.ascii_code
+        );
+        self.pending_keyboard_irqs.push_back(key);
+    }
+
+    /// Fire INT 09h (keyboard hardware interrupt)
+    ///
+    /// This adds the key to the BIOS keyboard buffer and calls the INT 09h handler.
+    /// Programs can install custom INT 09h handlers to intercept keyboard input.
+    fn fire_keyboard_irq(&mut self, key: KeyPress) {
+        use memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START};
+
+        // Add key to BIOS keyboard buffer
+        let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
+        let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
+        let head = self.memory.read_u16(head_addr);
+        let tail = self.memory.read_u16(tail_addr);
+
+        // Calculate what tail would be after adding this key
+        let buffer_start: u16 = 0x001E; // Relative to BDA
+        let new_tail = if tail == buffer_start + 30 {
+            buffer_start // Wrap around
+        } else {
+            tail + 2
+        };
+
+        // Check if buffer would become full
+        if new_tail == head {
+            // Buffer full - discard key
+            log::warn!(
+                "INT 09h: Keyboard buffer full! Discarding scan=0x{:02X}, ascii=0x{:02X}",
+                key.scan_code,
+                key.ascii_code
+            );
+            return;
+        }
+
+        // Add key to buffer
+        let char_addr = BDA_START + tail as usize;
+        self.memory.write_u8(char_addr, key.scan_code);
+        self.memory.write_u8(char_addr + 1, key.ascii_code);
+        self.memory.write_u16(tail_addr, new_tail);
+
+        log::debug!(
+            "INT 09h: Buffered key - Scan: 0x{:02X}, ASCII: 0x{:02X}",
+            key.scan_code,
+            key.ascii_code
+        );
+
+        // Call INT 09h handler
+        let int_num = 0x09u8;
+        let ivt_addr = (int_num as usize) * 4;
+        let offset = self.memory.read_u16(ivt_addr);
+        let segment = self.memory.read_u16(ivt_addr + 2);
+
+        log::debug!("INT 09h: Calling handler at {:04X}:{:04X}", segment, offset);
+
+        // Push flags, CS, IP (simulating INT instruction)
+        self.cpu.push(self.cpu.flags, &mut self.memory);
+        self.cpu.push(self.cpu.cs, &mut self.memory);
+        self.cpu.push(self.cpu.ip, &mut self.memory);
+
+        // Clear IF and TF flags (standard INT behavior)
+        use crate::cpu::cpu_flag;
+        self.cpu.set_flag(cpu_flag::INTERRUPT, false);
+        self.cpu.set_flag(cpu_flag::TRAP, false);
+
+        // Jump to INT 09h handler
+        self.cpu.cs = segment;
+        self.cpu.ip = offset;
+    }
+
     pub fn run(&mut self) {
         while !self.cpu.is_halted() {
             self.step();
@@ -216,6 +309,15 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         }
 
         self.step_count += 1;
+
+        // Process pending keyboard IRQs before executing the next instruction
+        // This simulates hardware interrupts that preempt normal execution
+        if let Some(key) = self.pending_keyboard_irqs.pop_front() {
+            self.fire_keyboard_irq(key);
+            // After firing the IRQ, return to let the INT 09h handler execute
+            // The handler will run on subsequent step() calls
+            return;
+        }
 
         // Get current IP to check what opcode we're about to execute
         let current_ip = self.cpu.ip;

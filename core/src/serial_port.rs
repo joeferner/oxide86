@@ -247,13 +247,13 @@ impl SerialPortController {
                 self.modem_control = value;
 
                 // If DTR transitioned from 0 to 1, trigger device initialization
-                if old_dtr == 0 && new_dtr == 1 {
-                    if let Some(ref mut device) = self.device
-                        && let Some(response) = device.on_init(&self.params)
-                    {
-                        for byte in response {
-                            self.enqueue_byte(byte);
-                        }
+                if old_dtr == 0
+                    && new_dtr == 1
+                    && let Some(ref mut device) = self.device
+                    && let Some(response) = device.on_init(&self.params)
+                {
+                    for byte in response {
+                        self.enqueue_byte(byte);
                     }
                 }
             }

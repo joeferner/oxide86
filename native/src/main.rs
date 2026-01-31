@@ -299,9 +299,22 @@ where
         while event::poll(Duration::from_millis(0)).unwrap_or(false) {
             if let Ok(ev) = event::read() {
                 match ev {
-                    Event::Key(_) => {
-                        // Dispatch keyboard event to keyboard handler
-                        computer.bios_mut().keyboard.process_event(ev);
+                    Event::Key(key_event) => {
+                        // Convert key event to KeyPress
+                        use terminal_keyboard::key_event_to_keypress;
+                        let key = key_event_to_keypress(&key_event);
+
+                        // Check if it's F12 (command mode) - intercept for emulator, don't send to program
+                        if key.scan_code == terminal_keyboard::SCAN_CODE_F12 {
+                            computer
+                                .bios_mut()
+                                .keyboard
+                                .process_event(Event::Key(key_event));
+                            // Don't fire INT 09h for F12 - it's not visible to the emulated program
+                        } else {
+                            // Fire INT 09h (keyboard hardware interrupt) for all other keys
+                            computer.process_keyboard_irq(key);
+                        }
                     }
                     Event::Mouse(mouse_event) => {
                         // Dispatch mouse events to mouse handler
