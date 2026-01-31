@@ -63,7 +63,7 @@ New mouse state fields in BIOS Data Area (0x40:0x80-0x8C):
 
 ### Phase 1: Core Infrastructure
 
-**1.1 Create `core/src/mouse.rs`**
+**1.1 Create `core/src/mouse.rs`** ✓ COMPLETED
 - Define `MouseInput` trait with methods:
   - Core methods: `get_state()`, `get_motion()`, `is_present()`
   - Event processing methods with default no-op implementations: `process_cursor_moved()`, `process_button()`
