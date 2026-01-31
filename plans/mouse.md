@@ -106,36 +106,11 @@ New mouse state fields in BIOS Data Area (0x40:0x80-0x8C):
 
 ### Phase 3: INT 33h Handler
 
-**3.1 Create `core/src/cpu/bios/int33.rs`**
+**3.1 Create `core/src/cpu/bios/int33.rs`** ✓ COMPLETED
 
-Implement DOS mouse interrupt handler with these essential functions:
+**3.2 Update `core/src/cpu/bios/mod.rs`** ✓ COMPLETED
 
-| Function | Description |
-|----------|-------------|
-| AX=00h | Reset driver and read status (returns BX=0xFFFF if present) |
-| AX=01h | Show cursor (increment visibility counter) |
-| AX=02h | Hide cursor (decrement visibility counter) |
-| AX=03h | Get position and button status |
-| AX=04h | Set cursor position |
-| AX=07h | Set horizontal min/max |
-| AX=08h | Set vertical min/max |
-| AX=0Bh | Read motion counters (mickeys) |
-
-Key implementation details:
-- Visibility counter: increment/decrement, visible when >= 0
-- Coordinate clamping with min/max boundaries
-- Motion counters reset on read
-- Default resolution: 640x200 (8 mickeys per pixel)
-
-**3.2 Update `core/src/cpu/bios/mod.rs`**
-- Add `mod int33;`
-- Register handler in `handle_bios_interrupt()`:
-  ```rust
-  0x33 => self.handle_int33(memory, io),
-  ```
-
-**3.3 Update `core/src/memory.rs`**
-- Add INT 33h vector initialization in `initialize_ivt()`
+**3.3 Update `core/src/memory.rs`** ✓ COMPLETED (already handled by generic IVT initialization)
 
 ### Phase 4: Native Terminal Implementation
 

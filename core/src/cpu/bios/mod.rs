@@ -19,6 +19,7 @@ mod int28;
 mod int29;
 mod int2a;
 mod int2f;
+mod int33;
 mod int35_3f;
 
 use super::Cpu;
@@ -760,6 +761,7 @@ impl Cpu {
             0x29 => self.handle_int29(video),
             0x2A => self.handle_int2a(),
             0x2F => self.handle_int2f(memory, io),
+            0x33 => self.handle_int33(memory, io),
             0x35..=0x3F => self.handle_int35_3f(int_num),
             // Other BIOS interrupts can be added here
             _ => {
