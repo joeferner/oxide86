@@ -12,6 +12,8 @@ pub use crate::drive_manager::{DiskAdapter, DriveManager};
 pub use crate::keyboard::KeyboardInput;
 pub use crate::memory_allocator::MemoryAllocator;
 pub use crate::mouse::{MouseInput, MouseState, NullMouse};
+pub use crate::serial_mouse::SerialMouse;
+pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
 pub use crate::video::{
     CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
 };
@@ -30,6 +32,7 @@ pub mod memory;
 pub mod memory_allocator;
 pub mod mouse;
 pub mod peripheral;
+pub mod serial_mouse;
 pub mod serial_port;
 pub mod time;
 pub mod utils;

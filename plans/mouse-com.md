@@ -71,7 +71,17 @@ Implemented `core/src/serial_port.rs` with `SerialPortController` struct includi
 Updated `core/src/lib.rs` to export the serial_port module.
 
 
-### Phase 2: SerialDevice Trait and SerialMouse
+### ✅ Phase 2: SerialDevice Trait and SerialMouse (COMPLETED)
+
+Implemented the SerialDevice trait and SerialMouse:
+- Added SerialDevice trait to `core/src/serial_port.rs`
+- Updated SerialPortController to support attached devices (attach_device, detach_device, update_device, on_init, on_write)
+- Created `core/src/serial_mouse.rs` with SerialMouse implementation
+- SerialMouse generates Microsoft Serial Mouse protocol packets (3-byte packets)
+- Full test coverage for packet generation and initialization
+- Updated `core/src/lib.rs` to export serial_mouse module
+
+### Phase 2 Original Plan (for reference)
 
 **File: `core/src/serial_port.rs`**
 
