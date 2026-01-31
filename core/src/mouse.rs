@@ -110,6 +110,21 @@ pub trait MouseInput {
     fn process_button(&mut self, _button: u8, _pressed: bool) {
         // Default no-op implementation
     }
+
+    /// Update window dimensions for coordinate scaling (optional, default no-op).
+    ///
+    /// GUI implementations should override this to update coordinate conversion
+    /// when the window is resized. This ensures mouse coordinates are properly
+    /// scaled from window space to DOS coordinate space.
+    ///
+    /// # Parameters
+    ///
+    /// - `_width`: New window width in pixels
+    /// - `_height`: New window height in pixels
+    #[allow(unused_variables)]
+    fn update_window_size(&mut self, _width: f64, _height: f64) {
+        // Default no-op implementation
+    }
 }
 
 /// Null mouse implementation for platforms without mouse support.

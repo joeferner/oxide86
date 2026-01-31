@@ -8,18 +8,22 @@
 //!
 //! # Coordinate System
 //!
-//! DOS mouse coordinates are typically 640x200 (standard CGA/EGA graphics mode),
-//! even though the GUI window may be 640x400 (text mode). The implementation
-//! scales window coordinates appropriately:
+//! In text mode (80x25 characters), the mouse operates in character cell units:
+//! - Each character is 8x16 pixels on screen (640x400 total)
+//! - DOS mouse coordinates are 640x200 (each cell maps to 8x8 DOS pixels)
+//! - Mouse position snaps to character cell boundaries
 //!
-//! - Window X (0-640) -> DOS X (0-639)
-//! - Window Y (0-400) -> DOS Y (0-199)
+//! Conversion:
+//! - Window X (0-640) -> Column (0-79) -> DOS X (col * 8)
+//! - Window Y (0-400) -> Row (0-24) -> DOS Y (row * 8)
 //!
 //! # Motion Tracking
 //!
-//! Mouse motion is tracked in "mickeys" (raw movement units). The default DOS
-//! ratio is 8 mickeys per pixel. Motion accumulates between calls to get_motion()
-//! and is reset when retrieved.
+//! Mouse motion is tracked in mickeys (raw movement units):
+//! - Moving 1 character cell horizontally = 8 mickeys (DOS_CHAR_WIDTH)
+//! - Moving 1 character cell vertically = 8 mickeys (DOS_CHAR_HEIGHT)
+//!
+//! Motion accumulates between calls to get_motion() and is reset when retrieved.
 
 use emu86_core::mouse::{MouseInput, MouseState};
 use std::sync::{Arc, Mutex};
@@ -37,10 +41,12 @@ struct SharedMouseState {
     motion_x: i16,
     /// Accumulated vertical motion in mickeys since last read
     motion_y: i16,
-    /// Last raw X position for delta calculation
-    last_x: f64,
-    /// Last raw Y position for delta calculation
-    last_y: f64,
+    /// Last character column for delta calculation
+    last_col: u16,
+    /// Last character row for delta calculation
+    last_row: u16,
+    /// Whether we've received the first position update
+    initialized: bool,
     /// Window width for coordinate scaling
     window_width: f64,
     /// Window height for coordinate scaling
@@ -61,12 +67,21 @@ pub struct GuiMouse {
 }
 
 impl GuiMouse {
-    /// DOS mouse coordinate ranges (standard CGA/EGA graphics mode)
+    /// Text mode dimensions (standard 80x25)
+    const TEXT_COLS: u16 = 80;
+    const TEXT_ROWS: u16 = 25;
+
+    /// Character cell size in screen pixels
+    const CHAR_WIDTH_PX: u16 = 8;
+    const CHAR_HEIGHT_PX: u16 = 16;
+
+    /// DOS mouse coordinate ranges (640x200)
     const DOS_MAX_X: u16 = 639;
     const DOS_MAX_Y: u16 = 199;
 
-    /// Default mickeys-per-pixel ratio (DOS standard)
-    const MICKEYS_PER_PIXEL: i16 = 8;
+    /// Character cell size in DOS coordinates
+    const DOS_CHAR_WIDTH: u16 = 8;
+    const DOS_CHAR_HEIGHT: u16 = 8;
 
     /// Create a new GuiMouse instance.
     ///
@@ -75,21 +90,22 @@ impl GuiMouse {
     /// * `window_width` - Initial window width in pixels
     /// * `window_height` - Initial window height in pixels
     ///
-    /// The mouse is initialized at the center of the DOS coordinate space (320, 100).
+    /// The mouse position will be initialized on first movement.
     pub fn new(window_width: f64, window_height: f64) -> Self {
         Self {
             shared: Arc::new(Mutex::new(SharedMouseState {
                 state: MouseState {
-                    x: 320, // Center X
-                    y: 100, // Center Y
+                    x: 0,
+                    y: 0,
                     left_button: false,
                     right_button: false,
                     middle_button: false,
                 },
                 motion_x: 0,
                 motion_y: 0,
-                last_x: window_width / 2.0,
-                last_y: window_height / 2.0,
+                last_col: 0,
+                last_row: 0,
+                initialized: false,
                 window_width,
                 window_height,
             })),
@@ -110,49 +126,52 @@ impl GuiMouse {
         }
     }
 
-    /// Update window dimensions for coordinate scaling.
-    ///
-    /// This should be called when the window is resized to ensure
-    /// proper coordinate conversion from window space to DOS space.
+    /// Convert window pixel coordinates to character column/row.
     ///
     /// # Arguments
     ///
-    /// * `width` - New window width in pixels
-    /// * `height` - New window height in pixels
-    #[allow(dead_code)]
-    pub fn update_window_size(&mut self, width: f64, height: f64) {
-        let mut state = self.shared.lock().unwrap();
-        state.window_width = width;
-        state.window_height = height;
-    }
-
-    /// Convert window coordinates to DOS mouse coordinates.
-    ///
-    /// # Arguments
-    ///
-    /// * `window_x` - X coordinate in window space (0..window_width)
-    /// * `window_y` - Y coordinate in window space (0..window_height)
+    /// * `window_x` - X coordinate in window space
+    /// * `window_y` - Y coordinate in window space
     /// * `window_width` - Current window width
     /// * `window_height` - Current window height
     ///
     /// # Returns
     ///
-    /// Tuple of (dos_x, dos_y) clamped to valid DOS coordinate range.
-    fn window_to_dos_coords(
+    /// Tuple of (col, row) clamped to valid text mode range.
+    fn window_to_char_cell(
         window_x: f64,
         window_y: f64,
         window_width: f64,
         window_height: f64,
     ) -> (u16, u16) {
-        // Scale window coordinates to DOS coordinate space
-        let dos_x = ((window_x / window_width) * (Self::DOS_MAX_X as f64 + 1.0)) as i32;
-        let dos_y = ((window_y / window_height) * (Self::DOS_MAX_Y as f64 + 1.0)) as i32;
+        // Scale window coordinates to screen pixel coordinates (640x400)
+        let screen_width = (Self::TEXT_COLS * Self::CHAR_WIDTH_PX) as f64;
+        let screen_height = (Self::TEXT_ROWS * Self::CHAR_HEIGHT_PX) as f64;
+
+        let screen_x = (window_x / window_width) * screen_width;
+        let screen_y = (window_y / window_height) * screen_height;
+
+        // Convert screen pixels to character cells
+        let col = (screen_x / Self::CHAR_WIDTH_PX as f64) as u16;
+        let row = (screen_y / Self::CHAR_HEIGHT_PX as f64) as u16;
 
         // Clamp to valid range
-        let dos_x = dos_x.clamp(0, Self::DOS_MAX_X as i32) as u16;
-        let dos_y = dos_y.clamp(0, Self::DOS_MAX_Y as i32) as u16;
+        let col = col.min(Self::TEXT_COLS - 1);
+        let row = row.min(Self::TEXT_ROWS - 1);
 
-        (dos_x, dos_y)
+        (col, row)
+    }
+
+    /// Convert character column to DOS X coordinate.
+    fn col_to_dos_x(col: u16) -> u16 {
+        let x = col.saturating_mul(Self::DOS_CHAR_WIDTH);
+        x.min(Self::DOS_MAX_X)
+    }
+
+    /// Convert character row to DOS Y coordinate.
+    fn row_to_dos_y(row: u16) -> u16 {
+        let y = row.saturating_mul(Self::DOS_CHAR_HEIGHT);
+        y.min(Self::DOS_MAX_Y)
     }
 }
 
@@ -178,28 +197,48 @@ impl MouseInput for GuiMouse {
     fn process_cursor_moved(&mut self, x: f64, y: f64) {
         let mut state = self.shared.lock().unwrap();
 
-        // Calculate delta in window coordinates
-        let delta_x = x - state.last_x;
-        let delta_y = y - state.last_y;
+        // Convert window coordinates to character cell
+        let (col, row) = Self::window_to_char_cell(x, y, state.window_width, state.window_height);
 
-        // Convert delta to mickeys (scaled by mickeys-per-pixel ratio)
-        // Note: We use window coordinates for delta calculation to get smooth motion
-        let delta_mickeys_x = (delta_x * Self::MICKEYS_PER_PIXEL as f64) as i16;
-        let delta_mickeys_y = (delta_y * Self::MICKEYS_PER_PIXEL as f64) as i16;
+        // On first movement, just initialize position without generating delta
+        if !state.initialized {
+            state.last_col = col;
+            state.last_row = row;
+            state.initialized = true;
+            state.state.x = Self::col_to_dos_x(col);
+            state.state.y = Self::row_to_dos_y(row);
+            log::debug!("GuiMouse: initialized at col={}, row={}", col, row);
+            return;
+        }
 
-        // Accumulate motion
-        state.motion_x = state.motion_x.saturating_add(delta_mickeys_x);
-        state.motion_y = state.motion_y.saturating_add(delta_mickeys_y);
+        // Calculate motion delta in character cells
+        let delta_col = (col as i16) - (state.last_col as i16);
+        let delta_row = (row as i16) - (state.last_row as i16);
+
+        if delta_col != 0 || delta_row != 0 {
+            log::debug!(
+                "GuiMouse: cursor moved to col={}, row={} (delta: {}, {})",
+                col,
+                row,
+                delta_col,
+                delta_row
+            );
+        }
+
+        // Accumulate motion in mickeys
+        // Each character cell is 8x8 DOS pixels, so moving 1 cell = 8 mickeys
+        let mickeys_x = delta_col * (Self::DOS_CHAR_WIDTH as i16);
+        let mickeys_y = delta_row * (Self::DOS_CHAR_HEIGHT as i16);
+        state.motion_x = state.motion_x.saturating_add(mickeys_x);
+        state.motion_y = state.motion_y.saturating_add(mickeys_y);
 
         // Update last position
-        state.last_x = x;
-        state.last_y = y;
+        state.last_col = col;
+        state.last_row = row;
 
-        // Update DOS position
-        let (dos_x, dos_y) =
-            Self::window_to_dos_coords(x, y, state.window_width, state.window_height);
-        state.state.x = dos_x;
-        state.state.y = dos_y;
+        // Convert to DOS coordinates and update state
+        state.state.x = Self::col_to_dos_x(col);
+        state.state.y = Self::row_to_dos_y(row);
     }
 
     fn process_button(&mut self, button: u8, pressed: bool) {
@@ -210,5 +249,11 @@ impl MouseInput for GuiMouse {
             2 => state.state.middle_button = pressed,
             _ => {} // Ignore unknown buttons
         }
+    }
+
+    fn update_window_size(&mut self, width: f64, height: f64) {
+        let mut state = self.shared.lock().unwrap();
+        state.window_width = width;
+        state.window_height = height;
     }
 }

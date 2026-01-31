@@ -97,7 +97,8 @@ fn run(cli: Cli) -> Result<()> {
         .context("Failed to create Pixels")?;
 
     // Create GUI mouse first so we can clone it for serial devices if needed
-    let gui_mouse = GuiMouse::new(SCREEN_WIDTH as f64, SCREEN_HEIGHT as f64);
+    // Initialize with actual window size, not logical screen size
+    let gui_mouse = GuiMouse::new(window_size.width as f64, window_size.height as f64);
 
     // Initialize computer
     let mut computer = create_computer(&cli, gui_mouse.clone_shared())?;
@@ -180,6 +181,11 @@ fn run(cli: Cli) -> Result<()> {
                             log::error!("Failed to resize surface: {}", e);
                             std::process::exit(1);
                         }
+                        // Update mouse coordinate scaling for new window size
+                        computer
+                            .bios_mut()
+                            .mouse
+                            .update_window_size(new_size.width as f64, new_size.height as f64);
                     }
                     WindowEvent::KeyboardInput { event: input, .. } => {
                         // Convert the event to a KeyPress and fire INT 09h
