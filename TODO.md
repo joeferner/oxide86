@@ -1,12 +1,13 @@
 # TODO
 
-- [ ] GUI menu takes over ALT key
 - [ ] PC Speaker - Use the Rodio crate to create PC speaker like sounds
+- [ ] DOS Shell not detecting floppy insert (Unhandled BIOS interrupt: 0x09)
 - [ ] Add speed throttle and turbo to gui
 - [ ] Fix CLI colors
 - [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
 - [ ] GUI add menu items to enable debug
 - [ ] GUI add menu items for turbo
+- [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode
 - [ ] GUI test floppy load
 - [ ] 8086 Test text games
   - [ ] Zork

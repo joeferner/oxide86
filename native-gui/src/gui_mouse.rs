@@ -51,6 +51,10 @@ struct SharedMouseState {
     window_width: f64,
     /// Window height for coordinate scaling
     window_height: f64,
+    /// Fractional accumulator for horizontal mickeys (sub-pixel precision)
+    fractional_x: f64,
+    /// Fractional accumulator for vertical mickeys (sub-pixel precision)
+    fractional_y: f64,
 }
 
 /// GUI mouse input for native GUI using winit.
@@ -108,6 +112,8 @@ impl GuiMouse {
                 initialized: false,
                 window_width,
                 window_height,
+                fractional_x: 0.0,
+                fractional_y: 0.0,
             })),
         }
     }
@@ -239,6 +245,77 @@ impl MouseInput for GuiMouse {
         // Convert to DOS coordinates and update state
         state.state.x = Self::col_to_dos_x(col);
         state.state.y = Self::row_to_dos_y(row);
+    }
+
+    fn process_relative_motion(&mut self, delta_x: f64, delta_y: f64) {
+        let mut state = self.shared.lock().unwrap();
+
+        // Scale pixel deltas to character cell deltas
+        // Window coordinates scale to screen coordinates (640x400)
+        let screen_width = (Self::TEXT_COLS * Self::CHAR_WIDTH_PX) as f64;
+        let screen_height = (Self::TEXT_ROWS * Self::CHAR_HEIGHT_PX) as f64;
+
+        // Convert pixel deltas to screen coordinate deltas
+        let screen_delta_x = (delta_x / state.window_width) * screen_width;
+        let screen_delta_y = (delta_y / state.window_height) * screen_height;
+
+        // Convert to character cell deltas (with subpixel accuracy)
+        let cell_delta_x = screen_delta_x / Self::CHAR_WIDTH_PX as f64;
+        let cell_delta_y = screen_delta_y / Self::CHAR_HEIGHT_PX as f64;
+
+        // Convert to mickeys (8 mickeys per character cell) - keep as f64 for accumulation
+        let mickeys_x_f64 = cell_delta_x * Self::DOS_CHAR_WIDTH as f64;
+        let mickeys_y_f64 = cell_delta_y * Self::DOS_CHAR_HEIGHT as f64;
+
+        // Accumulate fractional mickeys
+        state.fractional_x += mickeys_x_f64;
+        state.fractional_y += mickeys_y_f64;
+
+        // Extract integer part for this update (using trunc to handle negatives correctly)
+        let mickeys_x = state.fractional_x.trunc() as i16;
+        let mickeys_y = state.fractional_y.trunc() as i16;
+
+        // Keep the fractional remainder for next time
+        state.fractional_x -= mickeys_x as f64;
+        state.fractional_y -= mickeys_y as f64;
+
+        // Only update if we have at least 1 mickey of movement
+        if mickeys_x == 0 && mickeys_y == 0 {
+            return;
+        }
+
+        // Accumulate motion
+        state.motion_x = state.motion_x.saturating_add(mickeys_x);
+        state.motion_y = state.motion_y.saturating_add(mickeys_y);
+
+        // Update position by adding delta
+        let new_x = (state.state.x as i32 + mickeys_x as i32)
+            .max(0)
+            .min(Self::DOS_MAX_X as i32) as u16;
+        let new_y = (state.state.y as i32 + mickeys_y as i32)
+            .max(0)
+            .min(Self::DOS_MAX_Y as i32) as u16;
+
+        log::debug!(
+            "GuiMouse: relative motion delta=({:.2}, {:.2}) -> mickeys_f64=({:.2}, {:.2}) -> mickeys=({}, {}) -> pos ({}, {}) -> ({}, {})",
+            delta_x,
+            delta_y,
+            mickeys_x_f64,
+            mickeys_y_f64,
+            mickeys_x,
+            mickeys_y,
+            state.state.x,
+            state.state.y,
+            new_x,
+            new_y
+        );
+
+        state.state.x = new_x;
+        state.state.y = new_y;
+
+        // Update last_col/last_row based on new position
+        state.last_col = new_x / Self::DOS_CHAR_WIDTH;
+        state.last_row = new_y / Self::DOS_CHAR_HEIGHT;
     }
 
     fn process_button(&mut self, button: u8, pressed: bool) {

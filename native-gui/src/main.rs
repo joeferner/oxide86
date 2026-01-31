@@ -13,6 +13,7 @@ use emu86_core::{
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
 use gui_video::{PixelsVideoController, SCREEN_HEIGHT, SCREEN_WIDTH};
+use log::LevelFilter;
 use menu::AppMenu;
 use pixels::{Pixels, SurfaceTexture, wgpu};
 use std::fs::File;
@@ -58,6 +59,8 @@ struct Cli {
 fn main() {
     let log_file = File::create("emu86.log").expect("Failed to create log file");
     env_logger::Builder::from_default_env()
+        .filter_module("wgpu_core", LevelFilter::Info)
+        .filter_module("wgpu_hal", LevelFilter::Info)
         .target(env_logger::Target::Pipe(Box::new(log_file)))
         .init();
 
@@ -75,10 +78,7 @@ fn run(cli: Cli) -> Result<()> {
 
     let window = WindowBuilder::new()
         .with_title("emu86 - 8086 Emulator")
-        .with_inner_size(LogicalSize::new(
-            SCREEN_WIDTH as u32,
-            SCREEN_HEIGHT as u32,
-        ))
+        .with_inner_size(LogicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32))
         .with_resizable(true)
         .build(&event_loop)
         .context("Failed to create window")?;
@@ -160,6 +160,9 @@ fn run(cli: Cli) -> Result<()> {
     let mut exclusive_mode = false;
     // Track cursor position to detect clicks in menu area
     let mut cursor_y = 0.0;
+    // Track last cursor position for calculating deltas in exclusive mode
+    let mut last_cursor_x: Option<f64> = None;
+    let mut last_cursor_y: Option<f64> = None;
 
     event_loop
         .run(move |event, elwt| {
@@ -192,14 +195,18 @@ fn run(cli: Cli) -> Result<()> {
                     exclusive_mode = true;
                     window.set_cursor_visible(false);
 
-                    // Confine cursor to window in exclusive mode
-                    if let Err(e) = window.set_cursor_grab(CursorGrabMode::Confined) {
-                        log::warn!("Failed to confine cursor: {}", e);
-                        // Try locked mode as fallback
-                        let _ = window.set_cursor_grab(CursorGrabMode::Locked);
+                    // Lock cursor for true relative motion (prevents cursor from hitting edges)
+                    if let Err(e) = window.set_cursor_grab(CursorGrabMode::Locked) {
+                        log::warn!("Failed to lock cursor, trying confined mode: {}", e);
+                        // Try confined mode as fallback
+                        let _ = window.set_cursor_grab(CursorGrabMode::Confined);
                     }
 
-                    log::info!("Entered exclusive mode (mouse click, press F12 to exit)");
+                    // Reset last cursor position to start fresh in exclusive mode
+                    last_cursor_x = None;
+                    last_cursor_y = None;
+
+                    log::info!("Entered exclusive mode (mouse locked, press F12 to exit)");
                     // Don't return - let the event continue to be processed
                 }
 
@@ -257,13 +264,37 @@ fn run(cli: Cli) -> Result<()> {
                         );
                     }
                     WindowEvent::CursorMoved { position, .. } => {
-                        // Only process mouse movement when in exclusive mode
+                        log::debug!(
+                            "WindowEvent::CursorMoved - exclusive_mode={}, pos=({:.2}, {:.2})",
+                            exclusive_mode,
+                            position.x,
+                            position.y
+                        );
+
                         if exclusive_mode {
-                            computer
-                                .bios_mut()
-                                .mouse
-                                .process_cursor_moved(position.x, position.y);
+                            // Calculate delta from last position
+                            if let (Some(last_x), Some(last_y)) = (last_cursor_x, last_cursor_y) {
+                                let delta_x = position.x - last_x;
+                                let delta_y = position.y - last_y;
+
+                                if delta_x != 0.0 || delta_y != 0.0 {
+                                    log::debug!(
+                                        "Exclusive mode delta: ({:.2}, {:.2})",
+                                        delta_x,
+                                        delta_y
+                                    );
+                                    computer
+                                        .bios_mut()
+                                        .mouse
+                                        .process_relative_motion(delta_x, delta_y);
+                                }
+                            }
+
+                            // Update last position
+                            last_cursor_x = Some(position.x);
+                            last_cursor_y = Some(position.y);
                         }
+                        // In normal mode, user is interacting with GUI/menu, not the DOS emulator
                     }
                     WindowEvent::MouseInput { button, state, .. } => {
                         // Only process mouse buttons when in exclusive mode

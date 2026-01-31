@@ -98,6 +98,24 @@ pub trait MouseInput {
         // Default no-op implementation
     }
 
+    /// Process relative mouse motion (optional, default no-op).
+    ///
+    /// Platform-specific implementations override this to handle raw mouse deltas.
+    /// This is typically used in exclusive/locked cursor modes where absolute
+    /// position tracking is disabled and only relative movement matters.
+    ///
+    /// The deltas are in platform-specific units (typically pixels). The
+    /// implementation is responsible for scaling to DOS coordinates and mickeys.
+    ///
+    /// # Parameters
+    ///
+    /// - `_delta_x`: Horizontal movement delta (platform-specific units)
+    /// - `_delta_y`: Vertical movement delta (platform-specific units)
+    #[allow(unused_variables)]
+    fn process_relative_motion(&mut self, _delta_x: f64, _delta_y: f64) {
+        // Default no-op implementation
+    }
+
     /// Process a button press/release event (optional, default no-op).
     ///
     /// Platform-specific implementations override this to update button state.
