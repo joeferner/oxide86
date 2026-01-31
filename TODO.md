@@ -1,14 +1,13 @@
 # TODO
 
-- [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
-- [ ] QBasic menus don't work
 - [ ] GUI menu takes over ALT key
+- [ ] PC Speaker - Use the Rodio crate to create PC speaker like sounds
+- [ ] Fix CLI colors
+- [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
 - [ ] GUI add menu items to enable debug
 - [ ] GUI add menu items for turbo
 - [ ] GUI test floppy load
-- [ ] PC Speaker - Use the Rodio crate to create PC speaker like sounds
 - [ ] Add speed throttle and turbo to gui
-- [ ] Fix CLI colors
 - [ ] 8086 Test text games
   - [ ] Zork
 - [ ] 8086 Test applications

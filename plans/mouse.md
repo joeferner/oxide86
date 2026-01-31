@@ -142,74 +142,27 @@ New mouse state fields in BIOS Data Area (0x40:0x80-0x8C):
 - Added mouse capture disable to panic handler for clean recovery
 - Terminal mouse now fully functional with crossterm event stream
 
-### Phase 5: Native-GUI Implementation
+### Phase 5: Native-GUI Implementation ✓ COMPLETED
 
-**5.1 Create `native-gui/src/gui_mouse.rs`**
-
-Implement `MouseInput` trait with:
-
-```rust
-pub struct GuiMouse {
-    state: MouseState,          // Current position and buttons
-    motion_x: i16,              // Accumulated mickeys X
-    motion_y: i16,              // Accumulated mickeys Y
-    last_x: f64,                // Last raw position for delta calculation
-    last_y: f64,
-}
-```
-
-Methods:
-- `pub fn new() -> Self`
-- Implement `MouseInput` trait methods:
+**5.1 Create `native-gui/src/gui_mouse.rs`** ✓ COMPLETED
+- Created GuiMouse struct with MouseState, motion tracking, and window size tracking
+- Implemented MouseInput trait methods:
   - `get_state()` - Returns current MouseState
   - `get_motion()` - Returns and resets motion_x, motion_y
   - `is_present()` - Returns true
-  - `process_cursor_moved(x, y)` - Override to update position and accumulate deltas
-  - `process_button(button, pressed)` - Override to update button state
+  - `process_cursor_moved(x, y)` - Converts window coords to DOS coords, accumulates motion
+  - `process_button(button, pressed)` - Updates button state
+- Coordinate conversion from window space (640x400) to DOS space (640x200)
+- Motion tracking in mickeys with 8 mickeys per pixel ratio
 
-Coordinate conversion:
-- Convert winit window coordinates to DOS coordinates
-- Handle scaling based on video mode (typically 640x200)
-- Clamp to boundaries set via INT 33h AX=07h/08h
+**5.2 Update `native-gui/src/main.rs`** ✓ COMPLETED
+- Imported GuiMouse
+- Added mouse event imports from winit (MouseButton, ElementState)
+- Constructed GuiMouse with window dimensions
+- Added event handlers for WindowEvent::CursorMoved and WindowEvent::MouseInput
+- Mouse button mapping (Left=0, Right=1, Middle=2)
 
-**5.2 Update `native-gui/src/main.rs`**
-- Import `GuiMouse`
-- Construct `GuiMouse::new()`
-- In event loop, process mouse events:
-  ```rust
-  WindowEvent::CursorMoved { position, .. } => {
-      computer.bios_mut().mouse.process_cursor_moved(position.x, position.y);
-  }
-  WindowEvent::MouseInput { button, state, .. } => {
-      computer.bios_mut().mouse.process_button(button, state);
-  }
-  ```
-- Pass to `Bios::new(keyboard, mouse)`
-- Type signature remains simple:
-  ```rust
-  let mouse: Box<dyn MouseInput> = Box::new(GuiMouse::new());
-  let bios: Bios<GuiKeyboard> = Bios::new(keyboard, mouse);
-  ```
-
-**Note**: Event processing methods are on the `MouseInput` trait, so event loop can call them directly:
-  ```rust
-  WindowEvent::CursorMoved { position, .. } => {
-      computer.bios_mut().mouse.process_cursor_moved(position.x, position.y);
-  }
-  WindowEvent::MouseInput { button, state, .. } => {
-      let button_code = match button {
-          MouseButton::Left => 0,
-          MouseButton::Right => 1,
-          MouseButton::Middle => 2,
-          _ => return,
-      };
-      let pressed = state == ElementState::Pressed;
-      computer.bios_mut().mouse.process_button(button_code, pressed);
-  }
-  ```
-
-**5.3 Add to `native-gui/src/lib.rs`** (if needed)
-- Export `GuiMouse`
+**5.3 Add to `native-gui/src/lib.rs`** ✓ COMPLETED (not needed - no lib.rs exists)
 
 ### Phase 6: Testing and Refinement
 

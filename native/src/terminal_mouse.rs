@@ -158,11 +158,7 @@ impl MouseInput for TerminalMouse {
             shared.initialized = true;
             shared.state.x = Self::terminal_col_to_dos_x(col);
             shared.state.y = Self::terminal_row_to_dos_y(row);
-            log::debug!(
-                "TerminalMouse: initialized at col={}, row={}",
-                col,
-                row
-            );
+            log::debug!("TerminalMouse: initialized at col={}, row={}", col, row);
             return;
         }
 

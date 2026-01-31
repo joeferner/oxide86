@@ -1,5 +1,6 @@
 mod font;
 mod gui_keyboard;
+mod gui_mouse;
 mod gui_video;
 mod menu;
 
@@ -7,16 +8,16 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
-    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullMouse, PartitionedDisk,
-    parse_mbr,
+    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, PartitionedDisk, parse_mbr,
 };
 use gui_keyboard::GuiKeyboard;
+use gui_mouse::GuiMouse;
 use gui_video::{PixelsVideoController, SCREEN_HEIGHT, SCREEN_WIDTH};
 use menu::AppMenu;
 use pixels::{Pixels, SurfaceTexture, wgpu};
 use std::fs::File;
 use winit::dpi::LogicalSize;
-use winit::event::{Event, WindowEvent};
+use winit::event::{ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::window::WindowBuilder;
 
@@ -43,6 +44,14 @@ struct Cli {
     /// Path to hard disk image file(s) - can be specified multiple times for C:, D:, etc.
     #[arg(long = "hdd", action = clap::ArgAction::Append)]
     hard_disks: Vec<String>,
+
+    /// Device to attach to COM1 (e.g., "mouse")
+    #[arg(long = "com1", value_name = "DEVICE")]
+    com1_device: Option<String>,
+
+    /// Device to attach to COM2 (e.g., "mouse")
+    #[arg(long = "com2", value_name = "DEVICE")]
+    com2_device: Option<String>,
 }
 
 fn main() {
@@ -87,8 +96,42 @@ fn run(cli: Cli) -> Result<()> {
     let mut pixels = Pixels::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, surface_texture)
         .context("Failed to create Pixels")?;
 
+    // Create GUI mouse first so we can clone it for serial devices if needed
+    let gui_mouse = GuiMouse::new(SCREEN_WIDTH as f64, SCREEN_HEIGHT as f64);
+
     // Initialize computer
-    let mut computer = create_computer(&cli)?;
+    let mut computer = create_computer(&cli, gui_mouse.clone_shared())?;
+
+    // Attach serial devices if specified
+    if let Some(device) = &cli.com1_device {
+        match device.as_str() {
+            "mouse" => {
+                use emu86_core::SerialMouse;
+                let mouse_clone =
+                    Box::new(gui_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+                computer.set_com1_device(Box::new(SerialMouse::new(mouse_clone)));
+                log::info!("Serial mouse attached to COM1");
+            }
+            _ => {
+                eprintln!("Warning: Unknown device '{}' for COM1", device);
+            }
+        }
+    }
+
+    if let Some(device) = &cli.com2_device {
+        match device.as_str() {
+            "mouse" => {
+                use emu86_core::SerialMouse;
+                let mouse_clone =
+                    Box::new(gui_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+                computer.set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
+                log::info!("Serial mouse attached to COM2");
+            }
+            _ => {
+                eprintln!("Warning: Unknown device '{}' for COM2", device);
+            }
+        }
+    }
 
     // Initialize egui
     let egui_ctx = egui::Context::default();
@@ -158,6 +201,27 @@ fn run(cli: Cli) -> Result<()> {
                             modifiers.state().control_key(),
                             modifiers.state().alt_key(),
                         );
+                    }
+                    WindowEvent::CursorMoved { position, .. } => {
+                        // Process mouse movement
+                        computer
+                            .bios_mut()
+                            .mouse
+                            .process_cursor_moved(position.x, position.y);
+                    }
+                    WindowEvent::MouseInput { button, state, .. } => {
+                        // Convert winit button to mouse button code
+                        let button_code = match button {
+                            MouseButton::Left => 0,
+                            MouseButton::Right => 1,
+                            MouseButton::Middle => 2,
+                            _ => return, // Ignore other buttons
+                        };
+                        let pressed = state == ElementState::Pressed;
+                        computer
+                            .bios_mut()
+                            .mouse
+                            .process_button(button_code, pressed);
                     }
                     WindowEvent::RedrawRequested => {
                         const BATCH_SIZE: u32 = 10000;
@@ -297,10 +361,13 @@ fn run(cli: Cli) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Event loop error: {}", e))
 }
 
-fn create_computer(cli: &Cli) -> Result<Computer<GuiKeyboard, PixelsVideoController>> {
+fn create_computer(
+    cli: &Cli,
+    gui_mouse: GuiMouse,
+) -> Result<Computer<GuiKeyboard, PixelsVideoController>> {
     // Create computer with keyboard and mouse
     let keyboard = GuiKeyboard::new();
-    let mouse = Box::new(NullMouse::new());
+    let mouse = Box::new(gui_mouse);
     let video = PixelsVideoController::new();
     let mut computer = Computer::new(keyboard, mouse, video);
 
