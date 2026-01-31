@@ -1,8 +1,8 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, DriveNumber, KeyboardInput, MouseInput, NullVideoController, TextCell, Video,
-    VideoController,
+    Bios, DriveNumber, KeyboardInput, MouseInput, NullVideoController, SerialDevice, TextCell,
+    Video, VideoController,
     cpu::Cpu,
     io::IoDevice,
     memory::{self, Memory},
@@ -326,6 +326,11 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         // Approximate: assume each instruction takes 10 cycles
         // Real 8086 instructions vary from 2 to 100+ cycles
         self.increment_cycles(10);
+
+        // Update serial devices every 1000 instructions (~18 times per second)
+        if self.step_count % 1000 == 0 {
+            self.bios.update_serial_devices();
+        }
     }
 
     pub fn dump_registers(&self) {
@@ -467,5 +472,27 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         self.exec_logging_enabled = true;
         self.set_log_interrupts(true);
         self.log_steps = steps;
+    }
+
+    // Serial port device management
+
+    /// Attach a device to COM1
+    pub fn set_com1_device(&mut self, device: Box<dyn SerialDevice>) {
+        self.bios.serial_ports[0].attach_device(device);
+    }
+
+    /// Attach a device to COM2
+    pub fn set_com2_device(&mut self, device: Box<dyn SerialDevice>) {
+        self.bios.serial_ports[1].attach_device(device);
+    }
+
+    /// Remove device from COM1
+    pub fn clear_com1_device(&mut self) {
+        self.bios.serial_ports[0].detach_device();
+    }
+
+    /// Remove device from COM2
+    pub fn clear_com2_device(&mut self) {
+        self.bios.serial_ports[1].detach_device();
     }
 }

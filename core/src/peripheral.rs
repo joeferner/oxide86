@@ -1,6 +1,7 @@
+use crate::cpu::bios::PrinterStatus;
 use crate::cpu::bios::int14::line_status;
 use crate::cpu::bios::int17::printer_status;
-use crate::cpu::bios::{PrinterStatus, SerialParams, SerialStatus};
+use crate::serial_port::{SerialParams, SerialStatus};
 
 // Serial port and printer operations stub implementations
 // These return timeout status as actual hardware is not available

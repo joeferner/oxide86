@@ -25,12 +25,11 @@ mod int35_3f;
 use super::Cpu;
 use crate::{
     DiskController, DriveManager, DriveNumber, KeyboardInput, MemoryAllocator, MouseInput,
-    MouseState,
+    MouseState, SerialParams, SerialPortController, SerialStatus,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
     memory::Memory,
     peripheral, time,
 };
-pub use int14::{SerialParams, SerialStatus};
 pub use int17::PrinterStatus;
 pub use int21::FileAccess;
 use std::collections::HashMap;
@@ -222,6 +221,8 @@ pub struct Bios<K: KeyboardInput> {
     pub keyboard: K,
     /// Mouse input handler (platform-independent via trait object)
     pub mouse: Box<dyn MouseInput>,
+    /// Serial port controllers (COM1 and COM2)
+    pub serial_ports: [SerialPortController; 2],
 }
 
 impl<K: KeyboardInput> Bios<K> {
@@ -231,6 +232,7 @@ impl<K: KeyboardInput> Bios<K> {
             shared: SharedBiosState::new(),
             keyboard,
             mouse,
+            serial_ports: [SerialPortController::new(0), SerialPortController::new(1)],
         }
     }
 
@@ -655,21 +657,92 @@ impl<K: KeyboardInput> Bios<K> {
         Ok(program_data)
     }
 
-    // Serial port (stub implementations)
+    // Serial port I/O port access
+    /// Read from a serial port I/O register
+    /// port: 0=COM1, 1=COM2
+    /// offset: register offset (0-7)
+    pub fn serial_io_read(&self, port: u8, offset: u16) -> u8 {
+        if port > 1 {
+            return 0xFF;
+        }
+        self.serial_ports[port as usize].read_register(offset)
+    }
+
+    /// Write to a serial port I/O register
+    /// port: 0=COM1, 1=COM2
+    /// offset: register offset (0-7)
+    pub fn serial_io_write(&mut self, port: u8, offset: u16, value: u8) {
+        if port > 1 {
+            return;
+        }
+        self.serial_ports[port as usize].write_register(offset, value);
+    }
+
+    /// Update all serial port devices (called periodically)
+    pub fn update_serial_devices(&mut self) {
+        for port in &mut self.serial_ports {
+            port.update_device();
+        }
+    }
+
+    // Serial port INT 14h services
     pub fn serial_init(&mut self, port: u8, params: SerialParams) -> SerialStatus {
-        peripheral::serial_init(port, params)
+        if port > 1 {
+            return SerialStatus {
+                line_status: crate::serial_port::line_status::TIMEOUT,
+                modem_status: 0,
+            };
+        }
+
+        self.serial_ports[port as usize].on_init(params);
+
+        SerialStatus {
+            line_status: crate::serial_port::line_status::TRANSMIT_HOLDING_EMPTY
+                | crate::serial_port::line_status::TRANSMIT_SHIFT_EMPTY,
+            modem_status: crate::serial_port::modem_status::DATA_SET_READY
+                | crate::serial_port::modem_status::CLEAR_TO_SEND,
+        }
     }
 
     pub fn serial_write(&mut self, port: u8, ch: u8) -> u8 {
-        peripheral::serial_write(port, ch)
+        if port > 1 {
+            return crate::serial_port::line_status::TIMEOUT;
+        }
+
+        let controller = &mut self.serial_ports[port as usize];
+        controller.on_write(ch);
+
+        crate::serial_port::line_status::TRANSMIT_HOLDING_EMPTY
+            | crate::serial_port::line_status::TRANSMIT_SHIFT_EMPTY
     }
 
     pub fn serial_read(&mut self, port: u8) -> Result<(u8, u8), u8> {
-        peripheral::serial_read(port)
+        if port > 1 {
+            return Err(crate::serial_port::line_status::TIMEOUT);
+        }
+
+        let controller = &mut self.serial_ports[port as usize];
+        if let Some(byte) = controller.dequeue_byte() {
+            let status = controller.get_line_status();
+            Ok((byte, status))
+        } else {
+            Err(crate::serial_port::line_status::TIMEOUT)
+        }
     }
 
     pub fn serial_status(&self, port: u8) -> SerialStatus {
-        peripheral::serial_status(port)
+        if port > 1 {
+            return SerialStatus {
+                line_status: crate::serial_port::line_status::TIMEOUT,
+                modem_status: 0,
+            };
+        }
+
+        let controller = &self.serial_ports[port as usize];
+        SerialStatus {
+            line_status: controller.get_line_status(),
+            modem_status: controller.modem_status,
+        }
     }
 
     // Printer (stub implementations)

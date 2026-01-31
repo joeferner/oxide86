@@ -81,6 +81,17 @@ Implemented the SerialDevice trait and SerialMouse:
 - Full test coverage for packet generation and initialization
 - Updated `core/src/lib.rs` to export serial_mouse module
 
+### ✅ Phase 3: BIOS and core/src/mouse.rs Integration (COMPLETED)
+
+Implemented BIOS integration for serial port controllers:
+- Added `serial_ports: [SerialPortController; 2]` to Bios struct
+- Added I/O port access methods (`serial_io_read`, `serial_io_write`)
+- Added `update_serial_devices()` method for periodic device updates
+- Updated INT 14h methods to use SerialPortController instead of peripheral stubs
+- Consolidated duplicate `SerialParams` and `SerialStatus` types (now defined in serial_port.rs)
+- Added `set_com1_device`, `set_com2_device`, `clear_com1_device`, `clear_com2_device` to Computer
+- Added serial device update calls in Computer::step (every 1000 instructions)
+
 ### Phase 2 Original Plan (for reference)
 
 **File: `core/src/serial_port.rs`**
@@ -279,7 +290,7 @@ fn generate_ms_mouse_packet(left: bool, right: bool, dx: i16, dy: i16) -> [u8; 3
 }
 ```
 
-### Phase 3: BIOS Integration
+### Phase 3: BIOS Integration (COMPLETED - See above)
 
 **File: `core/src/cpu/bios/mod.rs`**
 

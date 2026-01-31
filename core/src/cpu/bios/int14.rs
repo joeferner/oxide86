@@ -1,4 +1,4 @@
-use crate::{cpu::Cpu, memory::Memory};
+use crate::{cpu::Cpu, memory::Memory, serial_port::SerialParams};
 
 /// Serial port line status bits (returned in AH)
 #[allow(dead_code)]
@@ -24,44 +24,6 @@ pub mod modem_status {
     pub const TRAILING_EDGE_RING: u8 = 0x04;
     pub const CHANGE_DATA_SET_READY: u8 = 0x02;
     pub const CHANGE_CLEAR_TO_SEND: u8 = 0x01;
-}
-
-/// Serial port parameters for AH=00h
-#[derive(Debug, Clone, Copy)]
-pub struct SerialParams {
-    /// Baud rate (bits 7-5 of AL)
-    /// 000=110, 001=150, 010=300, 011=600, 100=1200, 101=2400, 110=4800, 111=9600
-    pub baud_rate: u8,
-    /// Parity (bits 4-3 of AL)
-    /// 00=none, 01=odd, 10=none, 11=even
-    pub parity: u8,
-    /// Stop bits (bit 2 of AL)
-    /// 0=1 stop bit, 1=2 stop bits
-    pub stop_bits: u8,
-    /// Word length (bits 1-0 of AL)
-    /// 10=7 bits, 11=8 bits
-    pub word_length: u8,
-}
-
-impl SerialParams {
-    /// Parse serial parameters from AL register
-    pub fn from_al(al: u8) -> Self {
-        Self {
-            baud_rate: (al >> 5) & 0x07,
-            parity: (al >> 3) & 0x03,
-            stop_bits: (al >> 2) & 0x01,
-            word_length: al & 0x03,
-        }
-    }
-}
-
-/// Serial port status returned by operations
-#[derive(Debug, Clone, Copy)]
-pub struct SerialStatus {
-    /// Line status (returned in AH)
-    pub line_status: u8,
-    /// Modem status (returned in AL)
-    pub modem_status: u8,
 }
 
 impl Cpu {
@@ -100,7 +62,7 @@ impl Cpu {
         io: &mut super::Bios<K>,
     ) {
         let params_byte = (self.ax & 0xFF) as u8; // Get AL
-        let params = SerialParams::from_al(params_byte);
+        let params = SerialParams::from_int14_al(params_byte);
 
         let status = io.serial_init(port, params);
 
