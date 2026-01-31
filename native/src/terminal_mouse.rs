@@ -39,6 +39,8 @@ struct SharedMouseState {
     last_col: u16,
     /// Last terminal row for delta calculation
     last_row: u16,
+    /// Whether we've received the first position update
+    initialized: bool,
 }
 
 /// Terminal-based mouse input for native CLI.
@@ -148,6 +150,21 @@ impl MouseInput for TerminalMouse {
         // Convert f64 coordinates to u16 (terminal column/row)
         let col = (x as u16).min(Self::TERMINAL_COLS - 1);
         let row = (y as u16).min(Self::TERMINAL_ROWS - 1);
+
+        // On first movement, just initialize position without generating delta
+        if !shared.initialized {
+            shared.last_col = col;
+            shared.last_row = row;
+            shared.initialized = true;
+            shared.state.x = Self::terminal_col_to_dos_x(col);
+            shared.state.y = Self::terminal_row_to_dos_y(row);
+            log::debug!(
+                "TerminalMouse: initialized at col={}, row={}",
+                col,
+                row
+            );
+            return;
+        }
 
         // Calculate motion delta in terminal coordinates
         let delta_col = (col as i16) - (shared.last_col as i16);
