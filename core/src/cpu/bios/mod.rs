@@ -661,11 +661,13 @@ impl<K: KeyboardInput> Bios<K> {
     /// Read from a serial port I/O register
     /// port: 0=COM1, 1=COM2
     /// offset: register offset (0-7)
-    pub fn serial_io_read(&self, port: u8, offset: u16) -> u8 {
+    pub fn serial_io_read(&mut self, port: u8, offset: u16) -> u8 {
         if port > 1 {
             return 0xFF;
         }
-        self.serial_ports[port as usize].read_register(offset)
+        let value = self.serial_ports[port as usize].read_register(offset);
+        log::debug!("Serial I/O Read: COM{} offset 0x{:X} -> 0x{:02X}", port + 1, offset, value);
+        value
     }
 
     /// Write to a serial port I/O register
@@ -675,6 +677,7 @@ impl<K: KeyboardInput> Bios<K> {
         if port > 1 {
             return;
         }
+        log::debug!("Serial I/O Write: COM{} offset 0x{:X} <- 0x{:02X}", port + 1, offset, value);
         self.serial_ports[port as usize].write_register(offset, value);
     }
 

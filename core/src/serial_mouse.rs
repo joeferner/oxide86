@@ -26,6 +26,7 @@ pub struct SerialMouse {
     accumulated_x: i16,
     accumulated_y: i16,
     motion_threshold: u16,
+    initialized: bool,
 }
 
 impl SerialMouse {
@@ -37,6 +38,7 @@ impl SerialMouse {
             accumulated_x: 0,
             accumulated_y: 0,
             motion_threshold: 8,
+            initialized: false,
         }
     }
 }
@@ -46,6 +48,10 @@ impl SerialDevice for SerialMouse {
         // Check if initialized to Microsoft Mouse settings (1200 baud, 7N1)
         // 1200 baud = 0x04, 7 bits = 0x02
         if params.baud_rate == 0x04 && params.word_length == 0x02 {
+            self.initialized = true;
+            // Reset accumulated motion on initialization
+            self.accumulated_x = 0;
+            self.accumulated_y = 0;
             Some(vec![b'M']) // Send identification byte
         } else {
             None
@@ -53,6 +59,11 @@ impl SerialDevice for SerialMouse {
     }
 
     fn update(&mut self) -> Vec<u8> {
+        // Don't send movement packets until initialized (DTR received)
+        if !self.initialized {
+            return Vec::new();
+        }
+
         let state = self.mouse_input.get_state();
         let (dx, dy) = self.mouse_input.get_motion();
 

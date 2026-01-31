@@ -172,7 +172,7 @@ impl SerialPortController {
 
     /// Read a UART register
     /// offset: 0-7 (register offset from base port)
-    pub fn read_register(&self, offset: u16) -> u8 {
+    pub fn read_register(&mut self, offset: u16) -> u8 {
         match offset {
             register::DATA => {
                 // Check DLAB bit
@@ -180,8 +180,8 @@ impl SerialPortController {
                     // DLAB=1: Return divisor latch low byte
                     (self.divisor_latch & 0xFF) as u8
                 } else {
-                    // DLAB=0: Return receive buffer (peek, don't remove)
-                    self.rx_buffer.front().copied().unwrap_or(0)
+                    // DLAB=0: Read and consume byte from receive buffer
+                    self.dequeue_byte().unwrap_or(0)
                 }
             }
             register::INTERRUPT_ENABLE => {
@@ -216,6 +216,7 @@ impl SerialPortController {
                 if self.line_control & line_control::DLAB != 0 {
                     // DLAB=1: Set divisor latch low byte
                     self.divisor_latch = (self.divisor_latch & 0xFF00) | (value as u16);
+                    self.update_params_from_divisor();
                 } else {
                     // DLAB=0: Write to transmit buffer
                     if self.tx_buffer.len() < self.buffer_size {
@@ -228,6 +229,7 @@ impl SerialPortController {
                 if self.line_control & line_control::DLAB != 0 {
                     // DLAB=1: Set divisor latch high byte
                     self.divisor_latch = (self.divisor_latch & 0x00FF) | ((value as u16) << 8);
+                    self.update_params_from_divisor();
                 } else {
                     // DLAB=0: Set interrupt enable register
                     self.interrupt_enable = value;
@@ -235,9 +237,25 @@ impl SerialPortController {
             }
             register::LINE_CONTROL => {
                 self.line_control = value;
+                self.update_params_from_line_control();
             }
             register::MODEM_CONTROL => {
+                // Detect DTR transition (bit 0) - Microsoft Serial Mouse resets on DTR high
+                let old_dtr = self.modem_control & 0x01;
+                let new_dtr = value & 0x01;
+
                 self.modem_control = value;
+
+                // If DTR transitioned from 0 to 1, trigger device initialization
+                if old_dtr == 0 && new_dtr == 1 {
+                    if let Some(ref mut device) = self.device
+                        && let Some(response) = device.on_init(&self.params)
+                    {
+                        for byte in response {
+                            self.enqueue_byte(byte);
+                        }
+                    }
+                }
             }
             register::SCRATCH => {
                 self.scratch = value;
@@ -264,6 +282,104 @@ impl SerialPortController {
 
         // Transmitter is always ready in our emulation
         self.line_status |= line_status::TRANSMIT_HOLDING_EMPTY | line_status::TRANSMIT_SHIFT_EMPTY;
+    }
+
+    /// Update params.baud_rate based on current divisor_latch value
+    /// Divisor = 115200 / baud_rate
+    fn update_params_from_divisor(&mut self) {
+        let old_baud = self.params.baud_rate;
+        self.params.baud_rate = match self.divisor_latch {
+            1047 => 0x00, // 110 baud
+            768 => 0x01,  // 150 baud
+            384 => 0x02,  // 300 baud
+            192 => 0x03,  // 600 baud
+            96 => 0x04,   // 1200 baud
+            48 => 0x05,   // 2400 baud
+            24 => 0x06,   // 4800 baud
+            12 => 0x07,   // 9600 baud
+            _ => {
+                // For other divisors, approximate to nearest standard rate
+                let baud = 115200u32 / (self.divisor_latch as u32).max(1);
+                if baud >= 7200 {
+                    0x07 // 9600
+                } else if baud >= 3600 {
+                    0x06 // 4800
+                } else if baud >= 1800 {
+                    0x05 // 2400
+                } else if baud >= 900 {
+                    0x04 // 1200
+                } else if baud >= 450 {
+                    0x03 // 600
+                } else if baud >= 225 {
+                    0x02 // 300
+                } else if baud >= 130 {
+                    0x01 // 150
+                } else {
+                    0x00 // 110
+                }
+            }
+        };
+
+        if self.params.baud_rate != old_baud {
+            let baud_name = match self.params.baud_rate {
+                0x00 => "110",
+                0x01 => "150",
+                0x02 => "300",
+                0x03 => "600",
+                0x04 => "1200",
+                0x05 => "2400",
+                0x06 => "4800",
+                0x07 => "9600",
+                _ => "unknown",
+            };
+            log::debug!(
+                "COM{} baud rate changed: divisor=0x{:04X} -> {} baud (code 0x{:02X})",
+                self.port_number + 1,
+                self.divisor_latch,
+                baud_name,
+                self.params.baud_rate
+            );
+        }
+    }
+
+    /// Update params from line control register
+    /// Bits 1-0: word length (10=7 bits, 11=8 bits)
+    /// Bit 2: stop bits (0=1, 1=2)
+    /// Bits 4-3: parity (00=none, 01=odd, 11=even)
+    fn update_params_from_line_control(&mut self) {
+        let old_word_length = self.params.word_length;
+        let old_stop_bits = self.params.stop_bits;
+        let old_parity = self.params.parity;
+
+        self.params.word_length = self.line_control & 0x03;
+        self.params.stop_bits = (self.line_control >> 2) & 0x01;
+        self.params.parity = (self.line_control >> 3) & 0x03;
+
+        if self.params.word_length != old_word_length
+            || self.params.stop_bits != old_stop_bits
+            || self.params.parity != old_parity
+        {
+            let data_bits = match self.params.word_length {
+                0x02 => "7",
+                0x03 => "8",
+                _ => "?",
+            };
+            let parity = match self.params.parity {
+                0x00 => "N",
+                0x01 => "O",
+                0x03 => "E",
+                _ => "?",
+            };
+            let stop_bits = if self.params.stop_bits == 0 { "1" } else { "2" };
+
+            log::debug!(
+                "COM{} line format changed: {}{}{}",
+                self.port_number + 1,
+                data_bits,
+                parity,
+                stop_bits
+            );
+        }
     }
 
     /// Reset the serial port to initial state

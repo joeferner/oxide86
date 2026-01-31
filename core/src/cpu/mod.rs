@@ -318,6 +318,9 @@ impl Cpu {
             // PUSHA - Push All General Registers (60)
             0x60 => self.pusha(memory),
 
+            // POPA - Pop All General Registers (61)
+            0x61 => self.popa(memory),
+
             // BOUND - Check Array Index Against Bounds (62)
             0x62 => {
                 if self.bound(memory) {

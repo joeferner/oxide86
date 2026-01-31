@@ -426,6 +426,20 @@ impl Cpu {
         self.push(self.di, memory);
     }
 
+    /// POPA - Pop All General Registers (opcode 0x61)
+    /// Pops DI, SI, BP, (discard), BX, DX, CX, AX from stack
+    /// 80186+ instruction
+    pub(in crate::cpu) fn popa(&mut self, memory: &Memory) {
+        self.di = self.pop(memory);
+        self.si = self.pop(memory);
+        self.bp = self.pop(memory);
+        let _discard = self.pop(memory); // SP is discarded
+        self.bx = self.pop(memory);
+        self.dx = self.pop(memory);
+        self.cx = self.pop(memory);
+        self.ax = self.pop(memory);
+    }
+
     /// BOUND - Check Array Index Against Bounds (opcode 0x62)
     /// Checks if a signed register value is within bounds stored in memory
     /// If index < lower_bound or index > upper_bound, triggers INT 5

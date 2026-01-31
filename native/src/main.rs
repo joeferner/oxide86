@@ -77,7 +77,7 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
-    let log_file = File::create("/tmp/emu86.log").context("Failed to create log file")?;
+    let log_file = File::create("emu86.log").context("Failed to create log file")?;
     env_logger::Builder::from_default_env()
         .target(env_logger::Target::Pipe(Box::new(log_file)))
         .init();
