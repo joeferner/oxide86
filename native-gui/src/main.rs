@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
-    BackedDisk, Bios, Computer, DiskController, DriveNumber, FileDiskBackend, PartitionedDisk,
-    parse_mbr,
+    BackedDisk, Bios, Computer, DiskController, DriveNumber, FileDiskBackend, NullMouse,
+    PartitionedDisk, parse_mbr,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_video::{PixelsVideoController, SCREEN_HEIGHT, SCREEN_WIDTH};
@@ -295,7 +295,8 @@ fn run(cli: Cli) -> Result<()> {
 fn create_computer(cli: &Cli) -> Result<Computer<GuiKeyboard, PixelsVideoController>> {
     // Create BIOS with no drives attached
     let keyboard = GuiKeyboard::new();
-    let mut bios: Bios<GuiKeyboard> = Bios::new(keyboard);
+    let mouse = Box::new(NullMouse::new());
+    let mut bios: Bios<GuiKeyboard> = Bios::new(keyboard, mouse);
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {

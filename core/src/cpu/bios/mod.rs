@@ -23,7 +23,8 @@ mod int35_3f;
 
 use super::Cpu;
 use crate::{
-    DiskController, DriveManager, DriveNumber, KeyboardInput, MemoryAllocator,
+    DiskController, DriveManager, DriveNumber, KeyboardInput, MemoryAllocator, MouseInput,
+    MouseState,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
     memory::Memory,
     peripheral, time,
@@ -211,20 +212,24 @@ impl Default for SharedBiosState {
 }
 
 /// BIOS implementation for handling interrupt I/O operations
-/// Generic over KeyboardInput (for platform-specific keyboard handling) and DiskController
+/// Generic over KeyboardInput (for platform-specific keyboard handling)
+/// Mouse uses dynamic dispatch (Box<dyn MouseInput>) for flexibility
 pub struct Bios<K: KeyboardInput> {
     /// Shared BIOS state (drive manager, memory allocator, device handles)
     pub shared: SharedBiosState,
     /// Keyboard input handler (platform-specific)
     pub keyboard: K,
+    /// Mouse input handler (platform-independent via trait object)
+    pub mouse: Box<dyn MouseInput>,
 }
 
 impl<K: KeyboardInput> Bios<K> {
-    /// Create a new Bios with the provided keyboard input handler
-    pub fn new(keyboard: K) -> Self {
+    /// Create a new Bios with the provided keyboard and mouse input handlers
+    pub fn new(keyboard: K, mouse: Box<dyn MouseInput>) -> Self {
         Self {
             shared: SharedBiosState::new(),
             keyboard,
+            mouse,
         }
     }
 
@@ -690,6 +695,22 @@ impl<K: KeyboardInput> Bios<K> {
 
     pub fn get_rtc_date(&self) -> Option<RtcDate> {
         time::get_rtc_date()
+    }
+
+    // Mouse input
+    /// Get current mouse state (position and button status)
+    pub fn mouse_get_state(&self) -> MouseState {
+        self.mouse.get_state()
+    }
+
+    /// Get mouse motion counters (mickeys) and reset them
+    pub fn mouse_get_motion(&mut self) -> (i16, i16) {
+        self.mouse.get_motion()
+    }
+
+    /// Check if mouse hardware is present
+    pub fn mouse_is_present(&self) -> bool {
+        self.mouse.is_present()
     }
 }
 

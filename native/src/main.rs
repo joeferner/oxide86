@@ -3,7 +3,9 @@ use clap::Parser;
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::utils::parse_hex_or_dec;
-use emu86_core::{BackedDisk, Bios, Computer, DiskController, DriveNumber, FileDiskBackend};
+use emu86_core::{
+    BackedDisk, Bios, Computer, DiskController, DriveNumber, FileDiskBackend, NullMouse,
+};
 use std::fs::File;
 use std::panic;
 use std::time::{Duration, Instant};
@@ -81,7 +83,8 @@ fn main() -> Result<()> {
 
     // Create BIOS with no drives attached
     let keyboard = TerminalKeyboard::new();
-    let mut bios: Bios<TerminalKeyboard> = Bios::new(keyboard);
+    let mouse = Box::new(NullMouse::new());
+    let mut bios: Bios<TerminalKeyboard> = Bios::new(keyboard, mouse);
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {
