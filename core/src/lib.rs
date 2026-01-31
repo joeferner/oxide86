@@ -30,6 +30,7 @@ pub mod memory;
 pub mod memory_allocator;
 pub mod mouse;
 pub mod peripheral;
+pub mod serial_port;
 pub mod time;
 pub mod utils;
 pub mod video;
