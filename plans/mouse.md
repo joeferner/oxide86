@@ -112,87 +112,35 @@ New mouse state fields in BIOS Data Area (0x40:0x80-0x8C):
 
 **3.3 Update `core/src/memory.rs`** ✓ COMPLETED (already handled by generic IVT initialization)
 
-### Phase 4: Native Terminal Implementation
+### Phase 4: Native Terminal Implementation ✓ COMPLETED
 
-**4.1 Create `native/src/terminal_mouse.rs`**
-
-Implement `MouseInput` trait using crossterm's mouse events:
-
-```rust
-pub struct TerminalMouse {
-    state: MouseState,
-    motion_x: i16,
-    motion_y: i16,
-    last_col: u16,
-    last_row: u16,
-}
-```
-
-Methods:
-- `pub fn new() -> Self`
-- `pub fn poll_mouse_event(&mut self)` - Non-blocking poll for mouse events
-- Implement `MouseInput` trait methods:
+**4.1 Create `native/src/terminal_mouse.rs`** ✓ COMPLETED
+- Created TerminalMouse struct with MouseState, motion tracking, and position fields
+- Implemented MouseInput trait methods:
   - `get_state()` - Returns current MouseState
   - `get_motion()` - Returns and resets motion_x, motion_y
   - `is_present()` - Returns true
-  - `process_cursor_moved(x, y)` - Receives terminal column/row, converts to DOS coords
+  - `process_cursor_moved(x, y)` - Converts terminal column/row to DOS coords
   - `process_button(button, pressed)` - Updates button state
+- Coordinate conversion implemented (terminal chars × 8 = DOS pixels)
+- Added module declaration to `native/src/main.rs`
+- Updated Computer construction to use `Box::new(TerminalMouse::new())`
 
-Coordinate conversion:
-- Terminal coordinates: column (0-79), row (0-24) for 80x25 text mode
-- DOS coordinates: multiply by 8 (640x200 resolution)
-- Example: column 40, row 12 -> X=320, Y=96
+**4.2 Refactor Event Polling Architecture** ✓ COMPLETED
+- Added `process_event(event: Event)` method to TerminalKeyboard
+- Removed `poll_for_command_key()` method (replaced by centralized polling)
+- Centralized event polling now implemented in main.rs run() function
+- Single event poll dispatches to both keyboard and mouse handlers
+- Keyboard events dispatched to `keyboard.process_event()`
+- Mouse move/drag events dispatched to `mouse.process_cursor_moved()`
+- Mouse button events dispatched to `mouse.process_button()`
 
-**4.2 Update `native/src/main.rs`**
-- Import `TerminalMouse`
-- Enable mouse capture at startup:
-  ```rust
-  use crossterm::event::{EnableMouseCapture, DisableMouseCapture};
-  execute!(stdout(), EnableMouseCapture)?;
-  ```
-- Disable on exit:
-  ```rust
-  execute!(stdout(), DisableMouseCapture)?;
-  ```
-- Construct and box the mouse implementation:
-  ```rust
-  let mouse: Box<dyn MouseInput> = Box::new(TerminalMouse::new());
-  let bios: Bios<TerminalKeyboard> = Bios::new(keyboard, mouse);
-  ```
-- In main loop, poll for mouse events:
-  ```rust
-  if let Event::Mouse(mouse_event) = event::read()? {
-      match mouse_event.kind {
-          MouseEventKind::Down(button) | MouseEventKind::Up(button) => {
-              let button_code = match button {
-                  MouseButton::Left => 0,
-                  MouseButton::Right => 1,
-                  MouseButton::Middle => 2,
-                  _ => continue,
-              };
-              let pressed = matches!(mouse_event.kind, MouseEventKind::Down(_));
-              computer.bios_mut().mouse.process_button(button_code, pressed);
-          }
-          MouseEventKind::Moved | MouseEventKind::Drag(_) => {
-              computer.bios_mut().mouse.process_cursor_moved(
-                  mouse_event.column as f64,
-                  mouse_event.row as f64
-              );
-          }
-          _ => {}
-      }
-  }
-  ```
-
-**4.3 Add to `native/src/lib.rs`** (if exists, or add mod in main.rs)
-- `pub mod terminal_mouse;`
-
-**Crossterm Mouse Capabilities**:
-- `MouseEventKind`: Down, Up, Drag, Moved, ScrollDown/Up/Left/Right
-- `MouseEvent`: Contains kind, column, row, modifiers
-- Enable with `EnableMouseCapture` command
-- Platform limitations: Some terminals don't report all button states
-- Character-based coordinates (80x25 typical)
+**4.3 Enable Mouse Capture** ✓ COMPLETED
+- Added imports for `EnableMouseCapture` and `DisableMouseCapture`
+- Enabled mouse capture at startup (before run() call)
+- Disabled mouse capture after run() completes
+- Added mouse capture disable to panic handler for clean recovery
+- Terminal mouse now fully functional with crossterm event stream
 
 ### Phase 5: Native-GUI Implementation
 

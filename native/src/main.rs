@@ -1,9 +1,10 @@
 use anyhow::{Context, Result};
 use clap::Parser;
+use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::utils::parse_hex_or_dec;
-use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullMouse};
+use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend};
 use std::fs::File;
 use std::panic;
 use std::time::{Duration, Instant};
@@ -13,6 +14,9 @@ use terminal_keyboard::TerminalKeyboard;
 
 mod terminal_video;
 use terminal_video::TerminalVideo;
+
+mod terminal_mouse;
+use terminal_mouse::TerminalMouse;
 
 mod command_mode;
 
@@ -73,7 +77,7 @@ fn main() -> Result<()> {
     let default_panic = panic::take_hook();
     panic::set_hook(Box::new(move |info| {
         let _ = disable_raw_mode();
-        let _ = execute!(std::io::stdout(), LeaveAlternateScreen);
+        let _ = execute!(std::io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
         default_panic(info);
     }));
 
@@ -81,7 +85,7 @@ fn main() -> Result<()> {
 
     // Create computer with keyboard and mouse
     let keyboard = TerminalKeyboard::new();
-    let mouse = Box::new(NullMouse::new());
+    let mouse = Box::new(TerminalMouse::new());
     let video = TerminalVideo::new();
     let mut computer = Computer::new(keyboard, mouse, video);
 
@@ -201,6 +205,9 @@ fn main() -> Result<()> {
         log::info!("Starting execution... (Press F12 for command mode)\n");
     }
 
+    // Enable mouse capture for terminal mouse support
+    execute!(std::io::stdout(), EnableMouseCapture).context("Failed to enable mouse capture")?;
+
     // Run the program with optional speed throttling
     if cli.turbo {
         log::info!("Running in turbo mode (no speed limit)");
@@ -211,19 +218,23 @@ fn main() -> Result<()> {
         run(&mut computer, Some(clock_hz));
     }
 
+    // Disable mouse capture before exiting
+    execute!(std::io::stdout(), DisableMouseCapture).context("Failed to disable mouse capture")?;
+
     log::info!("=== Execution complete ===");
     computer.dump_registers();
 
     Ok(())
 }
 
-/// Run the emulator with F12 command mode support
+/// Run the emulator with F12 command mode support and mouse input
 /// Specific to TerminalKeyboard to support F12 command mode detection
 /// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
 fn run<V>(computer: &mut Computer<TerminalKeyboard, V>, clock_hz: Option<u64>)
 where
     V: emu86_core::VideoController,
 {
+    use crossterm::event::{self, Event, MouseButton, MouseEventKind};
     let start_time = clock_hz.map(|_| Instant::now());
     let nanos_per_cycle = clock_hz.map(|hz| 1_000_000_000u64 / hz);
 
@@ -243,9 +254,54 @@ where
         // This dramatically reduces terminal I/O overhead
         computer.update_video();
 
-        // Poll for F12 key press (command mode trigger)
-        // This allows F12 to be detected even if the program doesn't call keyboard BIOS functions
-        computer.bios_mut().keyboard.poll_for_command_key();
+        // Poll for events (keyboard and mouse) without blocking
+        // Process all available events to keep input responsive
+        while event::poll(Duration::from_millis(0)).unwrap_or(false) {
+            if let Ok(ev) = event::read() {
+                match ev {
+                    Event::Key(_) => {
+                        // Dispatch keyboard event to keyboard handler
+                        computer.bios_mut().keyboard.process_event(ev);
+                    }
+                    Event::Mouse(mouse_event) => {
+                        // Dispatch mouse events to mouse handler
+                        match mouse_event.kind {
+                            MouseEventKind::Moved => {
+                                computer.bios_mut().mouse.process_cursor_moved(
+                                    mouse_event.column as f64,
+                                    mouse_event.row as f64,
+                                );
+                            }
+                            MouseEventKind::Down(button) => {
+                                let button_code = match button {
+                                    MouseButton::Left => 0,
+                                    MouseButton::Right => 1,
+                                    MouseButton::Middle => 2,
+                                };
+                                computer.bios_mut().mouse.process_button(button_code, true);
+                            }
+                            MouseEventKind::Up(button) => {
+                                let button_code = match button {
+                                    MouseButton::Left => 0,
+                                    MouseButton::Right => 1,
+                                    MouseButton::Middle => 2,
+                                };
+                                computer.bios_mut().mouse.process_button(button_code, false);
+                            }
+                            MouseEventKind::Drag(_) => {
+                                // Drag events also update position
+                                computer.bios_mut().mouse.process_cursor_moved(
+                                    mouse_event.column as f64,
+                                    mouse_event.row as f64,
+                                );
+                            }
+                            _ => {} // Ignore scroll and other events
+                        }
+                    }
+                    _ => {} // Ignore resize and other events
+                }
+            }
+        }
 
         // Check if F12 was pressed (intercepted by BIOS)
         if computer.bios_mut().keyboard.is_command_mode_requested() {

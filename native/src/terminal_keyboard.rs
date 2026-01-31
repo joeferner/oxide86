@@ -50,24 +50,28 @@ impl TerminalKeyboard {
         self.command_mode_requested = false;
     }
 
-    /// Poll for F12 key press without blocking.
+    /// Process a single crossterm event.
     ///
-    /// This method is called from the main loop to detect command mode requests
-    /// even when the emulated program doesn't call keyboard BIOS functions.
-    /// Keys other than F12 are buffered for later retrieval by BIOS functions.
+    /// This method is used by centralized event polling to dispatch keyboard
+    /// events. It handles F12 detection for command mode and buffers other keys.
     ///
-    /// # Behavior
+    /// # Parameters
     ///
-    /// - Drains all available keys from the terminal
-    /// - F12 sets the command mode flag and stops processing
-    /// - Other keys are buffered for later retrieval via KeyboardInput methods
-    pub fn poll_for_command_key(&mut self) {
-        // Drain all available keys from the terminal
-        while let Some(key) = self.internal_check_key() {
+    /// - `event`: A crossterm Event to process
+    pub fn process_event(&mut self, event: Event) {
+        if let Event::Key(key_event) = event {
+            let key = key_event_to_keypress(&key_event);
+            log::debug!(
+                "key event processed: code={:?}, modifiers={:?}, scan=0x{:02X}, ascii=0x{:02X}",
+                key_event.code,
+                key_event.modifiers,
+                key.scan_code,
+                key.ascii_code
+            );
+
             if key.scan_code == SCAN_CODE_F12 {
                 // F12 - set command mode flag and don't buffer it
                 self.command_mode_requested = true;
-                break; // Stop processing once F12 is detected
             } else {
                 // Not F12 - buffer it for later retrieval by BIOS functions
                 self.keyboard_buffer.push_back(key);
