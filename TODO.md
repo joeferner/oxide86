@@ -1,7 +1,6 @@
 # TODO
 
 - [ ] PC Speaker - Use the Rodio crate to create PC speaker like sounds
-- [ ] DOS Shell not detecting floppy insert (Unhandled BIOS interrupt: 0x09)
 - [ ] Add speed throttle and turbo to gui
 - [ ] Fix CLI colors
 - [ ] In BIOS take keyboard as Box<dyn KeyboardInput>

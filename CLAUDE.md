@@ -113,6 +113,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 ### Implemented Interrupts
 | INT | Service | Key Functions |
 |-----|---------|---------------|
+| 09h | Keyboard IRQ | Hardware interrupt (stub - buffer populated by fire_keyboard_irq) |
 | 10h | Video | 00h set mode, 02h cursor, 0Eh teletype, 11h char gen, 15h display params, 1Ah display code, FEh get buffer |
 | 12h | Memory | Returns AX = KB (typically 640) |
 | 13h | Disk | 00h reset, 02h read, 03h write, 04h verify, 05h format, 08h params, 15h type, 16h change, 18h DASD |

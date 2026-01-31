@@ -3,6 +3,7 @@
 
 pub mod disk_error;
 pub mod dos_error;
+mod int09;
 mod int10;
 mod int11;
 mod int12;
@@ -841,6 +842,7 @@ impl Cpu {
         video: &mut crate::video::Video,
     ) {
         match int_num {
+            0x09 => self.handle_int09(memory),
             0x10 => self.handle_int10(memory, video),
             0x11 => self.handle_int11(memory),
             0x12 => self.handle_int12(memory),
