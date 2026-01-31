@@ -20,12 +20,15 @@
 //! - Example: Column 40, Row 12 → X=320, Y=96
 
 use emu86_core::mouse::{MouseInput, MouseState};
+use std::sync::{Arc, Mutex};
 
-/// Terminal-based mouse input for native CLI.
+/// Shared internal state for TerminalMouse.
 ///
-/// This struct manages mouse input from the terminal using crossterm events.
-/// It tracks current position, button states, and accumulated motion deltas.
-pub struct TerminalMouse {
+/// This allows multiple TerminalMouse instances to share the same state,
+/// which is needed when attaching a serial mouse device that reads from
+/// the same mouse input source.
+#[derive(Debug, Default)]
+struct SharedMouseState {
     /// Current mouse state (position and buttons)
     state: MouseState,
     /// Accumulated horizontal motion in mickeys since last read
@@ -36,6 +39,18 @@ pub struct TerminalMouse {
     last_col: u16,
     /// Last terminal row for delta calculation
     last_row: u16,
+}
+
+/// Terminal-based mouse input for native CLI.
+///
+/// This struct manages mouse input from the terminal using crossterm events.
+/// It tracks current position, button states, and accumulated motion deltas.
+///
+/// Multiple instances can share the same state via the Arc<Mutex<...>> wrapper,
+/// allowing both the BIOS and serial mouse device to read from the same input.
+pub struct TerminalMouse {
+    /// Shared state wrapped in Arc<Mutex<...>> for multi-owner access
+    shared: Arc<Mutex<SharedMouseState>>,
 }
 
 impl TerminalMouse {
@@ -54,11 +69,21 @@ impl TerminalMouse {
     /// Create a new TerminalMouse instance.
     pub fn new() -> Self {
         Self {
-            state: MouseState::default(),
-            motion_x: 0,
-            motion_y: 0,
-            last_col: 0,
-            last_row: 0,
+            shared: Arc::new(Mutex::new(SharedMouseState::default())),
+        }
+    }
+
+    /// Create a new TerminalMouse instance that shares state with this one.
+    ///
+    /// This is useful for attaching a serial mouse device that needs to read
+    /// from the same mouse input source as the BIOS.
+    ///
+    /// # Returns
+    ///
+    /// A new TerminalMouse instance that shares the same internal state.
+    pub fn clone_shared(&self) -> Self {
+        Self {
+            shared: Arc::clone(&self.shared),
         }
     }
 
@@ -99,14 +124,16 @@ impl Default for TerminalMouse {
 
 impl MouseInput for TerminalMouse {
     fn get_state(&self) -> MouseState {
-        self.state
+        let shared = self.shared.lock().unwrap();
+        shared.state
     }
 
     fn get_motion(&mut self) -> (i16, i16) {
-        let motion = (self.motion_x, self.motion_y);
+        let mut shared = self.shared.lock().unwrap();
+        let motion = (shared.motion_x, shared.motion_y);
         // Reset motion counters after read
-        self.motion_x = 0;
-        self.motion_y = 0;
+        shared.motion_x = 0;
+        shared.motion_y = 0;
         motion
     }
 
@@ -116,37 +143,40 @@ impl MouseInput for TerminalMouse {
     }
 
     fn process_cursor_moved(&mut self, x: f64, y: f64) {
+        let mut shared = self.shared.lock().unwrap();
+
         // Convert f64 coordinates to u16 (terminal column/row)
         let col = (x as u16).min(Self::TERMINAL_COLS - 1);
         let row = (y as u16).min(Self::TERMINAL_ROWS - 1);
 
         // Calculate motion delta in terminal coordinates
-        let delta_col = (col as i16) - (self.last_col as i16);
-        let delta_row = (row as i16) - (self.last_row as i16);
+        let delta_col = (col as i16) - (shared.last_col as i16);
+        let delta_row = (row as i16) - (shared.last_row as i16);
 
         // Accumulate motion in mickeys (8 mickeys per pixel, 8 pixels per char = 64 mickeys per char)
         // Motion in mickeys = delta in chars * pixels per char * mickeys per pixel
-        self.motion_x = self
+        shared.motion_x = shared
             .motion_x
             .saturating_add(delta_col * (Self::CHAR_WIDTH as i16));
-        self.motion_y = self
+        shared.motion_y = shared
             .motion_y
             .saturating_add(delta_row * (Self::CHAR_HEIGHT as i16));
 
         // Update last position
-        self.last_col = col;
-        self.last_row = row;
+        shared.last_col = col;
+        shared.last_row = row;
 
         // Convert to DOS coordinates and update state
-        self.state.x = Self::terminal_col_to_dos_x(col);
-        self.state.y = Self::terminal_row_to_dos_y(row);
+        shared.state.x = Self::terminal_col_to_dos_x(col);
+        shared.state.y = Self::terminal_row_to_dos_y(row);
     }
 
     fn process_button(&mut self, button: u8, pressed: bool) {
+        let mut shared = self.shared.lock().unwrap();
         match button {
-            0 => self.state.left_button = pressed,
-            1 => self.state.right_button = pressed,
-            2 => self.state.middle_button = pressed,
+            0 => shared.state.left_button = pressed,
+            1 => shared.state.right_button = pressed,
+            2 => shared.state.middle_button = pressed,
             _ => {} // Ignore unknown buttons
         }
     }

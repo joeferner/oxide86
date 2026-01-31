@@ -66,6 +66,14 @@ struct Cli {
     /// Run at maximum speed (no throttling)
     #[arg(long)]
     turbo: bool,
+
+    /// Device to attach to COM1 (e.g., "mouse")
+    #[arg(long = "com1", value_name = "DEVICE")]
+    com1_device: Option<String>,
+
+    /// Device to attach to COM2 (e.g., "mouse")
+    #[arg(long = "com2", value_name = "DEVICE")]
+    com2_device: Option<String>,
 }
 
 fn main() -> Result<()> {
@@ -85,7 +93,8 @@ fn main() -> Result<()> {
 
     // Create computer with keyboard and mouse
     let keyboard = TerminalKeyboard::new();
-    let mouse = Box::new(TerminalMouse::new());
+    let terminal_mouse = TerminalMouse::new();
+    let mouse = Box::new(terminal_mouse.clone_shared());
     let video = TerminalVideo::new();
     let mut computer = Computer::new(keyboard, mouse, video);
 
@@ -203,6 +212,37 @@ fn main() -> Result<()> {
             offset
         );
         log::info!("Starting execution... (Press F12 for command mode)\n");
+    }
+
+    // Attach serial devices if specified
+    if let Some(device) = &cli.com1_device {
+        match device.as_str() {
+            "mouse" => {
+                use emu86_core::SerialMouse;
+                let mouse_clone =
+                    Box::new(terminal_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+                computer.set_com1_device(Box::new(SerialMouse::new(mouse_clone)));
+                log::info!("Serial mouse attached to COM1");
+            }
+            _ => {
+                eprintln!("Warning: Unknown device '{}' for COM1", device);
+            }
+        }
+    }
+
+    if let Some(device) = &cli.com2_device {
+        match device.as_str() {
+            "mouse" => {
+                use emu86_core::SerialMouse;
+                let mouse_clone =
+                    Box::new(terminal_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+                computer.set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
+                log::info!("Serial mouse attached to COM2");
+            }
+            _ => {
+                eprintln!("Warning: Unknown device '{}' for COM2", device);
+            }
+        }
     }
 
     // Enable mouse capture for terminal mouse support
