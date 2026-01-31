@@ -41,6 +41,14 @@ pub const BDA_CRT_PALETTE: usize = 0x66; // CRT palette register
 pub const BDA_TIMER_COUNTER: usize = 0x6C; // Timer counter (dword) - ticks since midnight
 pub const BDA_TIMER_OVERFLOW: usize = 0x70; // Timer midnight rollover flag (byte)
 pub const BDA_NUM_HARD_DRIVES: usize = 0x75; // Number of hard drives installed (byte)
+pub const BDA_MOUSE_X: usize = 0x80; // Mouse X position (word)
+pub const BDA_MOUSE_Y: usize = 0x82; // Mouse Y position (word)
+pub const BDA_MOUSE_BUTTONS: usize = 0x84; // Mouse button state (byte)
+pub const BDA_MOUSE_VISIBLE: usize = 0x85; // Mouse cursor visibility counter (byte)
+pub const BDA_MOUSE_MIN_X: usize = 0x86; // Mouse horizontal minimum (word)
+pub const BDA_MOUSE_MAX_X: usize = 0x88; // Mouse horizontal maximum (word)
+pub const BDA_MOUSE_MIN_Y: usize = 0x8A; // Mouse vertical minimum (word)
+pub const BDA_MOUSE_MAX_Y: usize = 0x8C; // Mouse vertical maximum (word)
 
 // Equipment list bits
 pub const EQUIPMENT_FLOPPY_INSTALLED: u16 = 0x0001;
@@ -306,5 +314,25 @@ impl Memory {
 
         // Timer overflow flag (0x0040:0070)
         self.write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0); // No midnight rollover yet
+
+        // Mouse position (0x0040:0080-0083)
+        // Initialize to center of default 640x200 resolution
+        self.write_u16(BDA_START + BDA_MOUSE_X, 320); // Center X
+        self.write_u16(BDA_START + BDA_MOUSE_Y, 100); // Center Y
+
+        // Mouse button state (0x0040:0084)
+        self.write_u8(BDA_START + BDA_MOUSE_BUTTONS, 0); // No buttons pressed
+
+        // Mouse cursor visibility counter (0x0040:0085)
+        // Counter < 0 means hidden, >= 0 means visible
+        // Initialize to -1 (hidden by default)
+        self.write_u8(BDA_START + BDA_MOUSE_VISIBLE, 0xFF); // -1 as unsigned byte
+
+        // Mouse coordinate boundaries (0x0040:0086-008D)
+        // Default to 640x200 DOS graphics resolution
+        self.write_u16(BDA_START + BDA_MOUSE_MIN_X, 0); // Minimum X
+        self.write_u16(BDA_START + BDA_MOUSE_MAX_X, 639); // Maximum X
+        self.write_u16(BDA_START + BDA_MOUSE_MIN_Y, 0); // Minimum Y
+        self.write_u16(BDA_START + BDA_MOUSE_MAX_Y, 199); // Maximum Y
     }
 }

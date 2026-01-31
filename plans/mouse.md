@@ -76,7 +76,7 @@ New mouse state fields in BIOS Data Area (0x40:0x80-0x8C):
 - Add `pub mod mouse;`
 - Export `MouseInput`, `MouseState`, `NullMouse`
 
-**1.3 Update `core/src/memory.rs`**
+**1.3 Update `core/src/memory.rs`** ✓ COMPLETED
 - Add BDA mouse constants:
   - `BDA_MOUSE_X: usize = 0x80` (word)
   - `BDA_MOUSE_Y: usize = 0x82` (word)
