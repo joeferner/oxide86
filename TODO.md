@@ -5,6 +5,7 @@
 - [ ] GUI menu takes over ALT key
 - [ ] GUI add menu items to enable debug
 - [ ] GUI add menu items for turbo
+- [ ] GUI test floppy load
 - [ ] PC Speaker - Use the Rodio crate to create PC speaker like sounds
 - [ ] Add speed throttle and turbo to gui
 - [ ] 8086 Test text games

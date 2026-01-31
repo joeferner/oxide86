@@ -312,8 +312,12 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             _ => {
                 // Normal instruction - use execute_with_io
                 let opcode = self.cpu.fetch_byte(&self.memory);
-                self.cpu
-                    .execute_with_io(opcode, &mut self.memory, &mut self.io_device);
+                self.cpu.execute_with_io(
+                    opcode,
+                    &mut self.memory,
+                    &mut self.bios,
+                    &mut self.io_device,
+                );
             }
         }
 

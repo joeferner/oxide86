@@ -395,7 +395,14 @@ pub fn serial_init(&mut self, port: u8, params: SerialParams) -> SerialStatus {
 }
 ```
 
-### Phase 4: I/O Port Emulation
+### ✅ Phase 4: I/O Port Emulation (COMPLETED)
+
+Implemented I/O port routing for serial ports:
+- Updated `execute_with_io` in `core/src/cpu/mod.rs` to accept Bios parameter (generic over KeyboardInput)
+- Modified all IN/OUT instruction handlers in `core/src/cpu/instructions/io.rs` to route COM1 (0x3F8-0x3FF) and COM2 (0x2F8-0x2FF) I/O to BIOS serial port controllers
+- Updated all recursive `execute_with_io` calls (segment overrides, LOCK, REP prefixes) to pass BIOS parameter
+- Updated call site in `core/src/computer.rs` to pass BIOS to `execute_with_io`
+- All tests passing and code formatted correctly
 
 **File: `core/src/cpu/instructions/io.rs`**
 
