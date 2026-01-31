@@ -11,6 +11,7 @@ pub use crate::disk_backend::FileDiskBackend;
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 pub use crate::keyboard::KeyboardInput;
 pub use crate::memory_allocator::MemoryAllocator;
+pub use crate::mouse::{MouseInput, MouseState, NullMouse};
 pub use crate::video::{
     CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
 };
@@ -27,6 +28,7 @@ pub mod io;
 pub mod keyboard;
 pub mod memory;
 pub mod memory_allocator;
+pub mod mouse;
 pub mod peripheral;
 pub mod time;
 pub mod utils;

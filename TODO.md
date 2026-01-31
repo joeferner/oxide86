@@ -1,5 +1,8 @@
 # TODO
 
+- [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
+- [ ] QBasic menus don't work
+- [ ] GUI menu takes over ALT key
 - [ ] PC Speaker - Use the Rodio crate to create PC speaker like sounds
 - [ ] Add speed throttle and turbo to gui
 - [ ] 8086 Test text games
@@ -15,3 +18,4 @@
 - [ ] Upgrade to latest pixels/winit/egui (see https://github.com/parasyte/pixels/blob/main/examples/minimal-egui/Cargo.toml)
 - [ ] Install SvarDOS (open source dos)
 - [ ] Add support FreeDos-1.4 (requires 32-bit instructions)
+- [ ] Remove dead code markers

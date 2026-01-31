@@ -21,7 +21,7 @@
 //! ```
 
 /// Current state of the mouse including position and button status.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct MouseState {
     /// Horizontal position (typically 0-639 for 640x200 resolution)
     pub x: u16,
@@ -33,18 +33,6 @@ pub struct MouseState {
     pub right_button: bool,
     /// Middle button pressed
     pub middle_button: bool,
-}
-
-impl Default for MouseState {
-    fn default() -> Self {
-        Self {
-            x: 0,
-            y: 0,
-            left_button: false,
-            right_button: false,
-            middle_button: false,
-        }
-    }
 }
 
 /// Platform-independent mouse input interface.

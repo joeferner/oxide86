@@ -72,7 +72,7 @@ New mouse state fields in BIOS Data Area (0x40:0x80-0x8C):
 - Add comprehensive documentation
 - Ensure trait is object-safe for `Box<dyn MouseInput>`
 
-**1.2 Update `core/src/lib.rs`**
+**1.2 Update `core/src/lib.rs`** ✓ COMPLETED
 - Add `pub mod mouse;`
 - Export `MouseInput`, `MouseState`, `NullMouse`
 
