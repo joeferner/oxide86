@@ -594,6 +594,9 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         self.cycle_count += cycles;
         self.total_cycles += cycles;
 
+        // Update PIT counters
+        self.io_device.update_pit(cycles);
+
         // Check if we've accumulated enough cycles for a timer tick
         if self.cycle_count >= self.cycles_per_tick {
             self.cycle_count -= self.cycles_per_tick;

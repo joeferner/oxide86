@@ -13,7 +13,24 @@ Implement accurate PC speaker emulation with full PIT (Programmable Interval Tim
 
 ## Implementation Phases
 
-### Phase 1: Core PIT Emulation
+### Phase 1: Core PIT Emulation ✅ COMPLETED
+
+**Status**: Implemented on 2026-02-01
+
+**Completed work**:
+- Created `core/src/io/pit.rs` with full Intel 8253/8254 PIT emulation
+- Implemented PitChannel and Pit structs with all 3 channels
+- Implemented Mode 0, 2, and 3 (square wave for speaker)
+- Integrated into IoDevice with ports 0x40-0x43 routing
+- Added PIT update call to Computer::increment_cycles()
+- Port 0x61 bit 5 now reflects Timer 2 output state
+- Port 0x61 bit 0 controls Timer 2 gate
+- LSB/MSB access modes fully implemented
+- Cycle conversion (CPU 4.77 MHz → PIT 1.193182 MHz)
+- Created test program: `examples/beep.asm`
+- All tests passing, code formatted and compiles cleanly
+
+**Original requirements**:
 
 **File**: `core/src/pit.rs` (CREATE)
 

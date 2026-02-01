@@ -9,6 +9,7 @@ pub use crate::disk::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use crate::disk_backend::FileDiskBackend;
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
+pub use crate::io::Pit;
 pub use crate::keyboard::KeyboardInput;
 pub use crate::memory_allocator::MemoryAllocator;
 pub use crate::mouse::{MouseInput, MouseState, NullMouse};

@@ -1,5 +1,7 @@
+mod pit;
 mod system_control_port;
 
+pub use pit::Pit;
 use std::collections::HashMap;
 pub use system_control_port::SystemControlPort;
 
@@ -9,6 +11,8 @@ pub struct IoDevice {
     last_write: HashMap<u16, u8>,
     /// System Control Port (port 61h)
     system_control_port: SystemControlPort,
+    /// Programmable Interval Timer (ports 40h-43h)
+    pit: Pit,
 }
 
 impl IoDevice {
@@ -16,17 +20,31 @@ impl IoDevice {
         Self {
             last_write: HashMap::new(),
             system_control_port: SystemControlPort::new(),
+            pit: Pit::new(),
         }
     }
 
     /// Read a byte from the specified I/O port.
     pub fn read_byte(&mut self, port: u16) -> u8 {
         let value = match port {
+            // PIT channel data ports
+            0x40..=0x42 => self.pit.read_channel((port - 0x40) as u8),
+
+            // PIT command port (write-only, return 0xFF on read)
+            0x43 => 0xFF,
+
             // Keyboard controller - return dummy scancode
             0x60 => 0x1C, // 'a' key scancode
 
-            // System control port - delegate to SystemControlPort
-            0x61 => self.system_control_port.read(),
+            // System control port with Timer 2 output
+            0x61 => {
+                let mut value = self.system_control_port.read();
+                // Set bit 5 to reflect Timer 2 output state
+                if self.pit.get_channel_output(2) {
+                    value |= 0x20;
+                }
+                value
+            }
 
             // All other ports return 0xFF (floating high)
             _ => self.last_write.get(&port).copied().unwrap_or(0xFF),
@@ -41,9 +59,21 @@ impl IoDevice {
     pub fn write_byte(&mut self, port: u16, value: u8) {
         log::debug!("I/O Write: Port 0x{:04X} <- 0x{:02X}", port, value);
 
-        // Handle system control port specifically
-        if port == 0x61 {
-            self.system_control_port.write(value);
+        match port {
+            // PIT channel data ports
+            0x40..=0x42 => self.pit.write_channel((port - 0x40) as u8, value),
+
+            // PIT command port
+            0x43 => self.pit.write_command(value),
+
+            // System control port
+            0x61 => {
+                self.system_control_port.write(value);
+                // Update PIT Channel 2 gate from bit 0
+                self.pit.set_gate(2, (value & 0x01) != 0);
+            }
+
+            _ => {}
         }
 
         self.last_write.insert(port, value);
@@ -64,5 +94,11 @@ impl IoDevice {
         let high = (value >> 8) as u8;
         self.write_byte(port, low);
         self.write_byte(port.wrapping_add(1), high);
+    }
+
+    /// Update PIT counters based on CPU cycles
+    /// Called from Computer::increment_cycles()
+    pub fn update_pit(&mut self, cycles: u64) {
+        self.pit.update(cycles);
     }
 }
