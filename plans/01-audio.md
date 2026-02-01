@@ -71,7 +71,20 @@ pub struct Pit {
 - Output frequency = 1193182 / count_register
 - Mode 3 (square wave): Most common for PC speaker
 
-### Phase 2: Speaker Trait Definition
+### Phase 2: Speaker Trait Definition ✅ COMPLETED
+
+**Status**: Implemented on 2026-02-01
+
+**Completed work**:
+- Created `core/src/speaker.rs` with `SpeakerOutput` trait
+- Trait is `Send` to support both native and WASM platforms
+- Implemented `set_frequency(enabled: bool, frequency: f32)` for controlling speaker
+- Implemented `update()` for platforms that need periodic updates
+- Created `NullSpeaker` struct as fallback for headless/audio-unavailable environments
+- Exported `SpeakerOutput` and `NullSpeaker` from `core/src/lib.rs`
+- All tests passing, code formatted and compiles cleanly
+
+**Original requirements**:
 
 **File**: `core/src/speaker.rs` (CREATE)
 

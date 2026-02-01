@@ -15,6 +15,7 @@ pub use crate::memory_allocator::MemoryAllocator;
 pub use crate::mouse::{MouseInput, MouseState, NullMouse};
 pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
+pub use crate::speaker::{NullSpeaker, SpeakerOutput};
 pub use crate::video::{
     CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
 };
@@ -35,6 +36,7 @@ pub mod mouse;
 pub mod peripheral;
 pub mod serial_mouse;
 pub mod serial_port;
+pub mod speaker;
 pub mod time;
 pub mod utils;
 pub mod video;
