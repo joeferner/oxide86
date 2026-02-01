@@ -57,6 +57,12 @@ impl SystemControlPort {
         self.control_bits = value & 0x0F;
     }
 
+    /// Get the current control bits (0-3)
+    /// Used by speaker integration to check gate and data bits
+    pub fn get_control_bits(&self) -> u8 {
+        self.control_bits
+    }
+
     /// Reset the port to initial state
     pub fn reset(&mut self) {
         self.control_bits = 0;

@@ -108,7 +108,21 @@ impl SpeakerOutput for NullSpeaker {
 pub use speaker::{SpeakerOutput, NullSpeaker};
 ```
 
-### Phase 3: I/O Port Integration
+### Phase 3: I/O Port Integration ✅ COMPLETED
+
+**Status**: Implemented on 2026-02-01
+
+**Completed work**:
+- Modified `core/src/io/mod.rs` to integrate PIT with I/O ports
+- Port 0x40-0x42 route to PIT channel read/write operations
+- Port 0x43 routes to PIT command port (write-only, returns 0xFF on read)
+- Port 0x61 bit 5 now reflects Timer 2 output state from PIT
+- Port 0x61 bit 0 controls Timer 2 gate via `pit.set_gate()`
+- Added `update_pit()` method to IoDevice for cycle-based updates
+- Added `get_control_bits()` method to SystemControlPort for speaker integration
+- All tests passing, code formatted and compiles cleanly
+
+**Original requirements**:
 
 **File**: `core/src/io/mod.rs` (MODIFY)
 
