@@ -7,7 +7,7 @@
 - [ ] GUI add menu items to enable debug
 - [ ] GUI add menu items for turbo
 - [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode
-- [ ] GUI test floppy load
+- [ ] WASM
 - [ ] 8086 Test text games
   - [ ] Zork
 - [ ] 8086 Test applications
