@@ -8,7 +8,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
-    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, PartitionedDisk, parse_mbr,
+    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullSpeaker,
+    PartitionedDisk, parse_mbr,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -569,11 +570,12 @@ fn create_computer(
     cli: &Cli,
     gui_mouse: GuiMouse,
 ) -> Result<Computer<GuiKeyboard, PixelsVideoController>> {
-    // Create computer with keyboard and mouse
+    // Create computer with keyboard, mouse, video, and speaker
     let keyboard = GuiKeyboard::new();
     let mouse = Box::new(gui_mouse);
     let video = PixelsVideoController::new();
-    let mut computer = Computer::new(keyboard, mouse, video);
+    let speaker = Box::new(NullSpeaker);
+    let mut computer = Computer::new(keyboard, mouse, video, speaker);
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {

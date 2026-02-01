@@ -172,7 +172,22 @@ pub fn get_control_bits(&self) -> u8 {
 }
 ```
 
-### Phase 4: Computer Integration
+### Phase 4: Computer Integration ✅ COMPLETED
+
+**Status**: Implemented on 2026-02-01
+
+**Completed work**:
+- Added `get_channel_count()` method to Pit struct for accessing channel count register
+- Added `Box<dyn SpeakerOutput>` field to Computer struct (using Box instead of generic for simplicity)
+- Updated Computer constructor to accept speaker parameter
+- Added `update_speaker()` private method that reads control bits and calculates frequency
+- Called `update_speaker()` from `increment_cycles()` after PIT update
+- Added public `update_speaker_output()` method for platform periodic updates
+- Added getter methods to IoDevice for accessing PIT and system_control_port
+- Updated all Computer::new() call sites in native and native-gui to pass NullSpeaker
+- All tests passing, code formatted and compiles cleanly
+
+**Original requirements**:
 
 **File**: `core/src/computer.rs` (MODIFY)
 

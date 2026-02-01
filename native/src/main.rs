@@ -4,7 +4,7 @@ use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::utils::parse_hex_or_dec;
-use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend};
+use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullSpeaker};
 use std::fs::File;
 use std::panic;
 use std::time::{Duration, Instant};
@@ -91,12 +91,13 @@ fn main() -> Result<()> {
 
     let cli = Cli::parse();
 
-    // Create computer with keyboard and mouse
+    // Create computer with keyboard, mouse, video, and speaker
     let keyboard = TerminalKeyboard::new();
     let terminal_mouse = TerminalMouse::new();
     let mouse = Box::new(terminal_mouse.clone_shared());
     let video = TerminalVideo::new();
-    let mut computer = Computer::new(keyboard, mouse, video);
+    let speaker = Box::new(NullSpeaker);
+    let mut computer = Computer::new(keyboard, mouse, video, speaker);
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {

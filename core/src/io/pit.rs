@@ -365,6 +365,11 @@ impl Pit {
         self.channels[channel as usize].output
     }
 
+    /// Get count register value of a channel (for speaker frequency calculation)
+    pub fn get_channel_count(&self, channel: u8) -> u16 {
+        self.channels[channel as usize].count_register
+    }
+
     /// Set gate input for a channel (from port 0x61 bit 0 for channel 2)
     pub fn set_gate(&mut self, channel: u8, gate: bool) {
         let ch = &mut self.channels[channel as usize];

@@ -1,8 +1,8 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, DriveNumber, KeyboardInput, MouseInput, NullVideoController, SerialDevice, TextCell,
-    Video, VideoController,
+    Bios, DriveNumber, KeyboardInput, MouseInput, NullVideoController, SerialDevice, SpeakerOutput,
+    TextCell, Video, VideoController,
     cpu::Cpu,
     cpu::bios::KeyPress,
     io::IoDevice,
@@ -16,6 +16,7 @@ pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> 
     io_device: IoDevice,
     video: Video,
     video_controller: V,
+    speaker: Box<dyn SpeakerOutput>,
     /// Cycle counter for timer emulation (resets each tick)
     cycle_count: u64,
     /// Total cycles executed (never resets)
@@ -38,7 +39,12 @@ pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> 
 }
 
 impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
-    pub fn new(keyboard: K, mouse: Box<dyn MouseInput>, video_controller: V) -> Self {
+    pub fn new(
+        keyboard: K,
+        mouse: Box<dyn MouseInput>,
+        video_controller: V,
+        speaker: Box<dyn SpeakerOutput>,
+    ) -> Self {
         let bios = Bios::new(keyboard, mouse);
 
         let mut memory = Memory::new();
@@ -79,6 +85,7 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             io_device: IoDevice::new(),
             video: Video::new(),
             video_controller,
+            speaker,
             cycle_count: 0,
             total_cycles: 0,
             // 8086 at 4.77 MHz with PIT at 18.2 Hz: ~262144 cycles per tick
@@ -508,6 +515,11 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         self.video_controller.update_cursor(self.video.get_cursor());
     }
 
+    /// Update speaker output (call periodically for platforms that need it)
+    pub fn update_speaker_output(&mut self) {
+        self.speaker.update();
+    }
+
     /// Force a full video redraw regardless of dirty state
     /// Used when terminal state is known to be out of sync (e.g., after clearing screen)
     pub fn force_video_redraw(&mut self) {
@@ -597,6 +609,9 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         // Update PIT counters
         self.io_device.update_pit(cycles);
 
+        // Update speaker based on PIT state
+        self.update_speaker();
+
         // Check if we've accumulated enough cycles for a timer tick
         if self.cycle_count >= self.cycles_per_tick {
             self.cycle_count -= self.cycles_per_tick;
@@ -623,6 +638,28 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
                 .write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
             self.memory
                 .write_u16(counter_addr + 2, (tick_count >> 16) as u16);
+        }
+    }
+
+    /// Update speaker output based on PIT Channel 2 state and port 0x61 control bits
+    fn update_speaker(&mut self) {
+        let control_bits = self.io_device.system_control_port().get_control_bits();
+        let timer2_gate = (control_bits & 0x01) != 0;
+        let speaker_data = (control_bits & 0x02) != 0;
+
+        // Speaker enabled when both gate and data bits set
+        let enabled = timer2_gate && speaker_data;
+
+        if enabled {
+            let count = self.io_device.pit().get_channel_count(2);
+            if count > 0 {
+                let frequency = 1193182.0 / (count as f32);
+                self.speaker.set_frequency(true, frequency);
+            } else {
+                self.speaker.set_frequency(false, 0.0);
+            }
+        } else {
+            self.speaker.set_frequency(false, 0.0);
         }
     }
 

@@ -101,4 +101,14 @@ impl IoDevice {
     pub fn update_pit(&mut self, cycles: u64) {
         self.pit.update(cycles);
     }
+
+    /// Get reference to the PIT (for speaker integration)
+    pub fn pit(&self) -> &Pit {
+        &self.pit
+    }
+
+    /// Get reference to the system control port (for speaker integration)
+    pub fn system_control_port(&self) -> &SystemControlPort {
+        &self.system_control_port
+    }
 }
