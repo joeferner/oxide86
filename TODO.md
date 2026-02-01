@@ -22,3 +22,5 @@
 - [ ] Install SvarDOS (open source dos)
 - [ ] Add support FreeDos-1.4 (requires 32-bit instructions)
 - [ ] Remove dead code markers
+- [ ] Test CLI/GUI on Windows
+- [ ] Test CLI/GUI on OSX

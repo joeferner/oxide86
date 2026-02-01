@@ -5,7 +5,7 @@
 
 1. Download MS-DOS 5.0
 1. Create a hard drive `dd if=/dev/zero of=examples/hdd.img bs=1M count=32`
-1. Run `RUST_LOG=debug cargo run -p emu86-native -- --boot --floppy-a examples/msdos-5.0/Disk01.img --hdd examples/hdd.img`
+1. Run `RUST_LOG=debug cargo run -p emu86-native -- --boot --floppy-a examples/msdos-5.0/Disk01.img --hdd examples/hdd.img` or `RUST_LOG=debug cargo run -p emu86-native-gui -- --boot --hdd examples/hdd.img --boot-drive 0x80 --com1 mouse`
 
 # Creating a floppy with files
 
@@ -43,3 +43,9 @@ mcopy -i mouse.img mouse.com ::/
 | 1987-04-02 | IBM VGA Released | The Video Graphics Array standard introduced 640x480 resolution with 16 colors (or 320x200 with 256 colors), becoming the de facto standard for PC graphics. |
 | 1987-08 | AdLib Card Released | The AdLib Music Synthesizer Card brought FM synthesis audio to IBM PCs using the Yamaha YM3812 chip. |
 | 1989-11 | Sound Blaster Released | Creative Labs launched the Sound Blaster, which combined AdLib compatibility with digital audio playback and recording capabilities. |
+
+# Miscellaneous
+
+## Shorter logs
+
+`cat emu86.log | grep -v ' naga::' | grep -v 'Port 0x0064' | grep -v 'Serial I/O' | grep -v 'IVT Write' | grep -v 'emu86_core' > emu86.log.new; mv emu86.log.new emu86.log`

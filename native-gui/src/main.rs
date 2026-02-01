@@ -17,7 +17,7 @@ use log::LevelFilter;
 use menu::AppMenu;
 use pixels::{Pixels, SurfaceTexture, wgpu};
 use std::fs::File;
-use winit::dpi::{LogicalSize, PhysicalPosition};
+use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
@@ -158,15 +158,8 @@ fn run(cli: Cli) -> Result<()> {
 
     // Exclusive mode state - when true, hides cursor and disables menu
     let mut exclusive_mode = false;
-    // Track if cursor lock actually worked (true = use DeviceEvent, false = use WindowEvent)
-    let mut cursor_locked = false;
     // Track cursor position to detect clicks in menu area
     let mut cursor_y = 0.0;
-    // Track last cursor position for calculating deltas when lock fails
-    let mut last_cursor_x: Option<f64> = None;
-    let mut last_cursor_y: Option<f64> = None;
-    // Counter to skip events after recentering
-    let mut skip_events_count = 0;
 
     event_loop
         .run(move |event, elwt| {
@@ -174,8 +167,8 @@ fn run(cli: Cli) -> Result<()> {
 
             // Handle device events for raw mouse input (only when cursor is truly locked)
             if let Event::DeviceEvent { event, .. } = &event {
-                if exclusive_mode && cursor_locked {
-                    if let DeviceEvent::MouseMotion { delta } = event {
+                if let DeviceEvent::MouseMotion { delta } = event {
+                    if exclusive_mode {
                         log::debug!(
                             "DeviceEvent::MouseMotion - delta=({:.2}, {:.2})",
                             delta.0,
@@ -217,9 +210,7 @@ fn run(cli: Cli) -> Result<()> {
                     window.set_cursor_visible(false);
 
                     // Try to lock cursor for true relative motion
-                    cursor_locked = window.set_cursor_grab(CursorGrabMode::Locked).is_ok();
-
-                    if cursor_locked {
+                    if window.set_cursor_grab(CursorGrabMode::Locked).is_ok() {
                         log::info!(
                             "Cursor locked successfully - using DeviceEvent for mouse input"
                         );
@@ -229,9 +220,6 @@ fn run(cli: Cli) -> Result<()> {
                         );
                         // Try confined mode as fallback to keep cursor in window
                         let _ = window.set_cursor_grab(CursorGrabMode::Confined);
-                        // Reset tracking for manual delta calculation
-                        last_cursor_x = None;
-                        last_cursor_y = None;
                     }
 
                     log::info!("Entered exclusive mode (press F12 to exit)");
@@ -290,60 +278,6 @@ fn run(cli: Cli) -> Result<()> {
                             modifiers.state().control_key(),
                             modifiers.state().alt_key(),
                         );
-                    }
-                    WindowEvent::CursorMoved { position, .. } => {
-                        // When cursor lock fails, use cursor position to calculate deltas
-                        if exclusive_mode && !cursor_locked {
-                            let window_size = window.inner_size();
-                            let center_x = window_size.width as f64 / 2.0;
-                            let center_y = window_size.height as f64 / 2.0;
-
-                            // 1. CALCULATE DELTA FIRST
-                            if let (Some(last_x), Some(last_y)) = (last_cursor_x, last_cursor_y) {
-                                let delta_x = position.x - last_x;
-                                let delta_y = position.y - last_y;
-
-                                // 2. CRITICAL: Ignore the "Warp" event
-                                // If the movement is exactly the inverse of a recenter, or if
-                                // the position is exactly the center, it's likely our own warp.
-                                if position.x == center_x && position.y == center_y {
-                                    last_cursor_x = Some(position.x);
-                                    last_cursor_y = Some(position.y);
-                                    return;
-                                }
-
-                                if delta_x != 0.0 || delta_y != 0.0 {
-                                    computer
-                                        .bios_mut()
-                                        .mouse
-                                        .process_relative_motion(delta_x, delta_y);
-                                }
-                            }
-
-                            last_cursor_x = Some(position.x);
-                            last_cursor_y = Some(position.y);
-
-                            // 3. RECENTER (Lower the threshold or use a "deadzone")
-                            let margin = 100.0;
-                            let close_to_edge = position.x < margin
-                                || position.x > (window_size.width as f64 - margin)
-                                || position.y < margin
-                                || position.y > (window_size.height as f64 - margin);
-
-                            if close_to_edge {
-                                if window
-                                    .set_cursor_position(PhysicalPosition::new(center_x, center_y))
-                                    .is_ok()
-                                {
-                                    // Manually update last_cursor so the NEXT event (the warp)
-                                    // results in a delta of 0.
-                                    last_cursor_x = Some(center_x);
-                                    last_cursor_y = Some(center_y);
-                                }
-                            }
-                        }
-                        // In normal mode, cursor is used for GUI/menu interaction
-                        // (cursor_y is tracked at the top of the event loop for menu click detection)
                     }
                     WindowEvent::MouseInput { button, state, .. } => {
                         // Only process mouse buttons when in exclusive mode
