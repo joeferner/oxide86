@@ -161,6 +161,12 @@ fn run(cli: Cli) -> Result<()> {
     // Track cursor position to detect clicks in menu area
     let mut cursor_y = 0.0;
 
+    // Wayland + xrdp workaround: detect if MouseMotion reports absolute positions instead of deltas
+    let mut mouse_absolute_mode = false;
+    let mut mouse_absolute_mode_detected = false;
+    let mut last_mouse_absolute_x: Option<f64> = None;
+    let mut last_mouse_absolute_y: Option<f64> = None;
+
     event_loop
         .run(move |event, elwt| {
             elwt.set_control_flow(ControlFlow::Poll);
@@ -169,15 +175,67 @@ fn run(cli: Cli) -> Result<()> {
             if let Event::DeviceEvent { event, .. } = &event {
                 if let DeviceEvent::MouseMotion { delta } = event {
                     if exclusive_mode {
+                        let (actual_delta_x, actual_delta_y) = if !mouse_absolute_mode_detected {
+                            // Detection phase: check if these look like absolute positions
+                            // Heuristic: absolute positions are usually positive and within screen bounds (0-1920, 0-1080, etc.)
+                            // Real deltas are typically small (-50 to +50 pixels) and can be negative
+                            let looks_absolute = (delta.0 > 100.0 && delta.1 > 100.0)
+                                || (delta.0 > 0.0 && delta.1 > 0.0 && delta.0 < 10000.0 && delta.1 < 10000.0
+                                    && (delta.0.abs() > 50.0 || delta.1.abs() > 50.0));
+
+                            if looks_absolute {
+                                mouse_absolute_mode = true;
+                                mouse_absolute_mode_detected = true;
+                                log::warn!(
+                                    "Detected absolute mouse positioning bug (Wayland+xrdp) - enabling workaround. \
+                                    First values: ({:.2}, {:.2})",
+                                    delta.0,
+                                    delta.1
+                                );
+                            } else {
+                                // After a few events, assume we're in normal mode
+                                mouse_absolute_mode_detected = true;
+                            }
+
+                            // For the first event in absolute mode, we can't compute a delta
+                            if mouse_absolute_mode {
+                                last_mouse_absolute_x = Some(delta.0);
+                                last_mouse_absolute_y = Some(delta.1);
+                                (0.0, 0.0) // No movement for first event
+                            } else {
+                                *delta // Normal delta mode
+                            }
+                        } else if mouse_absolute_mode {
+                            // Absolute mode: compute delta from previous position
+                            let actual_delta = if let (Some(last_x), Some(last_y)) =
+                                (last_mouse_absolute_x, last_mouse_absolute_y)
+                            {
+                                (delta.0 - last_x, delta.1 - last_y)
+                            } else {
+                                (0.0, 0.0)
+                            };
+
+                            last_mouse_absolute_x = Some(delta.0);
+                            last_mouse_absolute_y = Some(delta.1);
+                            actual_delta
+                        } else {
+                            // Normal delta mode
+                            *delta
+                        };
+
                         log::debug!(
-                            "DeviceEvent::MouseMotion - delta=({:.2}, {:.2})",
+                            "DeviceEvent::MouseMotion - raw=({:.2}, {:.2}), actual_delta=({:.2}, {:.2}), abs_mode={}",
                             delta.0,
-                            delta.1
+                            delta.1,
+                            actual_delta_x,
+                            actual_delta_y,
+                            mouse_absolute_mode
                         );
+
                         computer
                             .bios_mut()
                             .mouse
-                            .process_relative_motion(delta.0, delta.1);
+                            .process_relative_motion(actual_delta_x, actual_delta_y);
                     }
                 }
             }
