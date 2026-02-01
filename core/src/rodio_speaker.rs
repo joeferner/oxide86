@@ -91,8 +91,10 @@ impl SpeakerOutput for RodioSpeaker {
         // Update playback state if changed
         if enabled != self.enabled {
             if enabled {
+                log::debug!("RodioSpeaker: Starting playback at {:.2} Hz", frequency);
                 self.sink.play();
             } else {
+                log::debug!("RodioSpeaker: Pausing playback");
                 self.sink.pause();
             }
             self.enabled = enabled;

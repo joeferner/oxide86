@@ -654,11 +654,24 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             let count = self.io_device.pit().get_channel_count(2);
             if count > 0 {
                 let frequency = 1193182.0 / (count as f32);
+                log::debug!(
+                    "Speaker: Enabled - count={}, frequency={:.2} Hz, control_bits=0x{:02X}",
+                    count,
+                    frequency,
+                    control_bits
+                );
                 self.speaker.set_frequency(true, frequency);
             } else {
+                log::debug!("Speaker: Disabled - count is 0");
                 self.speaker.set_frequency(false, 0.0);
             }
         } else {
+            log::debug!(
+                "Speaker: Disabled - gate={}, data={}, control_bits=0x{:02X}",
+                timer2_gate,
+                speaker_data,
+                control_bits
+            );
             self.speaker.set_frequency(false, 0.0);
         }
     }

@@ -7,14 +7,22 @@ pub enum MenuAction {
     EjectFloppyA,
     InsertFloppyB,
     EjectFloppyB,
+    ToggleExecutionLogging,
+    ToggleInterruptLogging,
+    TogglePause,
 }
 
 impl MenuAction {
-    /// Get the drive number for this action
+    /// Get the drive number for this action (only valid for floppy actions)
     pub fn drive_number(&self) -> DriveNumber {
         match self {
             MenuAction::InsertFloppyA | MenuAction::EjectFloppyA => DriveNumber::floppy_a(),
             MenuAction::InsertFloppyB | MenuAction::EjectFloppyB => DriveNumber::floppy_b(),
+            MenuAction::ToggleExecutionLogging
+            | MenuAction::ToggleInterruptLogging
+            | MenuAction::TogglePause => {
+                unreachable!("drive_number() called on debug action")
+            }
         }
     }
 
@@ -22,12 +30,25 @@ impl MenuAction {
     pub fn is_insert(&self) -> bool {
         matches!(self, MenuAction::InsertFloppyA | MenuAction::InsertFloppyB)
     }
+
+    /// Check if this is a debug action
+    pub fn is_debug_action(&self) -> bool {
+        matches!(
+            self,
+            MenuAction::ToggleExecutionLogging
+                | MenuAction::ToggleInterruptLogging
+                | MenuAction::TogglePause
+        )
+    }
 }
 
 /// Application menu structure
 pub struct AppMenu {
     floppy_a_present: bool,
     floppy_b_present: bool,
+    exec_logging_enabled: bool,
+    interrupt_logging_enabled: bool,
+    is_paused: bool,
 }
 
 impl AppMenu {
@@ -36,6 +57,9 @@ impl AppMenu {
         Self {
             floppy_a_present: false,
             floppy_b_present: false,
+            exec_logging_enabled: false,
+            interrupt_logging_enabled: false,
+            is_paused: false,
         }
     }
 
@@ -43,6 +67,18 @@ impl AppMenu {
     pub fn update_menu_states(&mut self, floppy_a_present: bool, floppy_b_present: bool) {
         self.floppy_a_present = floppy_a_present;
         self.floppy_b_present = floppy_b_present;
+    }
+
+    /// Update debug menu states
+    pub fn update_debug_states(
+        &mut self,
+        exec_logging: bool,
+        interrupt_logging: bool,
+        paused: bool,
+    ) {
+        self.exec_logging_enabled = exec_logging;
+        self.interrupt_logging_enabled = interrupt_logging;
+        self.is_paused = paused;
     }
 
     /// Render the menu bar using egui and return any triggered action
@@ -99,6 +135,43 @@ impl AppMenu {
                             ui.close_menu();
                         }
                     });
+                });
+
+                ui.menu_button("Debug", |ui| {
+                    // Execution Logging with checkmark
+                    let exec_label = if self.exec_logging_enabled {
+                        "[X] Execution Logging"
+                    } else {
+                        "[ ] Execution Logging"
+                    };
+                    if ui.button(exec_label).clicked() {
+                        action = Some(MenuAction::ToggleExecutionLogging);
+                        ui.close_menu();
+                    }
+
+                    // Interrupt Logging with checkmark
+                    let int_label = if self.interrupt_logging_enabled {
+                        "[X] Interrupt Logging"
+                    } else {
+                        "[ ] Interrupt Logging"
+                    };
+                    if ui.button(int_label).clicked() {
+                        action = Some(MenuAction::ToggleInterruptLogging);
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
+                    // Pause/Run with dynamic label
+                    let pause_label = if self.is_paused {
+                        ">> Run"
+                    } else {
+                        "|| Pause"
+                    };
+                    if ui.button(pause_label).clicked() {
+                        action = Some(MenuAction::TogglePause);
+                        ui.close_menu();
+                    }
                 });
             });
         });

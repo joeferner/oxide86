@@ -204,10 +204,6 @@ impl MouseMotionState {
             delta
         }
     }
-
-    fn is_absolute_mode(&self) -> bool {
-        self.absolute_mode
-    }
 }
 
 fn handle_window_resize(
@@ -273,15 +269,22 @@ fn handle_mouse_button(
         .process_button(button_code, pressed);
 }
 
-fn step_emulator(computer: &mut Computer<GuiKeyboard, PixelsVideoController>, pixels: &mut Pixels) {
-    const BATCH_SIZE: u32 = 10000;
+fn step_emulator(
+    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    pixels: &mut Pixels,
+    is_paused: bool,
+) {
+    // Skip execution if paused
+    if !is_paused {
+        const BATCH_SIZE: u32 = 10000;
 
-    for _ in 0..BATCH_SIZE {
-        if computer.is_halted() {
-            log::info!("Computer halted");
-            std::process::exit(0);
+        for _ in 0..BATCH_SIZE {
+            if computer.is_halted() {
+                log::info!("Computer halted");
+                std::process::exit(0);
+            }
+            computer.step();
         }
-        computer.step();
     }
 
     computer.update_video();
@@ -291,9 +294,12 @@ fn step_emulator(computer: &mut Computer<GuiKeyboard, PixelsVideoController>, pi
     }
 }
 
-struct FloppyState {
-    a_present: bool,
-    b_present: bool,
+struct AppState {
+    menu: AppMenu,
+    floppy_a_present: bool,
+    floppy_b_present: bool,
+    is_paused: bool,
+    interrupt_logging_enabled: bool,
 }
 
 fn process_egui_frame(
@@ -301,31 +307,44 @@ fn process_egui_frame(
     egui_state: &mut egui_winit::State,
     window: &winit::window::Window,
     exclusive_mode: bool,
-    menu: &mut AppMenu,
+    app_state: &mut AppState,
     computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
-    floppy_state: &mut FloppyState,
 ) -> egui::FullOutput {
+    // Update menu states before rendering
+    app_state.menu.update_debug_states(
+        computer.exec_logging_enabled,
+        app_state.interrupt_logging_enabled,
+        app_state.is_paused,
+    );
+
     let raw_input = egui_state.take_egui_input(window);
     let full_output = egui_ctx.run(raw_input, |ctx| {
         if !exclusive_mode {
-            let action = menu.render(ctx);
+            let action = app_state.menu.render(ctx);
 
             if let Some(action) = action {
                 if action.is_insert() {
                     show_insert_dialog(
                         action.drive_number(),
                         computer,
-                        &mut floppy_state.a_present,
-                        &mut floppy_state.b_present,
-                        menu,
+                        &mut app_state.floppy_a_present,
+                        &mut app_state.floppy_b_present,
+                        &mut app_state.menu,
+                    );
+                } else if action.is_debug_action() {
+                    handle_debug_action(
+                        action,
+                        computer,
+                        &mut app_state.is_paused,
+                        &mut app_state.interrupt_logging_enabled,
                     );
                 } else {
                     eject_disk(
                         action.drive_number(),
                         computer,
-                        &mut floppy_state.a_present,
-                        &mut floppy_state.b_present,
-                        menu,
+                        &mut app_state.floppy_a_present,
+                        &mut app_state.floppy_b_present,
+                        &mut app_state.menu,
                     );
                 }
             }
@@ -424,17 +443,19 @@ fn run(cli: Cli) -> Result<()> {
     // Initialize egui
     let (egui_ctx, mut egui_state, mut egui_renderer) = setup_egui(window, &pixels);
 
-    // Create menu
-    let mut menu = AppMenu::new();
-
-    // Check initial disk presence from CLI args
-    let mut floppy_state = FloppyState {
-        a_present: cli.floppy_a.is_some(),
-        b_present: cli.floppy_b.is_some(),
+    // Create application state
+    let mut app_state = AppState {
+        menu: AppMenu::new(),
+        floppy_a_present: cli.floppy_a.is_some(),
+        floppy_b_present: cli.floppy_b.is_some(),
+        is_paused: false,
+        interrupt_logging_enabled: false,
     };
 
     // Update menu states
-    menu.update_menu_states(floppy_state.a_present, floppy_state.b_present);
+    app_state
+        .menu
+        .update_menu_states(app_state.floppy_a_present, app_state.floppy_b_present);
 
     // Exclusive mode state - when true, hides cursor and disables menu
     let mut exclusive_mode = false;
@@ -534,19 +555,24 @@ fn run(cli: Cli) -> Result<()> {
                         }
                     }
                     WindowEvent::RedrawRequested => {
-                        step_emulator(&mut computer, &mut pixels);
+                        step_emulator(&mut computer, &mut pixels, app_state.is_paused);
 
                         let full_output = process_egui_frame(
                             &egui_ctx,
                             &mut egui_state,
                             window,
                             exclusive_mode,
-                            &mut menu,
+                            &mut app_state,
                             &mut computer,
-                            &mut floppy_state,
                         );
 
-                        render_frame(&mut pixels, &mut egui_renderer, &egui_ctx, full_output, window);
+                        render_frame(
+                            &mut pixels,
+                            &mut egui_renderer,
+                            &egui_ctx,
+                            full_output,
+                            window,
+                        );
 
                         window.request_redraw();
                     }
@@ -774,5 +800,48 @@ fn eject_disk(
         Err(e) => {
             log::error!("Failed to eject disk: {}", e);
         }
+    }
+}
+
+fn handle_debug_action(
+    action: menu::MenuAction,
+    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    is_paused: &mut bool,
+    interrupt_logging_enabled: &mut bool,
+) {
+    use menu::MenuAction;
+
+    match action {
+        MenuAction::ToggleExecutionLogging => {
+            computer.exec_logging_enabled = !computer.exec_logging_enabled;
+            log::info!(
+                "Execution logging {}",
+                if computer.exec_logging_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
+        }
+        MenuAction::ToggleInterruptLogging => {
+            *interrupt_logging_enabled = !*interrupt_logging_enabled;
+            computer.set_log_interrupts(*interrupt_logging_enabled);
+            log::info!(
+                "Interrupt logging {}",
+                if *interrupt_logging_enabled {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
+            );
+        }
+        MenuAction::TogglePause => {
+            *is_paused = !*is_paused;
+            log::info!(
+                "Emulation {}",
+                if *is_paused { "paused" } else { "resumed" }
+            );
+        }
+        _ => {}
     }
 }

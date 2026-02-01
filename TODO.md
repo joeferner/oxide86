@@ -4,7 +4,6 @@
 - [ ] Add speed throttle and turbo to gui
 - [ ] Fix CLI colors
 - [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
-- [ ] GUI add menu items to enable debug
 - [ ] GUI add menu items for turbo
 - [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode
 - [ ] Update README.md to include major application and game release dates
