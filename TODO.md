@@ -1,6 +1,5 @@
 # TODO
 
-- [ ] PC Speaker - Use the Rodio crate to create PC speaker like sounds
 - [ ] Add speed throttle and turbo to gui
 - [ ] Fix CLI colors
 - [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
