@@ -73,33 +73,41 @@ fn main() {
     }
 }
 
-fn run(cli: Cli) -> Result<()> {
-    let event_loop = EventLoop::new().context("Failed to create event loop")?;
-
-    let window = WindowBuilder::new()
-        .with_title("emu86 - 8086 Emulator")
-        .with_inner_size(LogicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32))
-        .with_resizable(true)
-        .build(&event_loop)
-        .context("Failed to create window")?;
-
+fn create_window_and_pixels(
+    window: winit::window::Window,
+) -> Result<(&'static winit::window::Window, Pixels<'static>)> {
     // Leak window to get a 'static reference for the event loop
     let window: &'static _ = Box::leak(Box::new(window));
     let window_size = window.inner_size();
 
     // Create pixels surface
     let surface_texture = SurfaceTexture::new(window_size.width, window_size.height, window);
-    let mut pixels = Pixels::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, surface_texture)
+    let pixels = Pixels::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32, surface_texture)
         .context("Failed to create Pixels")?;
 
-    // Create GUI mouse first so we can clone it for serial devices if needed
-    // Initialize with actual window size, not logical screen size
-    let gui_mouse = GuiMouse::new(window_size.width as f64, window_size.height as f64);
+    Ok((window, pixels))
+}
 
-    // Initialize computer
-    let mut computer = create_computer(&cli, gui_mouse.clone_shared())?;
+fn setup_egui(
+    window: &'static winit::window::Window,
+    pixels: &Pixels,
+) -> (egui::Context, egui_winit::State, egui_wgpu::Renderer) {
+    let egui_ctx = egui::Context::default();
+    let egui_state =
+        egui_winit::State::new(egui_ctx.clone(), egui::ViewportId::ROOT, window, None, None);
 
-    // Attach serial devices if specified
+    let device = pixels.device();
+    let target_format = pixels.render_texture_format();
+    let egui_renderer = egui_wgpu::Renderer::new(device, target_format, None, 1);
+
+    (egui_ctx, egui_state, egui_renderer)
+}
+
+fn attach_serial_devices(
+    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    cli: &Cli,
+    gui_mouse: &GuiMouse,
+) {
     if let Some(device) = &cli.com1_device {
         match device.as_str() {
             "mouse" => {
@@ -129,115 +137,335 @@ fn run(cli: Cli) -> Result<()> {
             }
         }
     }
+}
 
-    // Initialize egui
-    let egui_ctx = egui::Context::default();
-    let mut egui_state = egui_winit::State::new(
-        egui_ctx.clone(),
-        egui::ViewportId::ROOT,
-        &window,
-        None,
-        None,
+/// Wayland + xrdp workaround: detect if MouseMotion reports absolute positions instead of deltas
+struct MouseMotionState {
+    absolute_mode: bool,
+    absolute_mode_detected: bool,
+    last_absolute_x: Option<f64>,
+    last_absolute_y: Option<f64>,
+}
+
+impl MouseMotionState {
+    fn new() -> Self {
+        Self {
+            absolute_mode: false,
+            absolute_mode_detected: false,
+            last_absolute_x: None,
+            last_absolute_y: None,
+        }
+    }
+
+    fn process_motion(&mut self, delta: (f64, f64)) -> (f64, f64) {
+        if !self.absolute_mode_detected {
+            // Detection phase: check if these look like absolute positions
+            let looks_absolute = (delta.0 > 100.0 && delta.1 > 100.0)
+                || (delta.0 > 0.0
+                    && delta.1 > 0.0
+                    && delta.0 < 10000.0
+                    && delta.1 < 10000.0
+                    && (delta.0.abs() > 50.0 || delta.1.abs() > 50.0));
+
+            if looks_absolute {
+                self.absolute_mode = true;
+                self.absolute_mode_detected = true;
+                log::warn!(
+                    "Detected absolute mouse positioning bug (Wayland+xrdp) - enabling workaround. \
+                    First values: ({:.2}, {:.2})",
+                    delta.0,
+                    delta.1
+                );
+            } else {
+                self.absolute_mode_detected = true;
+            }
+
+            if self.absolute_mode {
+                self.last_absolute_x = Some(delta.0);
+                self.last_absolute_y = Some(delta.1);
+                (0.0, 0.0)
+            } else {
+                delta
+            }
+        } else if self.absolute_mode {
+            let actual_delta = if let (Some(last_x), Some(last_y)) =
+                (self.last_absolute_x, self.last_absolute_y)
+            {
+                (delta.0 - last_x, delta.1 - last_y)
+            } else {
+                (0.0, 0.0)
+            };
+
+            self.last_absolute_x = Some(delta.0);
+            self.last_absolute_y = Some(delta.1);
+            actual_delta
+        } else {
+            delta
+        }
+    }
+
+    fn is_absolute_mode(&self) -> bool {
+        self.absolute_mode
+    }
+}
+
+fn handle_window_resize(
+    pixels: &mut Pixels,
+    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    new_size: winit::dpi::PhysicalSize<u32>,
+) {
+    if let Err(e) = pixels.resize_surface(new_size.width, new_size.height) {
+        log::error!("Failed to resize surface: {}", e);
+        std::process::exit(1);
+    }
+    computer
+        .bios_mut()
+        .mouse
+        .update_window_size(new_size.width as f64, new_size.height as f64);
+}
+
+fn handle_keyboard_input(
+    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    window: &winit::window::Window,
+    input: &winit::event::KeyEvent,
+    exclusive_mode: &mut bool,
+) -> bool {
+    // Check if F12 is pressed to exit exclusive mode
+    if input.state == ElementState::Pressed
+        && let PhysicalKey::Code(KeyCode::F12) = input.physical_key
+        && *exclusive_mode
+    {
+        *exclusive_mode = false;
+        window.set_cursor_visible(true);
+
+        if let Err(e) = window.set_cursor_grab(CursorGrabMode::None) {
+            log::warn!("Failed to release cursor grab: {}", e);
+        }
+
+        log::info!("Exited exclusive mode (F12)");
+        return true; // Event handled, skip further processing
+    }
+
+    // Convert the event to a KeyPress and fire INT 09h
+    if let Some(key) = computer.bios().keyboard.event_to_keypress(input) {
+        computer.process_keyboard_irq(key);
+    }
+
+    false
+}
+
+fn handle_mouse_button(
+    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    button: MouseButton,
+    state: ElementState,
+) {
+    let button_code = match button {
+        MouseButton::Left => 0,
+        MouseButton::Right => 1,
+        MouseButton::Middle => 2,
+        _ => return,
+    };
+    let pressed = state == ElementState::Pressed;
+    computer
+        .bios_mut()
+        .mouse
+        .process_button(button_code, pressed);
+}
+
+fn step_emulator(computer: &mut Computer<GuiKeyboard, PixelsVideoController>, pixels: &mut Pixels) {
+    const BATCH_SIZE: u32 = 10000;
+
+    for _ in 0..BATCH_SIZE {
+        if computer.is_halted() {
+            log::info!("Computer halted");
+            std::process::exit(0);
+        }
+        computer.step();
+    }
+
+    computer.update_video();
+
+    if computer.video_controller_mut().has_pending_updates() {
+        computer.video_controller_mut().render(pixels);
+    }
+}
+
+struct FloppyState {
+    a_present: bool,
+    b_present: bool,
+}
+
+fn process_egui_frame(
+    egui_ctx: &egui::Context,
+    egui_state: &mut egui_winit::State,
+    window: &winit::window::Window,
+    exclusive_mode: bool,
+    menu: &mut AppMenu,
+    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    floppy_state: &mut FloppyState,
+) -> egui::FullOutput {
+    let raw_input = egui_state.take_egui_input(window);
+    let full_output = egui_ctx.run(raw_input, |ctx| {
+        if !exclusive_mode {
+            let action = menu.render(ctx);
+
+            if let Some(action) = action {
+                if action.is_insert() {
+                    show_insert_dialog(
+                        action.drive_number(),
+                        computer,
+                        &mut floppy_state.a_present,
+                        &mut floppy_state.b_present,
+                        menu,
+                    );
+                } else {
+                    eject_disk(
+                        action.drive_number(),
+                        computer,
+                        &mut floppy_state.a_present,
+                        &mut floppy_state.b_present,
+                        menu,
+                    );
+                }
+            }
+        }
+    });
+
+    egui_state.handle_platform_output(window, full_output.platform_output.clone());
+    full_output
+}
+
+fn render_frame(
+    pixels: &mut Pixels,
+    egui_renderer: &mut egui_wgpu::Renderer,
+    egui_ctx: &egui::Context,
+    full_output: egui::FullOutput,
+    window: &winit::window::Window,
+) {
+    let screen_descriptor = egui_wgpu::ScreenDescriptor {
+        size_in_pixels: [window.inner_size().width, window.inner_size().height],
+        pixels_per_point: window.scale_factor() as f32,
+    };
+
+    let clipped_primitives = egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
+
+    // Update egui textures
+    for (id, image_delta) in &full_output.textures_delta.set {
+        egui_renderer.update_texture(pixels.device(), pixels.queue(), *id, image_delta);
+    }
+
+    // Render both pixels (emulator) and egui (menu) together
+    if let Err(e) = pixels.render_with(|encoder, render_target, context| {
+        context.scaling_renderer.render(encoder, render_target);
+
+        egui_renderer.update_buffers(
+            pixels.device(),
+            pixels.queue(),
+            encoder,
+            &clipped_primitives,
+            &screen_descriptor,
+        );
+
+        let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("egui render pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: render_target,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Load,
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
+
+        egui_renderer.render(&mut render_pass, &clipped_primitives, &screen_descriptor);
+
+        Ok(())
+    }) {
+        log::error!("Failed to render: {}", e);
+        std::process::exit(1);
+    }
+
+    // Free egui textures
+    for id in &full_output.textures_delta.free {
+        egui_renderer.free_texture(id);
+    }
+}
+
+fn run(cli: Cli) -> Result<()> {
+    let event_loop = EventLoop::new().context("Failed to create event loop")?;
+
+    let window = WindowBuilder::new()
+        .with_title("emu86 - 8086 Emulator")
+        .with_inner_size(LogicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32))
+        .with_resizable(true)
+        .build(&event_loop)
+        .context("Failed to create window")?;
+
+    let (window, mut pixels) = create_window_and_pixels(window)?;
+
+    // Create GUI mouse first so we can clone it for serial devices if needed
+    // Initialize with actual window size, not logical screen size
+    let gui_mouse = GuiMouse::new(
+        window.inner_size().width as f64,
+        window.inner_size().height as f64,
     );
 
-    // Create egui renderer using the same wgpu device as pixels
-    let device = pixels.device();
-    let target_format = pixels.render_texture_format();
+    // Initialize computer
+    let mut computer = create_computer(&cli, gui_mouse.clone_shared())?;
 
-    let mut egui_renderer = egui_wgpu::Renderer::new(device, target_format, None, 1);
+    // Attach serial devices if specified
+    attach_serial_devices(&mut computer, &cli, &gui_mouse);
+
+    // Initialize egui
+    let (egui_ctx, mut egui_state, mut egui_renderer) = setup_egui(window, &pixels);
 
     // Create menu
     let mut menu = AppMenu::new();
 
     // Check initial disk presence from CLI args
-    let mut floppy_a_present = cli.floppy_a.is_some();
-    let mut floppy_b_present = cli.floppy_b.is_some();
+    let mut floppy_state = FloppyState {
+        a_present: cli.floppy_a.is_some(),
+        b_present: cli.floppy_b.is_some(),
+    };
 
     // Update menu states
-    menu.update_menu_states(floppy_a_present, floppy_b_present);
+    menu.update_menu_states(floppy_state.a_present, floppy_state.b_present);
 
     // Exclusive mode state - when true, hides cursor and disables menu
     let mut exclusive_mode = false;
     // Track cursor position to detect clicks in menu area
     let mut cursor_y = 0.0;
 
-    // Wayland + xrdp workaround: detect if MouseMotion reports absolute positions instead of deltas
-    let mut mouse_absolute_mode = false;
-    let mut mouse_absolute_mode_detected = false;
-    let mut last_mouse_absolute_x: Option<f64> = None;
-    let mut last_mouse_absolute_y: Option<f64> = None;
+    let mut mouse_motion_state = MouseMotionState::new();
 
     event_loop
         .run(move |event, elwt| {
             elwt.set_control_flow(ControlFlow::Poll);
 
             // Handle device events for raw mouse input (only when cursor is truly locked)
-            if let Event::DeviceEvent { event, .. } = &event {
-                if let DeviceEvent::MouseMotion { delta } = event {
-                    if exclusive_mode {
-                        let (actual_delta_x, actual_delta_y) = if !mouse_absolute_mode_detected {
-                            // Detection phase: check if these look like absolute positions
-                            // Heuristic: absolute positions are usually positive and within screen bounds (0-1920, 0-1080, etc.)
-                            // Real deltas are typically small (-50 to +50 pixels) and can be negative
-                            let looks_absolute = (delta.0 > 100.0 && delta.1 > 100.0)
-                                || (delta.0 > 0.0 && delta.1 > 0.0 && delta.0 < 10000.0 && delta.1 < 10000.0
-                                    && (delta.0.abs() > 50.0 || delta.1.abs() > 50.0));
+            if let Event::DeviceEvent { event, .. } = &event
+                && let DeviceEvent::MouseMotion { delta } = event
+                && exclusive_mode
+            {
+                let (actual_delta_x, actual_delta_y) = mouse_motion_state.process_motion(*delta);
 
-                            if looks_absolute {
-                                mouse_absolute_mode = true;
-                                mouse_absolute_mode_detected = true;
-                                log::warn!(
-                                    "Detected absolute mouse positioning bug (Wayland+xrdp) - enabling workaround. \
-                                    First values: ({:.2}, {:.2})",
-                                    delta.0,
-                                    delta.1
-                                );
-                            } else {
-                                // After a few events, assume we're in normal mode
-                                mouse_absolute_mode_detected = true;
-                            }
+                log::debug!(
+                    "DeviceEvent::MouseMotion - raw=({:.2}, {:.2}), actual_delta=({:.2}, {:.2}), abs_mode={}",
+                    delta.0,
+                    delta.1,
+                    actual_delta_x,
+                    actual_delta_y,
+                    mouse_motion_state.is_absolute_mode()
+                );
 
-                            // For the first event in absolute mode, we can't compute a delta
-                            if mouse_absolute_mode {
-                                last_mouse_absolute_x = Some(delta.0);
-                                last_mouse_absolute_y = Some(delta.1);
-                                (0.0, 0.0) // No movement for first event
-                            } else {
-                                *delta // Normal delta mode
-                            }
-                        } else if mouse_absolute_mode {
-                            // Absolute mode: compute delta from previous position
-                            let actual_delta = if let (Some(last_x), Some(last_y)) =
-                                (last_mouse_absolute_x, last_mouse_absolute_y)
-                            {
-                                (delta.0 - last_x, delta.1 - last_y)
-                            } else {
-                                (0.0, 0.0)
-                            };
-
-                            last_mouse_absolute_x = Some(delta.0);
-                            last_mouse_absolute_y = Some(delta.1);
-                            actual_delta
-                        } else {
-                            // Normal delta mode
-                            *delta
-                        };
-
-                        log::debug!(
-                            "DeviceEvent::MouseMotion - raw=({:.2}, {:.2}), actual_delta=({:.2}, {:.2}), abs_mode={}",
-                            delta.0,
-                            delta.1,
-                            actual_delta_x,
-                            actual_delta_y,
-                            mouse_absolute_mode
-                        );
-
-                        computer
-                            .bios_mut()
-                            .mouse
-                            .process_relative_motion(actual_delta_x, actual_delta_y);
-                    }
-                }
+                computer
+                    .bios_mut()
+                    .mouse
+                    .process_relative_motion(actual_delta_x, actual_delta_y);
             }
 
             if let Event::WindowEvent { event, .. } = event {
@@ -290,39 +518,10 @@ fn run(cli: Cli) -> Result<()> {
                         std::process::exit(0);
                     }
                     WindowEvent::Resized(new_size) => {
-                        if let Err(e) = pixels.resize_surface(new_size.width, new_size.height) {
-                            log::error!("Failed to resize surface: {}", e);
-                            std::process::exit(1);
-                        }
-                        // Update mouse coordinate scaling for new window size
-                        computer
-                            .bios_mut()
-                            .mouse
-                            .update_window_size(new_size.width as f64, new_size.height as f64);
+                        handle_window_resize(&mut pixels, &mut computer, new_size);
                     }
                     WindowEvent::KeyboardInput { event: input, .. } => {
-                        // Check if F12 is pressed to exit exclusive mode
-                        if input.state == ElementState::Pressed
-                            && let PhysicalKey::Code(KeyCode::F12) = input.physical_key
-                            && exclusive_mode
-                        {
-                            // Exit exclusive mode
-                            exclusive_mode = false;
-                            window.set_cursor_visible(true);
-
-                            // Release cursor grab
-                            if let Err(e) = window.set_cursor_grab(CursorGrabMode::None) {
-                                log::warn!("Failed to release cursor grab: {}", e);
-                            }
-
-                            log::info!("Exited exclusive mode (F12)");
-                            return;
-                        }
-
-                        // Convert the event to a KeyPress and fire INT 09h
-                        if let Some(key) = computer.bios().keyboard.event_to_keypress(&input) {
-                            computer.process_keyboard_irq(key);
-                        }
+                        handle_keyboard_input(&mut computer, window, &input, &mut exclusive_mode);
                     }
                     WindowEvent::ModifiersChanged(modifiers) => {
                         computer
@@ -338,141 +537,25 @@ fn run(cli: Cli) -> Result<()> {
                         );
                     }
                     WindowEvent::MouseInput { button, state, .. } => {
-                        // Only process mouse buttons when in exclusive mode
-                        // (The first click enters exclusive mode, handled earlier)
                         if exclusive_mode {
-                            // Convert winit button to mouse button code
-                            let button_code = match button {
-                                MouseButton::Left => 0,
-                                MouseButton::Right => 1,
-                                MouseButton::Middle => 2,
-                                _ => return, // Ignore other buttons
-                            };
-                            let pressed = state == ElementState::Pressed;
-                            computer
-                                .bios_mut()
-                                .mouse
-                                .process_button(button_code, pressed);
+                            handle_mouse_button(&mut computer, button, state);
                         }
                     }
                     WindowEvent::RedrawRequested => {
-                        const BATCH_SIZE: u32 = 10000;
+                        step_emulator(&mut computer, &mut pixels);
 
-                        for _ in 0..BATCH_SIZE {
-                            if computer.is_halted() {
-                                log::info!("Computer halted");
-                                std::process::exit(0);
-                            }
-                            computer.step();
-                        }
+                        let full_output = process_egui_frame(
+                            &egui_ctx,
+                            &mut egui_state,
+                            window,
+                            exclusive_mode,
+                            &mut menu,
+                            &mut computer,
+                            &mut floppy_state,
+                        );
 
-                        // Update video from emulator state (only updates if video is dirty)
-                        computer.update_video();
+                        render_frame(&mut pixels, &mut egui_renderer, &egui_ctx, full_output, window);
 
-                        // Render emulator screen
-                        if computer.video_controller_mut().has_pending_updates() {
-                            computer.video_controller_mut().render(&mut pixels);
-                        }
-
-                        // Render egui (menu bar overlays emulator when not in exclusive mode)
-                        // Skip menu rendering when in exclusive mode
-                        let raw_input = egui_state.take_egui_input(window);
-                        let full_output = egui_ctx.run(raw_input, |ctx| {
-                            if !exclusive_mode {
-                                let action = menu.render(ctx);
-
-                                if let Some(action) = action {
-                                    if action.is_insert() {
-                                        show_insert_dialog(
-                                            action.drive_number(),
-                                            &mut computer,
-                                            &mut floppy_a_present,
-                                            &mut floppy_b_present,
-                                            &mut menu,
-                                        );
-                                    } else {
-                                        eject_disk(
-                                            action.drive_number(),
-                                            &mut computer,
-                                            &mut floppy_a_present,
-                                            &mut floppy_b_present,
-                                            &mut menu,
-                                        );
-                                    }
-                                }
-                            }
-                        });
-
-                        egui_state.handle_platform_output(window, full_output.platform_output);
-
-                        // Prepare egui rendering
-                        let screen_descriptor = egui_wgpu::ScreenDescriptor {
-                            size_in_pixels: [window.inner_size().width, window.inner_size().height],
-                            pixels_per_point: window.scale_factor() as f32,
-                        };
-
-                        let clipped_primitives =
-                            egui_ctx.tessellate(full_output.shapes, full_output.pixels_per_point);
-
-                        // Update egui textures
-                        for (id, image_delta) in &full_output.textures_delta.set {
-                            egui_renderer.update_texture(
-                                pixels.device(),
-                                pixels.queue(),
-                                *id,
-                                image_delta,
-                            );
-                        }
-
-                        // Render both pixels (emulator) and egui (menu) together
-                        if let Err(e) = pixels.render_with(|encoder, render_target, context| {
-                            // Render the emulator screen
-                            context.scaling_renderer.render(encoder, render_target);
-
-                            // Prepare egui buffers
-                            egui_renderer.update_buffers(
-                                pixels.device(),
-                                pixels.queue(),
-                                encoder,
-                                &clipped_primitives,
-                                &screen_descriptor,
-                            );
-
-                            // Then render egui on top
-                            let mut render_pass =
-                                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                                    label: Some("egui render pass"),
-                                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                                        view: render_target,
-                                        resolve_target: None,
-                                        ops: wgpu::Operations {
-                                            load: wgpu::LoadOp::Load,
-                                            store: wgpu::StoreOp::Store,
-                                        },
-                                    })],
-                                    depth_stencil_attachment: None,
-                                    occlusion_query_set: None,
-                                    timestamp_writes: None,
-                                });
-
-                            egui_renderer.render(
-                                &mut render_pass,
-                                &clipped_primitives,
-                                &screen_descriptor,
-                            );
-
-                            Ok(())
-                        }) {
-                            log::error!("Failed to render: {}", e);
-                            std::process::exit(1);
-                        }
-
-                        // Free egui textures
-                        for id in &full_output.textures_delta.free {
-                            egui_renderer.free_texture(id);
-                        }
-
-                        // Request another redraw
                         window.request_redraw();
                     }
                     _ => {}
