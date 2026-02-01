@@ -296,20 +296,6 @@ impl MouseInput for GuiMouse {
             .max(0)
             .min(Self::DOS_MAX_Y as i32) as u16;
 
-        log::debug!(
-            "GuiMouse: relative motion delta=({:.2}, {:.2}) -> mickeys_f64=({:.2}, {:.2}) -> mickeys=({}, {}) -> pos ({}, {}) -> ({}, {})",
-            delta_x,
-            delta_y,
-            mickeys_x_f64,
-            mickeys_y_f64,
-            mickeys_x,
-            mickeys_y,
-            state.state.x,
-            state.state.y,
-            new_x,
-            new_y
-        );
-
         state.state.x = new_x;
         state.state.y = new_y;
 

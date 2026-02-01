@@ -52,6 +52,7 @@
         "repr",
         "REPZ",
         "retf",
+        "rodio",
         "rsplit",
         "SAHF",
         "SCAS",

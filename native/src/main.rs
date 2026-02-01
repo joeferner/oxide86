@@ -4,7 +4,9 @@ use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::utils::parse_hex_or_dec;
-use emu86_core::{BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullSpeaker};
+use emu86_core::{
+    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullSpeaker, RodioSpeaker,
+};
 use std::fs::File;
 use std::panic;
 use std::time::{Duration, Instant};
@@ -96,7 +98,20 @@ fn main() -> Result<()> {
     let terminal_mouse = TerminalMouse::new();
     let mouse = Box::new(terminal_mouse.clone_shared());
     let video = TerminalVideo::new();
-    let speaker = Box::new(NullSpeaker);
+
+    // Try to create speaker with fallback
+    let speaker: Box<dyn emu86_core::SpeakerOutput> = match RodioSpeaker::new() {
+        Ok(rodio_speaker) => {
+            log::info!("PC speaker enabled (Rodio)");
+            Box::new(rodio_speaker)
+        }
+        Err(e) => {
+            log::warn!("PC speaker unavailable: {}", e);
+            log::info!("Using NullSpeaker (no audio)");
+            Box::new(NullSpeaker)
+        }
+    };
+
     let mut computer = Computer::new(keyboard, mouse, video, speaker);
 
     // Load floppy A:

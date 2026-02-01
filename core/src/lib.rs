@@ -13,6 +13,8 @@ pub use crate::io::Pit;
 pub use crate::keyboard::KeyboardInput;
 pub use crate::memory_allocator::MemoryAllocator;
 pub use crate::mouse::{MouseInput, MouseState, NullMouse};
+#[cfg(feature = "audio-rodio")]
+pub use crate::rodio_speaker::RodioSpeaker;
 pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
 pub use crate::speaker::{NullSpeaker, SpeakerOutput};
@@ -34,6 +36,8 @@ pub mod memory;
 pub mod memory_allocator;
 pub mod mouse;
 pub mod peripheral;
+#[cfg(feature = "audio-rodio")]
+pub mod rodio_speaker;
 pub mod serial_mouse;
 pub mod serial_port;
 pub mod speaker;

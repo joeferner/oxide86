@@ -241,7 +241,23 @@ pub fn update_speaker_output(&mut self) {
 }
 ```
 
-### Phase 5: Native Rodio Implementation
+### Phase 5: Native Rodio Implementation ✅ COMPLETED
+
+**Status**: Implemented on 2026-02-01
+
+**Completed work**:
+- Created `core/src/rodio_speaker.rs` with RodioSpeaker implementation (moved to core with feature flag)
+- Added `audio-rodio` feature flag to `core/Cargo.toml` with optional rodio dependency (version 0.21)
+- Implemented SquareWave generator with infinite square wave source for PC speaker emulation
+- Implemented RodioSpeaker struct using rodio 0.21 API (OutputStreamBuilder, Sink)
+- Updated `core/src/lib.rs` to conditionally export RodioSpeaker when audio-rodio feature is enabled
+- Enabled `audio-rodio` feature in both `native/Cargo.toml` and `native-gui/Cargo.toml`
+- Updated `native/src/main.rs` to use RodioSpeaker with graceful fallback to NullSpeaker
+- Updated `native-gui/src/main.rs` to use RodioSpeaker with graceful fallback to NullSpeaker
+- All tests passing, code formatted and compiles cleanly
+- Audio implementation is platform-independent and ready for WASM integration
+
+**Original requirements**:
 
 **File**: `native/src/rodio_speaker.rs` (CREATE)
 
@@ -329,7 +345,19 @@ Add dependency:
 rodio = "0.19"
 ```
 
-### Phase 6: Binary Integration
+### Phase 6: Binary Integration ✅ COMPLETED
+
+**Status**: Implemented on 2026-02-01 (completed as part of Phase 5)
+
+**Completed work**:
+- RodioSpeaker integrated into both native and native-gui binaries
+- Both binaries now import RodioSpeaker from emu86_core (with audio-rodio feature enabled)
+- Implemented graceful fallback to NullSpeaker if audio device is unavailable
+- Using Box<dyn SpeakerOutput> pattern (Option A) for runtime flexibility
+- Speaker initialization logs appropriate messages for both success and fallback cases
+- All code compiles cleanly and passes pre-commit checks
+
+**Original requirements**:
 
 **File**: `native/src/main.rs` (MODIFY)
 

@@ -9,7 +9,7 @@ use clap::Parser;
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
     BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullSpeaker,
-    PartitionedDisk, parse_mbr,
+    PartitionedDisk, RodioSpeaker, parse_mbr,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -454,15 +454,6 @@ fn run(cli: Cli) -> Result<()> {
             {
                 let (actual_delta_x, actual_delta_y) = mouse_motion_state.process_motion(*delta);
 
-                log::debug!(
-                    "DeviceEvent::MouseMotion - raw=({:.2}, {:.2}), actual_delta=({:.2}, {:.2}), abs_mode={}",
-                    delta.0,
-                    delta.1,
-                    actual_delta_x,
-                    actual_delta_y,
-                    mouse_motion_state.is_absolute_mode()
-                );
-
                 computer
                     .bios_mut()
                     .mouse
@@ -574,7 +565,20 @@ fn create_computer(
     let keyboard = GuiKeyboard::new();
     let mouse = Box::new(gui_mouse);
     let video = PixelsVideoController::new();
-    let speaker = Box::new(NullSpeaker);
+
+    // Try to create speaker with fallback
+    let speaker: Box<dyn emu86_core::SpeakerOutput> = match RodioSpeaker::new() {
+        Ok(rodio_speaker) => {
+            log::info!("PC speaker enabled (Rodio)");
+            Box::new(rodio_speaker)
+        }
+        Err(e) => {
+            log::warn!("PC speaker unavailable: {}", e);
+            log::info!("Using NullSpeaker (no audio)");
+            Box::new(NullSpeaker)
+        }
+    };
+
     let mut computer = Computer::new(keyboard, mouse, video, speaker);
 
     // Load floppy A:
