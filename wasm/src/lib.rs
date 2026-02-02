@@ -4,6 +4,8 @@
 //! platform-independent traits (KeyboardInput, MouseInput, VideoController, DiskBackend).
 
 pub mod web_keyboard;
+pub mod web_mouse;
 
 // Re-export for convenience
 pub use web_keyboard::WebKeyboard;
+pub use web_mouse::WebMouse;

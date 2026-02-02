@@ -47,9 +47,17 @@ Dependencies added to `wasm/Cargo.toml`:
 - `wasm-logger` for browser console logging
 
 
-### Phase 3: WebMouse Implementation
+### ~~Phase 3: WebMouse Implementation~~ ✅ COMPLETED
 
-**File**: `wasm/src/web_mouse.rs` (CREATE)
+**File**: `wasm/src/web_mouse.rs` (CREATED)
+
+Web-based mouse input has been implemented with comprehensive event handling for mouse position and button states. The implementation includes:
+- Canvas-based mouse event listeners (mousemove, mousedown, mouseup)
+- Coordinate scaling from canvas pixels to DOS graphics resolution (640x200)
+- Button state tracking (left, right, middle)
+- Mouse motion accumulation in mickeys (8 mickeys per pixel)
+- Support for window/canvas resizing via `update_window_size()`
+- Proper closure storage to prevent JavaScript garbage collection
 
 Implement mouse input using canvas mouse events:
 
