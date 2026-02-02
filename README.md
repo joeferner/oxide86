@@ -38,6 +38,9 @@ mcopy -i mouse.img -s * ::
   - :white_check_mark: MS-DOS 4.01
   - :white_check_mark: MS-DOS 5.0
 
+- Games
+  - :white_check_mark: Zork 1
+
 # History
 
 | Date | Title | Description |
