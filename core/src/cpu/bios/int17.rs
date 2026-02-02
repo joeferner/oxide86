@@ -40,11 +40,7 @@ impl Cpu {
     /// INT 0x17 - Printer Services
     /// AH register contains the function number
     /// DX register contains the printer number (0=LPT1, 1=LPT2, 2=LPT3)
-    pub(super) fn handle_int17<K: crate::KeyboardInput>(
-        &mut self,
-        _memory: &mut Memory,
-        io: &mut super::Bios<K>,
-    ) {
+    pub(super) fn handle_int17(&mut self, _memory: &mut Memory, io: &mut super::Bios) {
         let function = (self.ax >> 8) as u8; // Get AH
         let printer = self.dx as u8; // DX contains printer number
 
@@ -64,7 +60,7 @@ impl Cpu {
     ///   DX = printer number (0-2 for LPT1-LPT3)
     /// Output:
     ///   AH = printer status
-    fn int17_print_char<K: crate::KeyboardInput>(&mut self, printer: u8, io: &mut super::Bios<K>) {
+    fn int17_print_char(&mut self, printer: u8, io: &mut super::Bios) {
         let ch = (self.ax & 0xFF) as u8; // Get AL
 
         let status = io.printer_write(printer, ch);
@@ -78,11 +74,7 @@ impl Cpu {
     ///   DX = printer number
     /// Output:
     ///   AH = printer status
-    fn int17_initialize_printer<K: crate::KeyboardInput>(
-        &mut self,
-        printer: u8,
-        io: &mut super::Bios<K>,
-    ) {
+    fn int17_initialize_printer(&mut self, printer: u8, io: &mut super::Bios) {
         let status = io.printer_init(printer);
 
         // Set AH to printer status
@@ -94,7 +86,7 @@ impl Cpu {
     ///   DX = printer number
     /// Output:
     ///   AH = printer status
-    fn int17_get_status<K: crate::KeyboardInput>(&mut self, printer: u8, io: &mut super::Bios<K>) {
+    fn int17_get_status(&mut self, printer: u8, io: &mut super::Bios) {
         let status = io.printer_status(printer);
 
         // Set AH to printer status

@@ -11,11 +11,7 @@ pub const TIMER_TICKS_PER_DAY: u32 = 0x001800B0;
 impl Cpu {
     /// INT 0x1A - Time Services
     /// AH register contains the function number
-    pub(super) fn handle_int1a<K: crate::KeyboardInput>(
-        &mut self,
-        memory: &mut Memory,
-        io: &mut super::Bios<K>,
-    ) {
+    pub(super) fn handle_int1a(&mut self, memory: &mut Memory, io: &mut super::Bios) {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
@@ -81,7 +77,7 @@ impl Cpu {
     ///   CL = minutes (BCD format, 0-59)
     ///   DH = seconds (BCD format, 0-59)
     ///   DL = daylight saving time flag (0 = standard time, 1 = daylight time)
-    fn int1a_read_rtc_time<K: crate::KeyboardInput>(&mut self, io: &super::Bios<K>) {
+    fn int1a_read_rtc_time(&mut self, io: &super::Bios) {
         match io.get_rtc_time() {
             Some(time) => {
                 // Convert decimal values to BCD format
@@ -113,7 +109,7 @@ impl Cpu {
     ///   CL = year (BCD format, 0-99)
     ///   DH = month (BCD format, 1-12)
     ///   DL = day (BCD format, 1-31)
-    fn int1a_read_rtc_date<K: crate::KeyboardInput>(&mut self, io: &super::Bios<K>) {
+    fn int1a_read_rtc_date(&mut self, io: &super::Bios) {
         match io.get_rtc_date() {
             Some(date) => {
                 // Convert decimal values to BCD format

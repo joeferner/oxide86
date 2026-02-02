@@ -7,11 +7,7 @@ impl Cpu {
     ///
     /// This interrupt is used for inter-program communication and checking
     /// if various DOS features, TSRs, and extensions are installed.
-    pub(super) fn handle_int2f<K: crate::KeyboardInput>(
-        &mut self,
-        _memory: &mut Memory,
-        _io: &mut super::Bios<K>,
-    ) {
+    pub(super) fn handle_int2f(&mut self, _memory: &mut Memory, _io: &mut super::Bios) {
         let multiplex_num = (self.ax >> 8) as u8; // Get AH
         let subfunction = (self.ax & 0xFF) as u8; // Get AL
 

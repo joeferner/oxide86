@@ -94,12 +94,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Create computer with keyboard, mouse, video, and speaker
-    let keyboard = TerminalKeyboard::new();
+    let keyboard = Box::new(TerminalKeyboard::new());
     let terminal_mouse = TerminalMouse::new();
     let mouse = Box::new(terminal_mouse.clone_shared());
-    let video = TerminalVideo::new();
 
-    // Try to create speaker with fallback
+    // Initialize speaker BEFORE video so ALSA messages appear before alternate screen
     let speaker: Box<dyn emu86_core::SpeakerOutput> = match RodioSpeaker::new() {
         Ok(rodio_speaker) => {
             log::info!("PC speaker enabled (Rodio)");
@@ -111,6 +110,9 @@ fn main() -> Result<()> {
             Box::new(NullSpeaker)
         }
     };
+
+    // Video init switches to alternate screen - must come after speaker init
+    let video = TerminalVideo::new();
 
     let mut computer = Computer::new(keyboard, mouse, video, speaker);
 
@@ -284,9 +286,8 @@ fn main() -> Result<()> {
 }
 
 /// Run the emulator with F12 command mode support and mouse input
-/// Specific to TerminalKeyboard to support F12 command mode detection
 /// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
-fn run<V>(computer: &mut Computer<TerminalKeyboard, V>, clock_hz: Option<u64>)
+fn run<V>(computer: &mut Computer<V>, clock_hz: Option<u64>)
 where
     V: emu86_core::VideoController,
 {
@@ -322,10 +323,8 @@ where
 
                         // Check if it's F12 (command mode) - intercept for emulator, don't send to program
                         if key.scan_code == terminal_keyboard::SCAN_CODE_F12 {
-                            computer
-                                .bios_mut()
-                                .keyboard
-                                .process_event(Event::Key(key_event));
+                            let event = Event::Key(key_event);
+                            computer.bios_mut().keyboard.process_event(&event);
                             // Don't fire INT 09h for F12 - it's not visible to the emulated program
                         } else {
                             // Fire INT 09h (keyboard hardware interrupt) for all other keys

@@ -4,11 +4,7 @@ use crate::{
 };
 
 impl Cpu {
-    pub(super) fn handle_int15<K: crate::KeyboardInput>(
-        &mut self,
-        memory: &mut Memory,
-        _io: &mut super::Bios<K>,
-    ) {
+    pub(super) fn handle_int15(&mut self, memory: &mut Memory, _io: &mut super::Bios) {
         let function = (self.ax >> 8) as u8; // Get AH
         match function {
             0x10 => self.int15_top_view_multi_dos(),

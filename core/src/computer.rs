@@ -1,18 +1,19 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, DriveNumber, KeyboardInput, MouseInput, NullVideoController, SerialDevice, SpeakerOutput,
-    TextCell, Video, VideoController,
+    Bios, DriveNumber, MouseInput, NullVideoController, SerialDevice, SpeakerOutput, TextCell,
+    Video, VideoController,
     cpu::Cpu,
     cpu::bios::KeyPress,
     io::IoDevice,
+    keyboard::KeyboardInput,
     memory::{self, Memory},
 };
 
-pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> {
+pub struct Computer<V: VideoController = NullVideoController> {
     cpu: Cpu,
     memory: Memory,
-    bios: Bios<K>,
+    bios: Bios,
     io_device: IoDevice,
     video: Video,
     video_controller: V,
@@ -44,9 +45,9 @@ pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> 
     speaker_update_cycles: u64,
 }
 
-impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
+impl<V: VideoController> Computer<V> {
     pub fn new(
-        keyboard: K,
+        keyboard: Box<dyn KeyboardInput>,
         mouse: Box<dyn MouseInput>,
         video_controller: V,
         speaker: Box<dyn SpeakerOutput>,
@@ -660,12 +661,12 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
     }
 
     /// Get a reference to the BIOS (for disk saving on exit, etc.)
-    pub fn bios(&self) -> &Bios<K> {
+    pub fn bios(&self) -> &Bios {
         &self.bios
     }
 
     /// Get a mutable reference to the BIOS (for runtime operations like disk swapping)
-    pub fn bios_mut(&mut self) -> &mut Bios<K> {
+    pub fn bios_mut(&mut self) -> &mut Bios {
         &mut self.bios
     }
 

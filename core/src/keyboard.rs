@@ -81,4 +81,34 @@ pub trait KeyboardInput {
     /// - `Some(KeyPress)` with scan_code and ascii_code if a key is available
     /// - `None` if no key is available
     fn check_key(&mut self) -> Option<KeyPress>;
+
+    // Platform-specific methods with default implementations
+
+    /// Check if command mode (e.g., F12) has been requested.
+    /// Default implementation returns false.
+    fn is_command_mode_requested(&self) -> bool {
+        false
+    }
+
+    /// Clear the command mode request flag.
+    /// Default implementation does nothing.
+    fn clear_command_mode_request(&mut self) {}
+
+    /// Process a raw platform event (for CLI keyboard input).
+    /// Default implementation does nothing and returns false.
+    fn process_event(&mut self, _event: &dyn std::any::Any) -> bool {
+        false
+    }
+
+    /// Convert a platform event to a KeyPress without buffering it.
+    /// Used by GUI keyboards to extract KeyPress for firing keyboard interrupts.
+    /// Default implementation returns None.
+    fn event_to_keypress(&self, _event: &dyn std::any::Any) -> Option<KeyPress> {
+        None
+    }
+
+    /// Update modifier key state from a platform-specific event.
+    /// Used by GUI keyboards to track Shift, Ctrl, Alt state.
+    /// Default implementation does nothing.
+    fn update_modifiers(&mut self, _modifiers: &dyn std::any::Any) {}
 }

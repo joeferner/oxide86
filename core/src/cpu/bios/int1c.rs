@@ -17,10 +17,10 @@ impl Cpu {
     ///
     /// The default BIOS handler is a no-op (just IRET).
     #[allow(unused_variables)]
-    pub(super) fn handle_int1c<K: crate::KeyboardInput>(
+    pub(super) fn handle_int1c(
         &mut self,
         memory: &mut Memory,
-        io: &mut super::Bios<K>,
+        io: &mut super::Bios,
         video: &mut crate::video::Video,
     ) {
         // Default handler does nothing - just returns

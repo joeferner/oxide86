@@ -157,6 +157,24 @@ impl KeyboardInput for GuiKeyboard {
         // Note: DOS check operations typically consume the key
         self.keyboard_buffer.pop_front()
     }
+
+    fn event_to_keypress(&self, event: &dyn std::any::Any) -> Option<KeyPress> {
+        if let Some(key_event) = event.downcast_ref::<KeyEvent>() {
+            // Only process key press events, ignore key release
+            if key_event.state != ElementState::Pressed {
+                return None;
+            }
+            Some(key_event_to_keypress(key_event, self.modifiers))
+        } else {
+            None
+        }
+    }
+
+    fn update_modifiers(&mut self, modifiers: &dyn std::any::Any) {
+        if let Some(mods) = modifiers.downcast_ref::<ModifiersState>() {
+            self.modifiers = *mods;
+        }
+    }
 }
 
 /// Convert winit KeyEvent to KeyPress with scan code and ASCII code

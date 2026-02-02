@@ -35,21 +35,6 @@ impl TerminalKeyboard {
         }
     }
 
-    /// Check if command mode has been requested via F12.
-    ///
-    /// This is a CLI-specific feature that allows the user to interrupt
-    /// the emulation and enter a command prompt by pressing F12.
-    pub fn is_command_mode_requested(&self) -> bool {
-        self.command_mode_requested
-    }
-
-    /// Clear the command mode request flag.
-    ///
-    /// This should be called after handling the command mode request.
-    pub fn clear_command_mode_request(&mut self) {
-        self.command_mode_requested = false;
-    }
-
     /// Process a single crossterm event.
     ///
     /// This method is used by centralized event polling to dispatch keyboard
@@ -58,7 +43,7 @@ impl TerminalKeyboard {
     /// # Parameters
     ///
     /// - `event`: A crossterm Event to process
-    pub fn process_event(&mut self, event: Event) {
+    pub fn process_crossterm_event(&mut self, event: Event) {
         if let Event::Key(key_event) = event {
             let key = key_event_to_keypress(&key_event);
             log::debug!(
@@ -122,6 +107,23 @@ impl Default for TerminalKeyboard {
 }
 
 impl KeyboardInput for TerminalKeyboard {
+    fn is_command_mode_requested(&self) -> bool {
+        self.command_mode_requested
+    }
+
+    fn clear_command_mode_request(&mut self) {
+        self.command_mode_requested = false;
+    }
+
+    fn process_event(&mut self, event: &dyn std::any::Any) -> bool {
+        if let Some(event) = event.downcast_ref::<Event>() {
+            self.process_crossterm_event(event.clone());
+            true
+        } else {
+            false
+        }
+    }
+
     fn read_char(&mut self) -> Option<u8> {
         // Block until we get a key press
         loop {

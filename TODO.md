@@ -1,11 +1,9 @@
 # TODO
 
-- [ ] Fix CLI colors
-- [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
-- [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode
 - [ ] WASM
+- [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode
 - [ ] Update README.md to include major application and game release dates
-- [ ] Fix examples/audio.bas audio timing and high pitched noise
+- [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
 - [ ] 8086 Test text games
   - [ ] Zork
 - [ ] 8086 Test applications

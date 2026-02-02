@@ -30,11 +30,7 @@ impl Cpu {
     /// INT 0x14 - Serial Port Services
     /// AH register contains the function number
     /// DX register contains the port number (0=COM1, 1=COM2, 2=COM3, 3=COM4)
-    pub(super) fn handle_int14<K: crate::KeyboardInput>(
-        &mut self,
-        _memory: &mut Memory,
-        io: &mut super::Bios<K>,
-    ) {
+    pub(super) fn handle_int14(&mut self, _memory: &mut Memory, io: &mut super::Bios) {
         let function = (self.ax >> 8) as u8; // Get AH
         let port = self.dx as u8; // DX contains port number
 
@@ -56,11 +52,7 @@ impl Cpu {
     /// Output:
     ///   AH = line status
     ///   AL = modem status
-    fn int14_initialize_port<K: crate::KeyboardInput>(
-        &mut self,
-        port: u8,
-        io: &mut super::Bios<K>,
-    ) {
+    fn int14_initialize_port(&mut self, port: u8, io: &mut super::Bios) {
         let params_byte = (self.ax & 0xFF) as u8; // Get AL
         let params = SerialParams::from_int14_al(params_byte);
 
@@ -76,7 +68,7 @@ impl Cpu {
     ///   DX = port number
     /// Output:
     ///   AH = line status (bit 7 set if timeout)
-    fn int14_write_char<K: crate::KeyboardInput>(&mut self, port: u8, io: &mut super::Bios<K>) {
+    fn int14_write_char(&mut self, port: u8, io: &mut super::Bios) {
         let ch = (self.ax & 0xFF) as u8; // Get AL
 
         let status = io.serial_write(port, ch);
@@ -91,7 +83,7 @@ impl Cpu {
     /// Output:
     ///   AH = line status
     ///   AL = received character (if AH bit 7 = 0)
-    fn int14_read_char<K: crate::KeyboardInput>(&mut self, port: u8, io: &mut super::Bios<K>) {
+    fn int14_read_char(&mut self, port: u8, io: &mut super::Bios) {
         match io.serial_read(port) {
             Ok((ch, status)) => {
                 // Character received successfully
@@ -110,7 +102,7 @@ impl Cpu {
     /// Output:
     ///   AH = line status
     ///   AL = modem status
-    fn int14_get_status<K: crate::KeyboardInput>(&mut self, port: u8, io: &mut super::Bios<K>) {
+    fn int14_get_status(&mut self, port: u8, io: &mut super::Bios) {
         let status = io.serial_status(port);
 
         // Set return values

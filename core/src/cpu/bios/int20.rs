@@ -11,11 +11,7 @@ impl Cpu {
     /// Terminates the current program and returns control to the parent process.
     /// Note: CS must contain the PSP segment (this is handled automatically by
     /// COM programs since CS=PSP at start)
-    pub(super) fn handle_int20<K: crate::KeyboardInput>(
-        &mut self,
-        memory: &Memory,
-        io: &mut super::Bios<K>,
-    ) {
+    pub(super) fn handle_int20(&mut self, memory: &Memory, io: &mut super::Bios) {
         // INT 20h terminates by jumping to the address stored at PSP:0x0A (terminate address)
         // CS should contain the PSP segment
         let psp_segment = self.cs;

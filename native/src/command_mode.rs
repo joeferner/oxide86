@@ -6,8 +6,6 @@ use crossterm::{cursor, execute, terminal};
 use emu86_core::{BackedDisk, Computer, DriveNumber, FileDiskBackend};
 use std::io::{self, Stdout, Write, stdout};
 
-use crate::terminal_keyboard::TerminalKeyboard;
-
 /// Read a line of input in raw terminal mode with basic editing support
 fn read_line_raw() -> Option<String> {
     let mut line = String::new();
@@ -177,7 +175,7 @@ fn show_help(stdout: &mut Stdout) -> Result<()> {
 
 /// Handle command mode for runtime operations (floppy swapping, etc.)
 /// Returns true to continue emulation, false to halt
-pub fn handle_command_mode<V>(computer: &mut Computer<TerminalKeyboard, V>) -> Result<bool>
+pub fn handle_command_mode<V>(computer: &mut Computer<V>) -> Result<bool>
 where
     V: emu86_core::VideoController,
 {
@@ -301,11 +299,7 @@ fn format_drive(drive: DriveNumber) -> String {
     }
 }
 
-fn insert_floppy<V>(
-    computer: &mut Computer<TerminalKeyboard, V>,
-    drive: DriveNumber,
-    path: &str,
-) -> Result<()>
+fn insert_floppy<V>(computer: &mut Computer<V>, drive: DriveNumber, path: &str) -> Result<()>
 where
     V: emu86_core::VideoController,
 {
@@ -326,7 +320,7 @@ where
     Ok(())
 }
 
-fn eject_floppy<V>(computer: &mut Computer<TerminalKeyboard, V>, drive: DriveNumber) -> Result<()>
+fn eject_floppy<V>(computer: &mut Computer<V>, drive: DriveNumber) -> Result<()>
 where
     V: emu86_core::VideoController,
 {

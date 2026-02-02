@@ -110,7 +110,7 @@ fn setup_egui(
 }
 
 fn attach_serial_devices(
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     cli: &Cli,
     gui_mouse: &GuiMouse,
 ) {
@@ -213,7 +213,7 @@ impl MouseMotionState {
 
 fn handle_window_resize(
     pixels: &mut Pixels,
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     new_size: winit::dpi::PhysicalSize<u32>,
 ) {
     if let Err(e) = pixels.resize_surface(new_size.width, new_size.height) {
@@ -227,7 +227,7 @@ fn handle_window_resize(
 }
 
 fn handle_keyboard_input(
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     window: &winit::window::Window,
     input: &winit::event::KeyEvent,
     exclusive_mode: &mut bool,
@@ -257,7 +257,7 @@ fn handle_keyboard_input(
 }
 
 fn handle_mouse_button(
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     button: MouseButton,
     state: ElementState,
 ) {
@@ -275,7 +275,7 @@ fn handle_mouse_button(
 }
 
 fn step_emulator(
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     pixels: &mut Pixels,
     is_paused: bool,
     turbo_mode: bool,
@@ -340,7 +340,7 @@ fn process_egui_frame(
     window: &winit::window::Window,
     exclusive_mode: bool,
     app_state: &mut AppState,
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
 ) -> egui::FullOutput {
     // Update menu states before rendering
     app_state.menu.update_debug_states(
@@ -583,10 +583,8 @@ fn run(cli: Cli) -> Result<()> {
                         handle_keyboard_input(&mut computer, window, &input, &mut exclusive_mode);
                     }
                     WindowEvent::ModifiersChanged(modifiers) => {
-                        computer
-                            .bios_mut()
-                            .keyboard
-                            .update_modifiers(modifiers.state());
+                        let mods = modifiers.state();
+                        computer.bios_mut().keyboard.update_modifiers(&mods);
 
                         // Update BDA keyboard flags so INT 16h AH=02h works correctly
                         computer.update_keyboard_flags(
@@ -636,12 +634,9 @@ fn run(cli: Cli) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Event loop error: {}", e))
 }
 
-fn create_computer(
-    cli: &Cli,
-    gui_mouse: GuiMouse,
-) -> Result<Computer<GuiKeyboard, PixelsVideoController>> {
+fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVideoController>> {
     // Create computer with keyboard, mouse, video, and speaker
-    let keyboard = GuiKeyboard::new();
+    let keyboard = Box::new(GuiKeyboard::new());
     let mouse = Box::new(gui_mouse);
     let video = PixelsVideoController::new();
 
@@ -759,7 +754,7 @@ fn create_computer(
 
 fn show_insert_dialog(
     slot: DriveNumber,
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     floppy_a_present: &mut bool,
     floppy_b_present: &mut bool,
     menu: &mut AppMenu,
@@ -792,7 +787,7 @@ fn show_insert_dialog(
 fn load_and_insert_disk(
     slot: DriveNumber,
     path: &str,
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     floppy_a_present: &mut bool,
     floppy_b_present: &mut bool,
     menu: &mut AppMenu,
@@ -830,7 +825,7 @@ fn load_and_insert_disk(
 
 fn eject_disk(
     slot: DriveNumber,
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     floppy_a_present: &mut bool,
     floppy_b_present: &mut bool,
     menu: &mut AppMenu,
@@ -858,7 +853,7 @@ fn eject_disk(
 
 fn handle_debug_action(
     action: menu::MenuAction,
-    computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
+    computer: &mut Computer<PixelsVideoController>,
     is_paused: &mut bool,
     interrupt_logging_enabled: &mut bool,
     turbo_mode: &mut bool,

@@ -5,10 +5,10 @@ use crate::memory::Memory;
 impl Cpu {
     /// IN AL, imm8 (0xE4)
     /// Read byte from immediate 8-bit port address to AL
-    pub(in crate::cpu) fn in_al_imm8<K: crate::KeyboardInput>(
+    pub(in crate::cpu) fn in_al_imm8(
         &mut self,
         memory: &Memory,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         let port = self.fetch_byte(memory) as u16;
@@ -26,10 +26,10 @@ impl Cpu {
 
     /// IN AX, imm8 (0xE5)
     /// Read word from immediate 8-bit port address to AX
-    pub(in crate::cpu) fn in_ax_imm8<K: crate::KeyboardInput>(
+    pub(in crate::cpu) fn in_ax_imm8(
         &mut self,
         memory: &Memory,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         let port = self.fetch_byte(memory) as u16;
@@ -54,10 +54,10 @@ impl Cpu {
 
     /// OUT imm8, AL (0xE6)
     /// Write byte from AL to immediate 8-bit port address
-    pub(in crate::cpu) fn out_imm8_al<K: crate::KeyboardInput>(
+    pub(in crate::cpu) fn out_imm8_al(
         &mut self,
         memory: &Memory,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         let port = self.fetch_byte(memory) as u16;
@@ -74,10 +74,10 @@ impl Cpu {
 
     /// OUT imm8, AX (0xE7)
     /// Write word from AX to immediate 8-bit port address
-    pub(in crate::cpu) fn out_imm8_ax<K: crate::KeyboardInput>(
+    pub(in crate::cpu) fn out_imm8_ax(
         &mut self,
         memory: &Memory,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         let port = self.fetch_byte(memory) as u16;
@@ -101,9 +101,9 @@ impl Cpu {
 
     /// IN AL, DX (0xEC)
     /// Read byte from port address in DX to AL
-    pub(in crate::cpu) fn in_al_dx<K: crate::KeyboardInput>(
+    pub(in crate::cpu) fn in_al_dx(
         &mut self,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         let port = self.dx;
@@ -121,9 +121,9 @@ impl Cpu {
 
     /// IN AX, DX (0xED)
     /// Read word from port address in DX to AX
-    pub(in crate::cpu) fn in_ax_dx<K: crate::KeyboardInput>(
+    pub(in crate::cpu) fn in_ax_dx(
         &mut self,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         let port = self.dx;
@@ -148,9 +148,9 @@ impl Cpu {
 
     /// OUT DX, AL (0xEE)
     /// Write byte from AL to port address in DX
-    pub(in crate::cpu) fn out_dx_al<K: crate::KeyboardInput>(
+    pub(in crate::cpu) fn out_dx_al(
         &mut self,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         let port = self.dx;
@@ -167,9 +167,9 @@ impl Cpu {
 
     /// OUT DX, AX (0xEF)
     /// Write word from AX to port address in DX
-    pub(in crate::cpu) fn out_dx_ax<K: crate::KeyboardInput>(
+    pub(in crate::cpu) fn out_dx_ax(
         &mut self,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         let port = self.dx;

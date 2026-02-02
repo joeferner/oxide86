@@ -215,22 +215,21 @@ impl Default for SharedBiosState {
 }
 
 /// BIOS implementation for handling interrupt I/O operations
-/// Generic over KeyboardInput (for platform-specific keyboard handling)
-/// Mouse uses dynamic dispatch (Box<dyn MouseInput>) for flexibility
-pub struct Bios<K: KeyboardInput> {
+/// Uses dynamic dispatch for keyboard and mouse input handlers
+pub struct Bios {
     /// Shared BIOS state (drive manager, memory allocator, device handles)
     pub shared: SharedBiosState,
-    /// Keyboard input handler (platform-specific)
-    pub keyboard: K,
+    /// Keyboard input handler (platform-specific via trait object)
+    pub keyboard: Box<dyn KeyboardInput>,
     /// Mouse input handler (platform-independent via trait object)
     pub mouse: Box<dyn MouseInput>,
     /// Serial port controllers (COM1 and COM2)
     pub serial_ports: [SerialPortController; 2],
 }
 
-impl<K: KeyboardInput> Bios<K> {
+impl Bios {
     /// Create a new Bios with the provided keyboard and mouse input handlers
-    pub fn new(keyboard: K, mouse: Box<dyn MouseInput>) -> Self {
+    pub fn new(keyboard: Box<dyn KeyboardInput>, mouse: Box<dyn MouseInput>) -> Self {
         Self {
             shared: SharedBiosState::new(),
             keyboard,
@@ -825,22 +824,22 @@ impl Cpu {
 
     /// Handle BIOS interrupt directly without checking IVT
     /// Used when DOS chains back to BIOS via CALL FAR to F000:XXXX
-    pub(crate) fn handle_bios_interrupt_direct<K: KeyboardInput>(
+    pub(crate) fn handle_bios_interrupt_direct(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
-        io: &mut Bios<K>,
+        io: &mut Bios,
         video: &mut crate::video::Video,
     ) {
         self.handle_bios_interrupt_impl(int_num, memory, io, video);
     }
 
     /// Internal implementation of BIOS interrupt handling
-    pub(super) fn handle_bios_interrupt_impl<K: KeyboardInput>(
+    pub(super) fn handle_bios_interrupt_impl(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
-        io: &mut Bios<K>,
+        io: &mut Bios,
         video: &mut crate::video::Video,
     ) {
         match int_num {

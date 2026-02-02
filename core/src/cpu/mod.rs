@@ -136,11 +136,11 @@ impl Cpu {
     }
 
     // Execute an INT instruction with BIOS I/O handler
-    pub fn execute_int_with_io<K: crate::KeyboardInput>(
+    pub fn execute_int_with_io(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
-        io: &mut crate::cpu::bios::Bios<K>,
+        io: &mut crate::cpu::bios::Bios,
         video: &mut crate::video::Video,
     ) {
         // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
@@ -187,11 +187,11 @@ impl Cpu {
     }
 
     // Decode and execute instruction with I/O port support
-    pub(crate) fn execute_with_io<K: crate::KeyboardInput>(
+    pub(crate) fn execute_with_io(
         &mut self,
         opcode: u8,
         memory: &mut Memory,
-        bios: &mut crate::cpu::bios::Bios<K>,
+        bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
         match opcode {

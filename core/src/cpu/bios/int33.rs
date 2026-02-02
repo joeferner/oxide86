@@ -3,12 +3,12 @@ use crate::memory::{
     BDA_MOUSE_BUTTONS, BDA_MOUSE_MAX_X, BDA_MOUSE_MAX_Y, BDA_MOUSE_MIN_X, BDA_MOUSE_MIN_Y,
     BDA_MOUSE_VISIBLE, BDA_MOUSE_X, BDA_MOUSE_Y, BDA_SEGMENT,
 };
-use crate::{KeyboardInput, cpu::Cpu, memory::Memory};
+use crate::{cpu::Cpu, memory::Memory};
 
 impl Cpu {
     /// INT 0x33 - Mouse Services
     /// AX register contains the function number
-    pub(super) fn handle_int33<K: KeyboardInput>(&mut self, memory: &mut Memory, io: &mut Bios<K>) {
+    pub(super) fn handle_int33(&mut self, memory: &mut Memory, io: &mut Bios) {
         let function = self.ax;
 
         match function {
@@ -32,7 +32,7 @@ impl Cpu {
     /// Output:
     ///   AX = FFFFh if mouse support is available, 0000h otherwise
     ///   BX = number of buttons (typically 2 or 3)
-    fn int33_reset_driver<K: KeyboardInput>(&mut self, memory: &mut Memory, io: &mut Bios<K>) {
+    fn int33_reset_driver(&mut self, memory: &mut Memory, io: &mut Bios) {
         if io.mouse_is_present() {
             self.ax = 0xFFFF; // Mouse present
             self.bx = 3; // Report 3 buttons (left, right, middle)
@@ -98,11 +98,7 @@ impl Cpu {
     ///   BX = button status (bit 0=left, bit 1=right, bit 2=middle)
     ///   CX = horizontal position (column)
     ///   DX = vertical position (row)
-    fn int33_get_position_and_buttons<K: KeyboardInput>(
-        &mut self,
-        memory: &mut Memory,
-        io: &mut Bios<K>,
-    ) {
+    fn int33_get_position_and_buttons(&mut self, memory: &mut Memory, io: &mut Bios) {
         // Get current state from mouse device
         let state = io.mouse_get_state();
 
@@ -218,11 +214,7 @@ impl Cpu {
     /// Notes:
     ///   Motion counters are reset to 0 after reading
     ///   Mickeys are raw mouse movement units (typically 8 mickeys per pixel)
-    fn int33_read_motion_counters<K: KeyboardInput>(
-        &mut self,
-        _memory: &mut Memory,
-        io: &mut Bios<K>,
-    ) {
+    fn int33_read_motion_counters(&mut self, _memory: &mut Memory, io: &mut Bios) {
         let (motion_x, motion_y) = io.mouse_get_motion();
 
         self.cx = motion_x as u16;

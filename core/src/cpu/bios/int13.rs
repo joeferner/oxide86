@@ -7,11 +7,7 @@ use crate::{
 impl Cpu {
     /// INT 0x13 - BIOS Disk Services
     /// AH register contains the function number
-    pub(super) fn handle_int13<K: crate::KeyboardInput>(
-        &mut self,
-        memory: &mut Memory,
-        io: &mut super::Bios<K>,
-    ) {
+    pub(super) fn handle_int13(&mut self, memory: &mut Memory, io: &mut super::Bios) {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
@@ -39,7 +35,7 @@ impl Cpu {
     /// Output:
     ///   AH = status (0 = success)
     ///   CF = clear if success, set if error
-    fn int13_reset_disk<K: crate::KeyboardInput>(&mut self, io: &mut super::Bios<K>) {
+    fn int13_reset_disk(&mut self, io: &mut super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         let success = io.disk_reset(drive);
@@ -65,11 +61,7 @@ impl Cpu {
     ///   AH = status (0 = success)
     ///   AL = number of sectors read
     ///   CF = clear if success, set if error
-    fn int13_read_sectors<K: crate::KeyboardInput>(
-        &mut self,
-        memory: &mut Memory,
-        io: &mut super::Bios<K>,
-    ) {
+    fn int13_read_sectors(&mut self, memory: &mut Memory, io: &mut super::Bios) {
         let count = (self.ax & 0xFF) as u8; // AL
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
@@ -142,11 +134,7 @@ impl Cpu {
     ///   AH = status (0 = success)
     ///   AL = number of sectors written
     ///   CF = clear if success, set if error
-    fn int13_write_sectors<K: crate::KeyboardInput>(
-        &mut self,
-        memory: &Memory,
-        io: &mut super::Bios<K>,
-    ) {
+    fn int13_write_sectors(&mut self, memory: &Memory, io: &mut super::Bios) {
         let count = (self.ax & 0xFF) as u8; // AL
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
@@ -192,7 +180,7 @@ impl Cpu {
     ///   AH = status (0 = success)
     ///   AL = number of sectors verified
     ///   CF = clear if success, set if error
-    fn int13_verify_sectors<K: crate::KeyboardInput>(&mut self, io: &mut super::Bios<K>) {
+    fn int13_verify_sectors(&mut self, io: &mut super::Bios) {
         let count = (self.ax & 0xFF) as u8; // AL
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
@@ -233,7 +221,7 @@ impl Cpu {
     /// Output:
     ///   AH = status (0 = success)
     ///   CF = clear if success, set if error
-    fn int13_format_track<K: crate::KeyboardInput>(&mut self, io: &mut super::Bios<K>) {
+    fn int13_format_track(&mut self, io: &mut super::Bios) {
         let sectors_per_track = (self.ax & 0xFF) as u8; // AL
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let head = (self.dx >> 8) as u8; // DH
@@ -265,7 +253,7 @@ impl Cpu {
     ///     CL = maximum sector number (bits 0-5) + high 2 bits of max cylinder (bits 6-7)
     ///     DH = maximum head number
     ///     DL = number of drives
-    fn int13_get_drive_params<K: crate::KeyboardInput>(&mut self, io: &super::Bios<K>) {
+    fn int13_get_drive_params(&mut self, io: &super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         if self.log_interrupts_enabled {
@@ -316,7 +304,7 @@ impl Cpu {
     ///   CF = clear if drive exists, set if drive does not exist
     ///   For type 0x03 (fixed disk):
     ///     CX:DX = number of 512-byte sectors (32-bit value, CX=high word, DX=low word)
-    fn int13_get_disk_type<K: crate::KeyboardInput>(&mut self, io: &super::Bios<K>) {
+    fn int13_get_disk_type(&mut self, io: &super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         match io.disk_get_type(drive) {
@@ -353,7 +341,7 @@ impl Cpu {
     ///     0x06 = disk changed (changeline active)
     ///     0x80 = drive not ready (timeout)
     ///   CF = clear if disk not changed, set if changed or error
-    fn int13_detect_disk_change<K: crate::KeyboardInput>(&mut self, io: &mut super::Bios<K>) {
+    fn int13_detect_disk_change(&mut self, io: &mut super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         match io.disk_detect_change(drive) {
@@ -388,11 +376,7 @@ impl Cpu {
     ///   CF = clear if successful, set on error
     ///   On success:
     ///     ES:DI = pointer to 11-byte Disk Base Table (DBT)
-    fn int13_set_dasd_type<K: crate::KeyboardInput>(
-        &mut self,
-        memory: &mut Memory,
-        io: &super::Bios<K>,
-    ) {
+    fn int13_set_dasd_type(&mut self, memory: &mut Memory, io: &super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
         let tracks_low = (self.cx >> 8) as u8; // CH
         let sectors_and_tracks_high = (self.cx & 0xFF) as u8; // CL

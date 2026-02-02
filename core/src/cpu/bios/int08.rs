@@ -16,10 +16,10 @@ impl Cpu {
     ///
     /// Programs can install custom INT 0x1C handlers for periodic tasks like
     /// music playback (QBASIC PLAY), animation, or polling.
-    pub(super) fn handle_int08<K: crate::KeyboardInput>(
+    pub(super) fn handle_int08(
         &mut self,
         memory: &mut Memory,
-        io: &mut super::Bios<K>,
+        io: &mut super::Bios,
         video: &mut crate::video::Video,
     ) {
         // Read current timer counter from BDA (4 bytes, little-endian)
