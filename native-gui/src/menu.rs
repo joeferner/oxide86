@@ -145,43 +145,31 @@ impl AppMenu {
                 });
 
                 ui.menu_button("Debug", |ui| {
-                    // Execution Logging with checkmark
-                    let exec_label = if self.exec_logging_enabled {
-                        "[X] Execution Logging"
-                    } else {
-                        "[ ] Execution Logging"
-                    };
-                    if ui.button(exec_label).clicked() {
+                    // Execution Logging with checkbox
+                    let mut b = self.exec_logging_enabled;
+                    if ui.checkbox(&mut b, "Execution Logging").clicked() {
                         action = Some(MenuAction::ToggleExecutionLogging);
                         ui.close_menu();
                     }
 
-                    // Interrupt Logging with checkmark
-                    let int_label = if self.interrupt_logging_enabled {
-                        "[X] Interrupt Logging"
-                    } else {
-                        "[ ] Interrupt Logging"
-                    };
-                    if ui.button(int_label).clicked() {
+                    // Interrupt Logging with checkbox
+                    let mut b = self.interrupt_logging_enabled;
+                    if ui.checkbox(&mut b, "Interrupt Logging").clicked() {
                         action = Some(MenuAction::ToggleInterruptLogging);
                         ui.close_menu();
                     }
 
                     ui.separator();
 
-                    // Turbo mode with checkmark
-                    let turbo_label = if self.turbo_mode {
-                        "[X] Turbo Mode"
-                    } else {
-                        "[ ] Turbo Mode"
-                    };
-                    if ui.button(turbo_label).clicked() {
+                    // Turbo mode with checkbox
+                    let mut b = self.turbo_mode;
+                    if ui.checkbox(&mut b, "Turbo Mode").clicked() {
                         action = Some(MenuAction::ToggleTurbo);
                         ui.close_menu();
                     }
 
                     // Pause/Run with dynamic label
-                    let pause_label = if self.is_paused { ">> Run" } else { "|| Pause" };
+                    let pause_label = if self.is_paused { "▶ Run" } else { "⏸ Pause" };
                     if ui.button(pause_label).clicked() {
                         action = Some(MenuAction::TogglePause);
                         ui.close_menu();
