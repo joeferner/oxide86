@@ -21,85 +21,9 @@ Implement WebAssembly support for emu86 to run the 8086 emulator in web browsers
 
 ## Implementation Phases
 
-### Phase 1: Memory-Backed Disk Storage
+### ~~Phase 1: Memory-Backed Disk Storage~~ ✅ COMPLETED
 
-**File**: `core/src/disk.rs` (MODIFY)
-
-Add `MemoryDiskBackend` that stores disk image in a `Vec<u8>`:
-
-```rust
-/// Memory-backed disk storage for WASM and testing.
-/// Entire disk image is stored in memory.
-pub struct MemoryDiskBackend {
-    data: Vec<u8>,
-}
-
-impl MemoryDiskBackend {
-    /// Create a new memory-backed disk from existing data
-    pub fn new(data: Vec<u8>) -> Self {
-        Self { data }
-    }
-
-    /// Create a new blank disk of the specified size
-    pub fn new_blank(size: usize) -> Self {
-        Self {
-            data: vec![0; size],
-        }
-    }
-
-    /// Get a copy of the disk data (for downloading)
-    pub fn get_data(&self) -> &[u8] {
-        &self.data
-    }
-
-    /// Get the size of the disk
-    pub fn size(&self) -> usize {
-        self.data.len()
-    }
-}
-
-impl DiskBackend for MemoryDiskBackend {
-    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<usize> {
-        let offset = offset as usize;
-        if offset >= self.data.len() {
-            return Ok(0);
-        }
-        let end = (offset + buf.len()).min(self.data.len());
-        let bytes_to_read = end - offset;
-        buf[..bytes_to_read].copy_from_slice(&self.data[offset..end]);
-        Ok(bytes_to_read)
-    }
-
-    fn write_at(&mut self, offset: u64, buf: &[u8]) -> Result<usize> {
-        let offset = offset as usize;
-        if offset >= self.data.len() {
-            return Ok(0);
-        }
-        let end = (offset + buf.len()).min(self.data.len());
-        let bytes_to_write = end - offset;
-        self.data[offset..end].copy_from_slice(&buf[..bytes_to_write]);
-        Ok(bytes_to_write)
-    }
-
-    fn flush(&mut self) -> Result<()> {
-        Ok(()) // No-op for memory backend
-    }
-
-    fn size(&self) -> u64 {
-        self.data.len() as u64
-    }
-}
-```
-
-**File**: `core/src/lib.rs` (MODIFY)
-
-Export `MemoryDiskBackend`:
-```rust
-pub use crate::disk::{
-    BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage,
-    MemoryDiskBackend, PartitionedDisk, SECTOR_SIZE, parse_mbr,
-};
-```
+Memory-backed disk storage has been implemented in `core/src/disk.rs` with the `MemoryDiskBackend` struct and exported from `core/src/lib.rs`. The `BackedDisk` struct now includes a `backend()` accessor method to retrieve the underlying backend for operations like downloading disk images.
 
 ### Phase 2: WebKeyboard Implementation
 

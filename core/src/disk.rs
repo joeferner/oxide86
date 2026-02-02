@@ -226,6 +226,11 @@ impl<B: DiskBackend> BackedDisk<B> {
         self.read_only = read_only;
     }
 
+    /// Get a reference to the underlying backend
+    pub fn backend(&self) -> std::cell::Ref<'_, B> {
+        self.backend.borrow()
+    }
+
     /// Flush any pending writes to storage
     pub fn flush(&self) -> Result<()> {
         self.backend.borrow_mut().flush()
@@ -570,6 +575,69 @@ impl<D: DiskController> DiskController for PartitionedDisk<D> {
 
     fn is_read_only(&self) -> bool {
         self.disk.is_read_only()
+    }
+}
+
+/// Memory-backed disk storage for WASM and testing.
+/// Entire disk image is stored in memory.
+#[derive(Debug, Clone)]
+pub struct MemoryDiskBackend {
+    data: Vec<u8>,
+}
+
+impl MemoryDiskBackend {
+    /// Create a new memory-backed disk from existing data
+    pub fn new(data: Vec<u8>) -> Self {
+        Self { data }
+    }
+
+    /// Create a new blank disk of the specified size
+    pub fn new_blank(size: usize) -> Self {
+        Self {
+            data: vec![0; size],
+        }
+    }
+
+    /// Get a copy of the disk data (for downloading)
+    pub fn get_data(&self) -> &[u8] {
+        &self.data
+    }
+
+    /// Get the size of the disk
+    pub fn size(&self) -> usize {
+        self.data.len()
+    }
+}
+
+impl DiskBackend for MemoryDiskBackend {
+    fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+        let offset = offset as usize;
+        if offset >= self.data.len() {
+            return Ok(0);
+        }
+        let end = (offset + buf.len()).min(self.data.len());
+        let bytes_to_read = end - offset;
+        buf[..bytes_to_read].copy_from_slice(&self.data[offset..end]);
+        Ok(bytes_to_read)
+    }
+
+    fn write_at(&mut self, offset: u64, buf: &[u8]) -> Result<usize> {
+        let offset = offset as usize;
+        if offset >= self.data.len() {
+            return Ok(0);
+        }
+        let end = (offset + buf.len()).min(self.data.len());
+        let bytes_to_write = end - offset;
+        self.data[offset..end].copy_from_slice(&buf[..bytes_to_write]);
+        Ok(bytes_to_write)
+    }
+
+    fn flush(&mut self) -> Result<()> {
+        Ok(()) // No-op for memory backend
+    }
+
+    fn size(&self) -> u64 {
+        self.data.len() as u64
     }
 }
 

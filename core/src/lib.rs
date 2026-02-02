@@ -3,8 +3,8 @@ use std::fmt::{Debug, Display};
 pub use crate::cpu::bios::{Bios, DosDevice, DriveParams, KeyPress, SharedBiosState};
 pub use crate::decoder::{DecodedInstruction, decode_instruction, decode_instruction_with_regs};
 pub use crate::disk::{
-    BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, PartitionedDisk, SECTOR_SIZE,
-    parse_mbr,
+    BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, MemoryDiskBackend,
+    PartitionedDisk, SECTOR_SIZE, parse_mbr,
 };
 #[cfg(not(target_arch = "wasm32"))]
 pub use crate::disk_backend::FileDiskBackend;

@@ -1,6 +1,5 @@
 # TODO
 
-- [ ] WASM
 - [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode
 - [ ] Update README.md to include major application and game release dates
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
