@@ -13,6 +13,7 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 - logs are written to emu86.log
 - use Rust crates when possible
 - when logging unimplemented features use log::warn!
+- always write plans to the plans directory with a meaningful name
 
 ## Architecture
 
