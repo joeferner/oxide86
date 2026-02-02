@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] GUI debug replace button with checkbox
 - [ ] Fix CLI colors
 - [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
 - [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode

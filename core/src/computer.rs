@@ -38,6 +38,8 @@ pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> 
     pending_serial_irqs: std::collections::VecDeque<u8>, // Serial port numbers (0=COM1, 1=COM2)
     /// Pending timer IRQs (INT 08h) - counter to handle multiple ticks if CPU is slow
     pending_timer_irqs: u32,
+    /// Debug: track if we've logged timer IRQ blocking (to avoid spam)
+    timer_irq_blocked_logged: bool,
 }
 
 impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
@@ -100,6 +102,7 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             pending_keyboard_irqs: std::collections::VecDeque::new(),
             pending_serial_irqs: std::collections::VecDeque::new(),
             pending_timer_irqs: 0,
+            timer_irq_blocked_logged: false,
         }
     }
 
@@ -435,9 +438,19 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             // Only decrement if we actually fired the IRQ (IF was enabled)
             if self.fire_timer_irq() {
                 self.pending_timer_irqs -= 1;
+                self.timer_irq_blocked_logged = false; // Reset for next potential block
                 return;
             }
-            // If IF=0, don't decrement - IRQ will fire when interrupts are re-enabled
+            // IF=0, log once that timer IRQs are being blocked
+            if !self.timer_irq_blocked_logged {
+                use crate::cpu::cpu_flag;
+                log::warn!(
+                    "Timer IRQs blocked: pending={}, IF={} - interrupts disabled!",
+                    self.pending_timer_irqs,
+                    self.cpu.get_flag(cpu_flag::INTERRUPT)
+                );
+                self.timer_irq_blocked_logged = true;
+            }
         }
 
         // Get current IP to check what opcode we're about to execute
@@ -480,7 +493,16 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             // Check if the handler called chain_to_interrupt() to chain to another handler
             // (e.g., INT 0x08 chains to INT 0x1C for user timer tick)
             // If CS:IP changed from F000:int_num, a chain is in progress - don't overwrite
-            if self.cpu.cs == 0xF000 && self.cpu.ip == current_ip {
+            let chained = !(self.cpu.cs == 0xF000 && self.cpu.ip == current_ip);
+            if int_num == 0x08 {
+                log::info!(
+                    "INT 0x08 handler done: chained={}, CS:IP={:04X}:{:04X}",
+                    chained,
+                    self.cpu.cs,
+                    self.cpu.ip
+                );
+            }
+            if !chained {
                 // No chaining occurred - normal return path
                 // Pop the FLAGS that DOS pushed before CALL FAR
                 let saved_flags = self.cpu.pop(&self.memory);
@@ -507,14 +529,15 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
                 // Pop what chain_to_interrupt pushed
                 let _chained_ip = self.cpu.pop(&self.memory);
                 let _chained_cs = self.cpu.pop(&self.memory);
-                let chained_flags = self.cpu.pop(&self.memory);
+                let _chained_flags = self.cpu.pop(&self.memory);
 
                 // Pop the original flags left from fire_timer_irq (step() only popped 2 of 3)
-                let _original_flags = self.cpu.pop(&self.memory);
+                // These have IF=1 (interrupts were enabled before the timer IRQ)
+                let original_flags = self.cpu.pop(&self.memory);
 
                 // Push proper return frame for INT 1C's IRET
-                // Use chained_flags (with IF cleared) so interrupts stay disabled until IRET
-                self.cpu.push(chained_flags, &mut self.memory);
+                // Use original_flags (with IF=1) so interrupts are re-enabled after IRET
+                self.cpu.push(original_flags, &mut self.memory);
                 self.cpu.push(ret_segment, &mut self.memory);
                 self.cpu.push(ret_offset, &mut self.memory);
 
