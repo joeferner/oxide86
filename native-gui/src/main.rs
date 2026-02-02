@@ -18,7 +18,7 @@ use log::LevelFilter;
 use menu::AppMenu;
 use pixels::{Pixels, SurfaceTexture, wgpu};
 use std::fs::File;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -284,29 +284,36 @@ fn step_emulator(
 ) {
     // Skip execution if paused
     if !is_paused {
-        const BATCH_SIZE: u32 = 1000;
-
-        for _ in 0..BATCH_SIZE {
-            if computer.is_halted() {
-                log::info!("Computer halted");
-                std::process::exit(0);
-            }
-            computer.step();
-        }
-
-        // Throttle if not in turbo mode
-        if !turbo_mode {
-            let cycles_executed = computer.get_cycle_count();
-            let expected_nanos = cycles_executed * nanos_per_cycle;
-            let expected_duration = Duration::from_nanos(expected_nanos);
-
-            let actual_elapsed = throttle_start.elapsed();
-            if actual_elapsed < expected_duration {
-                let sleep_duration = expected_duration - actual_elapsed;
-                // Only sleep if it's worth it (> 100 microseconds)
-                if sleep_duration > Duration::from_micros(100) {
-                    std::thread::sleep(sleep_duration);
+        if turbo_mode {
+            // Turbo mode: execute a large batch per frame
+            const BATCH_SIZE: u32 = 50000;
+            for _ in 0..BATCH_SIZE {
+                if computer.is_halted() {
+                    log::info!("Computer halted");
+                    std::process::exit(0);
                 }
+                computer.step();
+            }
+        } else {
+            // Throttled mode: execute cycles to catch up to real time
+            // Calculate target cycles based on elapsed wall time
+            let elapsed_nanos = throttle_start.elapsed().as_nanos() as u64;
+            let target_cycles = elapsed_nanos / nanos_per_cycle;
+            let current_cycles = computer.get_cycle_count();
+
+            // Execute until we catch up, but cap per frame to stay responsive
+            const MAX_CYCLES_PER_FRAME: u64 = 100_000;
+            let cycles_to_run =
+                (target_cycles.saturating_sub(current_cycles)).min(MAX_CYCLES_PER_FRAME);
+
+            // Each step is ~10 cycles
+            let steps_to_run = cycles_to_run / 10;
+            for _ in 0..steps_to_run {
+                if computer.is_halted() {
+                    log::info!("Computer halted");
+                    std::process::exit(0);
+                }
+                computer.step();
             }
         }
     }
