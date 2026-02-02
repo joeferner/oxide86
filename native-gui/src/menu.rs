@@ -10,6 +10,7 @@ pub enum MenuAction {
     ToggleExecutionLogging,
     ToggleInterruptLogging,
     TogglePause,
+    ToggleTurbo,
 }
 
 impl MenuAction {
@@ -20,7 +21,8 @@ impl MenuAction {
             MenuAction::InsertFloppyB | MenuAction::EjectFloppyB => DriveNumber::floppy_b(),
             MenuAction::ToggleExecutionLogging
             | MenuAction::ToggleInterruptLogging
-            | MenuAction::TogglePause => {
+            | MenuAction::TogglePause
+            | MenuAction::ToggleTurbo => {
                 unreachable!("drive_number() called on debug action")
             }
         }
@@ -38,6 +40,7 @@ impl MenuAction {
             MenuAction::ToggleExecutionLogging
                 | MenuAction::ToggleInterruptLogging
                 | MenuAction::TogglePause
+                | MenuAction::ToggleTurbo
         )
     }
 }
@@ -49,6 +52,7 @@ pub struct AppMenu {
     exec_logging_enabled: bool,
     interrupt_logging_enabled: bool,
     is_paused: bool,
+    turbo_mode: bool,
 }
 
 impl AppMenu {
@@ -60,6 +64,7 @@ impl AppMenu {
             exec_logging_enabled: false,
             interrupt_logging_enabled: false,
             is_paused: false,
+            turbo_mode: false,
         }
     }
 
@@ -75,10 +80,12 @@ impl AppMenu {
         exec_logging: bool,
         interrupt_logging: bool,
         paused: bool,
+        turbo: bool,
     ) {
         self.exec_logging_enabled = exec_logging;
         self.interrupt_logging_enabled = interrupt_logging;
         self.is_paused = paused;
+        self.turbo_mode = turbo;
     }
 
     /// Render the menu bar using egui and return any triggered action
@@ -161,6 +168,17 @@ impl AppMenu {
                     }
 
                     ui.separator();
+
+                    // Turbo mode with checkmark
+                    let turbo_label = if self.turbo_mode {
+                        "[X] Turbo Mode"
+                    } else {
+                        "[ ] Turbo Mode"
+                    };
+                    if ui.button(turbo_label).clicked() {
+                        action = Some(MenuAction::ToggleTurbo);
+                        ui.close_menu();
+                    }
 
                     // Pause/Run with dynamic label
                     let pause_label = if self.is_paused { ">> Run" } else { "|| Pause" };

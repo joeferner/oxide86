@@ -1,7 +1,5 @@
 # TODO
 
-- [ ] Add speed throttle and turbo to gui
-- [ ] GUI add menu items for turbo
 - [ ] Fix CLI colors
 - [ ] In BIOS take keyboard as Box<dyn KeyboardInput>
 - [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode

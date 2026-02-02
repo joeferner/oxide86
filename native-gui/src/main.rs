@@ -18,6 +18,7 @@ use log::LevelFilter;
 use menu::AppMenu;
 use pixels::{Pixels, SurfaceTexture, wgpu};
 use std::fs::File;
+use std::time::{Duration, Instant};
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -55,6 +56,10 @@ struct Cli {
     /// Device to attach to COM2 (e.g., "mouse")
     #[arg(long = "com2", value_name = "DEVICE")]
     com2_device: Option<String>,
+
+    /// Run at maximum speed (no throttling)
+    #[arg(long)]
+    turbo: bool,
 }
 
 fn main() {
@@ -273,10 +278,13 @@ fn step_emulator(
     computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
     pixels: &mut Pixels,
     is_paused: bool,
+    turbo_mode: bool,
+    throttle_start: Instant,
+    nanos_per_cycle: u64,
 ) {
     // Skip execution if paused
     if !is_paused {
-        const BATCH_SIZE: u32 = 10000;
+        const BATCH_SIZE: u32 = 1000;
 
         for _ in 0..BATCH_SIZE {
             if computer.is_halted() {
@@ -284,6 +292,22 @@ fn step_emulator(
                 std::process::exit(0);
             }
             computer.step();
+        }
+
+        // Throttle if not in turbo mode
+        if !turbo_mode {
+            let cycles_executed = computer.get_cycle_count();
+            let expected_nanos = cycles_executed * nanos_per_cycle;
+            let expected_duration = Duration::from_nanos(expected_nanos);
+
+            let actual_elapsed = throttle_start.elapsed();
+            if actual_elapsed < expected_duration {
+                let sleep_duration = expected_duration - actual_elapsed;
+                // Only sleep if it's worth it (> 100 microseconds)
+                if sleep_duration > Duration::from_micros(100) {
+                    std::thread::sleep(sleep_duration);
+                }
+            }
         }
     }
 
@@ -300,6 +324,7 @@ struct AppState {
     floppy_b_present: bool,
     is_paused: bool,
     interrupt_logging_enabled: bool,
+    turbo_mode: bool,
 }
 
 fn process_egui_frame(
@@ -315,6 +340,7 @@ fn process_egui_frame(
         computer.exec_logging_enabled,
         app_state.interrupt_logging_enabled,
         app_state.is_paused,
+        app_state.turbo_mode,
     );
 
     let raw_input = egui_state.take_egui_input(window);
@@ -337,6 +363,7 @@ fn process_egui_frame(
                         computer,
                         &mut app_state.is_paused,
                         &mut app_state.interrupt_logging_enabled,
+                        &mut app_state.turbo_mode,
                     );
                 } else {
                     eject_disk(
@@ -450,7 +477,19 @@ fn run(cli: Cli) -> Result<()> {
         floppy_b_present: cli.floppy_b.is_some(),
         is_paused: false,
         interrupt_logging_enabled: false,
+        turbo_mode: cli.turbo,
     };
+
+    // Speed throttling state (4.77 MHz = original 8086 speed)
+    const CLOCK_HZ: u64 = 4_770_000;
+    const NANOS_PER_CYCLE: u64 = 1_000_000_000 / CLOCK_HZ;
+    let throttle_start = Instant::now();
+
+    if cli.turbo {
+        log::info!("Running in turbo mode (no speed limit)");
+    } else {
+        log::info!("Running at 4.77 MHz");
+    }
 
     // Update menu states
     app_state
@@ -555,7 +594,14 @@ fn run(cli: Cli) -> Result<()> {
                         }
                     }
                     WindowEvent::RedrawRequested => {
-                        step_emulator(&mut computer, &mut pixels, app_state.is_paused);
+                        step_emulator(
+                            &mut computer,
+                            &mut pixels,
+                            app_state.is_paused,
+                            app_state.turbo_mode,
+                            throttle_start,
+                            NANOS_PER_CYCLE,
+                        );
 
                         let full_output = process_egui_frame(
                             &egui_ctx,
@@ -808,6 +854,7 @@ fn handle_debug_action(
     computer: &mut Computer<GuiKeyboard, PixelsVideoController>,
     is_paused: &mut bool,
     interrupt_logging_enabled: &mut bool,
+    turbo_mode: &mut bool,
 ) {
     use menu::MenuAction;
 
@@ -840,6 +887,13 @@ fn handle_debug_action(
             log::info!(
                 "Emulation {}",
                 if *is_paused { "paused" } else { "resumed" }
+            );
+        }
+        MenuAction::ToggleTurbo => {
+            *turbo_mode = !*turbo_mode;
+            log::info!(
+                "Turbo mode {}",
+                if *turbo_mode { "enabled" } else { "disabled" }
             );
         }
         _ => {}
