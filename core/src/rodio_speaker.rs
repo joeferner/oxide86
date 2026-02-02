@@ -52,6 +52,8 @@ pub struct RodioSpeaker {
     sink: Sink,
     frequency: Arc<Mutex<f32>>,
     enabled: bool,
+    /// Cached frequency to avoid unnecessary mutex locks
+    last_frequency: f32,
 }
 
 impl RodioSpeaker {
@@ -79,14 +81,18 @@ impl RodioSpeaker {
             sink,
             frequency,
             enabled: false,
+            last_frequency: 0.0,
         })
     }
 }
 
 impl SpeakerOutput for RodioSpeaker {
     fn set_frequency(&mut self, enabled: bool, frequency: f32) {
-        // Update frequency
-        *self.frequency.lock().unwrap() = frequency;
+        // Only update frequency if it changed (avoid unnecessary mutex lock)
+        if (frequency - self.last_frequency).abs() > 0.1 {
+            *self.frequency.lock().unwrap() = frequency;
+            self.last_frequency = frequency;
+        }
 
         // Update playback state if changed
         if enabled != self.enabled {

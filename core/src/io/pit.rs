@@ -60,8 +60,8 @@ impl PitChannel {
             count_register: 0,
             counter: 0,
             output: false,
-            mode: 3,           // Mode 3: Square wave generator (typical BIOS default)
-            access_mode: 3,    // LSB then MSB (typical BIOS default)
+            mode: 3,        // Mode 3: Square wave generator (typical BIOS default)
+            access_mode: 3, // LSB then MSB (typical BIOS default)
             latch_value: None,
             gate: true, // Channels 0 and 1 default to enabled
             bcd_mode: false,
@@ -373,6 +373,14 @@ impl Pit {
     /// Get count register value of a channel (for speaker frequency calculation)
     pub fn get_channel_count(&self, channel: u8) -> u16 {
         self.channels[channel as usize].count_register
+    }
+
+    /// Check if a channel is ready (has a valid count loaded)
+    ///
+    /// Returns false if the channel is waiting for a new count value (null_count flag set).
+    /// This is used by the speaker to avoid outputting sound while the PIT is being reprogrammed.
+    pub fn is_channel_ready(&self, channel: u8) -> bool {
+        !self.channels[channel as usize].null_count
     }
 
     /// Set gate input for a channel (from port 0x61 bit 0 for channel 2)

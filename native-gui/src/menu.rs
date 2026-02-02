@@ -169,7 +169,11 @@ impl AppMenu {
                     }
 
                     // Pause/Run with dynamic label
-                    let pause_label = if self.is_paused { "▶ Run" } else { "⏸ Pause" };
+                    let pause_label = if self.is_paused {
+                        "▶ Run"
+                    } else {
+                        "⏸ Pause"
+                    };
                     if ui.button(pause_label).clicked() {
                         action = Some(MenuAction::TogglePause);
                         ui.close_menu();

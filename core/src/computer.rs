@@ -40,6 +40,8 @@ pub struct Computer<K: KeyboardInput, V: VideoController = NullVideoController> 
     pending_timer_irqs: u32,
     /// Debug: track if we've logged timer IRQ blocking (to avoid spam)
     timer_irq_blocked_logged: bool,
+    /// Counter for periodic speaker updates (reduces overhead)
+    speaker_update_cycles: u64,
 }
 
 impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
@@ -103,6 +105,7 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
             pending_serial_irqs: std::collections::VecDeque::new(),
             pending_timer_irqs: 0,
             timer_irq_blocked_logged: false,
+            speaker_update_cycles: 0,
         }
     }
 
@@ -714,12 +717,17 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
     fn increment_cycles(&mut self, cycles: u64) {
         self.cycle_count += cycles;
         self.total_cycles += cycles;
+        self.speaker_update_cycles += cycles;
 
         // Update PIT counters
         self.io_device.update_pit(cycles);
 
-        // Update speaker based on PIT state
-        self.update_speaker();
+        // Update speaker periodically (every ~100 cycles) to reduce overhead
+        // This is ~47,700 times per second at 4.77 MHz, plenty for audio
+        if self.speaker_update_cycles >= 100 {
+            self.speaker_update_cycles = 0;
+            self.update_speaker();
+        }
 
         // Queue timer interrupts when tick threshold reached
         // The INT 0x08 handler will update BDA timer counter and chain to INT 0x1C
@@ -738,13 +746,20 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
         // Speaker enabled when both gate and data bits set
         let enabled = timer2_gate && speaker_data;
 
-        if enabled {
+        // Also check if PIT channel 2 has a valid count loaded (not being reprogrammed)
+        // This prevents high-pitched sounds during note transitions when the PIT is
+        // being reconfigured with a new frequency
+        let pit_ready = self.io_device.pit().is_channel_ready(2);
+
+        if enabled && pit_ready {
             let count = self.io_device.pit().get_channel_count(2);
             if count > 0 {
                 let frequency = 1193182.0 / (count as f32);
                 self.speaker.set_frequency(true, frequency);
             } else {
-                self.speaker.set_frequency(false, 0.0);
+                // count of 0 means 65536 (lowest frequency ~18.2 Hz)
+                let frequency = 1193182.0 / 65536.0;
+                self.speaker.set_frequency(true, frequency);
             }
         } else {
             self.speaker.set_frequency(false, 0.0);

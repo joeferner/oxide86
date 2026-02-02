@@ -57,7 +57,9 @@ impl Cpu {
             if TICK_COUNT % 100 == 1 {
                 log::info!(
                     "INT 08h: INT 1C vector = {:04X}:{:04X}, is_bios={}",
-                    int1c_segment, int1c_offset, is_bios
+                    int1c_segment,
+                    int1c_offset,
+                    is_bios
                 );
             }
         }
