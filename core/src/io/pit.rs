@@ -60,8 +60,8 @@ impl PitChannel {
             count_register: 0,
             counter: 0,
             output: false,
-            mode: 0,
-            access_mode: 0,
+            mode: 3,           // Mode 3: Square wave generator (typical BIOS default)
+            access_mode: 3,    // LSB then MSB (typical BIOS default)
             latch_value: None,
             gate: true, // Channels 0 and 1 default to enabled
             bcd_mode: false,
@@ -192,6 +192,11 @@ impl Pit {
             channels: [PitChannel::new(), PitChannel::new(), PitChannel::new()],
             cycle_accumulator: 0.0,
         };
+
+        // Initialize channel 0 for 18.2 Hz system timer (standard BIOS configuration)
+        // Count of 0 means 65536, which gives 1193182 / 65536 ≈ 18.2 Hz
+        pit.channels[0].count_register = 0; // 0 = 65536
+        pit.channels[0].counter = 65536;
 
         // Channel 2 gate starts disabled (controlled by port 0x61 bit 0)
         pit.channels[2].gate = false;

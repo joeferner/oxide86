@@ -45,7 +45,24 @@ impl Cpu {
 
         // Chain to INT 0x1C (user timer tick)
         // Check if the IVT still points to BIOS or if a program installed a custom handler
-        if Self::is_bios_handler(memory, 0x1C) {
+        let ivt_addr = 0x1C * 4;
+        let int1c_offset = memory.read_u16(ivt_addr);
+        let int1c_segment = memory.read_u16(ivt_addr + 2);
+        let is_bios = Self::is_bios_handler(memory, 0x1C);
+
+        // Log only occasionally to avoid spam (every 100th tick)
+        static mut TICK_COUNT: u32 = 0;
+        unsafe {
+            TICK_COUNT += 1;
+            if TICK_COUNT % 100 == 1 {
+                log::info!(
+                    "INT 08h: INT 1C vector = {:04X}:{:04X}, is_bios={}",
+                    int1c_segment, int1c_offset, is_bios
+                );
+            }
+        }
+
+        if is_bios {
             // BIOS handler - call directly (it's a no-op stub anyway)
             self.handle_int1c(memory, io, video);
         } else {

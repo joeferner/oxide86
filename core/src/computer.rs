@@ -441,15 +441,17 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
                 self.timer_irq_blocked_logged = false; // Reset for next potential block
                 return;
             }
-            // IF=0, log once that timer IRQs are being blocked
-            if !self.timer_irq_blocked_logged {
+            // IF=0, log periodically that timer IRQs are being blocked
+            // Log every 10000 steps to avoid spam but show ongoing issues
+            if self.step_count % 10000 == 0 {
                 use crate::cpu::cpu_flag;
                 log::warn!(
-                    "Timer IRQs blocked: pending={}, IF={} - interrupts disabled!",
+                    "Timer IRQs blocked: pending={}, IF={}, CS:IP={:04X}:{:04X}",
                     self.pending_timer_irqs,
-                    self.cpu.get_flag(cpu_flag::INTERRUPT)
+                    self.cpu.get_flag(cpu_flag::INTERRUPT),
+                    self.cpu.cs,
+                    self.cpu.ip
                 );
-                self.timer_irq_blocked_logged = true;
             }
         }
 
@@ -508,7 +510,15 @@ impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
                 let saved_flags = self.cpu.pop(&self.memory);
                 // BIOS may have modified flags (especially CF for error indication)
                 // Merge: keep the modified CF, ZF, etc. from BIOS, but restore IF from DOS
+                let old_if = (self.cpu.flags >> 9) & 1;
+                let new_if = (saved_flags >> 9) & 1;
                 self.cpu.flags = (self.cpu.flags & 0xF8FF) | (saved_flags & 0x0700); // Restore IF, TF, DF
+                if int_num == 0x08 {
+                    log::info!(
+                        "INT 0x08 return: saved_flags=0x{:04X}, old_IF={}, new_IF={}, returning to {:04X}:{:04X}",
+                        saved_flags, old_if, new_if, ret_segment, ret_offset
+                    );
+                }
 
                 // Return to DOS
                 self.cpu.ip = ret_offset;
