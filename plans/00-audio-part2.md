@@ -13,8 +13,8 @@ From the log analysis:
   - ✅ Has full PIT (8253/8254) emulation for PC speaker
   - ✅ Has I/O port 0x61 (system control port) implemented
   - ✅ Has working speaker output via rodio
-  - ❌ Does NOT fire INT 0x08 (timer hardware interrupt)
-  - ❌ Does NOT fire INT 0x1C (user timer tick)
+  - ✅ Fires INT 0x08 (timer hardware interrupt)
+  - ✅ Fires INT 0x1C (user timer tick)
 
 ## PC Timer Interrupt Architecture
 Standard PC BIOS behavior:
@@ -29,38 +29,16 @@ Standard PC BIOS behavior:
 
 ## Implementation Plan
 
-### 1. Update Computer::increment_cycles
-**File:** `core/src/computer.rs` (lines 605-642)
-
-Modify increment_cycles to:
-- Keep PIT and speaker update logic
-- Remove BDA timer counter update (move to INT 0x08 handler)
-- Add timer interrupt firing when tick threshold reached
-- Queue timer interrupt like keyboard/serial IRQs
-
-### 2. Add Timer Interrupt Queue
-**File:** `core/src/computer.rs`
-
-Add to Computer struct:
-- `pending_timer_irqs: u32` counter for queued timer ticks
-
-Add method:
-- `fire_timer_irq()` similar to `fire_keyboard_irq()` and `fire_serial_irq()`
-
-### 3. Initialize IVT Entries
-**File:** `core/src/memory.rs`
-
-Add IVT initialization for:
-- INT 0x08 vector at 0x0000:0x0020 (4 bytes: offset, segment)
-- INT 0x1C vector at 0x0000:0x0070 (4 bytes: offset, segment)
-- Point both to stub handlers in BIOS ROM area (F000:xxxx)
+~~### 1. Update Computer::increment_cycles~~ ✅ DONE
+~~### 2. Add Timer Interrupt Queue~~ ✅ DONE
+~~### 3. Initialize IVT Entries~~ ✅ DONE (IVT already initializes all 256 vectors)
 
 ## Critical Files to Modify
 1. ~~`core/src/cpu/bios/int08.rs` - CREATE~~ ✅ DONE
 2. ~~`core/src/cpu/bios/int1c.rs` - CREATE~~ ✅ DONE
 3. ~~`core/src/cpu/bios/mod.rs` - UPDATE (add handlers, module refs)~~ ✅ DONE
-4. `core/src/computer.rs` - UPDATE (fire timer IRQ, move BDA update)
-5. `core/src/memory.rs` - UPDATE (IVT initialization)
+4. ~~`core/src/computer.rs` - UPDATE (fire timer IRQ, move BDA update)~~ ✅ DONE
+5. ~~`core/src/memory.rs` - UPDATE (IVT initialization)~~ ✅ DONE (already complete)
 
 ## Implementation Details
 
@@ -73,40 +51,20 @@ The handler:
 ### INT 0x1C Handler (✅ IMPLEMENTED in `core/src/cpu/bios/int1c.rs`)
 Default BIOS handler is a no-op. Programs can install custom handlers via IVT modification.
 
-### fire_timer_irq() Pattern (TO IMPLEMENT)
-```rust
-// Follow existing fire_keyboard_irq() pattern:
-1. Read IVT entry for INT 0x08
-2. Push FLAGS, CS, IP
-3. Clear IF and TF flags
-4. Jump to handler CS:IP
+### fire_timer_irq() (✅ IMPLEMENTED in `core/src/computer.rs`)
+- Checks IF flag before firing (queues preserved if interrupts disabled)
+- Wakes CPU from HLT state
+- Pushes FLAGS, CS, IP onto stack
+- Clears IF and TF flags
+- Jumps to INT 0x08 handler
 
-### Modified increment_cycles
-```rust
-fn increment_cycles(&mut self, cycles: u64) {
-    self.cycle_count += cycles;
-    self.total_cycles += cycles;
+### increment_cycles (✅ IMPLEMENTED in `core/src/computer.rs`)
+- Updates PIT counters and speaker
+- Queues pending_timer_irqs when tick threshold reached
+- BDA update moved to INT 0x08 handler
 
-    self.io_device.update_pit(cycles);
-    self.update_speaker();
-
-    // Fire timer interrupt when tick threshold reached
-    while self.cycle_count >= self.cycles_per_tick {
-        self.cycle_count -= self.cycles_per_tick;
-        self.pending_timer_irqs += 1;
-    }
-}
-```
-
-### Process pending timer IRQs in step()
-In `Computer::step()` after keyboard/serial IRQ processing:
-```rust
-if self.pending_timer_irqs > 0 {
-    self.pending_timer_irqs -= 1;
-    self.fire_timer_irq();
-    return;
-}
-```
+### Process pending timer IRQs in step() (✅ IMPLEMENTED in `core/src/computer.rs`)
+Timer IRQs processed after keyboard/serial IRQs with lowest priority.
 
 ## Testing Plan
 
@@ -128,23 +86,8 @@ Verify BDA counter at 0x0040:0x006C:
 - Midnight rollover still works
 - INT 1Ah services still work
 
-## Edge Cases to Handle
-
-1. **Nested interrupts**: If INT 0x1C takes too long and another timer tick occurs
-   - Queue pending_timer_irqs counter handles this
-
-2. **Interrupt enable flag**: Only fire if IF flag is set
-   - Check in fire_timer_irq() before firing
-   - Or queue and fire when IF becomes set again
-
-3. **Halt state**: Timer interrupt should wake CPU from HLT
-   - fire_timer_irq() should clear cpu.halted flag
-
-4. **Multiple pending ticks**: Use counter not bool
-   - Prevents lost ticks if multiple accumulate
-
 ## Notes
 - PIT Channel 0 already runs at correct frequency (18.2 Hz via cycles_per_tick)
 - Speaker/sound hardware already fully functional
-- Only missing piece is interrupt delivery mechanism
+- Timer interrupt delivery mechanism now complete
 - This matches real PC hardware behavior where IRQ0 fires INT 0x08

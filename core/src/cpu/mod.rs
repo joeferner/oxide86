@@ -130,6 +130,11 @@ impl Cpu {
         self.halted
     }
 
+    /// Clear the halted state (used when an interrupt wakes the CPU from HLT)
+    pub fn clear_halt(&mut self) {
+        self.halted = false;
+    }
+
     // Execute an INT instruction with BIOS I/O handler
     pub fn execute_int_with_io<K: crate::KeyboardInput>(
         &mut self,
