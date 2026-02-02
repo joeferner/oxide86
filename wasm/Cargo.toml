@@ -3,8 +3,26 @@ name = "emu86-wasm"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
 [dependencies]
 emu86-core = { path = "../core" }
+wasm-bindgen = "0.2"
+web-sys = { version = "0.3", features = [
+    "Document",
+    "Element",
+    "HtmlCanvasElement",
+    "CanvasRenderingContext2d",
+    "KeyboardEvent",
+    "MouseEvent",
+    "Window",
+    "console",
+] }
+js-sys = "0.3"
+console_error_panic_hook = "0.1"
+wasm-logger = "0.2"
+log = "0.4"
 
 [lints]
 workspace = true

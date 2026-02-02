@@ -25,142 +25,27 @@ Implement WebAssembly support for emu86 to run the 8086 emulator in web browsers
 
 Memory-backed disk storage has been implemented in `core/src/disk.rs` with the `MemoryDiskBackend` struct and exported from `core/src/lib.rs`. The `BackedDisk` struct now includes a `backend()` accessor method to retrieve the underlying backend for operations like downloading disk images.
 
-### Phase 2: WebKeyboard Implementation
+### ~~Phase 2: WebKeyboard Implementation~~ ✅ COMPLETED
 
-**File**: `wasm/src/web_keyboard.rs` (CREATE)
+**File**: `wasm/src/web_keyboard.rs` (CREATED)
 
-Implement keyboard input using JavaScript event listeners:
+Web-based keyboard input has been implemented with comprehensive scan code mapping for all standard keyboard keys. The implementation includes:
+- Full support for letter keys (A-Z) with shift detection
+- Number row keys (0-9) with shift symbols
+- Special character keys with shift variants
+- Function keys (F1-F12)
+- Arrow keys and navigation keys (Home, End, Page Up/Down, Insert, Delete)
+- Numpad keys
+- Control key combinations (Ctrl+A through Ctrl+Z)
+- Browser default behavior prevention for special keys
 
-```rust
-use emu86_core::cpu::bios::KeyPress;
-use emu86_core::keyboard::KeyboardInput;
-use std::cell::RefCell;
-use std::collections::VecDeque;
-use std::rc::Rc;
-use wasm_bindgen::prelude::*;
-use wasm_bindgen::JsCast;
-use web_sys::{Document, KeyboardEvent};
+Dependencies added to `wasm/Cargo.toml`:
+- `wasm-bindgen` for WebAssembly bindings
+- `web-sys` with keyboard event features
+- `js-sys` for JavaScript interop
+- `console_error_panic_hook` for better error messages
+- `wasm-logger` for browser console logging
 
-/// Web-based keyboard input using browser keyboard events.
-pub struct WebKeyboard {
-    /// Shared buffer for keyboard input from JavaScript events
-    keyboard_buffer: Rc<RefCell<VecDeque<KeyPress>>>,
-    /// Closure for keydown event handler (must be kept alive)
-    _keydown_closure: Closure<dyn FnMut(KeyboardEvent)>,
-}
-
-impl WebKeyboard {
-    /// Create a new WebKeyboard and attach event listeners.
-    ///
-    /// # Arguments
-    /// * `document` - The browser document object to attach listeners to
-    pub fn new(document: &Document) -> Result<Self, JsValue> {
-        let keyboard_buffer = Rc::new(RefCell::new(VecDeque::new()));
-        let buffer_clone = keyboard_buffer.clone();
-
-        // Create keydown event handler
-        let keydown_closure = Closure::wrap(Box::new(move |event: KeyboardEvent| {
-            // Prevent default browser behavior for special keys
-            if should_prevent_default(&event) {
-                event.prevent_default();
-            }
-
-            if let Some(key_press) = event_to_keypress(&event) {
-                buffer_clone.borrow_mut().push_back(key_press);
-            }
-        }) as Box<dyn FnMut(KeyboardEvent)>);
-
-        // Attach event listener to document
-        document
-            .add_event_listener_with_callback(
-                "keydown",
-                keydown_closure.as_ref().unchecked_ref(),
-            )?;
-
-        Ok(Self {
-            keyboard_buffer,
-            _keydown_closure: keydown_closure,
-        })
-    }
-}
-
-impl KeyboardInput for WebKeyboard {
-    fn read_char(&mut self) -> Option<u8> {
-        self.keyboard_buffer
-            .borrow_mut()
-            .pop_front()
-            .map(|kp| kp.ascii_code)
-    }
-
-    fn check_char(&mut self) -> Option<u8> {
-        self.keyboard_buffer
-            .borrow()
-            .front()
-            .map(|kp| kp.ascii_code)
-    }
-
-    fn has_char_available(&self) -> bool {
-        !self.keyboard_buffer.borrow().is_empty()
-    }
-
-    fn read_key(&mut self) -> Option<KeyPress> {
-        self.keyboard_buffer.borrow_mut().pop_front()
-    }
-
-    fn check_key(&mut self) -> Option<KeyPress> {
-        self.keyboard_buffer.borrow().front().copied()
-    }
-}
-
-/// Convert JavaScript KeyboardEvent to 8086 KeyPress
-fn event_to_keypress(event: &KeyboardEvent) -> Option<KeyPress> {
-    let key = event.key();
-    let code = event.code();
-
-    // Map common keys to scan codes and ASCII codes
-    // This is a simplified version - full implementation needs complete scan code table
-    let (scan_code, ascii_code) = match code.as_str() {
-        "KeyA" => (0x1E, if event.shift_key() { b'A' } else { b'a' }),
-        "KeyB" => (0x30, if event.shift_key() { b'B' } else { b'b' }),
-        // ... (map all letter keys)
-        "Enter" => (0x1C, 0x0D),
-        "Space" => (0x39, b' '),
-        "Escape" => (0x01, 0x1B),
-        "Backspace" => (0x0E, 0x08),
-        "Tab" => (0x0F, 0x09),
-        "ArrowUp" => (0x48, 0x00),
-        "ArrowDown" => (0x50, 0x00),
-        "ArrowLeft" => (0x4B, 0x00),
-        "ArrowRight" => (0x4D, 0x00),
-        // ... (map function keys, etc.)
-        _ => {
-            // Try to get ASCII from key string
-            if key.len() == 1 {
-                let ch = key.chars().next()?;
-                (0x00, ch as u8) // Generic scan code, use ASCII
-            } else {
-                return None;
-            }
-        }
-    };
-
-    Some(KeyPress {
-        scan_code,
-        ascii_code,
-    })
-}
-
-/// Determine if default browser behavior should be prevented
-fn should_prevent_default(event: &KeyboardEvent) -> bool {
-    let code = event.code();
-    matches!(
-        code.as_str(),
-        "ArrowUp" | "ArrowDown" | "ArrowLeft" | "ArrowRight" |
-        "Backspace" | "Tab" | "F1" | "F2" | "F3" | "F4" | "F5" |
-        "F6" | "F7" | "F8" | "F9" | "F10" | "F11" | "F12"
-    )
-}
-```
 
 ### Phase 3: WebMouse Implementation
 

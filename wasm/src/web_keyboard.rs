@@ -1,0 +1,356 @@
+//! Web-based keyboard input using browser keyboard events.
+
+use emu86_core::cpu::bios::KeyPress;
+use emu86_core::keyboard::KeyboardInput;
+use std::cell::RefCell;
+use std::collections::VecDeque;
+use std::rc::Rc;
+use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
+use web_sys::{Document, KeyboardEvent};
+
+/// Web-based keyboard input using browser keyboard events.
+pub struct WebKeyboard {
+    /// Shared buffer for keyboard input from JavaScript events
+    keyboard_buffer: Rc<RefCell<VecDeque<KeyPress>>>,
+    /// Closure for keydown event handler (must be kept alive)
+    _keydown_closure: Closure<dyn FnMut(KeyboardEvent)>,
+}
+
+impl WebKeyboard {
+    /// Create a new WebKeyboard and attach event listeners.
+    ///
+    /// # Arguments
+    /// * `document` - The browser document object to attach listeners to
+    pub fn new(document: &Document) -> Result<Self, JsValue> {
+        let keyboard_buffer = Rc::new(RefCell::new(VecDeque::new()));
+        let buffer_clone = keyboard_buffer.clone();
+
+        // Create keydown event handler
+        let keydown_closure = Closure::wrap(Box::new(move |event: KeyboardEvent| {
+            // Prevent default browser behavior for special keys
+            if should_prevent_default(&event) {
+                event.prevent_default();
+            }
+
+            if let Some(key_press) = event_to_keypress(&event) {
+                buffer_clone.borrow_mut().push_back(key_press);
+            }
+        }) as Box<dyn FnMut(KeyboardEvent)>);
+
+        // Attach event listener to document
+        document.add_event_listener_with_callback(
+            "keydown",
+            keydown_closure.as_ref().unchecked_ref(),
+        )?;
+
+        Ok(Self {
+            keyboard_buffer,
+            _keydown_closure: keydown_closure,
+        })
+    }
+}
+
+impl KeyboardInput for WebKeyboard {
+    fn read_char(&mut self) -> Option<u8> {
+        self.keyboard_buffer
+            .borrow_mut()
+            .pop_front()
+            .map(|kp| kp.ascii_code)
+    }
+
+    fn check_char(&mut self) -> Option<u8> {
+        self.keyboard_buffer
+            .borrow()
+            .front()
+            .map(|kp| kp.ascii_code)
+    }
+
+    fn has_char_available(&self) -> bool {
+        !self.keyboard_buffer.borrow().is_empty()
+    }
+
+    fn read_key(&mut self) -> Option<KeyPress> {
+        self.keyboard_buffer.borrow_mut().pop_front()
+    }
+
+    fn check_key(&mut self) -> Option<KeyPress> {
+        self.keyboard_buffer.borrow().front().copied()
+    }
+}
+
+/// Convert JavaScript KeyboardEvent to 8086 KeyPress
+fn event_to_keypress(event: &KeyboardEvent) -> Option<KeyPress> {
+    let code = event.code();
+    let key = event.key();
+    let shift = event.shift_key();
+    let ctrl = event.ctrl_key();
+    let alt = event.alt_key();
+
+    // Handle Ctrl+key combinations
+    if ctrl && !alt {
+        return match code.as_str() {
+            "KeyA" => Some(KeyPress {
+                scan_code: 0x1E,
+                ascii_code: 0x01,
+            }), // Ctrl+A
+            "KeyB" => Some(KeyPress {
+                scan_code: 0x30,
+                ascii_code: 0x02,
+            }), // Ctrl+B
+            "KeyC" => Some(KeyPress {
+                scan_code: 0x2E,
+                ascii_code: 0x03,
+            }), // Ctrl+C
+            "KeyD" => Some(KeyPress {
+                scan_code: 0x20,
+                ascii_code: 0x04,
+            }), // Ctrl+D
+            "KeyE" => Some(KeyPress {
+                scan_code: 0x12,
+                ascii_code: 0x05,
+            }), // Ctrl+E
+            "KeyF" => Some(KeyPress {
+                scan_code: 0x21,
+                ascii_code: 0x06,
+            }), // Ctrl+F
+            "KeyG" => Some(KeyPress {
+                scan_code: 0x22,
+                ascii_code: 0x07,
+            }), // Ctrl+G
+            "KeyH" => Some(KeyPress {
+                scan_code: 0x23,
+                ascii_code: 0x08,
+            }), // Ctrl+H (same as backspace)
+            "KeyI" => Some(KeyPress {
+                scan_code: 0x17,
+                ascii_code: 0x09,
+            }), // Ctrl+I (same as tab)
+            "KeyJ" => Some(KeyPress {
+                scan_code: 0x24,
+                ascii_code: 0x0A,
+            }), // Ctrl+J
+            "KeyK" => Some(KeyPress {
+                scan_code: 0x25,
+                ascii_code: 0x0B,
+            }), // Ctrl+K
+            "KeyL" => Some(KeyPress {
+                scan_code: 0x26,
+                ascii_code: 0x0C,
+            }), // Ctrl+L
+            "KeyM" => Some(KeyPress {
+                scan_code: 0x32,
+                ascii_code: 0x0D,
+            }), // Ctrl+M (same as enter)
+            "KeyN" => Some(KeyPress {
+                scan_code: 0x31,
+                ascii_code: 0x0E,
+            }), // Ctrl+N
+            "KeyO" => Some(KeyPress {
+                scan_code: 0x18,
+                ascii_code: 0x0F,
+            }), // Ctrl+O
+            "KeyP" => Some(KeyPress {
+                scan_code: 0x19,
+                ascii_code: 0x10,
+            }), // Ctrl+P
+            "KeyQ" => Some(KeyPress {
+                scan_code: 0x10,
+                ascii_code: 0x11,
+            }), // Ctrl+Q
+            "KeyR" => Some(KeyPress {
+                scan_code: 0x13,
+                ascii_code: 0x12,
+            }), // Ctrl+R
+            "KeyS" => Some(KeyPress {
+                scan_code: 0x1F,
+                ascii_code: 0x13,
+            }), // Ctrl+S
+            "KeyT" => Some(KeyPress {
+                scan_code: 0x14,
+                ascii_code: 0x14,
+            }), // Ctrl+T
+            "KeyU" => Some(KeyPress {
+                scan_code: 0x16,
+                ascii_code: 0x15,
+            }), // Ctrl+U
+            "KeyV" => Some(KeyPress {
+                scan_code: 0x2F,
+                ascii_code: 0x16,
+            }), // Ctrl+V
+            "KeyW" => Some(KeyPress {
+                scan_code: 0x11,
+                ascii_code: 0x17,
+            }), // Ctrl+W
+            "KeyX" => Some(KeyPress {
+                scan_code: 0x2D,
+                ascii_code: 0x18,
+            }), // Ctrl+X
+            "KeyY" => Some(KeyPress {
+                scan_code: 0x15,
+                ascii_code: 0x19,
+            }), // Ctrl+Y
+            "KeyZ" => Some(KeyPress {
+                scan_code: 0x2C,
+                ascii_code: 0x1A,
+            }), // Ctrl+Z
+            _ => None,
+        };
+    }
+
+    // Map common keys to scan codes and ASCII codes based on the code attribute
+    let (scan_code, ascii_code) = match code.as_str() {
+        // Letter keys
+        "KeyA" => (0x1E, if shift { b'A' } else { b'a' }),
+        "KeyB" => (0x30, if shift { b'B' } else { b'b' }),
+        "KeyC" => (0x2E, if shift { b'C' } else { b'c' }),
+        "KeyD" => (0x20, if shift { b'D' } else { b'd' }),
+        "KeyE" => (0x12, if shift { b'E' } else { b'e' }),
+        "KeyF" => (0x21, if shift { b'F' } else { b'f' }),
+        "KeyG" => (0x22, if shift { b'G' } else { b'g' }),
+        "KeyH" => (0x23, if shift { b'H' } else { b'h' }),
+        "KeyI" => (0x17, if shift { b'I' } else { b'i' }),
+        "KeyJ" => (0x24, if shift { b'J' } else { b'j' }),
+        "KeyK" => (0x25, if shift { b'K' } else { b'k' }),
+        "KeyL" => (0x26, if shift { b'L' } else { b'l' }),
+        "KeyM" => (0x32, if shift { b'M' } else { b'm' }),
+        "KeyN" => (0x31, if shift { b'N' } else { b'n' }),
+        "KeyO" => (0x18, if shift { b'O' } else { b'o' }),
+        "KeyP" => (0x19, if shift { b'P' } else { b'p' }),
+        "KeyQ" => (0x10, if shift { b'Q' } else { b'q' }),
+        "KeyR" => (0x13, if shift { b'R' } else { b'r' }),
+        "KeyS" => (0x1F, if shift { b'S' } else { b's' }),
+        "KeyT" => (0x14, if shift { b'T' } else { b't' }),
+        "KeyU" => (0x16, if shift { b'U' } else { b'u' }),
+        "KeyV" => (0x2F, if shift { b'V' } else { b'v' }),
+        "KeyW" => (0x11, if shift { b'W' } else { b'w' }),
+        "KeyX" => (0x2D, if shift { b'X' } else { b'x' }),
+        "KeyY" => (0x15, if shift { b'Y' } else { b'y' }),
+        "KeyZ" => (0x2C, if shift { b'Z' } else { b'z' }),
+
+        // Number keys (top row)
+        "Digit1" => (0x02, if shift { b'!' } else { b'1' }),
+        "Digit2" => (0x03, if shift { b'@' } else { b'2' }),
+        "Digit3" => (0x04, if shift { b'#' } else { b'3' }),
+        "Digit4" => (0x05, if shift { b'$' } else { b'4' }),
+        "Digit5" => (0x06, if shift { b'%' } else { b'5' }),
+        "Digit6" => (0x07, if shift { b'^' } else { b'6' }),
+        "Digit7" => (0x08, if shift { b'&' } else { b'7' }),
+        "Digit8" => (0x09, if shift { b'*' } else { b'8' }),
+        "Digit9" => (0x0A, if shift { b'(' } else { b'9' }),
+        "Digit0" => (0x0B, if shift { b')' } else { b'0' }),
+
+        // Special characters
+        "Minus" => (0x0C, if shift { b'_' } else { b'-' }),
+        "Equal" => (0x0D, if shift { b'+' } else { b'=' }),
+        "BracketLeft" => (0x1A, if shift { b'{' } else { b'[' }),
+        "BracketRight" => (0x1B, if shift { b'}' } else { b']' }),
+        "Backslash" => (0x2B, if shift { b'|' } else { b'\\' }),
+        "Semicolon" => (0x27, if shift { b':' } else { b';' }),
+        "Quote" => (0x28, if shift { b'"' } else { b'\'' }),
+        "Comma" => (0x33, if shift { b'<' } else { b',' }),
+        "Period" => (0x34, if shift { b'>' } else { b'.' }),
+        "Slash" => (0x35, if shift { b'?' } else { b'/' }),
+        "Backquote" => (0x29, if shift { b'~' } else { b'`' }),
+
+        // Control keys
+        "Enter" => (0x1C, 0x0D),
+        "Space" => (0x39, b' '),
+        "Escape" => (0x01, 0x1B),
+        "Backspace" => (0x0E, 0x08),
+        "Tab" => (0x0F, 0x09),
+
+        // Arrow keys (extended keys - scan code 0x00 with special ASCII codes)
+        "ArrowUp" => (0x48, 0x00),
+        "ArrowDown" => (0x50, 0x00),
+        "ArrowLeft" => (0x4B, 0x00),
+        "ArrowRight" => (0x4D, 0x00),
+
+        // Function keys
+        "F1" => (0x3B, 0x00),
+        "F2" => (0x3C, 0x00),
+        "F3" => (0x3D, 0x00),
+        "F4" => (0x3E, 0x00),
+        "F5" => (0x3F, 0x00),
+        "F6" => (0x40, 0x00),
+        "F7" => (0x41, 0x00),
+        "F8" => (0x42, 0x00),
+        "F9" => (0x43, 0x00),
+        "F10" => (0x44, 0x00),
+        "F11" => (0x57, 0x00),
+        "F12" => (0x58, 0x00),
+
+        // Numpad keys
+        "Numpad0" => (0x52, b'0'),
+        "Numpad1" => (0x4F, b'1'),
+        "Numpad2" => (0x50, b'2'),
+        "Numpad3" => (0x51, b'3'),
+        "Numpad4" => (0x4B, b'4'),
+        "Numpad5" => (0x4C, b'5'),
+        "Numpad6" => (0x4D, b'6'),
+        "Numpad7" => (0x47, b'7'),
+        "Numpad8" => (0x48, b'8'),
+        "Numpad9" => (0x49, b'9'),
+        "NumpadMultiply" => (0x37, b'*'),
+        "NumpadAdd" => (0x4E, b'+'),
+        "NumpadSubtract" => (0x4A, b'-'),
+        "NumpadDecimal" => (0x53, b'.'),
+        "NumpadDivide" => (0x35, b'/'),
+        "NumpadEnter" => (0x1C, 0x0D),
+
+        // Special keys
+        "Insert" => (0x52, 0x00),
+        "Delete" => (0x53, 0x00),
+        "Home" => (0x47, 0x00),
+        "End" => (0x4F, 0x00),
+        "PageUp" => (0x49, 0x00),
+        "PageDown" => (0x51, 0x00),
+
+        // If we can't map the code, try to extract ASCII from the key string
+        _ => {
+            if key.len() == 1 {
+                let ch = key.chars().next()?;
+                if ch.is_ascii() {
+                    (0x00, ch as u8) // Generic scan code, use ASCII
+                } else {
+                    return None;
+                }
+            } else {
+                log::warn!("Unmapped keyboard code: {}", code);
+                return None;
+            }
+        }
+    };
+
+    Some(KeyPress {
+        scan_code,
+        ascii_code,
+    })
+}
+
+/// Determine if default browser behavior should be prevented for this key
+fn should_prevent_default(event: &KeyboardEvent) -> bool {
+    let code = event.code();
+    matches!(
+        code.as_str(),
+        "ArrowUp"
+            | "ArrowDown"
+            | "ArrowLeft"
+            | "ArrowRight"
+            | "Backspace"
+            | "Tab"
+            | "F1"
+            | "F2"
+            | "F3"
+            | "F4"
+            | "F5"
+            | "F6"
+            | "F7"
+            | "F8"
+            | "F9"
+            | "F10"
+            | "F11"
+            | "F12"
+            | "Space"
+    )
+}
