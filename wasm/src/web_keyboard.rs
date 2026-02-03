@@ -8,7 +8,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 
 /// Web-based keyboard input using browser keyboard events.
-/// Event listeners are attached in JavaScript, which calls inject_key_event.
+/// Event listeners are attached in JavaScript, which converts events to KeyPress via event_to_keypress.
 pub struct WebKeyboard {
     /// Shared buffer for keyboard input from JavaScript events
     keyboard_buffer: Rc<RefCell<VecDeque<KeyPress>>>,
@@ -21,21 +21,6 @@ impl WebKeyboard {
         Ok(Self {
             keyboard_buffer: Rc::new(RefCell::new(VecDeque::new())),
         })
-    }
-
-    /// Inject a keyboard event from JavaScript.
-    /// This is called by JavaScript event handlers.
-    ///
-    /// # Arguments
-    /// * `code` - KeyboardEvent.code (e.g., "KeyA", "Enter")
-    /// * `key` - KeyboardEvent.key (e.g., "a", "Enter")
-    /// * `shift` - Shift key state
-    /// * `ctrl` - Control key state
-    /// * `alt` - Alt key state
-    pub fn inject_key_event(&mut self, code: &str, key: &str, shift: bool, ctrl: bool, alt: bool) {
-        if let Some(key_press) = event_to_keypress(code, key, shift, ctrl, alt) {
-            self.keyboard_buffer.borrow_mut().push_back(key_press);
-        }
     }
 }
 
@@ -68,7 +53,7 @@ impl KeyboardInput for WebKeyboard {
 }
 
 /// Convert JavaScript keyboard event data to 8086 KeyPress
-fn event_to_keypress(
+pub(crate) fn event_to_keypress(
     code: &str,
     key: &str,
     shift: bool,

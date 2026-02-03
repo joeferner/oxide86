@@ -267,6 +267,7 @@ impl<V: VideoController> Computer<V> {
         // Check if buffer would become full
         if new_tail == head {
             // Buffer full - discard key
+            log::warn!("Keyboard buffer full, discarding key");
             log::warn!(
                 "INT 09h: Keyboard buffer full! Discarding scan=0x{:02X}, ascii=0x{:02X}",
                 key.scan_code,

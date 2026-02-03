@@ -85,7 +85,6 @@ pub fn init() {
 #[wasm_bindgen]
 pub struct Emu86Computer {
     computer: Computer<WebVideo>,
-    keyboard: Rc<RefCell<WebKeyboard>>,
     mouse: Rc<RefCell<WebMouse>>,
 }
 
@@ -112,12 +111,12 @@ impl Emu86Computer {
         let canvas_width = canvas.width() as f64;
         let canvas_height = canvas.height() as f64;
 
-        // Create keyboard and mouse with Rc for shared ownership
+        // Create keyboard and mouse
         let keyboard = Rc::new(RefCell::new(WebKeyboard::new()?));
         let mouse = Rc::new(RefCell::new(WebMouse::new(canvas_width, canvas_height)?));
 
-        // Create wrappers for the Computer (clones the Rc)
-        let keyboard_wrapper = Box::new(SharedKeyboard(keyboard.clone()));
+        // Create wrappers for the Computer
+        let keyboard_wrapper = Box::new(SharedKeyboard(keyboard));
         let mouse_wrapper = Box::new(SharedMouse(mouse.clone()));
 
         let video = WebVideo::new(canvas)?;
@@ -125,11 +124,7 @@ impl Emu86Computer {
 
         let computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker);
 
-        Ok(Self {
-            computer,
-            keyboard,
-            mouse,
-        })
+        Ok(Self { computer, mouse })
     }
 
     /// Load a floppy disk image from a byte array.
@@ -300,9 +295,11 @@ impl Emu86Computer {
         ctrl: bool,
         alt: bool,
     ) {
-        self.keyboard
-            .borrow_mut()
-            .inject_key_event(&code, &key, shift, ctrl, alt);
+        // Convert the keyboard event to a KeyPress and queue it for IRQ processing
+        // Don't add to WebKeyboard buffer - let INT 09h handle it
+        if let Some(key_press) = web_keyboard::event_to_keypress(&code, &key, shift, ctrl, alt) {
+            self.computer.process_keyboard_irq(key_press);
+        }
     }
 
     /// Handle mouse move event from JavaScript.

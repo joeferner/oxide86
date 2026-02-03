@@ -124,6 +124,7 @@ impl WebMouse {
     /// * `button` - Button number (0=left, 1=middle, 2=right)
     /// * `pressed` - true for mousedown, false for mouseup
     pub fn inject_mouse_button(&mut self, button: u8, pressed: bool) {
+        log::info!("Mouse button event: button={} pressed={}", button, pressed);
         let mut shared = self.state.borrow_mut();
         match button {
             0 => shared.state.left_button = pressed,   // Left button

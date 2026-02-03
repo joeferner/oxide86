@@ -49,6 +49,10 @@
             image-rendering: pixelated;
             image-rendering: crisp-edges;
             display: block;
+            cursor: default;
+        }
+        canvas:focus {
+            border-color: #cecece;
         }
         .controls {
             background-color: #2a2a2a;
@@ -143,7 +147,7 @@
 
     <div id="main-container">
         <div id="emulator-container">
-            <canvas id="display" width="640" height="480"></canvas>
+            <canvas id="display" width="640" height="480" tabindex="0"></canvas>
         </div>
 
         <div class="controls">
@@ -191,12 +195,22 @@
         let computer = null;
         let running = false;
         let animationFrameId = null;
+        let canvas = null;
 
         async function main() {
             try {
                 await init();
+                canvas = document.getElementById('display');
                 computer = new Emu86Computer('display');
                 updateStatus('Emulator initialized. Load disk images to begin.');
+
+                // Focus canvas on click to enable keyboard input
+                canvas.addEventListener('click', () => {
+                    canvas.focus();
+                });
+
+                // Setup event listeners after canvas is initialized
+                setupEventListeners();
             } catch (e) {
                 updateStatus(`Initialization error: ${e}`);
                 console.error(e);
@@ -339,7 +353,10 @@
             }
 
             running = true;
-            updateStatus('Running...');
+            updateStatus('Running... (click on display for keyboard input)');
+
+            // Focus the canvas to enable keyboard input
+            canvas.focus();
 
             function frame() {
                 if (!running) return;
@@ -387,48 +404,74 @@
             }
         });
 
-        // Keyboard event handling
-        const preventDefaultKeys = [
-            'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-            'Backspace', 'Tab', 'Space',
-            'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'
-        ];
+        // Setup event listeners for keyboard and mouse
+        function setupEventListeners() {
+            const preventDefaultKeys = [
+                'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+                'Backspace', 'Tab', 'Space',
+                'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'
+            ];
 
-        document.addEventListener('keydown', (event) => {
-            if (!computer) return;
+            // Attach keyboard handler to canvas
+            canvas.addEventListener('keydown', (event) => {
+                if (!computer) return;
 
-            // Prevent default for emulator keys
-            if (preventDefaultKeys.includes(event.code)) {
+                // Ignore repeated keydown events from key being held down
+                if (event.repeat) {
+                    return;
+                }
+
+                // Prevent default for emulator keys
+                if (preventDefaultKeys.includes(event.code)) {
+                    event.preventDefault();
+                }
+
+                // Pass event data to WASM
+                try {
+                    computer.handle_key_event(
+                        event.code,
+                        event.key,
+                        event.shiftKey,
+                        event.ctrlKey,
+                        event.altKey
+                    );
+                } catch (e) {
+                    console.error('Keyboard event error:', e);
+                }
+            });
+
+            // Mouse event handling
+            canvas.addEventListener('mousemove', (event) => {
+                if (!computer) return;
+                try {
+                    computer.handle_mouse_move(event.offsetX, event.offsetY);
+                } catch (e) {
+                    console.error('Mouse move error:', e);
+                }
+            });
+
+            canvas.addEventListener('mousedown', (event) => {
+                if (!computer) return;
                 event.preventDefault();
-            }
+                canvas.focus(); // Ensure canvas has focus
+                console.log('Mouse button pressed:', event.button, 'at', event.offsetX, event.offsetY);
+                try {
+                    computer.handle_mouse_button(event.button, true);
+                    console.log('Mouse button event sent to WASM');
+                } catch (e) {
+                    console.error('Mouse button error:', e);
+                }
+            });
 
-            // Pass event data to WASM
-            computer.handle_key_event(
-                event.code,
-                event.key,
-                event.shiftKey,
-                event.ctrlKey,
-                event.altKey
-            );
-        });
-
-        // Mouse event handling
-        const canvas = document.getElementById('display');
-
-        canvas.addEventListener('mousemove', (event) => {
-            if (!computer) return;
-            computer.handle_mouse_move(event.offsetX, event.offsetY);
-        });
-
-        canvas.addEventListener('mousedown', (event) => {
-            if (!computer) return;
-            computer.handle_mouse_button(event.button, true);
-        });
-
-        canvas.addEventListener('mouseup', (event) => {
-            if (!computer) return;
-            computer.handle_mouse_button(event.button, false);
-        });
+            canvas.addEventListener('mouseup', (event) => {
+                if (!computer) return;
+                try {
+                    computer.handle_mouse_button(event.button, false);
+                } catch (e) {
+                    console.error('Mouse button error:', e);
+                }
+            });
+        }
 
         // Start the application
         main();
