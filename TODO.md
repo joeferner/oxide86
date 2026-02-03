@@ -1,7 +1,6 @@
 # TODO
 
 - [ ] Refactor WASM to not call document.add_event_listener_with_callback but instead listen externally and call wasm functions from typescript
-- [ ] GUI update title when entering/exiting exclusive mode telling user F12 to exit exclusive mode
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
 - [ ] 8086 Test applications
   - [ ] Lotus 1-2-3
