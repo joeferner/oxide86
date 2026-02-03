@@ -60,6 +60,157 @@ pub(crate) fn event_to_keypress(
     ctrl: bool,
     alt: bool,
 ) -> Option<KeyPress> {
+    // Handle Alt+key combinations (scan code with ASCII 0x00)
+    if alt && !ctrl {
+        return match code {
+            "KeyA" => Some(KeyPress {
+                scan_code: 0x1E,
+                ascii_code: 0x00,
+            }),
+            "KeyB" => Some(KeyPress {
+                scan_code: 0x30,
+                ascii_code: 0x00,
+            }),
+            "KeyC" => Some(KeyPress {
+                scan_code: 0x2E,
+                ascii_code: 0x00,
+            }),
+            "KeyD" => Some(KeyPress {
+                scan_code: 0x20,
+                ascii_code: 0x00,
+            }),
+            "KeyE" => Some(KeyPress {
+                scan_code: 0x12,
+                ascii_code: 0x00,
+            }),
+            "KeyF" => Some(KeyPress {
+                scan_code: 0x21,
+                ascii_code: 0x00,
+            }),
+            "KeyG" => Some(KeyPress {
+                scan_code: 0x22,
+                ascii_code: 0x00,
+            }),
+            "KeyH" => Some(KeyPress {
+                scan_code: 0x23,
+                ascii_code: 0x00,
+            }),
+            "KeyI" => Some(KeyPress {
+                scan_code: 0x17,
+                ascii_code: 0x00,
+            }),
+            "KeyJ" => Some(KeyPress {
+                scan_code: 0x24,
+                ascii_code: 0x00,
+            }),
+            "KeyK" => Some(KeyPress {
+                scan_code: 0x25,
+                ascii_code: 0x00,
+            }),
+            "KeyL" => Some(KeyPress {
+                scan_code: 0x26,
+                ascii_code: 0x00,
+            }),
+            "KeyM" => Some(KeyPress {
+                scan_code: 0x32,
+                ascii_code: 0x00,
+            }),
+            "KeyN" => Some(KeyPress {
+                scan_code: 0x31,
+                ascii_code: 0x00,
+            }),
+            "KeyO" => Some(KeyPress {
+                scan_code: 0x18,
+                ascii_code: 0x00,
+            }),
+            "KeyP" => Some(KeyPress {
+                scan_code: 0x19,
+                ascii_code: 0x00,
+            }),
+            "KeyQ" => Some(KeyPress {
+                scan_code: 0x10,
+                ascii_code: 0x00,
+            }),
+            "KeyR" => Some(KeyPress {
+                scan_code: 0x13,
+                ascii_code: 0x00,
+            }),
+            "KeyS" => Some(KeyPress {
+                scan_code: 0x1F,
+                ascii_code: 0x00,
+            }),
+            "KeyT" => Some(KeyPress {
+                scan_code: 0x14,
+                ascii_code: 0x00,
+            }),
+            "KeyU" => Some(KeyPress {
+                scan_code: 0x16,
+                ascii_code: 0x00,
+            }),
+            "KeyV" => Some(KeyPress {
+                scan_code: 0x2F,
+                ascii_code: 0x00,
+            }),
+            "KeyW" => Some(KeyPress {
+                scan_code: 0x11,
+                ascii_code: 0x00,
+            }),
+            "KeyX" => Some(KeyPress {
+                scan_code: 0x2D,
+                ascii_code: 0x00,
+            }),
+            "KeyY" => Some(KeyPress {
+                scan_code: 0x15,
+                ascii_code: 0x00,
+            }),
+            "KeyZ" => Some(KeyPress {
+                scan_code: 0x2C,
+                ascii_code: 0x00,
+            }),
+            "Digit1" => Some(KeyPress {
+                scan_code: 0x02,
+                ascii_code: 0x00,
+            }),
+            "Digit2" => Some(KeyPress {
+                scan_code: 0x03,
+                ascii_code: 0x00,
+            }),
+            "Digit3" => Some(KeyPress {
+                scan_code: 0x04,
+                ascii_code: 0x00,
+            }),
+            "Digit4" => Some(KeyPress {
+                scan_code: 0x05,
+                ascii_code: 0x00,
+            }),
+            "Digit5" => Some(KeyPress {
+                scan_code: 0x06,
+                ascii_code: 0x00,
+            }),
+            "Digit6" => Some(KeyPress {
+                scan_code: 0x07,
+                ascii_code: 0x00,
+            }),
+            "Digit7" => Some(KeyPress {
+                scan_code: 0x08,
+                ascii_code: 0x00,
+            }),
+            "Digit8" => Some(KeyPress {
+                scan_code: 0x09,
+                ascii_code: 0x00,
+            }),
+            "Digit9" => Some(KeyPress {
+                scan_code: 0x0A,
+                ascii_code: 0x00,
+            }),
+            "Digit0" => Some(KeyPress {
+                scan_code: 0x0B,
+                ascii_code: 0x00,
+            }),
+            _ => None,
+        };
+    }
+
     // Handle Ctrl+key combinations
     if ctrl && !alt {
         return match code {

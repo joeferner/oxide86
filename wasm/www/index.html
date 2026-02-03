@@ -421,8 +421,8 @@
                     return;
                 }
 
-                // Prevent default for emulator keys
-                if (preventDefaultKeys.includes(event.code)) {
+                // Prevent default for emulator keys or ALT combinations (to avoid browser menu shortcuts)
+                if (preventDefaultKeys.includes(event.code) || event.altKey) {
                     event.preventDefault();
                 }
 
