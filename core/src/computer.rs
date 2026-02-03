@@ -605,7 +605,7 @@ impl<V: VideoController> Computer<V> {
         self.increment_cycles(10);
 
         // Update serial devices every 1000 instructions (~18 times per second)
-        if self.step_count % 1000 == 0 {
+        if self.step_count.is_multiple_of(1000) {
             let ports_with_interrupts = self.bios.update_serial_devices();
             for port_num in ports_with_interrupts {
                 self.process_serial_irq(port_num);

@@ -5,7 +5,9 @@
 
 pub mod web_keyboard;
 pub mod web_mouse;
+pub mod web_video;
 
 // Re-export for convenience
 pub use web_keyboard::WebKeyboard;
 pub use web_mouse::WebMouse;
+pub use web_video::WebVideo;
