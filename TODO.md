@@ -1,7 +1,7 @@
 # TODO
 
-- [ ] WASM - Show running state
-- [ ] WASM - fix mouse not working
+- [ ] WASM - fix mouse not working (CTMouse it not detecting the mouse)
+- [ ] WASM - Sound
 - [ ] WASM - Lock mouse into canvas, update help when mouse is locked telling the user to press F12 to exit
 - [ ] WASM - Add support to download floppy and hard drive data
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)

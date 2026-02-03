@@ -135,6 +135,36 @@
             border-left: 4px solid #2196F3;
             color: #c0c0c0;
         }
+        #running-indicator {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background-color: #2a2a2a;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-family: monospace;
+            font-size: 13px;
+        }
+        .indicator-led {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background-color: #555;
+            box-shadow: 0 0 3px rgba(0,0,0,0.5);
+            transition: background-color 0.3s ease;
+        }
+        .indicator-led.running {
+            background-color: #4CAF50;
+            box-shadow: 0 0 8px #4CAF50;
+        }
+        .indicator-text {
+            color: #999;
+            font-weight: bold;
+        }
+        .indicator-text.running {
+            color: #4CAF50;
+        }
     </style>
 </head>
 <body>
@@ -186,6 +216,11 @@
         </div>
 
         <div id="status">Ready. Load a disk image and click Boot to begin.</div>
+
+        <div id="running-indicator">
+            <div class="indicator-led"></div>
+            <div class="indicator-text">STOPPED</div>
+        </div>
         </div>
     </div>
 
@@ -220,6 +255,21 @@
         function updateStatus(message) {
             const statusDiv = document.getElementById('status');
             statusDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        }
+
+        function updateRunningIndicator(isRunning) {
+            const led = document.querySelector('.indicator-led');
+            const text = document.querySelector('.indicator-text');
+
+            if (isRunning) {
+                led.classList.add('running');
+                text.classList.add('running');
+                text.textContent = 'RUNNING';
+            } else {
+                led.classList.remove('running');
+                text.classList.remove('running');
+                text.textContent = 'STOPPED';
+            }
         }
 
         // File loading helper
@@ -338,6 +388,7 @@
                     cancelAnimationFrame(animationFrameId);
                     animationFrameId = null;
                 }
+                updateRunningIndicator(false);
                 updateStatus('Computer reset');
             } catch (e) {
                 updateStatus(`Reset error: ${e}`);
@@ -353,6 +404,7 @@
             }
 
             running = true;
+            updateRunningIndicator(true);
             updateStatus('Running... (click on display for keyboard input)');
 
             // Focus the canvas to enable keyboard input
@@ -366,12 +418,14 @@
                     const stillRunning = computer.run_for_ms(16);
                     if (!stillRunning) {
                         running = false;
+                        updateRunningIndicator(false);
                         updateStatus('CPU halted');
                         return;
                     }
                     animationFrameId = requestAnimationFrame(frame);
                 } catch (e) {
                     running = false;
+                    updateRunningIndicator(false);
                     updateStatus(`Execution error: ${e}`);
                     console.error(e);
                 }
@@ -391,6 +445,7 @@
                 cancelAnimationFrame(animationFrameId);
                 animationFrameId = null;
             }
+            updateRunningIndicator(false);
             updateStatus('Stopped');
         });
 
