@@ -375,21 +375,33 @@ impl Cpu {
     /// 6F: OUTSW - Output word from DS:SI to port DX
     ///
     /// Writes data from DS:SI to I/O port DX, then increments/decrements SI based on DF.
-    pub(in crate::cpu) fn outs(&mut self, opcode: u8, memory: &Memory, io_device: &mut IoDevice) {
+    pub(in crate::cpu) fn outs(
+        &mut self,
+        opcode: u8,
+        memory: &Memory,
+        io_device: &mut IoDevice,
+        video: &mut crate::video::Video,
+    ) {
         let is_word = opcode & 0x01 != 0;
 
         // Handle repeat prefix
         if self.repeat_prefix.is_some() {
             while self.cx != 0 {
-                self.outs_once(is_word, memory, io_device);
+                self.outs_once(is_word, memory, io_device, video);
                 self.cx = self.cx.wrapping_sub(1);
             }
         } else {
-            self.outs_once(is_word, memory, io_device);
+            self.outs_once(is_word, memory, io_device, video);
         }
     }
 
-    fn outs_once(&mut self, is_word: bool, memory: &Memory, io_device: &mut IoDevice) {
+    fn outs_once(
+        &mut self,
+        is_word: bool,
+        memory: &Memory,
+        io_device: &mut IoDevice,
+        video: &mut crate::video::Video,
+    ) {
         let port = self.dx;
 
         if is_word {
@@ -397,7 +409,7 @@ impl Cpu {
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
             let value = memory.read_u16(addr);
-            io_device.write_word(port, value);
+            io_device.write_word(port, value, video);
 
             // Update SI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
@@ -410,7 +422,7 @@ impl Cpu {
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
             let value = memory.read_u8(addr);
-            io_device.write_byte(port, value);
+            io_device.write_byte(port, value, video);
 
             // Update SI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {

@@ -3,6 +3,7 @@
 ## Status
 - ✅ **Phase 1: Core Graphics State Management** - COMPLETED
 - ✅ **Phase 2: VideoController Trait Extension** - COMPLETED
+- ✅ **Phase 3: CGA I/O Ports** - COMPLETED
 
 ## Overview
 Implement IBM Color Graphics Adapter (CGA) graphics modes alongside existing text mode support. This enables running graphics-based DOS programs and games from the early 1980s.
@@ -425,11 +426,26 @@ impl Video {
 - ✅ Platform implementations (TerminalVideo, WebVideo) use default implementations
 - ✅ WASM compatibility verified - trait is safe for both native and WASM targets
 
-### Phase 3: CGA I/O Ports
+### Phase 3: CGA I/O Ports ✅ COMPLETED
 
-**File**: `core/src/io/cga_ports.rs` (CREATE)
+**Files Modified**:
+- `core/src/io/cga_ports.rs` (CREATED)
+- `core/src/io/mod.rs` (MODIFIED)
+- `core/src/cpu/instructions/io.rs` (MODIFIED)
+- `core/src/cpu/instructions/string.rs` (MODIFIED)
+- `core/src/cpu/mod.rs` (MODIFIED)
+- `core/src/computer.rs` (MODIFIED)
 
-Implement CGA-specific I/O ports:
+**What was implemented:**
+- ✅ Created CgaModeControl struct in `core/src/io/cga_ports.rs`
+- ✅ Added CGA Mode Control Register (port 0x3D8) read/write support
+- ✅ Added CGA Color Select Register (port 0x3D9) write support to Video::set_palette()
+- ✅ Updated IoDevice::write_byte() and write_word() to take &mut Video parameter
+- ✅ Updated all I/O instruction methods (OUT imm8/DX, OUTS) to pass Video parameter
+- ✅ Updated Cpu::execute_with_io() to take &mut Video and pass it to I/O instructions
+- ✅ All tests pass, code compiles for native and WASM targets
+
+**Implementation details:**
 
 ```rust
 /// CGA Mode Control Register (port 0x3D8)

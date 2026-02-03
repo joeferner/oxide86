@@ -644,6 +644,7 @@ impl<V: VideoController> Computer<V> {
                     &mut self.memory,
                     &mut self.bios,
                     &mut self.io_device,
+                    &mut self.video,
                 );
             }
         }

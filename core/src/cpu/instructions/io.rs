@@ -1,6 +1,7 @@
 use crate::cpu::Cpu;
 use crate::io::IoDevice;
 use crate::memory::Memory;
+use crate::video::Video;
 
 impl Cpu {
     /// IN AL, imm8 (0xE4)
@@ -59,6 +60,7 @@ impl Cpu {
         memory: &Memory,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
+        video: &mut Video,
     ) {
         let port = self.fetch_byte(memory) as u16;
         let value = (self.ax & 0xFF) as u8;
@@ -68,7 +70,7 @@ impl Cpu {
             // COM2 registers (0x2F8-0x2FF)
             0x2F8..=0x2FF => bios.serial_io_write(1, port - 0x2F8, value),
             // Other ports use existing io_device
-            _ => io_device.write_byte(port, value),
+            _ => io_device.write_byte(port, value, video),
         }
     }
 
@@ -79,6 +81,7 @@ impl Cpu {
         memory: &Memory,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
+        video: &mut Video,
     ) {
         let port = self.fetch_byte(memory) as u16;
         match port {
@@ -95,7 +98,7 @@ impl Cpu {
                 bios.serial_io_write(1, port - 0x2F8 + 1, bytes[1]);
             }
             // Other ports use existing io_device
-            _ => io_device.write_word(port, self.ax),
+            _ => io_device.write_word(port, self.ax, video),
         }
     }
 
@@ -152,6 +155,7 @@ impl Cpu {
         &mut self,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
+        video: &mut Video,
     ) {
         let port = self.dx;
         let value = (self.ax & 0xFF) as u8;
@@ -161,7 +165,7 @@ impl Cpu {
             // COM2 registers (0x2F8-0x2FF)
             0x2F8..=0x2FF => bios.serial_io_write(1, port - 0x2F8, value),
             // Other ports use existing io_device
-            _ => io_device.write_byte(port, value),
+            _ => io_device.write_byte(port, value, video),
         }
     }
 
@@ -171,6 +175,7 @@ impl Cpu {
         &mut self,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
+        video: &mut Video,
     ) {
         let port = self.dx;
         match port {
@@ -187,7 +192,7 @@ impl Cpu {
                 bios.serial_io_write(1, port - 0x2F8 + 1, bytes[1]);
             }
             // Other ports use existing io_device
-            _ => io_device.write_word(port, self.ax),
+            _ => io_device.write_word(port, self.ax, video),
         }
     }
 }

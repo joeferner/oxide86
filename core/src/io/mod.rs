@@ -1,6 +1,9 @@
+mod cga_ports;
 mod pit;
 mod system_control_port;
 
+use crate::video::Video;
+use cga_ports::CgaModeControl;
 pub use pit::Pit;
 use std::collections::HashMap;
 pub use system_control_port::SystemControlPort;
@@ -13,6 +16,8 @@ pub struct IoDevice {
     system_control_port: SystemControlPort,
     /// Programmable Interval Timer (ports 40h-43h)
     pit: Pit,
+    /// CGA Mode Control Register (port 3D8h)
+    cga_mode_control: CgaModeControl,
 }
 
 impl IoDevice {
@@ -21,6 +26,7 @@ impl IoDevice {
             last_write: HashMap::new(),
             system_control_port: SystemControlPort::new(),
             pit: Pit::new(),
+            cga_mode_control: CgaModeControl::new(),
         }
     }
 
@@ -46,6 +52,12 @@ impl IoDevice {
                 value
             }
 
+            // CGA Mode Control Register (read-only in practice)
+            0x3D8 => self.cga_mode_control.read(),
+
+            // CGA Color Select Register (write-only, return 0xFF on read)
+            0x3D9 => 0xFF,
+
             // All other ports return 0xFF (floating high)
             _ => self.last_write.get(&port).copied().unwrap_or(0xFF),
         };
@@ -56,7 +68,7 @@ impl IoDevice {
     }
 
     /// Write a byte to the specified I/O port.
-    pub fn write_byte(&mut self, port: u16, value: u8) {
+    pub fn write_byte(&mut self, port: u16, value: u8, video: &mut Video) {
         log::debug!("I/O Write: Port 0x{:04X} <- 0x{:02X}", port, value);
 
         match port {
@@ -71,6 +83,18 @@ impl IoDevice {
                 self.system_control_port.write(value);
                 // Update PIT Channel 2 gate from bit 0
                 self.pit.set_gate(2, (value & 0x01) != 0);
+            }
+
+            // CGA Mode Control Register
+            0x3D8 => {
+                self.cga_mode_control.write(value);
+                log::debug!("CGA Mode Control: 0x{:02X}", value);
+            }
+
+            // CGA Color Select Register
+            0x3D9 => {
+                video.set_palette(value);
+                log::debug!("CGA Color Select: 0x{:02X}", value);
             }
 
             _ => {}
@@ -89,11 +113,11 @@ impl IoDevice {
 
     /// Write a word (16-bit) to the specified I/O port.
     /// Writes to port and port+1 in little-endian order.
-    pub fn write_word(&mut self, port: u16, value: u16) {
+    pub fn write_word(&mut self, port: u16, value: u16, video: &mut Video) {
         let low = (value & 0xFF) as u8;
         let high = (value >> 8) as u8;
-        self.write_byte(port, low);
-        self.write_byte(port.wrapping_add(1), high);
+        self.write_byte(port, low, video);
+        self.write_byte(port.wrapping_add(1), high, video);
     }
 
     /// Update PIT counters based on CPU cycles

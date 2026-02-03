@@ -193,6 +193,7 @@ impl Cpu {
         memory: &mut Memory,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
+        video: &mut crate::video::Video,
     ) {
         match opcode {
             // ADD r/m to register
@@ -250,7 +251,7 @@ impl Cpu {
             0x26 => {
                 self.segment_override = Some(self.es);
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
                 self.segment_override = None;
             }
 
@@ -267,7 +268,7 @@ impl Cpu {
             0x2E => {
                 self.segment_override = Some(self.cs);
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
                 self.segment_override = None;
             }
 
@@ -284,7 +285,7 @@ impl Cpu {
             0x36 => {
                 self.segment_override = Some(self.ss);
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
                 self.segment_override = None;
             }
 
@@ -301,7 +302,7 @@ impl Cpu {
             0x3E => {
                 self.segment_override = Some(self.ds);
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
                 self.segment_override = None;
             }
 
@@ -349,7 +350,7 @@ impl Cpu {
             0x64 => {
                 self.segment_override = Some(self.fs);
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
                 self.segment_override = None;
             }
 
@@ -357,7 +358,7 @@ impl Cpu {
             0x65 => {
                 self.segment_override = Some(self.gs);
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
                 self.segment_override = None;
             }
 
@@ -371,7 +372,7 @@ impl Cpu {
             0x6C..=0x6D => self.ins(opcode, memory, io_device),
 
             // OUTS - Output String to Port (6E-6F)
-            0x6E..=0x6F => self.outs(opcode, memory, io_device),
+            0x6E..=0x6F => self.outs(opcode, memory, io_device, video),
 
             // Conditional jumps (70-7F)
             0x70..=0x7F => self.jmp_conditional(opcode, memory),
@@ -515,10 +516,10 @@ impl Cpu {
             0xE5 => self.in_ax_imm8(memory, bios, io_device),
 
             // OUT imm8, AL (E6)
-            0xE6 => self.out_imm8_al(memory, bios, io_device),
+            0xE6 => self.out_imm8_al(memory, bios, io_device, video),
 
             // OUT imm8, AX (E7)
-            0xE7 => self.out_imm8_ax(memory, bios, io_device),
+            0xE7 => self.out_imm8_ax(memory, bios, io_device, video),
 
             // CALL near relative (E8)
             0xE8 => self.call_near(memory),
@@ -539,23 +540,23 @@ impl Cpu {
             0xED => self.in_ax_dx(bios, io_device),
 
             // OUT DX, AL (EE)
-            0xEE => self.out_dx_al(bios, io_device),
+            0xEE => self.out_dx_al(bios, io_device, video),
 
             // OUT DX, AX (EF)
-            0xEF => self.out_dx_ax(bios, io_device),
+            0xEF => self.out_dx_ax(bios, io_device, video),
 
             // LOCK prefix (F0)
             // Asserts LOCK# signal for atomic memory operations; no-op in single-processor emulator
             0xF0 => {
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
             }
 
             // REPNE/REPNZ prefix (F2)
             0xF2 => {
                 self.repeat_prefix = Some(RepeatPrefix::Repne);
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
                 self.repeat_prefix = None;
             }
 
@@ -563,7 +564,7 @@ impl Cpu {
             0xF3 => {
                 self.repeat_prefix = Some(RepeatPrefix::Rep);
                 let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device);
+                self.execute_with_io(next_opcode, memory, bios, io_device, video);
                 self.repeat_prefix = None;
             }
 
