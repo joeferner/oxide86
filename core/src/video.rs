@@ -91,6 +91,177 @@ pub struct CursorPosition {
     pub col: usize,
 }
 
+/// Video mode type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoMode {
+    /// Text modes: 80x25 or 40x25
+    Text { cols: usize, rows: usize },
+    /// CGA 320x200, 4 colors
+    Graphics320x200,
+    /// CGA 640x200, 2 colors
+    Graphics640x200,
+}
+
+/// Graphics framebuffer for CGA modes
+pub struct GraphicsBuffer {
+    /// Raw pixel data (16KB for CGA modes)
+    /// Interlaced: first 8KB = even scan lines, second 8KB = odd scan lines
+    data: Vec<u8>,
+    /// Width in pixels
+    width: usize,
+    /// Height in pixels
+    #[allow(dead_code)]
+    height: usize,
+    /// Bits per pixel (1 for 640x200, 2 for 320x200)
+    bits_per_pixel: u8,
+}
+
+impl GraphicsBuffer {
+    pub fn new_320x200() -> Self {
+        Self {
+            data: vec![0; 16000], // 320x200 / 4 pixels per byte
+            width: 320,
+            height: 200,
+            bits_per_pixel: 2,
+        }
+    }
+
+    pub fn new_640x200() -> Self {
+        Self {
+            data: vec![0; 16000], // 640x200 / 8 pixels per byte
+            width: 640,
+            height: 200,
+            bits_per_pixel: 1,
+        }
+    }
+
+    /// Convert linear framebuffer offset to interlaced CGA memory offset
+    /// CGA uses interlaced memory: even lines at 0x0000-0x1F3F, odd at 0x2000-0x3F3F
+    #[allow(dead_code)]
+    fn linear_to_interlaced(&self, offset: usize) -> usize {
+        let bytes_per_line = self.width * (self.bits_per_pixel as usize) / 8;
+        let line = offset / bytes_per_line;
+        let col = offset % bytes_per_line;
+
+        if line.is_multiple_of(2) {
+            // Even line: bank 0 (0x0000-0x1F3F)
+            (line / 2) * bytes_per_line + col
+        } else {
+            // Odd line: bank 1 (0x2000-0x3F3F), offset by 8KB
+            0x2000 + (line / 2) * bytes_per_line + col
+        }
+    }
+
+    /// Convert interlaced CGA memory offset to linear framebuffer offset
+    fn interlaced_to_linear(&self, offset: usize) -> usize {
+        let bytes_per_line = self.width * (self.bits_per_pixel as usize) / 8;
+
+        if offset < 0x2000 {
+            // Even line bank
+            let line_in_bank = offset / bytes_per_line;
+            let col = offset % bytes_per_line;
+            (line_in_bank * 2) * bytes_per_line + col
+        } else {
+            // Odd line bank
+            let offset_in_bank = offset - 0x2000;
+            let line_in_bank = offset_in_bank / bytes_per_line;
+            let col = offset_in_bank % bytes_per_line;
+            (line_in_bank * 2 + 1) * bytes_per_line + col
+        }
+    }
+
+    /// Read byte from graphics memory (using interlaced addressing)
+    pub fn read_byte(&self, offset: usize) -> u8 {
+        if offset >= self.data.len() {
+            return 0;
+        }
+        let linear_offset = self.interlaced_to_linear(offset);
+        self.data[linear_offset]
+    }
+
+    /// Write byte to graphics memory (using interlaced addressing)
+    pub fn write_byte(&mut self, offset: usize, value: u8) {
+        if offset >= self.data.len() {
+            return;
+        }
+        let linear_offset = self.interlaced_to_linear(offset);
+        self.data[linear_offset] = value;
+    }
+
+    /// Get pixel data as linear buffer (for rendering)
+    pub fn get_pixels(&self) -> &[u8] {
+        &self.data
+    }
+}
+
+/// CGA color palette state
+#[derive(Debug, Clone, Copy)]
+pub struct CgaPalette {
+    /// Background color (4 bits, 16 colors)
+    pub background: u8,
+    /// Palette select (0 or 1)
+    pub palette_id: u8,
+    /// Intensity/bright mode enabled
+    pub intensity: bool,
+}
+
+impl CgaPalette {
+    pub fn new() -> Self {
+        Self {
+            background: 0,
+            palette_id: 0,
+            intensity: false,
+        }
+    }
+
+    /// Get the 4 colors for current palette
+    /// Returns [background, color1, color2, color3]
+    pub fn get_colors(&self) -> [u8; 4] {
+        let bg = self.background;
+
+        if self.palette_id == 0 {
+            // Palette 0: Green, Red, Brown (or Cyan, Magenta, White with intensity)
+            if self.intensity {
+                [bg, colors::CYAN, colors::LIGHT_RED, colors::WHITE]
+            } else {
+                [bg, colors::GREEN, colors::RED, colors::BROWN]
+            }
+        } else {
+            // Palette 1: Cyan, Magenta, White (or Light variants with intensity)
+            if self.intensity {
+                [bg, colors::LIGHT_CYAN, colors::LIGHT_MAGENTA, colors::WHITE]
+            } else {
+                [bg, colors::CYAN, colors::MAGENTA, colors::LIGHT_GRAY]
+            }
+        }
+    }
+
+    /// Parse from CGA Color Select Register (port 0x3D9)
+    pub fn from_register(value: u8) -> Self {
+        Self {
+            background: value & 0x0F,
+            palette_id: (value >> 5) & 0x01,
+            intensity: (value & 0x10) != 0,
+        }
+    }
+
+    /// Convert to Color Select Register value
+    pub fn to_register(&self) -> u8 {
+        let mut value = self.background & 0x0F;
+        if self.intensity {
+            value |= 0x10;
+        }
+        value |= (self.palette_id & 0x01) << 5;
+        value
+    }
+}
+
+impl Default for CgaPalette {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Video controller trait - platform-specific implementations provide rendering
 pub trait VideoController {
     /// Called when video memory is updated
@@ -106,6 +277,27 @@ pub trait VideoController {
     /// Force a full redraw of the entire screen, ignoring cached state
     /// Used when the terminal state is known to be out of sync (e.g., after clearing screen)
     fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]);
+
+    /// Update graphics display (320x200, 4 colors)
+    /// pixel_data: linear pixel array, palette: current CGA palette
+    fn update_graphics_320x200(&mut self, pixel_data: &[u8], palette: &CgaPalette) {
+        // Default implementation: log warning
+        let _ = (pixel_data, palette);
+        log::warn!("Graphics mode 320x200 not implemented for this platform");
+    }
+
+    /// Update graphics display (640x200, 2 colors)
+    /// pixel_data: linear pixel array (1 bit per pixel), fg_color: foreground color
+    fn update_graphics_640x200(&mut self, pixel_data: &[u8], fg_color: u8, bg_color: u8) {
+        let _ = (pixel_data, fg_color, bg_color);
+        log::warn!("Graphics mode 640x200 not implemented for this platform");
+    }
+
+    /// Set cursor visibility
+    fn set_cursor_visible(&mut self, visible: bool) {
+        let _ = visible;
+        // Default implementation: do nothing
+    }
 }
 
 /// Null video controller (no display)
@@ -117,6 +309,7 @@ impl VideoController for NullVideoController {
     fn update_cursor(&mut self, _position: CursorPosition) {}
     fn set_video_mode(&mut self, _mode: u8) {}
     fn force_redraw(&mut self, _buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {}
+    // Graphics methods use default trait implementations
 }
 
 /// Core video state management
@@ -125,10 +318,16 @@ pub struct Video {
     cursor: CursorPosition,
     /// Text mode buffer (parsed representation)
     buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
+    /// Graphics mode buffer (optional, allocated when in graphics mode)
+    graphics_buffer: Option<GraphicsBuffer>,
     /// Current video mode
     mode: u8,
+    /// Parsed video mode type
+    mode_type: VideoMode,
     /// Active display page (0-7 for text modes)
     active_page: u8,
+    /// CGA palette state (graphics mode only)
+    palette: CgaPalette,
     /// Dirty flag to minimize unnecessary updates
     dirty: bool,
 }
@@ -138,49 +337,71 @@ impl Video {
         Self {
             cursor: CursorPosition::default(),
             buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            graphics_buffer: None,
             mode: 0x03, // 80x25 text mode
+            mode_type: VideoMode::Text {
+                cols: TEXT_MODE_COLS,
+                rows: TEXT_MODE_ROWS,
+            },
             active_page: 0,
+            palette: CgaPalette::new(),
             dirty: false,
         }
     }
 
     /// Read a single byte from video memory
     pub fn read_byte(&self, offset: usize) -> u8 {
-        if offset >= TEXT_MODE_BUFFER_SIZE {
-            return 0;
-        }
-
-        let cell_index = offset / 2;
-        if cell_index >= self.buffer.len() {
-            return 0;
-        }
-
-        if offset.is_multiple_of(2) {
-            // Even offset: character
-            self.buffer[cell_index].character
-        } else {
-            // Odd offset: attribute
-            self.buffer[cell_index].attribute.to_byte()
+        match &self.mode_type {
+            VideoMode::Text { .. } => {
+                // Text mode: existing logic
+                if offset >= TEXT_MODE_BUFFER_SIZE {
+                    return 0;
+                }
+                let cell_index = offset / 2;
+                if cell_index >= self.buffer.len() {
+                    return 0;
+                }
+                if offset.is_multiple_of(2) {
+                    self.buffer[cell_index].character
+                } else {
+                    self.buffer[cell_index].attribute.to_byte()
+                }
+            }
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
+                // Graphics mode
+                if let Some(ref buffer) = self.graphics_buffer {
+                    buffer.read_byte(offset)
+                } else {
+                    0
+                }
+            }
         }
     }
 
     /// Update a single byte in video memory
     pub fn write_byte(&mut self, offset: usize, value: u8) {
-        if offset >= TEXT_MODE_BUFFER_SIZE {
-            return; // Out of text mode range
-        }
-
-        let cell_index = offset / 2;
-        if cell_index >= self.buffer.len() {
-            return;
-        }
-
-        if offset.is_multiple_of(2) {
-            // Even offset: character
-            self.buffer[cell_index].character = value;
-        } else {
-            // Odd offset: attribute
-            self.buffer[cell_index].attribute = TextAttribute::from_byte(value);
+        match &self.mode_type {
+            VideoMode::Text { .. } => {
+                // Text mode: existing logic
+                if offset >= TEXT_MODE_BUFFER_SIZE {
+                    return;
+                }
+                let cell_index = offset / 2;
+                if cell_index >= self.buffer.len() {
+                    return;
+                }
+                if offset.is_multiple_of(2) {
+                    self.buffer[cell_index].character = value;
+                } else {
+                    self.buffer[cell_index].attribute = TextAttribute::from_byte(value);
+                }
+            }
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
+                // Graphics mode
+                if let Some(ref mut buffer) = self.graphics_buffer {
+                    buffer.write_byte(offset, value);
+                }
+            }
         }
         self.dirty = true;
     }
@@ -221,7 +442,33 @@ impl Video {
     /// Set video mode
     pub fn set_mode(&mut self, mode: u8) {
         self.mode = mode;
+
+        // Determine mode type and allocate appropriate buffer
+        self.mode_type = match mode {
+            0x00 | 0x01 => VideoMode::Text { cols: 40, rows: 25 },
+            0x02 | 0x03 | 0x07 => VideoMode::Text { cols: 80, rows: 25 },
+            0x04 | 0x05 => {
+                self.graphics_buffer = Some(GraphicsBuffer::new_320x200());
+                VideoMode::Graphics320x200
+            }
+            0x06 => {
+                self.graphics_buffer = Some(GraphicsBuffer::new_640x200());
+                VideoMode::Graphics640x200
+            }
+            _ => {
+                log::warn!("Unsupported video mode 0x{:02X}, defaulting to text", mode);
+                VideoMode::Text { cols: 80, rows: 25 }
+            }
+        };
+
+        // Clear buffers on mode change
+        if matches!(self.mode_type, VideoMode::Text { .. }) {
+            self.buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
+            self.graphics_buffer = None;
+        }
+
         self.dirty = true;
+        log::info!("Video mode set to 0x{:02X} ({:?})", mode, self.mode_type);
     }
 
     /// Get current video mode
@@ -238,6 +485,37 @@ impl Video {
     /// Get active display page
     pub fn get_active_page(&self) -> u8 {
         self.active_page
+    }
+
+    /// Check if currently in graphics mode
+    pub fn is_graphics_mode(&self) -> bool {
+        !matches!(self.mode_type, VideoMode::Text { .. })
+    }
+
+    /// Get current mode type
+    pub fn get_mode_type(&self) -> VideoMode {
+        self.mode_type
+    }
+
+    /// Set CGA palette (from I/O port 0x3D9)
+    pub fn set_palette(&mut self, value: u8) {
+        self.palette = CgaPalette::from_register(value);
+        self.dirty = true;
+    }
+
+    /// Get CGA palette register value
+    pub fn get_palette_register(&self) -> u8 {
+        self.palette.to_register()
+    }
+
+    /// Get graphics buffer (for rendering)
+    pub fn get_graphics_buffer(&self) -> Option<&GraphicsBuffer> {
+        self.graphics_buffer.as_ref()
+    }
+
+    /// Get palette (for rendering)
+    pub fn get_palette(&self) -> &CgaPalette {
+        &self.palette
     }
 }
 

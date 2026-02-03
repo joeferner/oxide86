@@ -1,5 +1,8 @@
 # CGA Graphics Support Implementation Plan
 
+## Status
+- ✅ **Phase 1: Core Graphics State Management** - COMPLETED
+
 ## Overview
 Implement IBM Color Graphics Adapter (CGA) graphics modes alongside existing text mode support. This enables running graphics-based DOS programs and games from the early 1980s.
 
@@ -67,11 +70,21 @@ Implement IBM Color Graphics Adapter (CGA) graphics modes alongside existing tex
 
 ## Implementation Phases
 
-### Phase 1: Core Graphics State Management
+### Phase 1: Core Graphics State Management ✅ COMPLETED
 
-**File**: `core/src/video.rs` (MODIFY)
+**File**: `core/src/video.rs` (MODIFIED)
 
-Extend `Video` struct to support graphics modes:
+**What was implemented:**
+- ✅ Added `VideoMode` enum (Text, Graphics320x200, Graphics640x200)
+- ✅ Added `GraphicsBuffer` struct with interlaced CGA memory layout support
+- ✅ Added `CgaPalette` struct with CGA color palette management
+- ✅ Extended `Video` struct with graphics mode fields (graphics_buffer, mode_type, palette)
+- ✅ Updated `Video::set_mode()` to allocate/deallocate graphics buffers
+- ✅ Updated `Video::read_byte()` and `write_byte()` to handle both text and graphics modes
+- ✅ Added helper methods: `is_graphics_mode()`, `get_mode_type()`, `set_palette()`, `get_palette()`, `get_graphics_buffer()`
+- ✅ Extended `VideoController` trait with `update_graphics_320x200()` and `update_graphics_640x200()` methods
+
+**Implementation details:**
 
 ```rust
 /// Video mode type
