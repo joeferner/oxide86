@@ -2,6 +2,7 @@
 
 ## Status
 - ✅ **Phase 1: Core Graphics State Management** - COMPLETED
+- ✅ **Phase 2: VideoController Trait Extension** - COMPLETED
 
 ## Overview
 Implement IBM Color Graphics Adapter (CGA) graphics modes alongside existing text mode support. This enables running graphics-based DOS programs and games from the early 1980s.
@@ -413,44 +414,16 @@ impl Video {
 }
 ```
 
-### Phase 2: VideoController Trait Extension
+### Phase 2: VideoController Trait Extension ✅ COMPLETED
 
-**File**: `core/src/video.rs` (MODIFY)
+**File**: `core/src/video.rs` (MODIFIED)
 
-Extend trait to support graphics rendering:
-
-```rust
-/// Video controller trait - platform-specific implementations provide rendering
-pub trait VideoController {
-    /// Update text mode display
-    fn update_display(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]);
-
-    /// Update cursor position (text mode)
-    fn update_cursor(&mut self, cursor: &CursorPosition);
-
-    /// Set cursor visibility
-    fn set_cursor_visible(&mut self, visible: bool);
-
-    /// Update graphics display (320x200, 4 colors)
-    /// pixel_data: linear pixel array, palette: current CGA palette
-    fn update_graphics_320x200(&mut self, pixel_data: &[u8], palette: &CgaPalette) {
-        // Default implementation: log warning
-        log::warn!("Graphics mode 320x200 not implemented for this platform");
-    }
-
-    /// Update graphics display (640x200, 2 colors)
-    /// pixel_data: linear pixel array (1 bit per pixel), fg_color: foreground color
-    fn update_graphics_640x200(&mut self, pixel_data: &[u8], fg_color: u8, bg_color: u8) {
-        log::warn!("Graphics mode 640x200 not implemented for this platform");
-    }
-
-    /// Called on mode changes
-    fn set_video_mode(&mut self, mode: u8);
-
-    /// Force a full redraw
-    fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]);
-}
-```
+**What was implemented:**
+- ✅ Added `update_graphics_320x200()` method to VideoController trait (lines 281-287)
+- ✅ Added `update_graphics_640x200()` method to VideoController trait (lines 290-294)
+- ✅ Both methods have default implementations that log warnings
+- ✅ Platform implementations (TerminalVideo, WebVideo) use default implementations
+- ✅ WASM compatibility verified - trait is safe for both native and WASM targets
 
 ### Phase 3: CGA I/O Ports
 
