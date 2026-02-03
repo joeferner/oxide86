@@ -1,8 +1,7 @@
 # TODO
 
-- [ ] Add overlay to the top right in native-gui for performance which includes target clock rate and actual clock rate. Enable turning it on and off from a debug menu item.
-- [ ] WASM - Add support to download floppy and hard drive data
 - [ ] WASM - Implement options to create a new harddrive or floppy 
+- [ ] WASM - Add support to download floppy and hard drive data
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
 - [ ] Implement CGA video mode
 - [ ] Test CGA Applications
