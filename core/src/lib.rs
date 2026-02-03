@@ -22,6 +22,7 @@ pub use crate::video::{
     CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
 };
 pub use computer::Computer;
+pub use font::Cp437Font;
 pub use palette::TextModePalette;
 
 pub mod computer;
@@ -31,6 +32,7 @@ pub mod disk;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod disk_backend;
 pub mod drive_manager;
+pub mod font;
 pub mod io;
 pub mod keyboard;
 pub mod memory;

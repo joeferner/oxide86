@@ -1,4 +1,3 @@
-mod font;
 mod gui_keyboard;
 mod gui_mouse;
 mod gui_video;

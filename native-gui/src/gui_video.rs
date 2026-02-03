@@ -1,10 +1,9 @@
 use emu86_core::{
-    TextModePalette,
+    Cp437Font, TextModePalette,
+    font::{CHAR_HEIGHT, CHAR_WIDTH},
     video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController},
 };
 use pixels::Pixels;
-
-use crate::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
 
 /// Screen dimensions in pixels
 #[allow(dead_code)]
