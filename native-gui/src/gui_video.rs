@@ -1,5 +1,6 @@
-use emu86_core::video::{
-    CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController,
+use emu86_core::{
+    TextModePalette,
+    video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController},
 };
 use pixels::Pixels;
 
@@ -14,29 +15,6 @@ pub const SCREEN_HEIGHT: usize = TEXT_MODE_ROWS * CHAR_HEIGHT; // 400
 /// Cursor appearance constants
 const CURSOR_START_ROW: usize = 14; // Cursor appears in bottom 2 rows of character
 const CURSOR_END_ROW: usize = 16; // Exclusive
-
-/// Convert VGA color (0-15) to RGB tuple
-fn vga_to_rgb(vga_color: u8) -> [u8; 3] {
-    match vga_color & 0x0F {
-        0 => [0x00, 0x00, 0x00],  // Black
-        1 => [0x00, 0x00, 0xAA],  // Blue
-        2 => [0x00, 0xAA, 0x00],  // Green
-        3 => [0x00, 0xAA, 0xAA],  // Cyan
-        4 => [0xAA, 0x00, 0x00],  // Red
-        5 => [0xAA, 0x00, 0xAA],  // Magenta
-        6 => [0xAA, 0x55, 0x00],  // Brown
-        7 => [0xAA, 0xAA, 0xAA],  // Light Gray
-        8 => [0x55, 0x55, 0x55],  // Dark Gray
-        9 => [0x55, 0x55, 0xFF],  // Light Blue
-        10 => [0x55, 0xFF, 0x55], // Light Green
-        11 => [0x55, 0xFF, 0xFF], // Light Cyan
-        12 => [0xFF, 0x55, 0x55], // Light Red
-        13 => [0xFF, 0x55, 0xFF], // Light Magenta
-        14 => [0xFF, 0xFF, 0x55], // Yellow
-        15 => [0xFF, 0xFF, 0xFF], // White
-        _ => [0xFF, 0xFF, 0xFF],  // Fallback to white
-    }
-}
 
 /// Video controller for GUI rendering
 #[allow(dead_code)]
@@ -79,8 +57,8 @@ impl PixelsVideoController {
     /// Render a single character cell at the given screen position
     fn render_cell(&self, frame: &mut [u8], row: usize, col: usize, cell: &TextCell) {
         let glyph = self.font.get_glyph(cell.character);
-        let fg_color = vga_to_rgb(cell.attribute.foreground);
-        let bg_color = vga_to_rgb(cell.attribute.background);
+        let fg_color = TextModePalette::get_color(cell.attribute.foreground);
+        let bg_color = TextModePalette::get_color(cell.attribute.background);
 
         let start_x = col * CHAR_WIDTH;
         let start_y = row * CHAR_HEIGHT;

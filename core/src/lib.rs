@@ -22,6 +22,7 @@ pub use crate::video::{
     CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
 };
 pub use computer::Computer;
+pub use palette::TextModePalette;
 
 pub mod computer;
 pub mod cpu;
@@ -35,6 +36,7 @@ pub mod keyboard;
 pub mod memory;
 pub mod memory_allocator;
 pub mod mouse;
+pub mod palette;
 pub mod peripheral;
 #[cfg(feature = "audio-rodio")]
 pub mod rodio_speaker;

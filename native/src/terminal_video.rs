@@ -3,8 +3,9 @@ use crossterm::{
     style::{Color, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use emu86_core::video::{
-    CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController,
+use emu86_core::{
+    TextModePalette,
+    video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController},
 };
 use std::io::{self, Write};
 
@@ -34,92 +35,11 @@ fn cp437_to_unicode(byte: u8) -> char {
 
 /// Map VGA color to crossterm Color
 fn vga_to_crossterm_color(vga_color: u8) -> Color {
-    match vga_color & 0x0F {
-        0 => Color::Rgb {
-            r: 0x00,
-            g: 0x00,
-            b: 0x00,
-        }, // Black
-        1 => Color::Rgb {
-            r: 0x00,
-            g: 0x00,
-            b: 0xAA,
-        }, // Blue
-        2 => Color::Rgb {
-            r: 0x00,
-            g: 0xAA,
-            b: 0x00,
-        }, // Green
-        3 => Color::Rgb {
-            r: 0x00,
-            g: 0xAA,
-            b: 0xAA,
-        }, // Cyan
-        4 => Color::Rgb {
-            r: 0xAA,
-            g: 0x00,
-            b: 0x00,
-        }, // Red
-        5 => Color::Rgb {
-            r: 0xAA,
-            g: 0x00,
-            b: 0xAA,
-        }, // Magenta
-        6 => Color::Rgb {
-            r: 0xAA,
-            g: 0x55,
-            b: 0x00,
-        }, // Brown
-        7 => Color::Rgb {
-            r: 0xAA,
-            g: 0xAA,
-            b: 0xAA,
-        }, // Light Gray
-        8 => Color::Rgb {
-            r: 0x55,
-            g: 0x55,
-            b: 0x55,
-        }, // Dark Gray
-        9 => Color::Rgb {
-            r: 0x55,
-            g: 0x55,
-            b: 0xFF,
-        }, // Light Blue
-        10 => Color::Rgb {
-            r: 0x55,
-            g: 0xFF,
-            b: 0x55,
-        }, // Light Green
-        11 => Color::Rgb {
-            r: 0x55,
-            g: 0xFF,
-            b: 0xFF,
-        }, // Light Cyan
-        12 => Color::Rgb {
-            r: 0xFF,
-            g: 0x55,
-            b: 0x55,
-        }, // Light Red
-        13 => Color::Rgb {
-            r: 0xFF,
-            g: 0x55,
-            b: 0xFF,
-        }, // Light Magenta
-        14 => Color::Rgb {
-            r: 0xFF,
-            g: 0xFF,
-            b: 0x55,
-        }, // Yellow
-        15 => Color::Rgb {
-            r: 0xFF,
-            g: 0xFF,
-            b: 0xFF,
-        }, // White
-        _ => Color::Rgb {
-            r: 0xFF,
-            g: 0xFF,
-            b: 0xFF,
-        }, // Fallback
+    let color_tuple = TextModePalette::get_color(vga_color);
+    Color::Rgb {
+        r: color_tuple[0],
+        g: color_tuple[1],
+        b: color_tuple[2],
     }
 }
 
