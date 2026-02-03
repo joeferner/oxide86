@@ -2,7 +2,7 @@
 
 - [ ] Refactor WASM to not call document.add_event_listener_with_callback but instead listen externally and call wasm functions from typescript
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
-- [ ] Add overlay for performance target clock rate actual clock rate
+- [ ] Add overlay to the top right in native-gui for performance which includes target clock rate and actual clock rate. Enable turning it on and off from a debug menu item.
 - [ ] Implement CGA video mode
 - [ ] Test CGA Applications
   - [ ] Alley Cat
