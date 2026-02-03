@@ -7,6 +7,7 @@ pub enum MenuAction {
     EjectFloppyA,
     InsertFloppyB,
     EjectFloppyB,
+    Reset,
     ToggleExecutionLogging,
     ToggleInterruptLogging,
     TogglePause,
@@ -19,11 +20,12 @@ impl MenuAction {
         match self {
             MenuAction::InsertFloppyA | MenuAction::EjectFloppyA => DriveNumber::floppy_a(),
             MenuAction::InsertFloppyB | MenuAction::EjectFloppyB => DriveNumber::floppy_b(),
-            MenuAction::ToggleExecutionLogging
+            MenuAction::Reset
+            | MenuAction::ToggleExecutionLogging
             | MenuAction::ToggleInterruptLogging
             | MenuAction::TogglePause
             | MenuAction::ToggleTurbo => {
-                unreachable!("drive_number() called on debug action")
+                unreachable!("drive_number() called on non-floppy action")
             }
         }
     }
@@ -41,6 +43,7 @@ impl MenuAction {
                 | MenuAction::ToggleInterruptLogging
                 | MenuAction::TogglePause
                 | MenuAction::ToggleTurbo
+                | MenuAction::Reset
         )
     }
 }
@@ -142,6 +145,17 @@ impl AppMenu {
                             ui.close_menu();
                         }
                     });
+                });
+
+                ui.menu_button("System", |ui| {
+                    if ui
+                        .button("🔄 Reset")
+                        .on_hover_text("Reset and reboot the computer")
+                        .clicked()
+                    {
+                        action = Some(MenuAction::Reset);
+                        ui.close_menu();
+                    }
                 });
 
                 ui.menu_button("Debug", |ui| {

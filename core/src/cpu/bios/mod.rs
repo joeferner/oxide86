@@ -238,6 +238,25 @@ impl Bios {
         }
     }
 
+    /// Reset BIOS state (memory allocator, open files, device handles) while keeping drives attached
+    pub fn reset_state(&mut self) {
+        // Reset memory allocator
+        self.shared.memory_allocator = MemoryAllocator::new();
+
+        // Close all open files by resetting the drive manager's file state
+        // But keep the drives attached
+        self.shared.drive_manager.close_all_files();
+
+        // Clear device handles
+        self.shared.device_handles.clear();
+
+        // Reset handle counter
+        self.shared.next_device_handle = 3;
+
+        // Reset serial ports
+        self.serial_ports = [SerialPortController::new(0), SerialPortController::new(1)];
+    }
+
     /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
     pub fn insert_floppy(
         &mut self,

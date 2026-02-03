@@ -1,6 +1,5 @@
 # TODO
 
-- [ ] Reset not working
 - [ ] WASM - fix mouse not working (CTMouse it not detecting the mouse)
 - [ ] WASM - Lock mouse into canvas, update help when mouse is locked telling the user to press F12 to exit
 - [ ] WASM - Add support to download floppy and hard drive data

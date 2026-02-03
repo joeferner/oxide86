@@ -864,6 +864,11 @@ fn handle_debug_action(
     use menu::MenuAction;
 
     match action {
+        MenuAction::Reset => {
+            log::info!("Resetting computer...");
+            computer.reset();
+            log::info!("Computer reset complete");
+        }
         MenuAction::ToggleExecutionLogging => {
             computer.exec_logging_enabled = !computer.exec_logging_enabled;
             log::info!(

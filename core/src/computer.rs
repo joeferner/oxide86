@@ -43,6 +43,8 @@ pub struct Computer<V: VideoController = NullVideoController> {
     timer_irq_blocked_logged: bool,
     /// Counter for periodic speaker updates (reduces overhead)
     speaker_update_cycles: u64,
+    /// Boot drive for reset/reboot operations
+    boot_drive: Option<DriveNumber>,
 }
 
 impl<V: VideoController> Computer<V> {
@@ -107,6 +109,7 @@ impl<V: VideoController> Computer<V> {
             pending_timer_irqs: 0,
             timer_irq_blocked_logged: false,
             speaker_update_cycles: 0,
+            boot_drive: None,
         }
     }
 
@@ -215,11 +218,60 @@ impl<V: VideoController> Computer<V> {
             }
         }
 
+        // Store boot drive for reset/reboot operations
+        self.boot_drive = Some(drive);
+
         Ok(())
     }
 
+    /// Reset the computer and re-boot from the previously booted drive.
+    /// If no drive was previously booted, only resets the CPU.
     pub fn reset(&mut self) {
+        log::info!("Resetting computer...");
+
+        // Reset CPU state
         self.cpu.reset();
+        self.cpu.clear_halt(); // Ensure CPU is not halted after reset
+
+        // Reset memory (BDA and IVT)
+        self.memory.initialize_ivt();
+        self.memory.initialize_bda();
+
+        // Reset BIOS state (memory allocator, open files, device handles)
+        // But keep the attached drives (they're the "hardware")
+        self.bios.reset_state();
+
+        // Reset video to blank screen
+        self.video = Video::new();
+
+        // Reset IO devices
+        self.io_device = IoDevice::new();
+
+        // Clear pending interrupts
+        self.pending_keyboard_irqs.clear();
+        self.pending_serial_irqs.clear();
+        self.pending_timer_irqs = 0;
+        self.timer_irq_blocked_logged = false;
+
+        // Reset cycle counters
+        self.cycle_count = 0;
+        self.total_cycles = 0;
+        self.step_count = 0;
+        self.speaker_update_cycles = 0;
+
+        // Force a video redraw to clear the screen
+        self.video_controller.force_redraw(self.video.get_buffer());
+
+        // Re-boot from the stored boot drive if one exists
+        if let Some(drive) = self.boot_drive {
+            log::info!("Rebooting from drive {}", drive.to_letter());
+            // Ignore boot errors during reset - just log them
+            if let Err(e) = self.boot(drive) {
+                log::error!("Failed to reboot during reset: {}", e);
+            }
+        } else {
+            log::info!("Reset called but no boot drive stored");
+        }
     }
 
     /// Queue a keyboard IRQ to be processed before the next instruction

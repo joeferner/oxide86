@@ -307,6 +307,14 @@ impl DriveManager {
         self.next_handle
     }
 
+    /// Close all open files and clear searches (used during reset)
+    pub fn close_all_files(&mut self) {
+        self.open_files.clear();
+        self.searches.clear();
+        self.next_handle = 3; // Reset to initial value
+        self.next_search_id = 0;
+    }
+
     // === Floppy Management ===
 
     /// Insert a floppy disk into a slot (0 = A:, 1 = B:)
