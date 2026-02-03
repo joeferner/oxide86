@@ -387,6 +387,49 @@
             }
         });
 
+        // Keyboard event handling
+        const preventDefaultKeys = [
+            'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+            'Backspace', 'Tab', 'Space',
+            'F1', 'F2', 'F3', 'F4', 'F5', 'F6', 'F7', 'F8', 'F9', 'F10', 'F11', 'F12'
+        ];
+
+        document.addEventListener('keydown', (event) => {
+            if (!computer) return;
+
+            // Prevent default for emulator keys
+            if (preventDefaultKeys.includes(event.code)) {
+                event.preventDefault();
+            }
+
+            // Pass event data to WASM
+            computer.handle_key_event(
+                event.code,
+                event.key,
+                event.shiftKey,
+                event.ctrlKey,
+                event.altKey
+            );
+        });
+
+        // Mouse event handling
+        const canvas = document.getElementById('display');
+
+        canvas.addEventListener('mousemove', (event) => {
+            if (!computer) return;
+            computer.handle_mouse_move(event.offsetX, event.offsetY);
+        });
+
+        canvas.addEventListener('mousedown', (event) => {
+            if (!computer) return;
+            computer.handle_mouse_button(event.button, true);
+        });
+
+        canvas.addEventListener('mouseup', (event) => {
+            if (!computer) return;
+            computer.handle_mouse_button(event.button, false);
+        });
+
         // Start the application
         main();
     </script>

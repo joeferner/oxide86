@@ -4,9 +4,14 @@
 //! platform-independent traits (KeyboardInput, MouseInput, VideoController, SpeakerOutput)
 //! and exposes a JavaScript API for controlling the emulator from web applications.
 
-use emu86_core::{BackedDisk, Computer, DiskGeometry, DriveNumber, MemoryDiskBackend, NullSpeaker};
+use emu86_core::{
+    BackedDisk, Computer, DiskGeometry, DriveNumber, KeyPress, KeyboardInput, MemoryDiskBackend,
+    MouseInput, MouseState, NullSpeaker,
+};
+use std::cell::RefCell;
+use std::rc::Rc;
 use wasm_bindgen::prelude::*;
-use web_sys::{Document, HtmlCanvasElement, Window};
+use web_sys::{HtmlCanvasElement, Window};
 
 mod web_keyboard;
 mod web_mouse;
@@ -15,6 +20,54 @@ mod web_video;
 use web_keyboard::WebKeyboard;
 use web_mouse::WebMouse;
 use web_video::WebVideo;
+
+/// Wrapper around WebKeyboard that shares ownership via Rc<RefCell<>>
+/// This allows both the Computer and Emu86Computer to access the keyboard
+struct SharedKeyboard(Rc<RefCell<WebKeyboard>>);
+
+impl KeyboardInput for SharedKeyboard {
+    fn read_char(&mut self) -> Option<u8> {
+        self.0.borrow_mut().read_char()
+    }
+
+    fn check_char(&mut self) -> Option<u8> {
+        self.0.borrow_mut().check_char()
+    }
+
+    fn has_char_available(&self) -> bool {
+        self.0.borrow().has_char_available()
+    }
+
+    fn read_key(&mut self) -> Option<KeyPress> {
+        self.0.borrow_mut().read_key()
+    }
+
+    fn check_key(&mut self) -> Option<KeyPress> {
+        self.0.borrow_mut().check_key()
+    }
+}
+
+/// Wrapper around WebMouse that shares ownership via Rc<RefCell<>>
+/// This allows both the Computer and Emu86Computer to access the mouse
+struct SharedMouse(Rc<RefCell<WebMouse>>);
+
+impl MouseInput for SharedMouse {
+    fn get_state(&self) -> MouseState {
+        self.0.borrow().get_state()
+    }
+
+    fn get_motion(&mut self) -> (i16, i16) {
+        self.0.borrow_mut().get_motion()
+    }
+
+    fn is_present(&self) -> bool {
+        self.0.borrow().is_present()
+    }
+
+    fn update_window_size(&mut self, width: f64, height: f64) {
+        self.0.borrow_mut().update_window_size(width, height);
+    }
+}
 
 /// Initialize WASM module (call this first from JavaScript)
 #[wasm_bindgen(start)]
@@ -32,6 +85,8 @@ pub fn init() {
 #[wasm_bindgen]
 pub struct Emu86Computer {
     computer: Computer<WebVideo>,
+    keyboard: Rc<RefCell<WebKeyboard>>,
+    mouse: Rc<RefCell<WebMouse>>,
 }
 
 #[wasm_bindgen]
@@ -44,7 +99,7 @@ impl Emu86Computer {
     pub fn new(canvas_id: &str) -> Result<Emu86Computer, JsValue> {
         let window: Window =
             web_sys::window().ok_or_else(|| JsValue::from_str("No window object"))?;
-        let document: Document = window
+        let document = window
             .document()
             .ok_or_else(|| JsValue::from_str("No document object"))?;
 
@@ -53,14 +108,28 @@ impl Emu86Computer {
             .ok_or_else(|| JsValue::from_str(&format!("Canvas {} not found", canvas_id)))?
             .dyn_into::<HtmlCanvasElement>()?;
 
-        let keyboard = Box::new(WebKeyboard::new(&document)?);
-        let mouse = Box::new(WebMouse::new(&canvas)?);
+        // Get canvas dimensions for mouse coordinate scaling
+        let canvas_width = canvas.width() as f64;
+        let canvas_height = canvas.height() as f64;
+
+        // Create keyboard and mouse with Rc for shared ownership
+        let keyboard = Rc::new(RefCell::new(WebKeyboard::new()?));
+        let mouse = Rc::new(RefCell::new(WebMouse::new(canvas_width, canvas_height)?));
+
+        // Create wrappers for the Computer (clones the Rc)
+        let keyboard_wrapper = Box::new(SharedKeyboard(keyboard.clone()));
+        let mouse_wrapper = Box::new(SharedMouse(mouse.clone()));
+
         let video = WebVideo::new(canvas)?;
         let speaker = Box::new(NullSpeaker);
 
-        let computer = Computer::new(keyboard, mouse, video, speaker);
+        let computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker);
 
-        Ok(Self { computer })
+        Ok(Self {
+            computer,
+            keyboard,
+            mouse,
+        })
     }
 
     /// Load a floppy disk image from a byte array.
@@ -212,5 +281,49 @@ impl Emu86Computer {
     pub fn reset(&mut self) {
         self.computer.reset();
         log::info!("Computer reset");
+    }
+
+    /// Handle keyboard event from JavaScript.
+    ///
+    /// # Arguments
+    /// * `code` - KeyboardEvent.code (e.g., "KeyA", "Enter")
+    /// * `key` - KeyboardEvent.key (e.g., "a", "Enter")
+    /// * `shift` - Shift key state
+    /// * `ctrl` - Control key state
+    /// * `alt` - Alt key state
+    #[wasm_bindgen]
+    pub fn handle_key_event(
+        &mut self,
+        code: String,
+        key: String,
+        shift: bool,
+        ctrl: bool,
+        alt: bool,
+    ) {
+        self.keyboard
+            .borrow_mut()
+            .inject_key_event(&code, &key, shift, ctrl, alt);
+    }
+
+    /// Handle mouse move event from JavaScript.
+    ///
+    /// # Arguments
+    /// * `offset_x` - Mouse X coordinate relative to canvas
+    /// * `offset_y` - Mouse Y coordinate relative to canvas
+    #[wasm_bindgen]
+    pub fn handle_mouse_move(&mut self, offset_x: f64, offset_y: f64) {
+        self.mouse
+            .borrow_mut()
+            .inject_mouse_move(offset_x, offset_y);
+    }
+
+    /// Handle mouse button event from JavaScript.
+    ///
+    /// # Arguments
+    /// * `button` - Button number (0=left, 1=middle, 2=right)
+    /// * `pressed` - true for mousedown, false for mouseup
+    #[wasm_bindgen]
+    pub fn handle_mouse_button(&mut self, button: u8, pressed: bool) {
+        self.mouse.borrow_mut().inject_mouse_button(button, pressed);
     }
 }

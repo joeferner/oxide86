@@ -5,49 +5,37 @@ use emu86_core::keyboard::KeyboardInput;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;
-use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
-use web_sys::{Document, KeyboardEvent};
 
 /// Web-based keyboard input using browser keyboard events.
+/// Event listeners are attached in JavaScript, which calls inject_key_event.
 pub struct WebKeyboard {
     /// Shared buffer for keyboard input from JavaScript events
     keyboard_buffer: Rc<RefCell<VecDeque<KeyPress>>>,
-    /// Closure for keydown event handler (must be kept alive)
-    _keydown_closure: Closure<dyn FnMut(KeyboardEvent)>,
 }
 
 impl WebKeyboard {
-    /// Create a new WebKeyboard and attach event listeners.
+    /// Create a new WebKeyboard.
+    /// Event listeners should be attached in JavaScript code.
+    pub fn new() -> Result<Self, JsValue> {
+        Ok(Self {
+            keyboard_buffer: Rc::new(RefCell::new(VecDeque::new())),
+        })
+    }
+
+    /// Inject a keyboard event from JavaScript.
+    /// This is called by JavaScript event handlers.
     ///
     /// # Arguments
-    /// * `document` - The browser document object to attach listeners to
-    pub fn new(document: &Document) -> Result<Self, JsValue> {
-        let keyboard_buffer = Rc::new(RefCell::new(VecDeque::new()));
-        let buffer_clone = keyboard_buffer.clone();
-
-        // Create keydown event handler
-        let keydown_closure = Closure::wrap(Box::new(move |event: KeyboardEvent| {
-            // Prevent default browser behavior for special keys
-            if should_prevent_default(&event) {
-                event.prevent_default();
-            }
-
-            if let Some(key_press) = event_to_keypress(&event) {
-                buffer_clone.borrow_mut().push_back(key_press);
-            }
-        }) as Box<dyn FnMut(KeyboardEvent)>);
-
-        // Attach event listener to document
-        document.add_event_listener_with_callback(
-            "keydown",
-            keydown_closure.as_ref().unchecked_ref(),
-        )?;
-
-        Ok(Self {
-            keyboard_buffer,
-            _keydown_closure: keydown_closure,
-        })
+    /// * `code` - KeyboardEvent.code (e.g., "KeyA", "Enter")
+    /// * `key` - KeyboardEvent.key (e.g., "a", "Enter")
+    /// * `shift` - Shift key state
+    /// * `ctrl` - Control key state
+    /// * `alt` - Alt key state
+    pub fn inject_key_event(&mut self, code: &str, key: &str, shift: bool, ctrl: bool, alt: bool) {
+        if let Some(key_press) = event_to_keypress(code, key, shift, ctrl, alt) {
+            self.keyboard_buffer.borrow_mut().push_back(key_press);
+        }
     }
 }
 
@@ -79,17 +67,17 @@ impl KeyboardInput for WebKeyboard {
     }
 }
 
-/// Convert JavaScript KeyboardEvent to 8086 KeyPress
-fn event_to_keypress(event: &KeyboardEvent) -> Option<KeyPress> {
-    let code = event.code();
-    let key = event.key();
-    let shift = event.shift_key();
-    let ctrl = event.ctrl_key();
-    let alt = event.alt_key();
-
+/// Convert JavaScript keyboard event data to 8086 KeyPress
+fn event_to_keypress(
+    code: &str,
+    key: &str,
+    shift: bool,
+    ctrl: bool,
+    alt: bool,
+) -> Option<KeyPress> {
     // Handle Ctrl+key combinations
     if ctrl && !alt {
-        return match code.as_str() {
+        return match code {
             "KeyA" => Some(KeyPress {
                 scan_code: 0x1E,
                 ascii_code: 0x01,
@@ -199,7 +187,7 @@ fn event_to_keypress(event: &KeyboardEvent) -> Option<KeyPress> {
     }
 
     // Map common keys to scan codes and ASCII codes based on the code attribute
-    let (scan_code, ascii_code) = match code.as_str() {
+    let (scan_code, ascii_code) = match code {
         // Letter keys
         "KeyA" => (0x1E, if shift { b'A' } else { b'a' }),
         "KeyB" => (0x30, if shift { b'B' } else { b'b' }),
@@ -326,31 +314,4 @@ fn event_to_keypress(event: &KeyboardEvent) -> Option<KeyPress> {
         scan_code,
         ascii_code,
     })
-}
-
-/// Determine if default browser behavior should be prevented for this key
-fn should_prevent_default(event: &KeyboardEvent) -> bool {
-    let code = event.code();
-    matches!(
-        code.as_str(),
-        "ArrowUp"
-            | "ArrowDown"
-            | "ArrowLeft"
-            | "ArrowRight"
-            | "Backspace"
-            | "Tab"
-            | "F1"
-            | "F2"
-            | "F3"
-            | "F4"
-            | "F5"
-            | "F6"
-            | "F7"
-            | "F8"
-            | "F9"
-            | "F10"
-            | "F11"
-            | "F12"
-            | "Space"
-    )
 }
