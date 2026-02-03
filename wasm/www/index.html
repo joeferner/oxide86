@@ -170,9 +170,9 @@
 <body>
     <h1>emu86 - Intel 8086 Emulator</h1>
 
-    <div class="info-box">
+    <div class="info-box" id="help-text">
         <strong>Instructions:</strong> Load a disk image, click Boot, then Start to run the emulator.
-        Use keyboard and mouse in the canvas area. Click Stop to pause execution.
+        Use keyboard and mouse in the canvas area. Click on the canvas to lock the mouse for infinite movement.
     </div>
 
     <div id="main-container">
@@ -231,6 +231,7 @@
         let running = false;
         let animationFrameId = null;
         let canvas = null;
+        let pointerLocked = false;
 
         async function main() {
             try {
@@ -243,10 +244,16 @@
 
                 updateStatus('Emulator initialized. Serial mouse attached to COM1. Load disk images to begin.');
 
-                // Focus canvas on click to enable keyboard input
+                // Focus canvas on click to enable keyboard input and request pointer lock
                 canvas.addEventListener('click', () => {
                     canvas.focus();
+                    // Request pointer lock for infinite mouse movement
+                    requestPointerLock();
                 });
+
+                // Listen for pointer lock changes
+                document.addEventListener('pointerlockchange', handlePointerLockChange);
+                document.addEventListener('pointerlockerror', handlePointerLockError);
 
                 // Setup event listeners after canvas is initialized
                 setupEventListeners();
@@ -274,6 +281,44 @@
                 text.classList.remove('running');
                 text.textContent = 'STOPPED';
             }
+        }
+
+        function updateHelpText() {
+            const helpText = document.getElementById('help-text');
+            if (pointerLocked) {
+                helpText.innerHTML = '<strong>Mouse Locked:</strong> Mouse is locked to canvas for infinite movement. <strong>Press F12 to exit mouse lock.</strong>';
+                helpText.style.backgroundColor = '#2a1a2a';
+                helpText.style.borderColor = '#660055';
+            } else {
+                helpText.innerHTML = '<strong>Instructions:</strong> Load a disk image, click Boot, then Start to run the emulator. Use keyboard and mouse in the canvas area. Click on the canvas to lock the mouse for infinite movement.';
+                helpText.style.backgroundColor = '#2a2a1a';
+                helpText.style.borderColor = '#665500';
+            }
+        }
+
+        function requestPointerLock() {
+            canvas.requestPointerLock();
+        }
+
+        function exitPointerLock() {
+            if (document.pointerLockElement === canvas) {
+                document.exitPointerLock();
+            }
+        }
+
+        function handlePointerLockChange() {
+            pointerLocked = (document.pointerLockElement === canvas);
+            updateHelpText();
+            if (pointerLocked) {
+                updateStatus('Mouse locked to canvas (press F12 to exit)');
+            } else {
+                updateStatus('Mouse unlocked (click canvas to lock)');
+            }
+        }
+
+        function handlePointerLockError() {
+            updateStatus('Error: Failed to lock mouse pointer');
+            console.error('Pointer lock error');
         }
 
         // File loading helper
@@ -480,6 +525,13 @@
                     return;
                 }
 
+                // F12 exits pointer lock when mouse is locked
+                if (event.code === 'F12' && pointerLocked) {
+                    event.preventDefault();
+                    exitPointerLock();
+                    return;
+                }
+
                 // Prevent default for emulator keys or ALT combinations (to avoid browser menu shortcuts)
                 if (preventDefaultKeys.includes(event.code) || event.altKey) {
                     event.preventDefault();
@@ -503,7 +555,12 @@
             canvas.addEventListener('mousemove', (event) => {
                 if (!computer) return;
                 try {
-                    computer.handle_mouse_move(event.offsetX, event.offsetY);
+                    // When pointer is locked, use movement deltas instead of absolute position
+                    if (pointerLocked) {
+                        computer.handle_mouse_delta(event.movementX, event.movementY);
+                    } else {
+                        computer.handle_mouse_move(event.offsetX, event.offsetY);
+                    }
                 } catch (e) {
                     console.error('Mouse move error:', e);
                 }

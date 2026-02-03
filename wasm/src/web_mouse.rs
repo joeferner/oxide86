@@ -30,6 +30,8 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 
+const SENSITIVITY: f64 = 3.0;
+
 /// Shared state between WebMouse and event closures.
 #[derive(Debug, Clone, Default)]
 struct SharedState {
@@ -106,9 +108,9 @@ impl WebMouse {
         let delta_x = x as i16 - shared.prev_x as i16;
         let delta_y = y as i16 - shared.prev_y as i16;
 
-        // Convert to mickeys (8 mickeys per pixel)
-        shared.motion_x = shared.motion_x.saturating_add(delta_x * 8);
-        shared.motion_y = shared.motion_y.saturating_add(delta_y * 8);
+        // Convert to mickeys (SENSITIVITY mickeys per pixel for reduced sensitivity)
+        shared.motion_x = shared.motion_x.saturating_add(delta_x * SENSITIVITY as i16);
+        shared.motion_y = shared.motion_y.saturating_add(delta_y * SENSITIVITY as i16);
 
         // Update position
         shared.state.x = x;
@@ -132,6 +134,35 @@ impl WebMouse {
             2 => shared.state.right_button = pressed,  // Right button
             _ => {}
         }
+    }
+
+    /// Inject mouse movement deltas from JavaScript (for pointer lock mode).
+    ///
+    /// When the pointer is locked, the browser provides movementX/movementY
+    /// which represent pixel deltas since the last event. This method converts
+    /// those pixel deltas directly to mickeys without needing absolute position.
+    ///
+    /// # Arguments
+    ///
+    /// * `delta_x` - Horizontal movement in pixels
+    /// * `delta_y` - Vertical movement in pixels
+    pub fn inject_mouse_delta(&mut self, delta_x: f64, delta_y: f64) {
+        let mut shared = self.state.borrow_mut();
+
+        // Convert pixel deltas to mickeys (SENSITIVITY mickeys per pixel for reduced sensitivity)
+        let mickey_x = (delta_x * SENSITIVITY) as i16;
+        let mickey_y = (delta_y * SENSITIVITY) as i16;
+
+        // Accumulate motion deltas
+        shared.motion_x = shared.motion_x.saturating_add(mickey_x);
+        shared.motion_y = shared.motion_y.saturating_add(mickey_y);
+
+        // In pointer lock mode, we maintain a virtual position within DOS coordinates
+        // Update the virtual position, clamping to DOS graphics bounds (640x200)
+        shared.state.x = (shared.state.x as i16 + (delta_x as i16)).clamp(0, 639) as u16;
+        shared.state.y = (shared.state.y as i16 + (delta_y as i16)).clamp(0, 199) as u16;
+        shared.prev_x = shared.state.x;
+        shared.prev_y = shared.state.y;
     }
 }
 

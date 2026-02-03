@@ -330,6 +330,19 @@ impl Emu86Computer {
             .inject_mouse_move(offset_x, offset_y);
     }
 
+    /// Handle mouse movement delta from JavaScript (for pointer lock mode).
+    ///
+    /// When the pointer is locked, use movementX/movementY from the browser
+    /// to inject relative mouse movement without absolute position.
+    ///
+    /// # Arguments
+    /// * `delta_x` - Horizontal movement in pixels
+    /// * `delta_y` - Vertical movement in pixels
+    #[wasm_bindgen]
+    pub fn handle_mouse_delta(&mut self, delta_x: f64, delta_y: f64) {
+        self.mouse.borrow_mut().inject_mouse_delta(delta_x, delta_y);
+    }
+
     /// Handle mouse button event from JavaScript.
     ///
     /// # Arguments

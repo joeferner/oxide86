@@ -1,11 +1,9 @@
 # TODO
 
-- [ ] WASM - fix mouse not working (CTMouse it not detecting the mouse)
-- [ ] WASM - Lock mouse into canvas, update help when mouse is locked telling the user to press F12 to exit
+- [ ] Add overlay to the top right in native-gui for performance which includes target clock rate and actual clock rate. Enable turning it on and off from a debug menu item.
 - [ ] WASM - Add support to download floppy and hard drive data
 - [ ] WASM - Implement options to create a new harddrive or floppy 
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
-- [ ] Add overlay to the top right in native-gui for performance which includes target clock rate and actual clock rate. Enable turning it on and off from a debug menu item.
 - [ ] Implement CGA video mode
 - [ ] Test CGA Applications
   - [ ] Alley Cat
