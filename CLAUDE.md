@@ -32,8 +32,14 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 | `core/src/drive_manager.rs` | Multi-drive management (DriveManager, DiskAdapter) |
 | `core/src/disk.rs` | DiskImage, DiskGeometry, DiskController trait |
 | `core/src/keyboard.rs` | KeyboardInput trait for platform-specific keyboard handling |
+| `core/src/speaker.rs` | SpeakerOutput trait for platform-specific PC speaker emulation |
+| `core/src/rodio_speaker.rs` | RodioSpeaker (native audio using Rodio library) |
 | `core/src/lib.rs` | Computer struct, boot process |
 | `native/src/terminal_keyboard.rs` | TerminalKeyboard implementing KeyboardInput trait |
+| `wasm/src/web_keyboard.rs` | WebKeyboard implementing KeyboardInput for browser |
+| `wasm/src/web_speaker.rs` | WebSpeaker implementing SpeakerOutput using Web Audio API |
+| `wasm/src/web_video.rs` | WebVideo rendering to HTML5 Canvas |
+| `wasm/src/web_mouse.rs` | WebMouse implementing MouseInput for browser |
 
 ## Implementation Notes
 
@@ -108,6 +114,43 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 - BDA offset 0x6C: 32-bit tick counter (18.2 Hz)
 - Auto-increments via `Computer::increment_cycles()` after each instruction
 - Initialized from host time via `Bios::get_system_ticks()`
+
+### PC Speaker / Sound Emulation
+
+**Hardware Overview:**
+- PC speaker controlled via Intel 8253/8254 Programmable Interval Timer (PIT)
+- Base frequency: 1.193182 MHz
+- Output frequency: `1193182 / count_register` Hz
+- Enabled via Port 0x61 bits: 0x01 (PIT Ch2 gate) + 0x02 (speaker data)
+
+**Implementation (`core/src/io/pit.rs`):**
+- PIT Channel 2 generates square wave (Mode 3) for speaker
+- `update_speaker()` called every ~100 CPU cycles in `core/src/computer.rs`
+- Reads PIT count register and port 0x61 control bits
+- Calls `speaker.set_frequency(enabled, frequency)` on SpeakerOutput trait
+
+**Platform-Specific Implementations:**
+
+*Native (RodioSpeaker):*
+- Uses Rodio audio library for native output
+- 48kHz sample rate, square wave generation
+- 30% volume to avoid distortion
+- Enabled with `audio-rodio` feature flag
+- Graceful fallback to NullSpeaker if audio device unavailable
+
+*WASM (WebSpeaker):*
+- Uses Web Audio API (OscillatorNode with "square" type)
+- 48kHz sample rate (browser default)
+- 30% volume (GainNode)
+- Implements `unsafe Send` trait (safe in single-threaded WASM)
+- Graceful fallback to NullSpeaker if Web Audio API fails
+- Note: Modern browsers require user interaction before audio plays (autoplay policy)
+
+**Adding New Platform:**
+1. Implement `SpeakerOutput` trait with `set_frequency()` and `update()` methods
+2. For WASM targets, add `unsafe impl Send` (safe due to single-threaded environment)
+3. Return boxed implementation from platform initialization
+4. Provide fallback to `NullSpeaker` on initialization failure
 
 ## BIOS/DOS Interrupts
 

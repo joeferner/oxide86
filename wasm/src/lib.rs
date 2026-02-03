@@ -15,10 +15,12 @@ use web_sys::{HtmlCanvasElement, Window};
 
 mod web_keyboard;
 mod web_mouse;
+mod web_speaker;
 mod web_video;
 
 use web_keyboard::WebKeyboard;
 use web_mouse::WebMouse;
+use web_speaker::WebSpeaker;
 use web_video::WebVideo;
 
 /// Wrapper around WebKeyboard that shares ownership via Rc<RefCell<>>
@@ -120,7 +122,21 @@ impl Emu86Computer {
         let mouse_wrapper = Box::new(SharedMouse(mouse.clone()));
 
         let video = WebVideo::new(canvas)?;
-        let speaker = Box::new(NullSpeaker);
+
+        // Try to initialize Web Audio API, fall back to NullSpeaker if it fails
+        let speaker: Box<dyn emu86_core::SpeakerOutput> = match WebSpeaker::new() {
+            Ok(s) => {
+                log::info!("Web Audio API initialized successfully");
+                Box::new(s)
+            }
+            Err(e) => {
+                log::warn!(
+                    "Failed to initialize Web Audio API: {:?}, using NullSpeaker",
+                    e
+                );
+                Box::new(NullSpeaker)
+            }
+        };
 
         let computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker);
 

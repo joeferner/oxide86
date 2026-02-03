@@ -17,6 +17,13 @@ web-sys = { version = "0.3", features = [
     "ImageData",
     "Window",
     "console",
+    "AudioContext",
+    "AudioNode",
+    "AudioDestinationNode",
+    "GainNode",
+    "AudioParam",
+    "OscillatorNode",
+    "OscillatorType",
 ] }
 js-sys = "0.3"
 console_error_panic_hook = "0.1"
