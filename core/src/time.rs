@@ -1,17 +1,29 @@
 use crate::cpu::bios::{RtcDate, RtcTime};
+
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::SystemTime;
 
 // Time and RTC operations for BIOS implementations
 
+/// Get milliseconds since Unix epoch (platform-independent)
+fn get_epoch_millis() -> u64 {
+    #[cfg(target_arch = "wasm32")]
+    {
+        js_sys::Date::now() as u64
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64
+    }
+}
+
 pub fn get_system_ticks() -> u32 {
     // Get current system time
-    let now = SystemTime::now();
-    let duration = now
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-
-    // Get seconds since Unix epoch
-    let total_seconds = duration.as_secs();
+    let millis = get_epoch_millis();
+    let total_seconds = millis / 1000;
 
     // Calculate seconds since midnight (local time approximation)
     // Note: This is simplified and doesn't account for timezones properly
@@ -29,13 +41,8 @@ pub fn get_system_ticks() -> u32 {
 
 pub fn get_rtc_time() -> Option<RtcTime> {
     // Get current system time
-    let now = SystemTime::now();
-    let duration = now
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-
-    // Get total seconds since Unix epoch
-    let total_seconds = duration.as_secs();
+    let millis = get_epoch_millis();
+    let total_seconds = millis / 1000;
 
     // Calculate time of day (simplified, doesn't account for timezone)
     let seconds_in_day = 24 * 60 * 60;
@@ -57,13 +64,8 @@ pub fn get_rtc_time() -> Option<RtcTime> {
 
 pub fn get_rtc_date() -> Option<RtcDate> {
     // Get current system time
-    let now = SystemTime::now();
-    let duration = now
-        .duration_since(SystemTime::UNIX_EPOCH)
-        .unwrap_or_default();
-
-    // Get total seconds since Unix epoch
-    let total_seconds = duration.as_secs();
+    let millis = get_epoch_millis();
+    let total_seconds = millis / 1000;
 
     // Calculate date (simplified Gregorian calendar calculation)
     // Days since Unix epoch (January 1, 1970)

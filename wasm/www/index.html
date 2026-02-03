@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>emu86 - 8086 Emulator</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
+        }
+        h1 {
+            text-align: center;
+            color: #333;
+        }
+        #emulator-container {
+            background-color: #000;
+            padding: 10px;
+            border-radius: 5px;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        canvas {
+            border: 2px solid #333;
+            background-color: #000;
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            max-width: 100%;
+            height: auto;
+        }
+        .controls {
+            background-color: #fff;
+            padding: 15px;
+            border-radius: 5px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .control-group {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid #eee;
+        }
+        .control-group:last-child {
+            border-bottom: none;
+        }
+        .control-label {
+            display: block;
+            font-weight: bold;
+            margin-bottom: 8px;
+            color: #555;
+        }
+        button {
+            padding: 8px 16px;
+            margin: 5px 5px 5px 0;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        button:disabled {
+            background-color: #ccc;
+            cursor: not-allowed;
+        }
+        .btn-secondary {
+            background-color: #2196F3;
+        }
+        .btn-secondary:hover {
+            background-color: #0b7dda;
+        }
+        .btn-danger {
+            background-color: #f44336;
+        }
+        .btn-danger:hover {
+            background-color: #da190b;
+        }
+        .file-input {
+            margin-bottom: 8px;
+        }
+        #status {
+            margin-top: 15px;
+            padding: 12px;
+            background-color: #e8f4f8;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 13px;
+            border-left: 4px solid #2196F3;
+        }
+        .info-box {
+            background-color: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 15px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <h1>emu86 - Intel 8086 Emulator</h1>
+
+    <div class="info-box">
+        <strong>Instructions:</strong> Load a disk image, click Boot, then Start to run the emulator.
+        Use keyboard and mouse in the canvas area. Click Stop to pause execution.
+    </div>
+
+    <div id="emulator-container">
+        <canvas id="display"></canvas>
+    </div>
+
+    <div class="controls">
+        <div class="control-group">
+            <label class="control-label">Floppy Drive A:</label>
+            <input type="file" id="floppy-a-input" class="file-input" accept=".img,.ima,.dsk">
+            <button id="load-floppy-a">Load A:</button>
+            <button id="eject-floppy-a" class="btn-danger">Eject A:</button>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">Floppy Drive B:</label>
+            <input type="file" id="floppy-b-input" class="file-input" accept=".img,.ima,.dsk">
+            <button id="load-floppy-b">Load B:</button>
+            <button id="eject-floppy-b" class="btn-danger">Eject B:</button>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">Hard Drive C:</label>
+            <input type="file" id="hdd-input" class="file-input" accept=".img,.ima,.dsk,.vhd">
+            <button id="load-hdd">Load C:</button>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">Boot Control:</label>
+            <button id="boot-a" class="btn-secondary">Boot from A:</button>
+            <button id="boot-c" class="btn-secondary">Boot from C:</button>
+            <button id="reset" class="btn-danger">Reset</button>
+        </div>
+
+        <div class="control-group">
+            <label class="control-label">Execution Control:</label>
+            <button id="start">Start</button>
+            <button id="stop" class="btn-danger">Stop</button>
+            <button id="step" class="btn-secondary">Step</button>
+        </div>
+
+        <div id="status">Ready. Load a disk image and click Boot to begin.</div>
+    </div>
+
+    <script type="module">
+        import init, { Emu86Computer } from './pkg/emu86_wasm.js';
+
+        let computer = null;
+        let running = false;
+        let animationFrameId = null;
+
+        async function main() {
+            try {
+                await init();
+                computer = new Emu86Computer('display');
+                updateStatus('Emulator initialized. Load disk images to begin.');
+            } catch (e) {
+                updateStatus(`Initialization error: ${e}`);
+                console.error(e);
+            }
+        }
+
+        function updateStatus(message) {
+            const statusDiv = document.getElementById('status');
+            statusDiv.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+        }
+
+        // File loading helper
+        async function loadFile(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(new Uint8Array(e.target.result));
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        // Event handlers for Floppy A
+        document.getElementById('load-floppy-a').addEventListener('click', async () => {
+            const input = document.getElementById('floppy-a-input');
+            if (input.files.length === 0) {
+                updateStatus('Please select a file first');
+                return;
+            }
+
+            try {
+                updateStatus('Loading floppy A...');
+                const data = await loadFile(input.files[0]);
+                computer.load_floppy(0, data);
+                updateStatus(`Loaded floppy A: ${input.files[0].name} (${data.length} bytes)`);
+            } catch (e) {
+                updateStatus(`Error loading floppy A: ${e}`);
+                console.error(e);
+            }
+        });
+
+        document.getElementById('eject-floppy-a').addEventListener('click', () => {
+            try {
+                computer.eject_floppy(0);
+                updateStatus('Floppy A ejected');
+            } catch (e) {
+                updateStatus(`Error ejecting floppy A: ${e}`);
+                console.error(e);
+            }
+        });
+
+        // Event handlers for Floppy B
+        document.getElementById('load-floppy-b').addEventListener('click', async () => {
+            const input = document.getElementById('floppy-b-input');
+            if (input.files.length === 0) {
+                updateStatus('Please select a file first');
+                return;
+            }
+
+            try {
+                updateStatus('Loading floppy B...');
+                const data = await loadFile(input.files[0]);
+                computer.load_floppy(1, data);
+                updateStatus(`Loaded floppy B: ${input.files[0].name} (${data.length} bytes)`);
+            } catch (e) {
+                updateStatus(`Error loading floppy B: ${e}`);
+                console.error(e);
+            }
+        });
+
+        document.getElementById('eject-floppy-b').addEventListener('click', () => {
+            try {
+                computer.eject_floppy(1);
+                updateStatus('Floppy B ejected');
+            } catch (e) {
+                updateStatus(`Error ejecting floppy B: ${e}`);
+                console.error(e);
+            }
+        });
+
+        // Event handlers for Hard Drive
+        document.getElementById('load-hdd').addEventListener('click', async () => {
+            const input = document.getElementById('hdd-input');
+            if (input.files.length === 0) {
+                updateStatus('Please select a file first');
+                return;
+            }
+
+            try {
+                updateStatus('Loading hard drive C...');
+                const data = await loadFile(input.files[0]);
+                computer.add_hard_drive(data);
+                updateStatus(`Loaded hard drive C: ${input.files[0].name} (${data.length} bytes)`);
+            } catch (e) {
+                updateStatus(`Error loading hard drive: ${e}`);
+                console.error(e);
+            }
+        });
+
+        // Boot control
+        document.getElementById('boot-a').addEventListener('click', () => {
+            try {
+                computer.boot(0x00);
+                updateStatus('Booted from floppy A:');
+            } catch (e) {
+                updateStatus(`Boot error: ${e}`);
+                console.error(e);
+            }
+        });
+
+        document.getElementById('boot-c').addEventListener('click', () => {
+            try {
+                computer.boot(0x80);
+                updateStatus('Booted from hard drive C:');
+            } catch (e) {
+                updateStatus(`Boot error: ${e}`);
+                console.error(e);
+            }
+        });
+
+        document.getElementById('reset').addEventListener('click', () => {
+            try {
+                computer.reset();
+                running = false;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                updateStatus('Computer reset');
+            } catch (e) {
+                updateStatus(`Reset error: ${e}`);
+                console.error(e);
+            }
+        });
+
+        // Execution control
+        document.getElementById('start').addEventListener('click', () => {
+            if (running) {
+                updateStatus('Already running');
+                return;
+            }
+
+            running = true;
+            updateStatus('Running...');
+
+            function frame() {
+                if (!running) return;
+
+                try {
+                    // Run for ~16ms per frame (60 FPS)
+                    const stillRunning = computer.run_for_ms(16);
+                    if (!stillRunning) {
+                        running = false;
+                        updateStatus('CPU halted');
+                        return;
+                    }
+                    animationFrameId = requestAnimationFrame(frame);
+                } catch (e) {
+                    running = false;
+                    updateStatus(`Execution error: ${e}`);
+                    console.error(e);
+                }
+            }
+
+            animationFrameId = requestAnimationFrame(frame);
+        });
+
+        document.getElementById('stop').addEventListener('click', () => {
+            if (!running) {
+                updateStatus('Not running');
+                return;
+            }
+
+            running = false;
+            if (animationFrameId) {
+                cancelAnimationFrame(animationFrameId);
+                animationFrameId = null;
+            }
+            updateStatus('Stopped');
+        });
+
+        document.getElementById('step').addEventListener('click', () => {
+            try {
+                const stillRunning = computer.step();
+                updateStatus(stillRunning ? 'Stepped 1 instruction' : 'CPU halted');
+            } catch (e) {
+                updateStatus(`Step error: ${e}`);
+                console.error(e);
+            }
+        });
+
+        // Start the application
+        main();
+    </script>
+</body>
+</html>

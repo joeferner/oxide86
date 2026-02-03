@@ -22,8 +22,8 @@ pub fn init() {
     // Set panic hook for better error messages in browser console
     console_error_panic_hook::set_once();
 
-    // Initialize logging to browser console
-    wasm_logger::init(wasm_logger::Config::default());
+    // Initialize logging to browser console (default to info level)
+    wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
 
     log::info!("emu86 WASM module initialized");
 }

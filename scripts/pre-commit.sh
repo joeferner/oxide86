@@ -8,6 +8,7 @@ cd "${SCRIPT_DIR}/.."
 cargo fmt
 cargo build --all
 cargo clippy --all -- -D warnings
+./wasm/scripts/build.sh
 cargo test --all
 
 echo ""

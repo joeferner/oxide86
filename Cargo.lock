@@ -889,6 +889,7 @@ dependencies = [
  "anyhow",
  "criterion",
  "fatfs",
+ "js-sys",
  "log",
  "rodio",
  "strum",

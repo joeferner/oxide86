@@ -11,6 +11,9 @@ strum = "0.27"
 strum_macros = "0.27"
 rodio = { version = "0.21", optional = true }
 
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+js-sys = "0.3"
+
 [features]
 default = []
 audio-rodio = ["rodio"]
