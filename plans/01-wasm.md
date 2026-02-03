@@ -305,7 +305,20 @@ impl VideoController for WebVideo {
 }
 ```
 
-### Phase 5: WASM Bindings and JavaScript API
+### ~~Phase 5: WASM Bindings and JavaScript API~~ ✅ COMPLETED
+
+WASM bindings and JavaScript API have been implemented in `wasm/src/lib.rs`. The implementation includes:
+- `Emu86Computer` wrapper struct exposing JavaScript API
+- `load_floppy(drive, data)` - Load floppy disk from byte array
+- `eject_floppy(drive)` - Eject floppy disk
+- `add_hard_drive(data)` - Add hard drive from byte array
+- `boot(drive)` - Boot from specified drive
+- `step()` - Execute one instruction
+- `run_for_ms(ms)` - Execute for specified time period
+- `reset()` - Reset computer
+- Automatic WASM initialization with panic hooks and logging
+
+Note: Disk download functionality (getting modified disk data) was simplified and not included in this implementation. Disks are loaded into memory but modifications are not currently downloadable.
 
 **File**: `wasm/Cargo.toml` (MODIFY)
 
