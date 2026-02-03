@@ -339,4 +339,32 @@ impl Emu86Computer {
     pub fn handle_mouse_button(&mut self, button: u8, pressed: bool) {
         self.mouse.borrow_mut().inject_mouse_button(button, pressed);
     }
+
+    /// Attach a serial mouse to COM1.
+    ///
+    /// This enables Microsoft Serial Mouse protocol on COM1 (typically at 1200 baud, 7N1).
+    /// Programs like CTMOUSE.EXE and CUTE.COM will detect the mouse on this port.
+    #[wasm_bindgen]
+    pub fn attach_serial_mouse_com1(&mut self) {
+        use emu86_core::SerialMouse;
+        let mouse_clone =
+            Box::new(SharedMouse(self.mouse.clone())) as Box<dyn emu86_core::MouseInput>;
+        self.computer
+            .set_com1_device(Box::new(SerialMouse::new(mouse_clone)));
+        log::info!("Serial mouse attached to COM1");
+    }
+
+    /// Attach a serial mouse to COM2.
+    ///
+    /// This enables Microsoft Serial Mouse protocol on COM2 (typically at 1200 baud, 7N1).
+    /// Programs like CTMOUSE.EXE and CUTE.COM will detect the mouse on this port.
+    #[wasm_bindgen]
+    pub fn attach_serial_mouse_com2(&mut self) {
+        use emu86_core::SerialMouse;
+        let mouse_clone =
+            Box::new(SharedMouse(self.mouse.clone())) as Box<dyn emu86_core::MouseInput>;
+        self.computer
+            .set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
+        log::info!("Serial mouse attached to COM2");
+    }
 }

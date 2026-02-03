@@ -237,7 +237,11 @@
                 await init();
                 canvas = document.getElementById('display');
                 computer = new Emu86Computer('display');
-                updateStatus('Emulator initialized. Load disk images to begin.');
+
+                // Attach serial mouse to COM1 by default (for programs like CUTE.COM)
+                computer.attach_serial_mouse_com1();
+
+                updateStatus('Emulator initialized. Serial mouse attached to COM1. Load disk images to begin.');
 
                 // Focus canvas on click to enable keyboard input
                 canvas.addEventListener('click', () => {
