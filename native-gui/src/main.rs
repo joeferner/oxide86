@@ -25,6 +25,8 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, WindowBuilder};
 
+const TITLE: &str = "emu86 - 8086 Emulator";
+
 #[derive(Parser)]
 #[command(name = "emu86-gui")]
 #[command(about = "Intel 8086 CPU Emulator (GUI)", long_about = None)]
@@ -239,6 +241,7 @@ fn handle_keyboard_input(
     {
         *exclusive_mode = false;
         window.set_cursor_visible(true);
+        window.set_title(TITLE);
 
         if let Err(e) = window.set_cursor_grab(CursorGrabMode::None) {
             log::warn!("Failed to release cursor grab: {}", e);
@@ -453,7 +456,7 @@ fn run(cli: Cli) -> Result<()> {
     let event_loop = EventLoop::new().context("Failed to create event loop")?;
 
     let window = WindowBuilder::new()
-        .with_title("emu86 - 8086 Emulator")
+        .with_title(TITLE)
         .with_inner_size(LogicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32))
         .with_resizable(true)
         .build(&event_loop)
@@ -553,6 +556,7 @@ fn run(cli: Cli) -> Result<()> {
                 {
                     exclusive_mode = true;
                     window.set_cursor_visible(false);
+                    window.set_title(&format!("{} (F12 to unlock cursor)", TITLE));
 
                     // Try to lock cursor for true relative motion
                     if window.set_cursor_grab(CursorGrabMode::Locked).is_ok() {
