@@ -255,7 +255,8 @@ impl<V: VideoController> Computer<V> {
 
         // Reset cycle counters
         self.cycle_count = 0;
-        self.total_cycles = 0;
+        // Note: total_cycles is NOT reset - it's used for timing/throttling in native CLI
+        // Resetting it would cause the throttling to think it's behind schedule
         self.step_count = 0;
         self.speaker_update_cycles = 0;
 
