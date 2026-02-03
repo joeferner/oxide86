@@ -2,13 +2,26 @@
 
 - [ ] Refactor WASM to not call document.add_event_listener_with_callback but instead listen externally and call wasm functions from typescript
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
-- [ ] 8086 Test applications
-  - [ ] Lotus 1-2-3
-  - [ ] WordStar
 - [ ] Implement CGA video mode
-- [ ] 8086 Test CGA games
+- [ ] Test CGA Applications
   - [ ] Alley Cat
   - [ ] Flight Simulator 1.0
+  - [ ] Kings Quest 1
+- [ ] Test EGA Applications
+  - [ ] Commander Keen
+  - [ ] Kings Quest 1
+- [ ] Test VGA Applications
+  - [ ] Battle Chess
+- [ ] Test 8086 Applications
+  - [ ] Lotus 1-2-3
+- [ ] Test 286 Applications
+  - [ ] Windows 1.0
+- [ ] Test 386 Applications
+  - [ ] Windows 3.0
+  - [ ] Wolfenstein 3D
+- [ ] Test 486 Applications
+  - [ ] DOOM
+  - [ ] Windows 95
 - [ ] Refactor read_char to be blocking in GUI
 - [ ] Upgrade to latest pixels/winit/egui (see https://github.com/parasyte/pixels/blob/main/examples/minimal-egui/Cargo.toml)
 - [ ] Install SvarDOS (open source dos)

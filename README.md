@@ -54,6 +54,7 @@ mcopy -i mouse.img -s * ::
 | 1982-02-01 | **Intel 80286 Released** | | Introduced "Protected Mode" and support for up to 16MB of RAM. |
 | 1982-11 | **MS Flight Simulator 1.0** | MS-DOS 1.0+ | A legendary benchmark; if an **8088** clone could run this, it was "100% compatible." |
 | 1983-03 | **MS-DOS 2.0** | 8088/8086 | Major rewrite for the PC-XT. Introduced subdirectories (folders) and hard drive support. |
+| 1984-08 | **Kings Quest I** | 8088/8086 | King's Quest: Quest for the Crown (1984) is a pioneering graphical adventure game designed by Roberta Williams where players control Sir Graham |
 | 1984-08 | **MS-DOS 3.0** | 80286 | Released with the PC/AT. Added support for 1.2MB high-density floppies and 32MB partitions. |
 | 1984-10 | IBM EGA Released | | The Enhanced Graphics Adapter was designed as a higher-resolution successor to CGA, supporting 640x350 pixels with 16 colors from a palette of 64. |
 | 1984-10 | **Alley Cat** | MS-DOS 1.1+ | A PC classic designed for the **8088**. Famous for its 4-color CGA palette and tight gameplay. |
@@ -75,7 +76,6 @@ mcopy -i mouse.img -s * ::
 | 1993-03-22 | **Intel Pentium Released** | | The "P5" architecture. Superscalar design that could execute two instructions per clock. |
 | 1993-12-10 | **DOOM** | MS-DOS 5.0+ | A cultural phenomenon. Pushed the **486** to its absolute limit with pseudo-3D rendering. |
 | 1994-06 | **MS-DOS 6.22** | 80386/486 | The final standalone retail version. Replaced DoubleSpace with **DriveSpace** due to legal issues. |
-| 1994-09 | **MS Office 4.3** | Windows 3.1 | The last Office version to support the **386**, marking the transition to **486** minimums. |
 | 1995-08-24 | **Windows 95** | MS-DOS 7.0 | Defined the end of the early era. Required a **386DX** but was the swan song for the **486**. |
 
 # Miscellaneous
