@@ -88,6 +88,11 @@ pub fn init() {
 pub struct Emu86Computer {
     computer: Computer<WebVideo>,
     mouse: Rc<RefCell<WebMouse>>,
+    // Performance tracking
+    perf_last_update_time: f64,
+    perf_last_cycle_count: u64,
+    perf_current_mhz: f64,
+    perf_update_interval_ms: f64,
 }
 
 #[wasm_bindgen]
@@ -140,7 +145,14 @@ impl Emu86Computer {
 
         let computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker);
 
-        Ok(Self { computer, mouse })
+        Ok(Self {
+            computer,
+            mouse,
+            perf_last_update_time: 0.0,
+            perf_last_cycle_count: 0,
+            perf_current_mhz: 0.0,
+            perf_update_interval_ms: 200.0,
+        })
     }
 
     /// Load a floppy disk image from a byte array.
@@ -237,6 +249,28 @@ impl Emu86Computer {
         Ok(())
     }
 
+    /// Update performance metrics (called periodically)
+    fn update_performance(&mut self, current_time_ms: f64) {
+        if current_time_ms - self.perf_last_update_time >= self.perf_update_interval_ms {
+            let current_cycles = self.computer.get_cycle_count();
+            let cycle_delta = current_cycles.saturating_sub(self.perf_last_cycle_count);
+            let time_delta_ms = current_time_ms - self.perf_last_update_time;
+
+            // Calculate instantaneous MHz: cycles / milliseconds / 1000
+            let instant_mhz = (cycle_delta as f64) / time_delta_ms / 1000.0;
+
+            // Exponential moving average for smoothing
+            if self.perf_current_mhz == 0.0 {
+                self.perf_current_mhz = instant_mhz;
+            } else {
+                self.perf_current_mhz = 0.7 * self.perf_current_mhz + 0.3 * instant_mhz;
+            }
+
+            self.perf_last_update_time = current_time_ms;
+            self.perf_last_cycle_count = current_cycles;
+        }
+    }
+
     /// Boot from a drive.
     ///
     /// # Arguments
@@ -261,11 +295,15 @@ impl Emu86Computer {
     ///
     /// # Arguments
     /// * `ms` - Milliseconds to run (approximately)
+    /// * `current_time_ms` - Current timestamp from performance.now() in JavaScript
     ///
     /// # Returns
     /// true if CPU is still running, false if halted
     #[wasm_bindgen]
-    pub fn run_for_ms(&mut self, ms: f64) -> bool {
+    pub fn run_for_ms(&mut self, ms: f64, current_time_ms: f64) -> bool {
+        // Update performance metrics
+        self.update_performance(current_time_ms);
+
         // 8086 at 4.77 MHz: approximately 4770 cycles per ms
         let cycles = (ms * 4770.0) as u64;
         let mut remaining = cycles;
@@ -292,6 +330,18 @@ impl Emu86Computer {
     pub fn reset(&mut self) {
         self.computer.reset();
         log::info!("Computer reset");
+    }
+
+    /// Get the target clock rate in MHz (always 4.77 for 8086).
+    #[wasm_bindgen]
+    pub fn get_target_mhz(&self) -> f64 {
+        4.77
+    }
+
+    /// Get the actual measured clock rate in MHz.
+    #[wasm_bindgen]
+    pub fn get_actual_mhz(&self) -> f64 {
+        self.perf_current_mhz
     }
 
     /// Handle keyboard event from JavaScript.

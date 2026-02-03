@@ -327,6 +327,51 @@ fn step_emulator(
     }
 }
 
+struct PerformanceTracker {
+    last_update_time: Instant,
+    last_cycle_count: u64,
+    current_mhz: f64,
+    update_interval_ms: u64,
+}
+
+impl PerformanceTracker {
+    fn new() -> Self {
+        Self {
+            last_update_time: Instant::now(),
+            last_cycle_count: 0,
+            current_mhz: 0.0,
+            update_interval_ms: 200,
+        }
+    }
+
+    fn update(&mut self, current_cycles: u64) {
+        let now = Instant::now();
+        let elapsed_ms = now.duration_since(self.last_update_time).as_millis() as u64;
+
+        if elapsed_ms >= self.update_interval_ms {
+            let cycle_delta = current_cycles.saturating_sub(self.last_cycle_count);
+            let time_delta_ms = elapsed_ms as f64;
+
+            // Calculate instantaneous MHz: cycles / milliseconds / 1000
+            let instant_mhz = (cycle_delta as f64) / time_delta_ms / 1000.0;
+
+            // Exponential moving average for smoothing
+            if self.current_mhz == 0.0 {
+                self.current_mhz = instant_mhz;
+            } else {
+                self.current_mhz = 0.7 * self.current_mhz + 0.3 * instant_mhz;
+            }
+
+            self.last_update_time = now;
+            self.last_cycle_count = current_cycles;
+        }
+    }
+
+    fn get_mhz(&self) -> f64 {
+        self.current_mhz
+    }
+}
+
 struct AppState {
     menu: AppMenu,
     floppy_a_present: bool,
@@ -334,6 +379,8 @@ struct AppState {
     is_paused: bool,
     interrupt_logging_enabled: bool,
     turbo_mode: bool,
+    show_performance_overlay: bool,
+    perf_tracker: PerformanceTracker,
 }
 
 fn process_egui_frame(
@@ -350,6 +397,7 @@ fn process_egui_frame(
         app_state.interrupt_logging_enabled,
         app_state.is_paused,
         app_state.turbo_mode,
+        app_state.show_performance_overlay,
     );
 
     let raw_input = egui_state.take_egui_input(window);
@@ -373,6 +421,7 @@ fn process_egui_frame(
                         &mut app_state.is_paused,
                         &mut app_state.interrupt_logging_enabled,
                         &mut app_state.turbo_mode,
+                        &mut app_state.show_performance_overlay,
                     );
                 } else {
                     eject_disk(
@@ -385,10 +434,35 @@ fn process_egui_frame(
                 }
             }
         }
+
+        // Render performance overlay outside exclusive mode check so it's always visible
+        if app_state.show_performance_overlay {
+            render_performance_overlay(ctx, app_state.turbo_mode, app_state.perf_tracker.get_mhz());
+        }
     });
 
     egui_state.handle_platform_output(window, full_output.platform_output.clone());
     full_output
+}
+
+fn render_performance_overlay(ctx: &egui::Context, turbo_mode: bool, actual_mhz: f64) {
+    egui::Window::new("Performance")
+        .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-10.0, 10.0))
+        .title_bar(false)
+        .resizable(false)
+        .movable(false)
+        .collapsible(false)
+        .show(ctx, |ui| {
+            ui.vertical(|ui| {
+                let target_text = if turbo_mode {
+                    "Target: Unlimited".to_string()
+                } else {
+                    "Target: 4.77 MHz".to_string()
+                };
+                ui.label(target_text);
+                ui.label(format!("Actual: {:.2} MHz", actual_mhz));
+            });
+        });
 }
 
 fn render_frame(
@@ -487,6 +561,8 @@ fn run(cli: Cli) -> Result<()> {
         is_paused: false,
         interrupt_logging_enabled: false,
         turbo_mode: cli.turbo,
+        show_performance_overlay: false,
+        perf_tracker: PerformanceTracker::new(),
     };
 
     // Speed throttling state (4.77 MHz = original 8086 speed)
@@ -610,6 +686,9 @@ fn run(cli: Cli) -> Result<()> {
                             throttle_start,
                             NANOS_PER_CYCLE,
                         );
+
+                        // Update performance tracker
+                        app_state.perf_tracker.update(computer.get_cycle_count());
 
                         let full_output = process_egui_frame(
                             &egui_ctx,
@@ -860,6 +939,7 @@ fn handle_debug_action(
     is_paused: &mut bool,
     interrupt_logging_enabled: &mut bool,
     turbo_mode: &mut bool,
+    show_performance_overlay: &mut bool,
 ) {
     use menu::MenuAction;
 
@@ -904,6 +984,17 @@ fn handle_debug_action(
             log::info!(
                 "Turbo mode {}",
                 if *turbo_mode { "enabled" } else { "disabled" }
+            );
+        }
+        MenuAction::TogglePerformanceOverlay => {
+            *show_performance_overlay = !*show_performance_overlay;
+            log::info!(
+                "Performance overlay {}",
+                if *show_performance_overlay {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
             );
         }
         _ => {}
