@@ -287,7 +287,8 @@ impl Cpu {
 
         self.ip = new_ip;
         self.cs = new_cs;
-        self.flags = new_flags;
+        // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
+        self.flags = (new_flags & 0x0FFF) | 0x0002;
     }
 
     /// CBW - Convert Byte to Word (opcode 98)

@@ -217,6 +217,16 @@ impl Cpu {
             // PUSH CS (0E)
             0x0E => self.push_segreg(opcode, memory),
 
+            // POP CS (0F) - 8086 only, repurposed as two-byte prefix on 80286+
+            0x0F => {
+                log::warn!(
+                    "POP CS at {:04X}:{:04X} (8086 instruction, dangerous!)",
+                    self.cs,
+                    self.ip.wrapping_sub(1)
+                );
+                self.pop_segreg(opcode, memory);
+            }
+
             // ADC r/m to register (10-13)
             0x10..=0x13 => self.adc_rm_reg(opcode, memory),
 

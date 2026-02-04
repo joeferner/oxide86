@@ -1062,11 +1062,13 @@ mod data_transfer_tests {
 
         cpu.pushf(&mut memory);
         assert_eq!(cpu.sp, 0x0FFE, "SP should decrement");
+        // PUSHF pushes flags as-is
         assert_eq!(memory.read_u16(0x0FFE), 0x0246, "Flags should be on stack");
 
         cpu.flags = 0x0000; // Clear flags
         cpu.popf(&mut memory);
-        assert_eq!(cpu.flags, 0x0246, "Flags should be restored");
+        // 8086 behavior: POPF only allows bits 0-11 to be modified, restores to original
+        assert_eq!(cpu.flags, 0x0246, "Flags should be restored (bits 0-11)");
         assert_eq!(cpu.sp, 0x1000, "SP should be restored");
     }
 
@@ -1602,5 +1604,240 @@ mod bcd_tests {
         assert_eq!(cpu.ax & 0x0F, 0x05, "AL lower nibble should be 5");
         assert_eq!((cpu.ax >> 8) & 0xFF, 0x01, "AH should increment");
         assert!(cpu.get_flag(cpu_flag::CARRY), "Carry should be set");
+    }
+}
+
+#[cfg(test)]
+mod flags_8086_tests {
+    use crate::cpu::Cpu;
+    use crate::memory::Memory;
+
+    fn setup() -> (Cpu, Memory) {
+        (Cpu::new(), Memory::new())
+    }
+
+    /// Test that PUSHF pushes flags as-is (8086 behavior)
+    #[test]
+    fn test_pushf_8086_flag_masking() {
+        let (mut cpu, mut memory) = setup();
+        cpu.sp = 0x1000;
+        cpu.ss = 0x0000;
+
+        // Set some flag bits
+        cpu.flags = 0x0246;
+
+        cpu.pushf(&mut memory);
+
+        let pushed_flags = memory.read_u16(0x0FFE);
+
+        // On 8086: PUSHF just pushes flags as-is
+        assert_eq!(
+            pushed_flags, 0x0246,
+            "PUSHF should push flags as-is (got {:#06X})",
+            pushed_flags
+        );
+    }
+
+    /// Test that PUSHF preserves all bits internally set
+    #[test]
+    fn test_pushf_preserves_bits() {
+        let (mut cpu, mut memory) = setup();
+        cpu.sp = 0x1000;
+        cpu.ss = 0x0000;
+
+        // Set flags with various patterns
+        cpu.flags = 0x0BCD;
+
+        cpu.pushf(&mut memory);
+
+        let pushed_flags = memory.read_u16(0x0FFE);
+
+        // Should push exactly what's in flags
+        assert_eq!(
+            pushed_flags, cpu.flags,
+            "PUSHF should push flags exactly as they are"
+        );
+    }
+
+    /// Test that POPF only allows bits 0-11 to be modified
+    #[test]
+    fn test_popf_8086_bit_restriction() {
+        let (mut cpu, mut memory) = setup();
+        cpu.sp = 0x0FFE;
+        cpu.ss = 0x0000;
+        cpu.flags = 0x0000;
+
+        // Try to pop flags with all bits set
+        memory.write_u16(0x0FFE, 0xFFFF);
+
+        cpu.popf(&mut memory);
+
+        // Bits 12-15 should not be modifiable on 8086
+        assert_eq!(
+            cpu.flags & 0xF000,
+            0x0000,
+            "POPF should not allow modification of bits 12-15"
+        );
+        // Bit 1 should always be 1
+        assert_eq!(cpu.flags & 0x0002, 0x0002, "Bit 1 should always be set");
+        // Other low bits should be set
+        assert_eq!(cpu.flags & 0x0FFD, 0x0FFD, "Bits 0,2-11 should be set");
+    }
+
+    /// Test that POPF forces bit 1 to always be set (reserved bit)
+    #[test]
+    fn test_popf_reserved_bit() {
+        let (mut cpu, mut memory) = setup();
+        cpu.sp = 0x0FFE;
+        cpu.ss = 0x0000;
+
+        // Try to pop flags with bit 1 clear
+        memory.write_u16(0x0FFE, 0x0000);
+
+        cpu.popf(&mut memory);
+
+        // Bit 1 should still be set (reserved)
+        assert_eq!(
+            cpu.flags & 0x0002,
+            0x0002,
+            "Reserved bit 1 must always be set"
+        );
+    }
+
+    /// Test CPU detection sequence (simulates real 8086 detection code)
+    #[test]
+    fn test_cpu_detection_8086() {
+        let (mut cpu, mut memory) = setup();
+        cpu.sp = 0x1000;
+        cpu.ss = 0x0000;
+
+        // Simulate CPU detection: try to clear all flags
+        cpu.flags = 0x0002; // Start with bit 1 set (reserved)
+        cpu.pushf(&mut memory);
+        let flags_after_clear = memory.read_u16(0x0FFE);
+
+        // On 8086, PUSHF pushes flags as-is
+        assert_eq!(
+            flags_after_clear, 0x0002,
+            "After clearing flags, should be 0x0002"
+        );
+
+        // Simulate: try to set high bits via POPF
+        memory.write_u16(0x0FFE, 0xF000);
+        cpu.sp = 0x0FFE; // Position SP to pop the value we just wrote
+        cpu.popf(&mut memory);
+        cpu.pushf(&mut memory);
+        let flags_after_set = memory.read_u16(0x0FFE);
+
+        // On 8086, POPF can't modify bits 12-15, so they stay 0
+        // PUSHF then pushes 0x0002 (only bit 1 set)
+        assert_eq!(
+            flags_after_set & 0xF000,
+            0x0000,
+            "After trying to set high bits via POPF, they should remain 0 (8086)"
+        );
+        assert_eq!(
+            flags_after_set, 0x0002,
+            "Flags should be 0x0002 after POPF can't modify high bits"
+        );
+    }
+
+    /// Test that INT pushes flags as-is
+    #[test]
+    fn test_int_pushf() {
+        let (mut cpu, mut memory) = setup();
+        cpu.sp = 0x1000;
+        cpu.ss = 0x0000;
+        cpu.cs = 0x0000;
+        cpu.ip = 0x0100;
+        cpu.flags = 0x0246;
+
+        // Set up INT vector (doesn't matter where it points for this test)
+        memory.write_u16(0x14 * 4, 0x0200); // offset
+        memory.write_u16(0x14 * 4 + 2, 0x0000); // segment
+
+        // Execute INT (needs the interrupt number as next byte)
+        memory.write_u8(0x0100, 0x14); // INT 0x14
+        cpu.int(&mut memory);
+
+        // Check that flags were pushed as-is
+        let pushed_flags = memory.read_u16(0x0FFE);
+        assert_eq!(pushed_flags, 0x0246, "INT should push flags as-is");
+    }
+
+    /// Test that IRET pops flags with 8086 restrictions
+    #[test]
+    fn test_iret_popf_restriction() {
+        let (mut cpu, mut memory) = setup();
+        cpu.sp = 0x0FFA;
+        cpu.ss = 0x0000;
+
+        // Set up stack as if returning from interrupt
+        memory.write_u16(0x0FFA, 0x0100); // IP
+        memory.write_u16(0x0FFC, 0x0000); // CS
+        memory.write_u16(0x0FFE, 0xFFFF); // FLAGS with all bits set
+
+        cpu.iret(&mut memory);
+
+        // Check that high bits weren't set
+        assert_eq!(
+            cpu.flags & 0xF000,
+            0x0000,
+            "IRET should not allow modification of bits 12-15"
+        );
+        // Check that bit 1 is set
+        assert_eq!(
+            cpu.flags & 0x0002,
+            0x0002,
+            "IRET should force bit 1 to be set"
+        );
+    }
+
+    #[test]
+    fn test_push_sp_8086_behavior() {
+        let mut cpu = Cpu::new();
+        let mut memory = Memory::new();
+
+        // Set initial SP value
+        cpu.sp = 0x1000;
+        cpu.ss = 0x0000;
+
+        // PUSH SP (opcode 0x54)
+        cpu.push_reg16(0x54, &mut memory);
+
+        // On 8086: PUSH SP should push SP-2 (the value after decrement)
+        // After PUSH SP with initial SP=0x1000:
+        // - SP is decremented to 0x0FFE
+        // - The value 0x0FFE is pushed to [SS:0x0FFE]
+        assert_eq!(cpu.sp, 0x0FFE, "SP should be decremented by 2");
+
+        // Verify the value written to memory is 0x0FFE (SP-2)
+        let addr = Cpu::physical_address(cpu.ss, cpu.sp);
+        let pushed_value = memory.read_u16(addr);
+        assert_eq!(
+            pushed_value, 0x0FFE,
+            "PUSH SP should push SP-2 (8086 behavior), not original SP"
+        );
+
+        // Verify CPU detection sequence works correctly
+        // This simulates: PUSH SP / POP BX / CMP BX, SP
+        cpu.sp = 0x2000;
+        cpu.push_reg16(0x54, &mut memory); // PUSH SP
+        let bx_value = cpu.pop(&mut memory); // POP BX
+
+        // On 8086: After PUSH SP (original=0x2000), the value 0x1FFE is pushed
+        //          After POP BX, BX=0x1FFE but SP=0x2000 (restored after POP)
+        //          So BX != SP (this is how software detects 8086)
+        // On 80286+: After PUSH SP, the value 0x2000 is pushed
+        //           After POP BX, BX=0x2000 and SP=0x2000 (both equal)
+        assert_eq!(
+            bx_value, 0x1FFE,
+            "BX should get SP-2 (0x1FFE) from the pushed value"
+        );
+        assert_eq!(cpu.sp, 0x2000, "SP should be restored to 0x2000 after POP");
+        assert_ne!(
+            bx_value, cpu.sp,
+            "After PUSH SP / POP BX, BX should NOT equal SP on 8086"
+        );
     }
 }

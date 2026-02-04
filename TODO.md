@@ -2,8 +2,8 @@
 
 - [ ] WASM - Implement options to create a new harddrive or floppy 
 - [ ] WASM - Add support to download floppy and hard drive data
+- [ ] More accurate instruction timing instead of assuming all instructions are a fixed cycle count
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
-- [ ] Implement CGA video mode
 - [ ] Test CGA Applications
   - [ ] Alley Cat
   - [ ] Flight Simulator 1.0

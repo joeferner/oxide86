@@ -59,10 +59,20 @@ impl Cpu {
 
     /// PUSH 16-bit register (opcodes 50-57)
     /// Push register onto stack
+    /// 8086 PUSH SP behavior: pushes SP-2 (value after decrement)
+    /// 80286+ PUSH SP behavior: pushes original SP value
     pub(in crate::cpu) fn push_reg16(&mut self, opcode: u8, memory: &mut Memory) {
         let reg = opcode & 0x07;
-        let value = self.get_reg16(reg);
-        self.push(value, memory);
+        if reg == 4 {
+            // PUSH SP - true 8086 behavior: push the decremented value
+            self.sp = self.sp.wrapping_sub(2);
+            let value = self.sp;
+            let addr = Self::physical_address(self.ss, self.sp);
+            memory.write_u16(addr, value);
+        } else {
+            let value = self.get_reg16(reg);
+            self.push(value, memory);
+        }
     }
 
     /// POP 16-bit register (opcodes 58-5F)
@@ -213,8 +223,11 @@ impl Cpu {
 
     /// POPF - Pop Flags Register (opcode 9D)
     /// Pops a word from the stack into the FLAGS register
+    /// On 8086: only bits 0-11 can be modified, bit 1 is always 1
     pub(in crate::cpu) fn popf(&mut self, memory: &mut Memory) {
-        self.flags = self.pop(memory);
+        let value = self.pop(memory);
+        // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
+        self.flags = (value & 0x0FFF) | 0x0002;
     }
 
     /// POP r/m16 (opcode 8F) - Group 1A
