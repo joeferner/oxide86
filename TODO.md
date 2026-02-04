@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] Refactor read_char to be blocking in GUI
+- [ ] Refactor read_char to be blocking in GUI/WASM (see plans/int16_blocking_behavior.md and examples/waitkey.asm)
 - [ ] WASM - Implement options to create a new harddrive or floppy 
 - [ ] WASM - Add support to download floppy and hard drive data
 - [ ] More accurate instruction timing instead of assuming all instructions are a fixed cycle count
