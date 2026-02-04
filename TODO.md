@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Refactor read_char to be blocking in GUI
 - [ ] WASM - Implement options to create a new harddrive or floppy 
 - [ ] WASM - Add support to download floppy and hard drive data
 - [ ] More accurate instruction timing instead of assuming all instructions are a fixed cycle count
@@ -23,7 +24,6 @@
 - [ ] Test 486 Applications
   - [ ] DOOM
   - [ ] Windows 95
-- [ ] Refactor read_char to be blocking in GUI
 - [ ] Upgrade to latest pixels/winit/egui (see https://github.com/parasyte/pixels/blob/main/examples/minimal-egui/Cargo.toml)
 - [ ] Install SvarDOS (open source dos)
 - [ ] Add support FreeDos-1.4 (requires 32-bit instructions)

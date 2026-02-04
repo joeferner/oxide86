@@ -82,9 +82,12 @@ impl Cpu {
                 );
                 self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
             } else {
-                // No key available - return zero (this shouldn't happen in blocking mode)
-                log::warn!("INT 16h AH=00h: No key available (unexpected in blocking mode)");
-                self.ax = 0;
+                // No key available - enter wait state
+                // For blocking keyboards (terminal), read_key() should block internally and never return None
+                // For non-blocking keyboards (GUI, WASM), we enter wait state and pause execution
+                log::debug!("INT 16h AH=00h: No key available, entering wait state");
+                self.set_waiting_for_keyboard();
+                // Don't modify AX - we'll retry when resumed
             }
         }
     }

@@ -475,6 +475,19 @@ impl<V: VideoController> Computer<V> {
 
         self.step_count += 1;
 
+        // Check if CPU is waiting for keyboard input
+        if self.cpu.is_waiting_for_keyboard() {
+            // Check if a key is available now (non-blocking)
+            if self.bios.check_key().is_some() {
+                log::debug!("Key available, resuming from wait state");
+                self.cpu.resume_from_wait();
+                // Fall through to execute the next instruction
+            } else {
+                // Still waiting - return without executing
+                return;
+            }
+        }
+
         // Process pending keyboard IRQs before executing the next instruction
         // This simulates hardware interrupts that preempt normal execution
         if let Some(key) = self.pending_keyboard_irqs.pop_front() {

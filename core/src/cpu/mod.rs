@@ -33,6 +33,9 @@ pub struct Cpu {
     // Halted flag
     halted: bool,
 
+    // Wait state (paused waiting for external event)
+    wait_state: CpuWaitState,
+
     // Segment override prefix (for next instruction only)
     segment_override: Option<u16>,
 
@@ -49,6 +52,15 @@ pub(super) enum RepeatPrefix {
     Rep,   // 0xF3 - Repeat while CX != 0
     Repe,  // 0xF3 - Repeat while CX != 0 and ZF = 1
     Repne, // 0xF2 - Repeat while CX != 0 and ZF = 0
+}
+
+/// CPU wait state - indicates the CPU is paused waiting for an external event
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum CpuWaitState {
+    /// CPU is executing instructions normally
+    Running,
+    /// CPU is waiting for keyboard input (INT 16h AH=00h with no key available)
+    WaitingForKeyboard,
 }
 
 // Flag bit positions
@@ -84,6 +96,7 @@ impl Cpu {
             ip: 0,
             flags: 0,
             halted: false,
+            wait_state: CpuWaitState::Running,
             segment_override: None,
             repeat_prefix: None,
             log_interrupts_enabled: false,
@@ -100,6 +113,7 @@ impl Cpu {
         self.flags = 0x0002; // Reserved bit always set
         self.sp = 0;
         self.halted = false;
+        self.wait_state = CpuWaitState::Running;
         self.segment_override = None;
         self.repeat_prefix = None;
         // Other registers are undefined on reset
@@ -133,6 +147,26 @@ impl Cpu {
     /// Clear the halted state (used when an interrupt wakes the CPU from HLT)
     pub fn clear_halt(&mut self) {
         self.halted = false;
+    }
+
+    /// Check if CPU is waiting for keyboard input
+    pub fn is_waiting_for_keyboard(&self) -> bool {
+        self.wait_state == CpuWaitState::WaitingForKeyboard
+    }
+
+    /// Get the current wait state
+    pub fn wait_state(&self) -> CpuWaitState {
+        self.wait_state
+    }
+
+    /// Set CPU to wait for keyboard input
+    pub fn set_waiting_for_keyboard(&mut self) {
+        self.wait_state = CpuWaitState::WaitingForKeyboard;
+    }
+
+    /// Resume CPU from wait state
+    pub fn resume_from_wait(&mut self) {
+        self.wait_state = CpuWaitState::Running;
     }
 
     // Execute an INT instruction with BIOS I/O handler

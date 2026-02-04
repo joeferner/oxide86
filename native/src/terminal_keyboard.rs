@@ -160,14 +160,17 @@ impl KeyboardInput for TerminalKeyboard {
         }
 
         // No buffered key, read from terminal (blocking)
-        let key = self.internal_read_key()?;
-        // Intercept F12 for command mode
-        if key.scan_code == SCAN_CODE_F12 {
-            self.command_mode_requested = true;
-            // Return None so the emulated program doesn't see F12
-            return None;
+        // Loop to handle F12 interception - keep blocking until we get a non-F12 key
+        loop {
+            let key = self.internal_read_key()?;
+            // Intercept F12 for command mode
+            if key.scan_code == SCAN_CODE_F12 {
+                self.command_mode_requested = true;
+                // Don't return F12 to the emulated program - loop to get next key
+                continue;
+            }
+            return Some(key);
         }
-        Some(key)
     }
 
     fn check_key(&mut self) -> Option<KeyPress> {
