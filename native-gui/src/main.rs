@@ -524,7 +524,8 @@ fn render_notification(ctx: &egui::Context, notification: &Notification) {
                 ui.label(egui::RichText::new(icon).color(color).size(20.0));
                 ui.vertical(|ui| {
                     ui.set_max_width(550.0);
-                    ui.label(egui::RichText::new(&notification.message).wrap());
+                    ui.style_mut().wrap = Some(true);
+                    ui.label(&notification.message);
                 });
             });
         });
