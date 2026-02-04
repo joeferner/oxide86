@@ -5,14 +5,14 @@
 
 1. Download MS-DOS 5.0
 1. Create a hard drive `dd if=/dev/zero of=examples/hdd.img bs=1M count=32`
-1. Run `RUST_LOG=info cargo run -p emu86-native -- --boot --floppy-a examples/msdos-5.0/Disk01.img --hdd examples/hdd.img`
+1. Run `RUST_LOG=info cargo run -p emu86-native-cli -- --boot --floppy-a examples/msdos-5.0/Disk01.img --hdd examples/hdd.img`
 
 ## Running
 
 In both the CLI and GUI pressing F12 will exit exclusive mode.
 
 `
-RUST_LOG=info cargo run -p emu86-native -- --boot --hdd examples/hdd.img --boot-drive 0x80
+RUST_LOG=info cargo run -p emu86-native-cli -- --boot --hdd examples/hdd.img --boot-drive 0x80
 RUST_LOG=info cargo run -p emu86-native-gui -- --boot --hdd examples/hdd.img --boot-drive 0x80 --com1 mouse
 `
 

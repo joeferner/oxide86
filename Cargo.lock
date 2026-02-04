@@ -897,7 +897,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "emu86-native"
+name = "emu86-native-cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",

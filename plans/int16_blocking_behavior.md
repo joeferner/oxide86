@@ -147,7 +147,7 @@ Created `examples/waitkey.asm` to test INT 16h AH=00h blocking behavior:
 ```bash
 cd examples
 nasm -f bin waitkey.asm -o waitkey.com
-cargo run -p emu86-native -- waitkey.com --segment 0x100 --offset 0x0000
+cargo run -p emu86-native-cli -- waitkey.com --segment 0x100 --offset 0x0000
 ```
 
 **Expected Behavior**:

@@ -37,7 +37,7 @@ if [ $? -eq 0 ]; then
     # Run the program
     echo "Running $BIN_FILE..."
     echo "================================"
-    cargo run -p emu86-native -- "$BIN_FILE" "$@"
+    cargo run -p emu86-native-cli -- "$BIN_FILE" "$@"
 else
     echo "Assembly failed"
     exit 1
