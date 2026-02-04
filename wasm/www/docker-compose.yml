@@ -1,0 +1,11 @@
+services:
+  dev:
+    image: node:20-alpine
+    working_dir: /app
+    volumes:
+      - .:/app
+    ports:
+      - "0.0.0.0:3000:3000"  # Bind to all network interfaces for network access
+    command: sh -c "npm install && npm run dev"
+    environment:
+      - NODE_ENV=development

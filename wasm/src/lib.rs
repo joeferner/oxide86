@@ -143,7 +143,10 @@ impl Emu86Computer {
             }
         };
 
-        let computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker);
+        let mut computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker);
+
+        // Force initial video render to show blank screen
+        computer.force_video_redraw();
 
         Ok(Self {
             computer,
