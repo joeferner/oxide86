@@ -4,6 +4,7 @@
 - ✅ **Phase 1: Core Graphics State Management** - COMPLETED
 - ✅ **Phase 2: VideoController Trait Extension** - COMPLETED
 - ✅ **Phase 3: CGA I/O Ports** - COMPLETED
+- ✅ **Phase 4: Computer Integration** - COMPLETED
 
 ## Overview
 Implement IBM Color Graphics Adapter (CGA) graphics modes alongside existing text mode support. This enables running graphics-based DOS programs and games from the early 1980s.
@@ -563,48 +564,52 @@ impl IoDevice {
 }
 ```
 
-### Phase 4: Computer Integration
+### Phase 4: Computer Integration ✅ COMPLETED
 
-**File**: `core/src/computer.rs` (MODIFY)
+**File**: `core/src/computer.rs` (MODIFIED)
 
-Update step() to render graphics:
+**What was implemented:**
+- ✅ Updated `update_video()` method to check video mode type and call appropriate rendering method
+- ✅ Added graphics mode rendering for 320x200 (4-color) mode via `update_graphics_320x200()`
+- ✅ Added graphics mode rendering for 640x200 (2-color) mode via `update_graphics_640x200()`
+- ✅ Updated `force_video_redraw()` to handle graphics modes
+- ✅ Verified WASM compatibility (all code is platform-independent)
+- ✅ All tests pass, code compiles for native and WASM targets
+
+**Implementation details:**
+
+The `update_video()` method now matches on the video mode type and calls the appropriate VideoController trait method:
 
 ```rust
-impl<K: KeyboardInput, V: VideoController> Computer<K, V> {
-    pub fn step(&mut self) -> Result<bool> {
-        // ... existing instruction execution ...
-
-        // Update video controller based on current mode
-        if self.video.is_dirty() {
-            match self.video.get_mode_type() {
-                VideoMode::Text { .. } => {
-                    self.video_controller.update_display(self.video.get_buffer());
-                }
-                VideoMode::Graphics320x200 => {
-                    if let Some(buffer) = self.video.get_graphics_buffer() {
-                        self.video_controller.update_graphics_320x200(
-                            buffer.get_pixels(),
-                            self.video.get_palette(),
-                        );
-                    }
-                }
-                VideoMode::Graphics640x200 => {
-                    if let Some(buffer) = self.video.get_graphics_buffer() {
-                        let palette = self.video.get_palette();
-                        let colors = palette.get_colors();
-                        self.video_controller.update_graphics_640x200(
-                            buffer.get_pixels(),
-                            colors[1], // Foreground
-                            colors[0], // Background
-                        );
-                    }
+pub fn update_video(&mut self) {
+    if self.video.is_dirty() {
+        match self.video.get_mode_type() {
+            crate::video::VideoMode::Text { .. } => {
+                self.video_controller.update_display(self.video.get_buffer());
+            }
+            crate::video::VideoMode::Graphics320x200 => {
+                if let Some(buffer) = self.video.get_graphics_buffer() {
+                    self.video_controller.update_graphics_320x200(
+                        buffer.get_pixels(),
+                        self.video.get_palette(),
+                    );
                 }
             }
-            self.video.clear_dirty();
+            crate::video::VideoMode::Graphics640x200 => {
+                if let Some(buffer) = self.video.get_graphics_buffer() {
+                    let palette = self.video.get_palette();
+                    let colors = palette.get_colors();
+                    self.video_controller.update_graphics_640x200(
+                        buffer.get_pixels(),
+                        colors[1], // Foreground
+                        colors[0], // Background
+                    );
+                }
+            }
         }
-
-        // ... rest of step() ...
+        self.video.clear_dirty();
     }
+    self.video_controller.update_cursor(self.video.get_cursor());
 }
 ```
 

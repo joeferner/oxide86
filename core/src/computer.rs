@@ -675,8 +675,30 @@ impl<V: VideoController> Computer<V> {
     /// Update video display if needed (call periodically or after step)
     pub fn update_video(&mut self) {
         if self.video.is_dirty() {
-            self.video_controller
-                .update_display(self.video.get_buffer());
+            // Update video controller based on current mode
+            match self.video.get_mode_type() {
+                crate::video::VideoMode::Text { .. } => {
+                    self.video_controller
+                        .update_display(self.video.get_buffer());
+                }
+                crate::video::VideoMode::Graphics320x200 => {
+                    if let Some(buffer) = self.video.get_graphics_buffer() {
+                        self.video_controller
+                            .update_graphics_320x200(buffer.get_pixels(), self.video.get_palette());
+                    }
+                }
+                crate::video::VideoMode::Graphics640x200 => {
+                    if let Some(buffer) = self.video.get_graphics_buffer() {
+                        let palette = self.video.get_palette();
+                        let colors = palette.get_colors();
+                        self.video_controller.update_graphics_640x200(
+                            buffer.get_pixels(),
+                            colors[1], // Foreground
+                            colors[0], // Background
+                        );
+                    }
+                }
+            }
             self.video.clear_dirty();
         }
         // Always update cursor position (cursor moves don't dirty the buffer)
@@ -691,7 +713,29 @@ impl<V: VideoController> Computer<V> {
     /// Force a full video redraw regardless of dirty state
     /// Used when terminal state is known to be out of sync (e.g., after clearing screen)
     pub fn force_video_redraw(&mut self) {
-        self.video_controller.force_redraw(self.video.get_buffer());
+        // Force redraw based on current mode
+        match self.video.get_mode_type() {
+            crate::video::VideoMode::Text { .. } => {
+                self.video_controller.force_redraw(self.video.get_buffer());
+            }
+            crate::video::VideoMode::Graphics320x200 => {
+                if let Some(buffer) = self.video.get_graphics_buffer() {
+                    self.video_controller
+                        .update_graphics_320x200(buffer.get_pixels(), self.video.get_palette());
+                }
+            }
+            crate::video::VideoMode::Graphics640x200 => {
+                if let Some(buffer) = self.video.get_graphics_buffer() {
+                    let palette = self.video.get_palette();
+                    let colors = palette.get_colors();
+                    self.video_controller.update_graphics_640x200(
+                        buffer.get_pixels(),
+                        colors[1], // Foreground
+                        colors[0], // Background
+                    );
+                }
+            }
+        }
         self.video.clear_dirty();
         self.video_controller.update_cursor(self.video.get_cursor());
     }
