@@ -372,6 +372,31 @@ impl PerformanceTracker {
     }
 }
 
+enum NotificationType {
+    Success,
+    Error,
+}
+
+struct Notification {
+    message: String,
+    notification_type: NotificationType,
+    shown_at: Instant,
+}
+
+impl Notification {
+    fn new(message: String, notification_type: NotificationType) -> Self {
+        Self {
+            message,
+            notification_type,
+            shown_at: Instant::now(),
+        }
+    }
+
+    fn is_expired(&self) -> bool {
+        self.shown_at.elapsed() > std::time::Duration::from_secs(3)
+    }
+}
+
 struct AppState {
     menu: AppMenu,
     floppy_a_present: bool,
@@ -381,6 +406,7 @@ struct AppState {
     turbo_mode: bool,
     show_performance_overlay: bool,
     perf_tracker: PerformanceTracker,
+    notification: Option<Notification>,
 }
 
 fn process_egui_frame(
@@ -413,6 +439,7 @@ fn process_egui_frame(
                         &mut app_state.floppy_a_present,
                         &mut app_state.floppy_b_present,
                         &mut app_state.menu,
+                        &mut app_state.notification,
                     );
                 } else if action.is_debug_action() {
                     handle_debug_action(
@@ -430,6 +457,7 @@ fn process_egui_frame(
                         &mut app_state.floppy_a_present,
                         &mut app_state.floppy_b_present,
                         &mut app_state.menu,
+                        &mut app_state.notification,
                     );
                 }
             }
@@ -438,6 +466,15 @@ fn process_egui_frame(
         // Render performance overlay outside exclusive mode check so it's always visible
         if app_state.show_performance_overlay {
             render_performance_overlay(ctx, app_state.turbo_mode, app_state.perf_tracker.get_mhz());
+        }
+
+        // Render notification if present and not expired
+        if let Some(notification) = &app_state.notification {
+            if notification.is_expired() {
+                app_state.notification = None;
+            } else {
+                render_notification(ctx, notification);
+            }
         }
     });
 
@@ -461,6 +498,25 @@ fn render_performance_overlay(ctx: &egui::Context, turbo_mode: bool, actual_mhz:
                 };
                 ui.label(target_text);
                 ui.label(format!("Actual: {:.2} MHz", actual_mhz));
+            });
+        });
+}
+
+fn render_notification(ctx: &egui::Context, notification: &Notification) {
+    egui::Window::new("Notification")
+        .anchor(egui::Align2::CENTER_BOTTOM, egui::vec2(0.0, -50.0))
+        .title_bar(false)
+        .resizable(false)
+        .movable(false)
+        .collapsible(false)
+        .show(ctx, |ui| {
+            ui.horizontal(|ui| {
+                let (icon, color) = match notification.notification_type {
+                    NotificationType::Success => ("✓", egui::Color32::from_rgb(0, 200, 0)),
+                    NotificationType::Error => ("✗", egui::Color32::from_rgb(220, 0, 0)),
+                };
+                ui.label(egui::RichText::new(icon).color(color).size(20.0));
+                ui.label(&notification.message);
             });
         });
 }
@@ -563,6 +619,7 @@ fn run(cli: Cli) -> Result<()> {
         turbo_mode: cli.turbo,
         show_performance_overlay: false,
         perf_tracker: PerformanceTracker::new(),
+        notification: None,
     };
 
     // Speed throttling state (4.77 MHz = original 8086 speed)
@@ -840,6 +897,7 @@ fn show_insert_dialog(
     floppy_a_present: &mut bool,
     floppy_b_present: &mut bool,
     menu: &mut AppMenu,
+    notification: &mut Option<Notification>,
 ) {
     let drive_label = if slot == DriveNumber::floppy_a() {
         "A:"
@@ -862,6 +920,7 @@ fn show_insert_dialog(
             floppy_a_present,
             floppy_b_present,
             menu,
+            notification,
         );
     }
 }
@@ -873,7 +932,14 @@ fn load_and_insert_disk(
     floppy_a_present: &mut bool,
     floppy_b_present: &mut bool,
     menu: &mut AppMenu,
+    notification: &mut Option<Notification>,
 ) {
+    let drive_label = if slot == DriveNumber::floppy_a() {
+        "A:"
+    } else {
+        "B:"
+    };
+
     let result = (|| -> Result<()> {
         let backend = FileDiskBackend::open(path, false)?;
         let disk =
@@ -898,9 +964,25 @@ fn load_and_insert_disk(
             }
             // Update menu
             menu.update_menu_states(*floppy_a_present, *floppy_b_present);
+
+            // Show success notification
+            let filename = std::path::Path::new(path)
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or(path);
+            *notification = Some(Notification::new(
+                format!("Loaded {} into drive {}", filename, drive_label),
+                NotificationType::Success,
+            ));
         }
         Err(e) => {
             log::error!("Failed to insert disk: {}", e);
+
+            // Show error notification
+            *notification = Some(Notification::new(
+                format!("Failed to load disk into {}: {}", drive_label, e),
+                NotificationType::Error,
+            ));
         }
     }
 }
@@ -911,7 +993,14 @@ fn eject_disk(
     floppy_a_present: &mut bool,
     floppy_b_present: &mut bool,
     menu: &mut AppMenu,
+    notification: &mut Option<Notification>,
 ) {
+    let drive_label = if slot == DriveNumber::floppy_a() {
+        "A:"
+    } else {
+        "B:"
+    };
+
     match computer.bios_mut().eject_floppy(slot) {
         Ok(Some(_disk)) => {
             log::info!("Ejected floppy {}", slot);
@@ -923,12 +1012,30 @@ fn eject_disk(
             }
             // Update menu
             menu.update_menu_states(*floppy_a_present, *floppy_b_present);
+
+            // Show success notification
+            *notification = Some(Notification::new(
+                format!("Ejected disk from drive {}", drive_label),
+                NotificationType::Success,
+            ));
         }
         Ok(None) => {
             log::warn!("No disk in floppy {} to eject", slot);
+
+            // Show warning notification
+            *notification = Some(Notification::new(
+                format!("No disk in drive {} to eject", drive_label),
+                NotificationType::Error,
+            ));
         }
         Err(e) => {
             log::error!("Failed to eject disk: {}", e);
+
+            // Show error notification
+            *notification = Some(Notification::new(
+                format!("Failed to eject disk from {}: {}", drive_label, e),
+                NotificationType::Error,
+            ));
         }
     }
 }
