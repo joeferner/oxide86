@@ -66,6 +66,9 @@ struct Cli {
 fn main() {
     let log_file = File::create("emu86.log").expect("Failed to create log file");
     env_logger::Builder::from_default_env()
+        .filter_level(LevelFilter::Error)
+        .filter_module("emu86_core", LevelFilter::Info)
+        .filter_module("emu86_native_gui", LevelFilter::Info)
         .filter_module("wgpu_core", LevelFilter::Info)
         .filter_module("wgpu_hal", LevelFilter::Info)
         .target(env_logger::Target::Pipe(Box::new(log_file)))
@@ -518,14 +521,14 @@ fn render_notification(ctx: &egui::Context, notification: &Notification) {
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 let (icon, color) = match notification.notification_type {
-                    NotificationType::Success => ("✓", egui::Color32::from_rgb(0, 200, 0)),
-                    NotificationType::Error => ("✗", egui::Color32::from_rgb(220, 0, 0)),
+                    NotificationType::Success => ("✅", egui::Color32::from_rgb(0, 200, 0)),
+                    NotificationType::Error => ("❌", egui::Color32::from_rgb(220, 0, 0)),
                 };
-                ui.label(egui::RichText::new(icon).color(color).size(20.0));
+                ui.label(egui::RichText::new(icon).size(20.0));
                 ui.vertical(|ui| {
                     ui.set_max_width(550.0);
                     ui.style_mut().wrap = Some(true);
-                    ui.label(&notification.message);
+                    ui.label(egui::RichText::new(&notification.message).color(color));
                 });
             });
         });
