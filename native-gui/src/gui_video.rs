@@ -1,3 +1,4 @@
+use emu86_core::video::{CgaPalette, VideoMode};
 use emu86_core::{
     Cp437Font, TextModePalette,
     font::{CHAR_HEIGHT, CHAR_WIDTH},
@@ -31,6 +32,15 @@ pub struct PixelsVideoController {
     needs_full_redraw: bool,
     /// Flag to indicate if there are pending updates since last render
     has_pending_updates: bool,
+    /// Current video mode (for tracking text vs graphics)
+    current_mode: VideoMode,
+    /// Graphics mode pixel data (for 320x200 or 640x200 modes)
+    graphics_data: Option<Vec<u8>>,
+    /// Graphics mode palette (for 320x200 4-color mode)
+    graphics_palette: Option<[u8; 4]>,
+    /// Graphics mode colors (for 640x200 2-color mode)
+    graphics_fg_color: u8,
+    graphics_bg_color: u8,
 }
 
 #[allow(dead_code)]
@@ -45,6 +55,14 @@ impl PixelsVideoController {
             last_rendered_cursor: None,
             needs_full_redraw: true,
             has_pending_updates: true,
+            current_mode: VideoMode::Text {
+                cols: TEXT_MODE_COLS,
+                rows: TEXT_MODE_ROWS,
+            },
+            graphics_data: None,
+            graphics_palette: None,
+            graphics_fg_color: 15, // White
+            graphics_bg_color: 0,  // Black
         }
     }
 
@@ -105,10 +123,99 @@ impl PixelsVideoController {
         }
     }
 
+    /// Render graphics mode 320x200 (4-color) to framebuffer
+    fn render_graphics_320x200(&self, frame: &mut [u8]) {
+        if let (Some(pixel_data), Some(palette)) = (&self.graphics_data, &self.graphics_palette) {
+            let scale = 2; // Scale factor: 320x200 -> 640x400 window
+
+            // Iterate through all pixels
+            for y in 0..200 {
+                for x in 0..320 {
+                    // Extract pixel color (2 bits per pixel, 4 pixels per byte)
+                    let byte_offset = y * 80 + x / 4;
+                    let pixel_in_byte = x % 4;
+                    let byte_val = pixel_data[byte_offset];
+                    let shift = 6 - (pixel_in_byte * 2);
+                    let color_index = ((byte_val >> shift) & 0x03) as usize;
+
+                    // Get RGB color from palette
+                    let vga_color = palette[color_index];
+                    let rgb = TextModePalette::get_color(vga_color);
+
+                    // Draw scaled pixel (2x2 screen pixels per CGA pixel)
+                    for dy in 0..scale {
+                        for dx in 0..scale {
+                            let screen_x = x * scale + dx;
+                            let screen_y = y * scale + dy;
+                            let offset = (screen_y * SCREEN_WIDTH + screen_x) * 4;
+
+                            frame[offset] = rgb[0]; // R
+                            frame[offset + 1] = rgb[1]; // G
+                            frame[offset + 2] = rgb[2]; // B
+                            frame[offset + 3] = 0xFF; // A (opaque)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Render graphics mode 640x200 (2-color) to framebuffer
+    fn render_graphics_640x200(&self, frame: &mut [u8]) {
+        if let Some(pixel_data) = &self.graphics_data {
+            let fg_rgb = TextModePalette::get_color(self.graphics_fg_color);
+            let bg_rgb = TextModePalette::get_color(self.graphics_bg_color);
+            let scale = 2; // 640x200 -> 1280x400 (but we'll use 640x400 with 1x horizontal scale)
+
+            for y in 0..200 {
+                for x in 0..640 {
+                    let byte_offset = y * 80 + x / 8;
+                    let pixel_in_byte = x % 8;
+                    let byte_val = pixel_data[byte_offset];
+                    let bit_mask = 0x80 >> pixel_in_byte;
+                    let is_set = (byte_val & bit_mask) != 0;
+
+                    let rgb = if is_set { fg_rgb } else { bg_rgb };
+
+                    // Draw scaled pixel (1x width, 2x height for 640x400)
+                    for dy in 0..scale {
+                        let screen_x = x;
+                        let screen_y = y * scale + dy;
+                        let offset = (screen_y * SCREEN_WIDTH + screen_x) * 4;
+
+                        frame[offset] = rgb[0]; // R
+                        frame[offset + 1] = rgb[1]; // G
+                        frame[offset + 2] = rgb[2]; // B
+                        frame[offset + 3] = 0xFF; // A (opaque)
+                    }
+                }
+            }
+        }
+    }
+
     /// Render the current state to a Pixels framebuffer
     /// This should be called from the main event loop after update_display/update_cursor
     pub fn render(&mut self, pixels: &mut Pixels) {
         let frame = pixels.frame_mut();
+
+        // Check if we're in graphics mode
+        match self.current_mode {
+            VideoMode::Graphics320x200 => {
+                // Render graphics mode
+                self.render_graphics_320x200(frame);
+                self.has_pending_updates = false;
+                return;
+            }
+            VideoMode::Graphics640x200 => {
+                // Render graphics mode
+                self.render_graphics_640x200(frame);
+                self.has_pending_updates = false;
+                return;
+            }
+            VideoMode::Text { .. } => {
+                // Continue with text mode rendering below
+            }
+        }
 
         if self.needs_full_redraw {
             // Clear screen and render everything
@@ -168,6 +275,14 @@ impl Default for PixelsVideoController {
             last_rendered_cursor: None,
             needs_full_redraw: true,
             has_pending_updates: true,
+            current_mode: VideoMode::Text {
+                cols: TEXT_MODE_COLS,
+                rows: TEXT_MODE_ROWS,
+            },
+            graphics_data: None,
+            graphics_palette: None,
+            graphics_fg_color: 15, // White
+            graphics_bg_color: 0,  // Black
         }
     }
 }
@@ -186,7 +301,28 @@ impl VideoController for PixelsVideoController {
         }
     }
 
-    fn set_video_mode(&mut self, _mode: u8) {
+    fn set_video_mode(&mut self, mode: u8) {
+        // Update current mode based on video mode number
+        self.current_mode = match mode {
+            0x00 | 0x01 => VideoMode::Text { cols: 40, rows: 25 },
+            0x02 | 0x03 | 0x07 => VideoMode::Text { cols: 80, rows: 25 },
+            0x04 | 0x05 => VideoMode::Graphics320x200,
+            0x06 => VideoMode::Graphics640x200,
+            _ => VideoMode::Text { cols: 80, rows: 25 }, // Default to text mode
+        };
+
+        // Clear graphics data when switching modes
+        match self.current_mode {
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
+                self.graphics_data = None;
+                self.graphics_palette = None;
+            }
+            VideoMode::Text { .. } => {
+                self.graphics_data = None;
+                self.graphics_palette = None;
+            }
+        }
+
         // Mark for full redraw
         self.needs_full_redraw = true;
         self.has_pending_updates = true;
@@ -197,6 +333,30 @@ impl VideoController for PixelsVideoController {
     fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
         self.current_buffer.copy_from_slice(buffer);
         self.needs_full_redraw = true;
+        self.has_pending_updates = true;
+    }
+
+    fn update_graphics_320x200(&mut self, pixel_data: &[u8], palette: &CgaPalette) {
+        // Store pixel data
+        self.graphics_data = Some(pixel_data.to_vec());
+
+        // Store palette colors
+        let colors = palette.get_colors();
+        self.graphics_palette = Some(colors);
+
+        // Mark for update
+        self.has_pending_updates = true;
+    }
+
+    fn update_graphics_640x200(&mut self, pixel_data: &[u8], fg_color: u8, bg_color: u8) {
+        // Store pixel data
+        self.graphics_data = Some(pixel_data.to_vec());
+
+        // Store foreground and background colors
+        self.graphics_fg_color = fg_color;
+        self.graphics_bg_color = bg_color;
+
+        // Mark for update
         self.has_pending_updates = true;
     }
 }

@@ -6,6 +6,7 @@
 - ✅ **Phase 3: CGA I/O Ports** - COMPLETED
 - ✅ **Phase 4: Computer Integration** - COMPLETED
 - ✅ **Phase 5: INT 10h Graphics Functions** - COMPLETED
+- ✅ **Phase 6: GUI Graphics Rendering (native-gui)** - COMPLETED
 
 ## Overview
 Implement IBM Color Graphics Adapter (CGA) graphics modes alongside existing text mode support. This enables running graphics-based DOS programs and games from the early 1980s.
@@ -747,11 +748,25 @@ impl Cpu {
 }
 ```
 
-### Phase 6: GUI Graphics Rendering (native-gui)
+### Phase 6: GUI Graphics Rendering (native-gui) ✅ COMPLETED
 
-**File**: `native-gui/src/gui_video.rs` (MODIFY)
+**File**: `native-gui/src/gui_video.rs` (MODIFIED)
 
-Implement proper pixel rendering:
+**What was implemented:**
+- ✅ Added `VideoMode` and `CgaPalette` imports from emu86_core
+- ✅ Extended `PixelsVideoController` struct with graphics mode fields (current_mode, graphics_data, graphics_palette, graphics_fg_color, graphics_bg_color)
+- ✅ Implemented `render_graphics_320x200()` method for 4-color CGA rendering with 2x scaling (320x200 -> 640x400)
+- ✅ Implemented `render_graphics_640x200()` method for 2-color CGA rendering with 2x vertical scaling (640x200 -> 640x400)
+- ✅ Updated `render()` method to check video mode and dispatch to appropriate rendering method
+- ✅ Updated `set_video_mode()` to handle graphics modes 0x04-0x06 and update current_mode
+- ✅ Implemented `update_graphics_320x200()` and `update_graphics_640x200()` VideoController trait methods
+- ✅ Added `CgaPalette` and `VideoMode` to core/src/lib.rs exports
+- ✅ Used `TextModePalette::get_color()` for VGA color to RGB conversion
+- ✅ All tests pass, code compiles for both native and WASM targets
+
+**Implementation details:**
+
+Pixel rendering is implemented with proper scaling:
 
 ```rust
 impl VideoController for GuiVideo {

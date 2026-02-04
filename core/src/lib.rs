@@ -19,7 +19,8 @@ pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
 pub use crate::speaker::{NullSpeaker, SpeakerOutput};
 pub use crate::video::{
-    CursorPosition, NullVideoController, TextAttribute, TextCell, Video, VideoController, colors,
+    CgaPalette, CursorPosition, NullVideoController, TextAttribute, TextCell, Video,
+    VideoController, VideoMode, colors,
 };
 pub use computer::Computer;
 pub use font::Cp437Font;
