@@ -1,31 +1,37 @@
 import { useRef } from 'react'
+import { Emu86Computer } from '../types/wasm'
 
-async function loadFile(file) {
+interface DriveControlProps {
+  computer: Emu86Computer | null;
+  onStatusUpdate: (message: string) => void;
+}
+
+async function loadFile(file: File): Promise<Uint8Array> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = (e) => resolve(new Uint8Array(e.target.result))
+    reader.onload = (e) => resolve(new Uint8Array(e.target?.result as ArrayBuffer))
     reader.onerror = reject
     reader.readAsArrayBuffer(file)
   })
 }
 
-export function DriveControl({ computer, onStatusUpdate }) {
-  const floppyAInputRef = useRef(null)
-  const floppyBInputRef = useRef(null)
-  const hddInputRef = useRef(null)
+export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
+  const floppyAInputRef = useRef<HTMLInputElement>(null)
+  const floppyBInputRef = useRef<HTMLInputElement>(null)
+  const hddInputRef = useRef<HTMLInputElement>(null)
 
   const handleLoadFloppyA = async () => {
     const input = floppyAInputRef.current
-    if (!input || input.files.length === 0) {
+    if (!input || input.files?.length === 0) {
       onStatusUpdate('Please select a file first')
       return
     }
 
     try {
       onStatusUpdate('Loading floppy A...')
-      const data = await loadFile(input.files[0])
-      computer.load_floppy(0, data)
-      onStatusUpdate(`Loaded floppy A: ${input.files[0].name} (${data.length} bytes)`)
+      const data = await loadFile(input.files![0])
+      computer?.load_floppy(0, data)
+      onStatusUpdate(`Loaded floppy A: ${input.files![0].name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading floppy A: ${e}`)
       console.error(e)
@@ -34,7 +40,7 @@ export function DriveControl({ computer, onStatusUpdate }) {
 
   const handleEjectFloppyA = () => {
     try {
-      computer.eject_floppy(0)
+      computer?.eject_floppy(0)
       onStatusUpdate('Floppy A ejected')
     } catch (e) {
       onStatusUpdate(`Error ejecting floppy A: ${e}`)
@@ -44,16 +50,16 @@ export function DriveControl({ computer, onStatusUpdate }) {
 
   const handleLoadFloppyB = async () => {
     const input = floppyBInputRef.current
-    if (!input || input.files.length === 0) {
+    if (!input || input.files?.length === 0) {
       onStatusUpdate('Please select a file first')
       return
     }
 
     try {
       onStatusUpdate('Loading floppy B...')
-      const data = await loadFile(input.files[0])
-      computer.load_floppy(1, data)
-      onStatusUpdate(`Loaded floppy B: ${input.files[0].name} (${data.length} bytes)`)
+      const data = await loadFile(input.files![0])
+      computer?.load_floppy(1, data)
+      onStatusUpdate(`Loaded floppy B: ${input.files![0].name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading floppy B: ${e}`)
       console.error(e)
@@ -62,7 +68,7 @@ export function DriveControl({ computer, onStatusUpdate }) {
 
   const handleEjectFloppyB = () => {
     try {
-      computer.eject_floppy(1)
+      computer?.eject_floppy(1)
       onStatusUpdate('Floppy B ejected')
     } catch (e) {
       onStatusUpdate(`Error ejecting floppy B: ${e}`)
@@ -72,16 +78,16 @@ export function DriveControl({ computer, onStatusUpdate }) {
 
   const handleLoadHDD = async () => {
     const input = hddInputRef.current
-    if (!input || input.files.length === 0) {
+    if (!input || input.files?.length === 0) {
       onStatusUpdate('Please select a file first')
       return
     }
 
     try {
       onStatusUpdate('Loading hard drive C...')
-      const data = await loadFile(input.files[0])
-      computer.add_hard_drive(data)
-      onStatusUpdate(`Loaded hard drive C: ${input.files[0].name} (${data.length} bytes)`)
+      const data = await loadFile(input.files![0])
+      computer?.add_hard_drive(data)
+      onStatusUpdate(`Loaded hard drive C: ${input.files![0].name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading hard drive: ${e}`)
       console.error(e)

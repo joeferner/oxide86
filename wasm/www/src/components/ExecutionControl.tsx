@@ -1,4 +1,11 @@
-export function ExecutionControl({ isRunning, onStart, onStop, onStep }) {
+interface ExecutionControlProps {
+  isRunning: boolean;
+  onStart: () => void;
+  onStop: () => void;
+  onStep: () => void;
+}
+
+export function ExecutionControl({ isRunning, onStart, onStop, onStep }: ExecutionControlProps) {
   return (
     <div className="control-group">
       <label className="control-label">Execution Control:</label>

@@ -1,6 +1,12 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, RefObject } from 'react'
 
-export function usePointerLock(canvasRef) {
+interface UsePointerLockReturn {
+  isLocked: boolean;
+  requestLock: () => void;
+  exitLock: () => void;
+}
+
+export function usePointerLock(canvasRef: RefObject<HTMLCanvasElement>): UsePointerLockReturn {
   const [isLocked, setIsLocked] = useState(false)
 
   const requestLock = useCallback(() => {

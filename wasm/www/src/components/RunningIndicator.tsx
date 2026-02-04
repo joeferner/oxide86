@@ -1,4 +1,8 @@
-export function RunningIndicator({ isRunning }) {
+interface RunningIndicatorProps {
+  isRunning: boolean;
+}
+
+export function RunningIndicator({ isRunning }: RunningIndicatorProps) {
   return (
     <div id="running-indicator">
       <div className={`indicator-led ${isRunning ? 'running' : ''}`}></div>

@@ -1,4 +1,10 @@
-export function BootControl({ onBootA, onBootC, onReset }) {
+interface BootControlProps {
+  onBootA: () => void;
+  onBootC: () => void;
+  onReset: () => void;
+}
+
+export function BootControl({ onBootA, onBootC, onReset }: BootControlProps) {
   return (
     <div className="control-group">
       <label className="control-label">Boot Control:</label>

@@ -1,4 +1,13 @@
-export function PerformanceDisplay({ performance }) {
+interface Performance {
+  target: number;
+  actual: number;
+}
+
+interface PerformanceDisplayProps {
+  performance: Performance;
+}
+
+export function PerformanceDisplay({ performance }: PerformanceDisplayProps) {
   return (
     <div id="performance-display" className="performance">
       <div className="perf-label">Target:</div>

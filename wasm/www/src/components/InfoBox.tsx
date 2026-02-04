@@ -1,4 +1,8 @@
-export function InfoBox({ isPointerLocked }) {
+interface InfoBoxProps {
+  isPointerLocked: boolean;
+}
+
+export function InfoBox({ isPointerLocked }: InfoBoxProps) {
   if (isPointerLocked) {
     return (
       <div className="info-box locked">

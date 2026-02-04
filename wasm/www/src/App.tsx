@@ -11,7 +11,7 @@ import { RunningIndicator } from './components/RunningIndicator'
 import { PerformanceDisplay } from './components/PerformanceDisplay'
 
 function App() {
-  const canvasRef = useRef(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
   const { isLocked } = usePointerLock(canvasRef)
 
   const {
@@ -27,7 +27,7 @@ function App() {
     reset,
   } = useEmulator(canvasRef)
 
-  const handleStatusUpdate = useCallback((message) => {
+  const handleStatusUpdate = useCallback((message: string) => {
     setStatus(message)
   }, [setStatus])
 

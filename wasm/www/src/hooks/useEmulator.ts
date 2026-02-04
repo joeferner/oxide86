@@ -1,11 +1,30 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, RefObject } from 'react'
+import { Emu86Computer, WasmModule } from '../types/wasm'
 
-export function useEmulator(canvasRef) {
-  const [computer, setComputer] = useState(null)
+interface Performance {
+  target: number;
+  actual: number;
+}
+
+interface UseEmulatorReturn {
+  computer: Emu86Computer | null;
+  status: string;
+  setStatus: (status: string) => void;
+  isRunning: boolean;
+  performance: Performance;
+  startExecution: () => void;
+  stopExecution: () => void;
+  stepExecution: () => void;
+  boot: (driveNumber: number) => void;
+  reset: () => void;
+}
+
+export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>): UseEmulatorReturn {
+  const [computer, setComputer] = useState<Emu86Computer | null>(null)
   const [status, setStatus] = useState('Initializing...')
   const [isRunning, setIsRunning] = useState(false)
-  const [performance, setPerformance] = useState({ target: 0, actual: 0 })
-  const animationFrameRef = useRef(null)
+  const [performance, setPerformance] = useState<Performance>({ target: 0, actual: 0 })
+  const animationFrameRef = useRef<number | null>(null)
   const initializedRef = useRef(false)
   const isRunningRef = useRef(false)
 
@@ -36,7 +55,7 @@ export function useEmulator(canvasRef) {
         initializedRef.current = true
 
         // Dynamically import WASM module
-        const wasmModule = await import('../../pkg/emu86_wasm.js')
+        const wasmModule = await import('../../pkg/emu86_wasm.js') as unknown as WasmModule
         await wasmModule.default()
 
         const comp = new wasmModule.Emu86Computer('display')
@@ -65,7 +84,7 @@ export function useEmulator(canvasRef) {
       // Reset flag on cleanup so remount can reinitialize
       initializedRef.current = false
     }
-  }, [])
+  }, [canvasRef])
 
   const updatePerformance = () => {
     if (computer) {
@@ -136,7 +155,7 @@ export function useEmulator(canvasRef) {
     }
   }
 
-  const boot = (driveNumber) => {
+  const boot = (driveNumber: number) => {
     if (!computer) return
 
     try {
