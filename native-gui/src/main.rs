@@ -393,7 +393,11 @@ impl Notification {
     }
 
     fn is_expired(&self) -> bool {
-        self.shown_at.elapsed() > std::time::Duration::from_secs(3)
+        let duration = match self.notification_type {
+            NotificationType::Success => std::time::Duration::from_secs(3),
+            NotificationType::Error => std::time::Duration::from_secs(6),
+        };
+        self.shown_at.elapsed() > duration
     }
 }
 
@@ -509,6 +513,8 @@ fn render_notification(ctx: &egui::Context, notification: &Notification) {
         .resizable(false)
         .movable(false)
         .collapsible(false)
+        .default_width(500.0)
+        .max_width(600.0)
         .show(ctx, |ui| {
             ui.horizontal(|ui| {
                 let (icon, color) = match notification.notification_type {
@@ -516,7 +522,10 @@ fn render_notification(ctx: &egui::Context, notification: &Notification) {
                     NotificationType::Error => ("✗", egui::Color32::from_rgb(220, 0, 0)),
                 };
                 ui.label(egui::RichText::new(icon).color(color).size(20.0));
-                ui.label(&notification.message);
+                ui.vertical(|ui| {
+                    ui.set_max_width(550.0);
+                    ui.label(egui::RichText::new(&notification.message).wrap());
+                });
             });
         });
 }
