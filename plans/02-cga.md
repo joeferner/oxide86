@@ -5,6 +5,7 @@
 - ✅ **Phase 2: VideoController Trait Extension** - COMPLETED
 - ✅ **Phase 3: CGA I/O Ports** - COMPLETED
 - ✅ **Phase 4: Computer Integration** - COMPLETED
+- ✅ **Phase 5: INT 10h Graphics Functions** - COMPLETED
 
 ## Overview
 Implement IBM Color Graphics Adapter (CGA) graphics modes alongside existing text mode support. This enables running graphics-based DOS programs and games from the early 1980s.
@@ -613,9 +614,19 @@ pub fn update_video(&mut self) {
 }
 ```
 
-### Phase 5: INT 10h Graphics Functions
+### Phase 5: INT 10h Graphics Functions ✅ COMPLETED
 
-**File**: `core/src/cpu/bios/int10.rs` (MODIFY)
+**File**: `core/src/cpu/bios/int10.rs` (MODIFIED)
+
+**What was implemented:**
+- ✅ Added INT 10h AH=0Ch - Write Graphics Pixel
+- ✅ Added INT 10h AH=0Dh - Read Graphics Pixel
+- ✅ Updated INT 10h AH=00h to support graphics modes 0x04-0x06
+- ✅ Both functions handle 320x200 4-color and 640x200 2-color modes
+- ✅ Verified WASM compatibility (all code is platform-independent)
+- ✅ All tests pass, code compiles for native and WASM targets
+
+**Implementation details:**
 
 Add graphics-specific functions:
 
@@ -736,122 +747,7 @@ impl Cpu {
 }
 ```
 
-### Phase 6: Native Terminal Graphics (ASCII Art Fallback)
-
-**File**: `native/src/terminal_video.rs` (MODIFY)
-
-Add graphics rendering using block characters:
-
-```rust
-impl VideoController for TerminalVideo {
-    // ... existing text mode methods ...
-
-    fn update_graphics_320x200(&mut self, pixel_data: &[u8], palette: &CgaPalette) {
-        // Use Unicode block characters to approximate graphics
-        // Each terminal character represents 2x4 pixels (8 pixels total)
-        // This gives us ~160x50 effective resolution in terminal
-
-        let colors = palette.get_colors();
-        let width = 320;
-        let height = 200;
-
-        // Render 2 pixel rows at a time using half-block characters
-        for term_row in 0..100 {
-            for term_col in 0..160 {
-                let px_col = term_col * 2;
-                let px_row = term_row * 2;
-
-                // Get colors of 2x2 pixel block
-                let top_left = self.get_pixel_color_320(pixel_data, px_col, px_row);
-                let top_right = self.get_pixel_color_320(pixel_data, px_col + 1, px_row);
-                let bot_left = self.get_pixel_color_320(pixel_data, px_col, px_row + 1);
-                let bot_right = self.get_pixel_color_320(pixel_data, px_col + 1, px_row + 1);
-
-                // Use half-block character: '▀' (top half) or '▄' (bottom half)
-                // This is a simplified approximation
-                let (ch, fg, bg) = if top_left == top_right && bot_left == bot_right {
-                    if top_left == bot_left {
-                        // All same color: space
-                        (' ', colors[top_left as usize], colors[top_left as usize])
-                    } else {
-                        // Top vs bottom: use half-block
-                        ('▀', colors[top_left as usize], colors[bot_left as usize])
-                    }
-                } else {
-                    // Complex case: pick dominant color
-                    // Simplified: just use top-left
-                    (' ', colors[top_left as usize], colors[top_left as usize])
-                };
-
-                // Print character with ANSI colors
-                print!("{}", Self::ansi_color_fg(fg));
-                print!("{}", Self::ansi_color_bg(bg));
-                print!("{}", ch);
-            }
-            println!("{}", Self::ansi_reset());
-        }
-    }
-
-    fn update_graphics_640x200(&mut self, pixel_data: &[u8], fg_color: u8, bg_color: u8) {
-        // Similar approach but for 1-bit pixels
-        // 640x200 -> 320x100 terminal resolution with half-blocks
-        log::warn!("640x200 graphics mode rendering not fully implemented in terminal");
-    }
-
-    // Helper methods
-    fn get_pixel_color_320(&self, data: &[u8], x: usize, y: usize) -> u8 {
-        if x >= 320 || y >= 200 {
-            return 0;
-        }
-        let byte_offset = y * 80 + x / 4;
-        let pixel_in_byte = x % 4;
-        let byte_val = data[byte_offset];
-        let shift = 6 - (pixel_in_byte * 2);
-        (byte_val >> shift) & 0x03
-    }
-
-    fn ansi_color_fg(color: u8) -> String {
-        // Convert VGA color to ANSI escape code
-        match color {
-            0 => "\x1b[30m",   // Black
-            1 => "\x1b[34m",   // Blue
-            2 => "\x1b[32m",   // Green
-            3 => "\x1b[36m",   // Cyan
-            4 => "\x1b[31m",   // Red
-            5 => "\x1b[35m",   // Magenta
-            6 => "\x1b[33m",   // Brown/Yellow
-            7 => "\x1b[37m",   // Light gray
-            8 => "\x1b[90m",   // Dark gray
-            9 => "\x1b[94m",   // Light blue
-            10 => "\x1b[92m",  // Light green
-            11 => "\x1b[96m",  // Light cyan
-            12 => "\x1b[91m",  // Light red
-            13 => "\x1b[95m",  // Light magenta
-            14 => "\x1b[93m",  // Yellow
-            15 => "\x1b[97m",  // White
-            _ => "\x1b[37m",
-        }.to_string()
-    }
-
-    fn ansi_color_bg(color: u8) -> String {
-        // Similar mapping but for background (40-47, 100-107)
-        match color {
-            0 => "\x1b[40m",   // Black
-            1 => "\x1b[44m",   // Blue
-            // ... (similar pattern as foreground but with +10 to escape code)
-            _ => "\x1b[40m",
-        }.to_string()
-    }
-
-    fn ansi_reset() -> &'static str {
-        "\x1b[0m"
-    }
-}
-```
-
-**Note**: Terminal graphics will be low-fidelity. True graphics experience requires GUI implementation.
-
-### Phase 7: GUI Graphics Rendering (native-gui)
+### Phase 6: GUI Graphics Rendering (native-gui)
 
 **File**: `native-gui/src/gui_video.rs` (MODIFY)
 
@@ -947,7 +843,7 @@ impl VideoController for GuiVideo {
 }
 ```
 
-### Phase 8: WASM Graphics Rendering
+### Phase 7: WASM Graphics Rendering
 
 **File**: `wasm/src/web_video.rs` (MODIFY - referenced in plans/02-wasm.md)
 

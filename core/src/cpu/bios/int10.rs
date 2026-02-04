@@ -17,8 +17,10 @@ impl Cpu {
             0x08 => self.int10_read_char_attr(video),
             0x09 => self.int10_write_char_attr(memory, video),
             0x0A => self.int10_write_char(video),
-            0x0E => self.int10_teletype_output(video),
             0x0B => self.int10_set_color_palette(),
+            0x0C => self.int10_write_pixel(video),
+            0x0D => self.int10_read_pixel(video),
+            0x0E => self.int10_teletype_output(video),
             0x0F => self.int10_get_video_mode(video),
             0x10 => self.int10_palette_registers(),
             0x11 => self.int10_character_generator(memory),
@@ -37,18 +39,25 @@ impl Cpu {
 
     /// INT 10h, AH=00h - Set Video Mode
     /// Input:
-    ///   AL = video mode (0x00-0x03, 0x07 for text modes)
+    ///   AL = video mode
+    ///     0x00-0x03 = text modes (40x25 or 80x25)
+    ///     0x04-0x05 = CGA 320x200, 4 colors
+    ///     0x06 = CGA 640x200, 2 colors
+    ///     0x07 = monochrome text 80x25
     /// Output: None
     fn int10_set_video_mode(&mut self, video: &mut crate::video::Video) {
         let mode = (self.ax & 0xFF) as u8; // AL
 
-        // We only support text modes (0x00-0x03, 0x07)
-        if mode <= 0x07 {
-            video.set_mode(mode);
-            // Reset cursor to top-left
-            video.set_cursor(0, 0);
-        } else {
-            log::warn!("Unsupported video mode: 0x{:02X}", mode);
+        // Support text modes (0x00-0x03, 0x07) and CGA graphics modes (0x04-0x06)
+        match mode {
+            0x00..=0x07 => {
+                video.set_mode(mode);
+                // Reset cursor to top-left (only relevant for text modes)
+                video.set_cursor(0, 0);
+            }
+            _ => {
+                log::warn!("Unsupported video mode: 0x{:02X}", mode);
+            }
         }
     }
 
@@ -492,6 +501,108 @@ impl Cpu {
                 );
             }
         }
+    }
+
+    /// INT 10h, AH=0Ch - Write Graphics Pixel
+    /// Input:
+    ///   AL = pixel color value (0-3 for 320x200, 0-1 for 640x200)
+    ///   BH = page number (0 for graphics modes, ignored)
+    ///   CX = column (0-319 or 0-639)
+    ///   DX = row (0-199)
+    /// Output: None
+    fn int10_write_pixel(&mut self, video: &mut crate::video::Video) {
+        let color = (self.ax & 0xFF) as u8; // AL
+        let col = self.cx as usize;
+        let row = self.dx as usize;
+
+        match video.get_mode_type() {
+            crate::video::VideoMode::Graphics320x200 => {
+                if col >= 320 || row >= 200 {
+                    return;
+                }
+                // Calculate byte offset (4 pixels per byte)
+                let pixels_per_byte = 4;
+                let bytes_per_line = 320 / pixels_per_byte; // 80
+                let byte_offset = row * bytes_per_line + col / pixels_per_byte;
+                let pixel_in_byte = col % pixels_per_byte;
+
+                // Read-modify-write
+                let mut byte_val = video.read_byte(byte_offset);
+                let shift = 6 - (pixel_in_byte * 2); // MSB first
+                byte_val &= !(0x03 << shift); // Clear 2 bits
+                byte_val |= (color & 0x03) << shift; // Set 2 bits
+                video.write_byte(byte_offset, byte_val);
+            }
+            crate::video::VideoMode::Graphics640x200 => {
+                if col >= 640 || row >= 200 {
+                    return;
+                }
+                // Calculate byte offset (8 pixels per byte)
+                let pixels_per_byte = 8;
+                let bytes_per_line = 640 / pixels_per_byte; // 80
+                let byte_offset = row * bytes_per_line + col / pixels_per_byte;
+                let pixel_in_byte = col % pixels_per_byte;
+
+                // Read-modify-write
+                let mut byte_val = video.read_byte(byte_offset);
+                let bit_mask = 0x80 >> pixel_in_byte; // MSB first
+                if (color & 0x01) != 0 {
+                    byte_val |= bit_mask; // Set bit
+                } else {
+                    byte_val &= !bit_mask; // Clear bit
+                }
+                video.write_byte(byte_offset, byte_val);
+            }
+            crate::video::VideoMode::Text { .. } => {
+                // Ignore write pixel in text mode
+            }
+        }
+    }
+
+    /// INT 10h, AH=0Dh - Read Graphics Pixel
+    /// Input:
+    ///   BH = page number (0 for graphics modes, ignored)
+    ///   CX = column (0-319 or 0-639)
+    ///   DX = row (0-199)
+    /// Output:
+    ///   AL = pixel color value
+    fn int10_read_pixel(&mut self, video: &crate::video::Video) {
+        let col = self.cx as usize;
+        let row = self.dx as usize;
+
+        let color = match video.get_mode_type() {
+            crate::video::VideoMode::Graphics320x200 => {
+                if col >= 320 || row >= 200 {
+                    0
+                } else {
+                    let pixels_per_byte = 4;
+                    let bytes_per_line = 80;
+                    let byte_offset = row * bytes_per_line + col / pixels_per_byte;
+                    let pixel_in_byte = col % pixels_per_byte;
+
+                    let byte_val = video.read_byte(byte_offset);
+                    let shift = 6 - (pixel_in_byte * 2);
+                    (byte_val >> shift) & 0x03
+                }
+            }
+            crate::video::VideoMode::Graphics640x200 => {
+                if col >= 640 || row >= 200 {
+                    0
+                } else {
+                    let pixels_per_byte = 8;
+                    let bytes_per_line = 80;
+                    let byte_offset = row * bytes_per_line + col / pixels_per_byte;
+                    let pixel_in_byte = col % pixels_per_byte;
+
+                    let byte_val = video.read_byte(byte_offset);
+                    let bit_mask = 0x80 >> pixel_in_byte;
+                    if (byte_val & bit_mask) != 0 { 1 } else { 0 }
+                }
+            }
+            crate::video::VideoMode::Text { .. } => 0,
+        };
+
+        self.ax = (self.ax & 0xFF00) | (color as u16);
     }
 
     /// INT 10h, AH=10h - Set/Get Palette Registers
