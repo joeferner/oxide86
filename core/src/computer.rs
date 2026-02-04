@@ -479,8 +479,13 @@ impl<V: VideoController> Computer<V> {
         if self.cpu.is_waiting_for_keyboard() {
             // Check if a key is available now (non-blocking)
             if self.bios.check_key().is_some() {
-                log::debug!("Key available, resuming from wait state");
-                self.cpu.resume_from_wait();
+                log::debug!("Key available, resuming from wait state and retrying INT 16h");
+                // Resume and check if we should retry INT 16h
+                if self.cpu.resume_from_wait() {
+                    // Retry INT 16h AH=00h handler directly
+                    self.cpu.int16_read_char(&mut self.memory, &mut self.bios);
+                    return;
+                }
                 // Fall through to execute the next instruction
             } else {
                 // Still waiting - return without executing

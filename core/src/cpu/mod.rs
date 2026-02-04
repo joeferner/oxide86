@@ -59,8 +59,9 @@ pub(super) enum RepeatPrefix {
 pub enum CpuWaitState {
     /// CPU is executing instructions normally
     Running,
-    /// CPU is waiting for keyboard input (INT 16h AH=00h with no key available)
-    WaitingForKeyboard,
+    /// CPU is waiting for keyboard input from INT 16h AH=00h
+    /// When resumed, INT 16h handler will be retried
+    WaitingForKeyboardInt16,
 }
 
 // Flag bit positions
@@ -151,7 +152,7 @@ impl Cpu {
 
     /// Check if CPU is waiting for keyboard input
     pub fn is_waiting_for_keyboard(&self) -> bool {
-        self.wait_state == CpuWaitState::WaitingForKeyboard
+        self.wait_state == CpuWaitState::WaitingForKeyboardInt16
     }
 
     /// Get the current wait state
@@ -159,14 +160,16 @@ impl Cpu {
         self.wait_state
     }
 
-    /// Set CPU to wait for keyboard input
+    /// Set CPU to wait for keyboard input (INT 16h will be retried when resumed)
     pub fn set_waiting_for_keyboard(&mut self) {
-        self.wait_state = CpuWaitState::WaitingForKeyboard;
+        self.wait_state = CpuWaitState::WaitingForKeyboardInt16;
     }
 
-    /// Resume CPU from wait state
-    pub fn resume_from_wait(&mut self) {
+    /// Resume CPU from wait state, returns true if INT 16h should be retried
+    pub fn resume_from_wait(&mut self) -> bool {
+        let should_retry = self.wait_state == CpuWaitState::WaitingForKeyboardInt16;
         self.wait_state = CpuWaitState::Running;
+        should_retry
     }
 
     // Execute an INT instruction with BIOS I/O handler

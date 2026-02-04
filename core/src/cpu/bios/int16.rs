@@ -32,7 +32,7 @@ impl Cpu {
     /// Output:
     ///   AH = BIOS scan code
     ///   AL = ASCII character
-    fn int16_read_char(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    pub(crate) fn int16_read_char(&mut self, memory: &mut Memory, io: &mut super::Bios) {
         // Check if there's already a character in the keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
@@ -87,7 +87,11 @@ impl Cpu {
                 // For non-blocking keyboards (GUI, WASM), we enter wait state and pause execution
                 log::debug!("INT 16h AH=00h: No key available, entering wait state");
                 self.set_waiting_for_keyboard();
-                // Don't modify AX - we'll retry when resumed
+                // Don't modify AX - when we resume, we need to re-execute this INT
+                // The INT instruction is 2 bytes (0xCD nn), but we're being called after
+                // the interrupt dispatch which has already advanced IP. We need to rewind
+                // so the next execution retry happens at the instruction after the INT.
+                // Actually, we'll handle the retry in the wait state resume logic.
             }
         }
     }
