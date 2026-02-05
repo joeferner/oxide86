@@ -235,7 +235,11 @@ fn handle_window_resize(
 ) {
     // Validate dimensions are non-zero
     if new_size.width == 0 || new_size.height == 0 {
-        log::warn!("Ignoring invalid window resize: {}x{}", new_size.width, new_size.height);
+        log::warn!(
+            "Ignoring invalid window resize: {}x{}",
+            new_size.width,
+            new_size.height
+        );
         return;
     }
 
@@ -246,7 +250,12 @@ fn handle_window_resize(
     let adjusted_size = winit::dpi::PhysicalSize::new(new_size.width, new_height);
 
     if let Err(e) = pixels.resize_surface(adjusted_size.width, adjusted_size.height) {
-        log::error!("Failed to resize surface to {}x{}: {}", adjusted_size.width, adjusted_size.height, e);
+        log::error!(
+            "Failed to resize surface to {}x{}: {}",
+            adjusted_size.width,
+            adjusted_size.height,
+            e
+        );
         return; // Don't exit, just log the error and continue
     }
 
@@ -494,6 +503,8 @@ fn process_egui_frame(
                         &mut app_state.interrupt_logging_enabled,
                         &mut app_state.turbo_mode,
                         &mut app_state.show_performance_overlay,
+                        &mut app_state.notification,
+                        &mut app_state.halted,
                     );
                 } else {
                     eject_disk(
@@ -557,20 +568,21 @@ fn render_notification(ctx: &egui::Context, notification: &Notification) {
         .default_width(500.0)
         .max_width(600.0)
         .show(ctx, |ui| {
-            ui.horizontal_top(|ui| {
+            ui.horizontal(|ui| {
                 let (icon, color) = match notification.notification_type {
                     NotificationType::Success => ("✅", egui::Color32::from_rgb(0, 200, 0)),
                     NotificationType::Error => ("❌", egui::Color32::from_rgb(220, 0, 0)),
                 };
 
-                // Icon with slight top padding to align with text
-                ui.add_space(3.0);
+                // Vertically center the icon and text together
+                ui.spacing_mut().item_spacing.x = 8.0;
+
+                // Icon
                 ui.label(egui::RichText::new(icon).size(20.0));
 
-                ui.add_space(5.0);
-
-                // Message text with wrapping
-                ui.scope(|ui| {
+                // Message text with wrapping - add top spacing to align with icon center
+                ui.vertical(|ui| {
+                    ui.add_space(6.0);
                     ui.set_max_width(520.0);
                     ui.style_mut().wrap = Some(true);
                     ui.label(egui::RichText::new(&notification.message).color(color));
@@ -776,7 +788,12 @@ fn run(cli: Cli) -> Result<()> {
                         std::process::exit(0);
                     }
                     WindowEvent::Resized(new_size) => {
-                        handle_window_resize(&mut pixels, &mut computer, new_size, &mut surface_size);
+                        handle_window_resize(
+                            &mut pixels,
+                            &mut computer,
+                            new_size,
+                            &mut surface_size,
+                        );
                     }
                     WindowEvent::KeyboardInput { event: input, .. } => {
                         // Always handle keyboard input (F12 to exit exclusive mode, etc.)
@@ -1144,6 +1161,8 @@ fn handle_debug_action(
     interrupt_logging_enabled: &mut bool,
     turbo_mode: &mut bool,
     show_performance_overlay: &mut bool,
+    notification: &mut Option<Notification>,
+    halted: &mut bool,
 ) {
     use menu::MenuAction;
 
@@ -1151,6 +1170,8 @@ fn handle_debug_action(
         MenuAction::Reset => {
             log::info!("Resetting computer...");
             computer.reset();
+            *notification = None;
+            *halted = false;
             log::info!("Computer reset complete");
         }
         MenuAction::ToggleExecutionLogging => {

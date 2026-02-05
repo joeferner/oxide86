@@ -753,7 +753,10 @@ impl<V: VideoController> Computer<V> {
         // Check if video mode changed and notify controller
         if self.video.take_mode_changed() {
             let mode = self.video.get_mode();
-            log::info!("Notifying video controller of mode change to 0x{:02X}", mode);
+            log::info!(
+                "Notifying video controller of mode change to 0x{:02X}",
+                mode
+            );
             self.video_controller.set_video_mode(mode);
         }
 
