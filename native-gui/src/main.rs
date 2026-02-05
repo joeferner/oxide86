@@ -496,16 +496,7 @@ fn process_egui_frame(
                         &mut app_state.notification,
                     );
                 } else if action.is_debug_action() {
-                    handle_debug_action(
-                        action,
-                        computer,
-                        &mut app_state.is_paused,
-                        &mut app_state.interrupt_logging_enabled,
-                        &mut app_state.turbo_mode,
-                        &mut app_state.show_performance_overlay,
-                        &mut app_state.notification,
-                        &mut app_state.halted,
-                    );
+                    handle_debug_action(action, computer, app_state);
                 } else {
                     eject_disk(
                         action.drive_number(),
@@ -1157,12 +1148,7 @@ fn eject_disk(
 fn handle_debug_action(
     action: menu::MenuAction,
     computer: &mut Computer<PixelsVideoController>,
-    is_paused: &mut bool,
-    interrupt_logging_enabled: &mut bool,
-    turbo_mode: &mut bool,
-    show_performance_overlay: &mut bool,
-    notification: &mut Option<Notification>,
-    halted: &mut bool,
+    app_state: &mut AppState,
 ) {
     use menu::MenuAction;
 
@@ -1170,8 +1156,8 @@ fn handle_debug_action(
         MenuAction::Reset => {
             log::info!("Resetting computer...");
             computer.reset();
-            *notification = None;
-            *halted = false;
+            app_state.notification = None;
+            app_state.halted = false;
             log::info!("Computer reset complete");
         }
         MenuAction::ToggleExecutionLogging => {
@@ -1186,11 +1172,11 @@ fn handle_debug_action(
             );
         }
         MenuAction::ToggleInterruptLogging => {
-            *interrupt_logging_enabled = !*interrupt_logging_enabled;
-            computer.set_log_interrupts(*interrupt_logging_enabled);
+            app_state.interrupt_logging_enabled = !app_state.interrupt_logging_enabled;
+            computer.set_log_interrupts(app_state.interrupt_logging_enabled);
             log::info!(
                 "Interrupt logging {}",
-                if *interrupt_logging_enabled {
+                if app_state.interrupt_logging_enabled {
                     "enabled"
                 } else {
                     "disabled"
@@ -1198,24 +1184,32 @@ fn handle_debug_action(
             );
         }
         MenuAction::TogglePause => {
-            *is_paused = !*is_paused;
+            app_state.is_paused = !app_state.is_paused;
             log::info!(
                 "Emulation {}",
-                if *is_paused { "paused" } else { "resumed" }
+                if app_state.is_paused {
+                    "paused"
+                } else {
+                    "resumed"
+                }
             );
         }
         MenuAction::ToggleTurbo => {
-            *turbo_mode = !*turbo_mode;
+            app_state.turbo_mode = !app_state.turbo_mode;
             log::info!(
                 "Turbo mode {}",
-                if *turbo_mode { "enabled" } else { "disabled" }
+                if app_state.turbo_mode {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
             );
         }
         MenuAction::TogglePerformanceOverlay => {
-            *show_performance_overlay = !*show_performance_overlay;
+            app_state.show_performance_overlay = !app_state.show_performance_overlay;
             log::info!(
                 "Performance overlay {}",
-                if *show_performance_overlay {
+                if app_state.show_performance_overlay {
                     "enabled"
                 } else {
                     "disabled"

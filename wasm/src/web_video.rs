@@ -281,6 +281,11 @@ impl VideoController for WebVideo {
     }
 
     fn update_cursor(&mut self, cursor: CursorPosition) {
+        // Skip cursor rendering in graphics modes - cursor is only for text mode
+        if !matches!(self.current_mode, VideoMode::Text { .. }) {
+            return;
+        }
+
         // We need to redraw the character at the old cursor position to erase it,
         // then draw the new cursor. However, we don't have the buffer here.
         // For now, just store the cursor position and draw it when we update the display.
