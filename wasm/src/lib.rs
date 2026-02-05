@@ -274,6 +274,33 @@ impl Emu86Computer {
         }
     }
 
+    /// Load a program into memory and set CPU to start executing it.
+    ///
+    /// # Arguments
+    /// * `data` - Program binary data as Uint8Array from JavaScript
+    /// * `segment` - Starting segment address (e.g., 0x0000)
+    /// * `offset` - Starting offset address (e.g., 0x0100 for .COM files)
+    #[wasm_bindgen]
+    pub fn load_program(
+        &mut self,
+        data: Vec<u8>,
+        segment: u16,
+        offset: u16,
+    ) -> Result<(), JsValue> {
+        self.computer
+            .load_program(&data, segment, offset)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        log::info!(
+            "Loaded program: {} bytes at {:04X}:{:04X}",
+            data.len(),
+            segment,
+            offset
+        );
+
+        Ok(())
+    }
+
     /// Boot from a drive.
     ///
     /// # Arguments

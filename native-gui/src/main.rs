@@ -30,13 +30,25 @@ const TITLE: &str = "emu86 - 8086 Emulator";
 #[command(name = "emu86-gui")]
 #[command(about = "Intel 8086 CPU Emulator (GUI)", long_about = None)]
 struct Cli {
-    /// Boot from disk image
-    #[arg(long)]
+    /// Path to the program binary to load and execute (not used with --boot)
+    #[arg(required_unless_present = "boot")]
+    program: Option<String>,
+
+    /// Boot from disk image instead of loading a program
+    #[arg(long, required_unless_present = "program")]
     boot: bool,
 
     /// Boot drive number (0x00 for floppy A:, 0x01 for floppy B:, 0x80 for hard disk C:)
     #[arg(long, default_value = "0x00")]
     boot_drive: String,
+
+    /// Starting segment address (default: 0x0000)
+    #[arg(long, default_value = "0x0000")]
+    segment: String,
+
+    /// Starting offset address (default: 0x0100, like .COM files)
+    #[arg(long, default_value = "0x0100")]
+    offset: String,
 
     /// Path to disk image file for floppy A:
     #[arg(long = "floppy-a")]
@@ -286,7 +298,9 @@ fn step_emulator(
     turbo_mode: bool,
     throttle_start: Instant,
     nanos_per_cycle: u64,
-) {
+) -> bool {
+    let mut halted = false;
+
     // Skip execution if paused
     if !is_paused {
         if turbo_mode {
@@ -295,7 +309,8 @@ fn step_emulator(
             for _ in 0..BATCH_SIZE {
                 if computer.is_halted() {
                     log::info!("Computer halted");
-                    std::process::exit(0);
+                    halted = true;
+                    break;
                 }
                 computer.step();
             }
@@ -316,18 +331,23 @@ fn step_emulator(
             for _ in 0..steps_to_run {
                 if computer.is_halted() {
                     log::info!("Computer halted");
-                    std::process::exit(0);
+                    halted = true;
+                    break;
                 }
                 computer.step();
             }
         }
     }
 
+    // Always update and render video, even if halted
+    // This ensures the final output is visible before showing the termination message
     computer.update_video();
 
     if computer.video_controller_mut().has_pending_updates() {
         computer.video_controller_mut().render(pixels);
     }
+
+    halted
 }
 
 struct PerformanceTracker {
@@ -414,6 +434,7 @@ struct AppState {
     show_performance_overlay: bool,
     perf_tracker: PerformanceTracker,
     notification: Option<Notification>,
+    halted: bool,
 }
 
 fn process_egui_frame(
@@ -475,9 +496,9 @@ fn process_egui_frame(
             render_performance_overlay(ctx, app_state.turbo_mode, app_state.perf_tracker.get_mhz());
         }
 
-        // Render notification if present and not expired
+        // Render notification if present and not expired (unless halted)
         if let Some(notification) = &app_state.notification {
-            if notification.is_expired() {
+            if !app_state.halted && notification.is_expired() {
                 app_state.notification = None;
             } else {
                 render_notification(ctx, notification);
@@ -633,6 +654,7 @@ fn run(cli: Cli) -> Result<()> {
         show_performance_overlay: false,
         perf_tracker: PerformanceTracker::new(),
         notification: None,
+        halted: false,
     };
 
     // Speed throttling state (4.77 MHz = original 8086 speed)
@@ -729,6 +751,8 @@ fn run(cli: Cli) -> Result<()> {
                         handle_window_resize(&mut pixels, &mut computer, new_size);
                     }
                     WindowEvent::KeyboardInput { event: input, .. } => {
+                        // Always handle keyboard input (F12 to exit exclusive mode, etc.)
+                        // Even when halted, F12 should still unlock the cursor
                         handle_keyboard_input(&mut computer, window, &input, &mut exclusive_mode);
                     }
                     WindowEvent::ModifiersChanged(modifiers) => {
@@ -748,7 +772,7 @@ fn run(cli: Cli) -> Result<()> {
                         }
                     }
                     WindowEvent::RedrawRequested => {
-                        step_emulator(
+                        let halted = step_emulator(
                             &mut computer,
                             &mut pixels,
                             app_state.is_paused,
@@ -756,6 +780,15 @@ fn run(cli: Cli) -> Result<()> {
                             throttle_start,
                             NANOS_PER_CYCLE,
                         );
+
+                        // Handle halt: show notification
+                        if halted && !app_state.halted {
+                            app_state.halted = true;
+                            app_state.notification = Some(Notification::new(
+                                "Program terminated. Close window to exit.".to_string(),
+                                NotificationType::Success,
+                            ));
+                        }
 
                         // Update performance tracker
                         app_state.perf_tracker.update(computer.get_cycle_count());
@@ -806,6 +839,9 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
     };
 
     let mut computer = Computer::new(keyboard, mouse, video, speaker);
+
+    // Force initial video render to show blank screen
+    computer.force_video_redraw();
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {
@@ -898,6 +934,25 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
             .context("Failed to boot from disk")?;
 
         log::info!("Boot sector loaded at 0x0000:0x7C00");
+        log::info!("Starting execution...\n");
+    } else if let Some(program_path) = &cli.program {
+        // Load program from file
+        let program_data = std::fs::read(program_path)
+            .with_context(|| format!("Failed to read program file: {}", program_path))?;
+
+        let segment = parse_hex_or_dec(&cli.segment)?;
+        let offset = parse_hex_or_dec(&cli.offset)?;
+
+        computer
+            .load_program(&program_data, segment, offset)
+            .context("Failed to load program")?;
+
+        log::info!(
+            "Loaded {} bytes at {:04X}:{:04X}",
+            program_data.len(),
+            segment,
+            offset
+        );
         log::info!("Starting execution...\n");
     }
 

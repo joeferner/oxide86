@@ -189,11 +189,29 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 ### DOS Error Codes
 `SUCCESS=0, FILE_NOT_FOUND=2, PATH_NOT_FOUND=3, TOO_MANY_FILES=4, ACCESS_DENIED=5, INVALID_HANDLE=6, NO_MORE_FILES=0x12`
 
-## Boot Process
+## Running Programs
 
+### native-cli and native-gui
+
+Both native-cli and native-gui support two modes: loading programs or booting from disk.
+
+**Load a program (.COM file):**
+```bash
+# CLI version
+cargo run -p emu86-native-cli -- program.com
+
+# GUI version
+cargo run -p emu86-native-gui -- program.com
+
+# With custom segment:offset
+cargo run -p emu86-native-cli -- program.com --segment 0x1000 --offset 0x0000
+```
+
+**Boot from disk:**
 ```bash
 # Boot from floppy A:
 cargo run -p emu86-native-cli -- --boot --floppy-a dos.img
+cargo run -p emu86-native-gui -- --boot --floppy-a dos.img
 
 # Boot from hard drive C: with floppy in B:
 cargo run -p emu86-native-cli -- --boot --boot-drive 0x80 --hdd drive_c.img --floppy-b disk2.img
@@ -203,10 +221,31 @@ cargo run -p emu86-native-cli -- --boot --hdd drive_c.img --hdd drive_d.img
 ```
 
 **CLI Options:**
+- `<program>` - Path to program binary (required unless --boot)
+- `--boot` - Boot from disk instead of loading program
+- `--segment <hex>` - Starting segment (default: 0x0000)
+- `--offset <hex>` - Starting offset (default: 0x0100 for .COM files)
 - `--floppy-a <path>` - Floppy A: image
 - `--floppy-b <path>` - Floppy B: image
 - `--hdd <path>` - Hard drive image (can specify multiple for C:, D:, etc.)
-- `--boot-drive <0x00|0x01|0x80>` - Boot drive number
+- `--boot-drive <0x00|0x01|0x80>` - Boot drive number (default: 0x00)
+
+### WASM
+
+**Load a program:**
+```javascript
+const computer = new Emu86Computer("canvas-id");
+const programData = new Uint8Array([...]); // Your .COM file bytes
+computer.load_program(programData, 0x0000, 0x0100); // segment:offset
+```
+
+**Boot from disk:**
+```javascript
+const computer = new Emu86Computer("canvas-id");
+const diskImage = new Uint8Array([...]); // Your disk image bytes
+computer.load_floppy(0, diskImage); // Load into drive A:
+computer.boot(0x00); // Boot from drive A:
+```
 
 **Boot Sequence:**
 1. Read sector 0 to 0x7C00

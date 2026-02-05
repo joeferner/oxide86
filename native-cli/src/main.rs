@@ -270,14 +270,14 @@ fn main() -> Result<()> {
     execute!(std::io::stdout(), EnableMouseCapture).context("Failed to enable mouse capture")?;
 
     // Run the program with optional speed throttling
-    if cli.turbo {
+    let quit_from_command_mode = if cli.turbo {
         log::info!("Running in turbo mode (no speed limit)");
-        run(&mut computer, None);
+        run(&mut computer, None)
     } else {
         let clock_hz = (cli.speed * 1_000_000.0) as u64;
         log::info!("Running at {:.2} MHz ({} Hz)", cli.speed, clock_hz);
-        run(&mut computer, Some(clock_hz));
-    }
+        run(&mut computer, Some(clock_hz))
+    };
 
     // Disable mouse capture before exiting
     execute!(std::io::stdout(), DisableMouseCapture).context("Failed to disable mouse capture")?;
@@ -285,12 +285,28 @@ fn main() -> Result<()> {
     log::info!("=== Execution complete ===");
     computer.dump_registers();
 
+    // If computer halted naturally (not from command mode quit), wait for keypress
+    if !quit_from_command_mode {
+        use crossterm::event::{self, Event};
+        use crossterm::style::Print;
+        execute!(std::io::stdout(), Print("\nPress any key to exit..."))?;
+        loop {
+            if let Ok(Event::Key(key_event)) = event::read() {
+                // Exit on any key press
+                if let crossterm::event::KeyEventKind::Press = key_event.kind {
+                    break;
+                }
+            }
+        }
+    }
+
     Ok(())
 }
 
 /// Run the emulator with F12 command mode support and mouse input
 /// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
-fn run<V>(computer: &mut Computer<V>, clock_hz: Option<u64>)
+/// Returns true if user quit from command mode, false if computer halted naturally
+fn run<V>(computer: &mut Computer<V>, clock_hz: Option<u64>) -> bool
 where
     V: emu86_core::VideoController,
 {
@@ -300,6 +316,9 @@ where
 
     // Run instructions in batches to reduce timing overhead
     const BATCH_SIZE: u32 = 1000;
+
+    // Track whether we exit from command mode quit
+    let mut quit_from_command_mode = false;
 
     while !computer.is_halted() {
         // Execute a batch of instructions
@@ -387,6 +406,7 @@ where
                 });
             if !should_continue {
                 // User chose to quit
+                quit_from_command_mode = true;
                 break;
             }
         }
@@ -409,4 +429,6 @@ where
             }
         }
     }
+
+    quit_from_command_mode
 }

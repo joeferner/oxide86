@@ -1,9 +1,8 @@
 # TODO
 
-- [ ] add load program to native-gui and wasm
 - [ ] Refactor read_char to be blocking in GUI/WASM (see plans/int16_blocking_behavior.md and examples/waitkey.asm)
-- [ ] WASM - Implement options to create a new harddrive or floppy 
-- [ ] WASM - Add support to download floppy and hard drive data
+- [ ] WASM - Implement options to create a new harddrive or floppy (see plans/disk-manager-wasm-ui.md)
+- [ ] WASM - Add support to download floppy and hard drive data (see plans/disk-manager-wasm-ui.md)
 - [ ] More accurate instruction timing instead of assuming all instructions are a fixed cycle count
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
 - [ ] Test CGA Applications
