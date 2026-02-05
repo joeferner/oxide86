@@ -12,4 +12,8 @@ cargo clippy --all -- -D warnings
 cargo test --all
 
 echo ""
+echo "Building production Docker container..."
+docker build -t emu86-web:latest ./wasm/www
+
+echo ""
 echo "Complete!"

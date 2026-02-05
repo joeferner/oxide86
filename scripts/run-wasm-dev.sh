@@ -2,7 +2,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-cd "${SCRIPT_DIR}/.."
+cd "${SCRIPT_DIR}/../wasm/www"
 
 echo "Starting emu86 web development server..."
 echo ""
