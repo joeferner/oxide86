@@ -10,6 +10,13 @@ use crate::{
     memory::{self, Memory},
 };
 
+#[derive(Clone)]
+struct LoadedProgram {
+    data: Vec<u8>,
+    segment: u16,
+    offset: u16,
+}
+
 pub struct Computer<V: VideoController = NullVideoController> {
     cpu: Cpu,
     memory: Memory,
@@ -45,6 +52,8 @@ pub struct Computer<V: VideoController = NullVideoController> {
     speaker_update_cycles: u64,
     /// Boot drive for reset/reboot operations
     boot_drive: Option<DriveNumber>,
+    /// Loaded program for reset/reload operations
+    loaded_program: Option<LoadedProgram>,
 }
 
 impl<V: VideoController> Computer<V> {
@@ -110,6 +119,7 @@ impl<V: VideoController> Computer<V> {
             timer_irq_blocked_logged: false,
             speaker_update_cycles: 0,
             boot_drive: None,
+            loaded_program: None,
         }
     }
 
@@ -132,6 +142,16 @@ impl<V: VideoController> Computer<V> {
         self.cpu.es = segment;
         self.cpu.ss = segment;
         self.cpu.sp = 0xFFFE; // Stack grows down from top of segment
+
+        // Store program for reset/reload
+        self.loaded_program = Some(LoadedProgram {
+            data: program_data.to_vec(),
+            segment,
+            offset,
+        });
+
+        // Clear boot_drive since we're loading a program, not booting
+        self.boot_drive = None;
 
         Ok(())
     }
@@ -221,6 +241,9 @@ impl<V: VideoController> Computer<V> {
         // Store boot drive for reset/reboot operations
         self.boot_drive = Some(drive);
 
+        // Clear loaded_program since we're booting, not loading
+        self.loaded_program = None;
+
         Ok(())
     }
 
@@ -263,15 +286,21 @@ impl<V: VideoController> Computer<V> {
         // Force a video redraw to clear the screen
         self.video_controller.force_redraw(self.video.get_buffer());
 
-        // Re-boot from the stored boot drive if one exists
-        if let Some(drive) = self.boot_drive {
+        // Reload program or re-boot from the stored boot drive if one exists
+        if let Some(program) = self.loaded_program.clone() {
+            log::info!("Reloading program at {:04X}:{:04X}", program.segment, program.offset);
+            // Ignore load errors during reset - just log them
+            if let Err(e) = self.load_program(&program.data, program.segment, program.offset) {
+                log::error!("Failed to reload program during reset: {}", e);
+            }
+        } else if let Some(drive) = self.boot_drive {
             log::info!("Rebooting from drive {}", drive.to_letter());
             // Ignore boot errors during reset - just log them
             if let Err(e) = self.boot(drive) {
                 log::error!("Failed to reboot during reset: {}", e);
             }
         } else {
-            log::info!("Reset called but no boot drive stored");
+            log::info!("Reset called but no boot drive or program stored");
         }
     }
 
