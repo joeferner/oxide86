@@ -74,6 +74,11 @@ impl Cpu {
                     crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_SIZE,
                     page_size as u16,
                 );
+
+                log::info!(
+                    "INT 10h AH=00h: Updated BDA for mode 0x{:02X} - cols={}, rows={}, page_size={}",
+                    mode, cols, rows, page_size
+                );
             }
             _ => {
                 log::warn!("Unsupported video mode: 0x{:02X}", mode);

@@ -1,7 +1,6 @@
 # TODO
 
-- [ ] Test 40 column mode using check-it 1.10a (see plans/fix-40-column-text-mode.md)
-- [ ] Test CGA using check-it 1.10a (see plans/02-cga.md)
+- [ ] Test CGA using check-it >1.10a (see plans/02-cga.md)
 - [ ] Update plans/disk-manager-wasm-ui.md now that we changed to react
 - [ ] WASM - Implement options to create a new harddrive or floppy (see plans/disk-manager-wasm-ui.md)
 - [ ] WASM - Add support to download floppy and hard drive data (see plans/disk-manager-wasm-ui.md)
