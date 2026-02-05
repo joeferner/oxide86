@@ -231,15 +231,32 @@ fn handle_window_resize(
     pixels: &mut Pixels,
     computer: &mut Computer<PixelsVideoController>,
     new_size: winit::dpi::PhysicalSize<u32>,
+    surface_size: &mut winit::dpi::PhysicalSize<u32>,
 ) {
-    if let Err(e) = pixels.resize_surface(new_size.width, new_size.height) {
-        log::error!("Failed to resize surface: {}", e);
-        std::process::exit(1);
+    // Validate dimensions are non-zero
+    if new_size.width == 0 || new_size.height == 0 {
+        log::warn!("Ignoring invalid window resize: {}x{}", new_size.width, new_size.height);
+        return;
     }
+
+    // Maintain aspect ratio (8:5 for 640:400) to avoid viewport mismatches
+    // Round to nearest dimensions that maintain the aspect ratio
+    let aspect_ratio = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
+    let new_height = (new_size.width as f32 / aspect_ratio).round() as u32;
+    let adjusted_size = winit::dpi::PhysicalSize::new(new_size.width, new_height);
+
+    if let Err(e) = pixels.resize_surface(adjusted_size.width, adjusted_size.height) {
+        log::error!("Failed to resize surface to {}x{}: {}", adjusted_size.width, adjusted_size.height, e);
+        return; // Don't exit, just log the error and continue
+    }
+
+    // Store the actual surface size so render_frame can use it
+    *surface_size = adjusted_size;
+
     computer
         .bios_mut()
         .mouse
-        .update_window_size(new_size.width as f64, new_size.height as f64);
+        .update_window_size(adjusted_size.width as f64, adjusted_size.height as f64);
 }
 
 fn handle_keyboard_input(
@@ -540,14 +557,21 @@ fn render_notification(ctx: &egui::Context, notification: &Notification) {
         .default_width(500.0)
         .max_width(600.0)
         .show(ctx, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_top(|ui| {
                 let (icon, color) = match notification.notification_type {
                     NotificationType::Success => ("✅", egui::Color32::from_rgb(0, 200, 0)),
                     NotificationType::Error => ("❌", egui::Color32::from_rgb(220, 0, 0)),
                 };
+
+                // Icon with slight top padding to align with text
+                ui.add_space(3.0);
                 ui.label(egui::RichText::new(icon).size(20.0));
-                ui.vertical(|ui| {
-                    ui.set_max_width(550.0);
+
+                ui.add_space(5.0);
+
+                // Message text with wrapping
+                ui.scope(|ui| {
+                    ui.set_max_width(520.0);
                     ui.style_mut().wrap = Some(true);
                     ui.label(egui::RichText::new(&notification.message).color(color));
                 });
@@ -561,9 +585,10 @@ fn render_frame(
     egui_ctx: &egui::Context,
     full_output: egui::FullOutput,
     window: &winit::window::Window,
+    surface_size: winit::dpi::PhysicalSize<u32>,
 ) {
     let screen_descriptor = egui_wgpu::ScreenDescriptor {
-        size_in_pixels: [window.inner_size().width, window.inner_size().height],
+        size_in_pixels: [surface_size.width, surface_size.height],
         pixels_per_point: window.scale_factor() as f32,
     };
 
@@ -680,6 +705,9 @@ fn run(cli: Cli) -> Result<()> {
 
     let mut mouse_motion_state = MouseMotionState::new();
 
+    // Track actual surface size (may differ from window size due to aspect ratio adjustment)
+    let mut surface_size = window.inner_size();
+
     event_loop
         .run(move |event, elwt| {
             elwt.set_control_flow(ControlFlow::Poll);
@@ -748,7 +776,7 @@ fn run(cli: Cli) -> Result<()> {
                         std::process::exit(0);
                     }
                     WindowEvent::Resized(new_size) => {
-                        handle_window_resize(&mut pixels, &mut computer, new_size);
+                        handle_window_resize(&mut pixels, &mut computer, new_size, &mut surface_size);
                     }
                     WindowEvent::KeyboardInput { event: input, .. } => {
                         // Always handle keyboard input (F12 to exit exclusive mode, etc.)
@@ -808,6 +836,7 @@ fn run(cli: Cli) -> Result<()> {
                             &egui_ctx,
                             full_output,
                             window,
+                            surface_size,
                         );
 
                         window.request_redraw();

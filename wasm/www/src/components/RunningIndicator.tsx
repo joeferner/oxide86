@@ -6,7 +6,7 @@ interface RunningIndicatorProps {
 
 export function RunningIndicator({ isRunning }: RunningIndicatorProps) {
   return (
-    <Group mt="sm" gap="xs">
+    <Group gap="xs">
       <div
         style={{
           width: 12,

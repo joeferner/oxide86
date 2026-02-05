@@ -750,6 +750,13 @@ impl<V: VideoController> Computer<V> {
 
     /// Update video display if needed (call periodically or after step)
     pub fn update_video(&mut self) {
+        // Check if video mode changed and notify controller
+        if self.video.take_mode_changed() {
+            let mode = self.video.get_mode();
+            log::info!("Notifying video controller of mode change to 0x{:02X}", mode);
+            self.video_controller.set_video_mode(mode);
+        }
+
         if self.video.is_dirty() {
             // Update video controller based on current mode
             match self.video.get_mode_type() {

@@ -59,5 +59,8 @@ Simple "Hello World" test program for verifying program loading functionality. U
 
 ## Video
 
+### cga_graphics.asm
+Assembly program that tests CGA graphics mode functionality. Switches to mode 0x04 (320x200, 4 colors), selects palette 1 (cyan, magenta, white), and draws six colored boxes in different patterns across the screen. Demonstrates direct video memory writes at 0xB8000, pixel encoding (2 bits per pixel, 4 pixels per byte), CGA interlaced memory layout (even scan lines at 0x0000-0x1F3F, odd lines at 0x2000-0x3F3F), and palette selection via port 0x3D9. Waits for keypress then returns to text mode.
+
 ### color.bas
 QBasic program that demonstrates text mode color capabilities. Displays all 16 foreground colors (0-15) with black background, then shows standard background colors (0-7) with white foreground. Illustrates COLOR command usage and text mode color attribute handling.

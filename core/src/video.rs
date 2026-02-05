@@ -176,6 +176,9 @@ impl GraphicsBuffer {
             return 0;
         }
         let linear_offset = self.interlaced_to_linear(offset);
+        if linear_offset >= self.data.len() {
+            return 0;
+        }
         self.data[linear_offset]
     }
 
@@ -185,6 +188,9 @@ impl GraphicsBuffer {
             return;
         }
         let linear_offset = self.interlaced_to_linear(offset);
+        if linear_offset >= self.data.len() {
+            return;
+        }
         self.data[linear_offset] = value;
     }
 
@@ -330,6 +336,8 @@ pub struct Video {
     palette: CgaPalette,
     /// Dirty flag to minimize unnecessary updates
     dirty: bool,
+    /// Flag to track if mode changed (needs controller notification)
+    mode_changed: bool,
 }
 
 impl Video {
@@ -346,6 +354,7 @@ impl Video {
             active_page: 0,
             palette: CgaPalette::new(),
             dirty: false,
+            mode_changed: false,
         }
     }
 
@@ -488,6 +497,7 @@ impl Video {
         }
 
         self.dirty = true;
+        self.mode_changed = true; // Flag that controller needs notification
         log::info!("Video mode set to 0x{:02X} ({:?})", mode, self.mode_type);
     }
 
@@ -552,6 +562,13 @@ impl Video {
     /// Get palette (for rendering)
     pub fn get_palette(&self) -> &CgaPalette {
         &self.palette
+    }
+
+    /// Check if video mode changed and clear the flag
+    pub fn take_mode_changed(&mut self) -> bool {
+        let changed = self.mode_changed;
+        self.mode_changed = false;
+        changed
     }
 }
 

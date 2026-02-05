@@ -77,7 +77,10 @@ impl Cpu {
 
                 log::info!(
                     "INT 10h AH=00h: Updated BDA for mode 0x{:02X} - cols={}, rows={}, page_size={}",
-                    mode, cols, rows, page_size
+                    mode,
+                    cols,
+                    rows,
+                    page_size
                 );
             }
             _ => {
