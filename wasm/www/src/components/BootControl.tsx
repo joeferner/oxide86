@@ -1,3 +1,5 @@
+import { Group, Button, Text } from '@mantine/core'
+
 interface BootControlProps {
   onBootA: () => void;
   onBootC: () => void;
@@ -7,10 +9,12 @@ interface BootControlProps {
 export function BootControl({ onBootA, onBootC, onReset }: BootControlProps) {
   return (
     <div className="control-group">
-      <label className="control-label">Boot Control:</label>
-      <button onClick={onBootA} className="btn-secondary">Boot from A:</button>
-      <button onClick={onBootC} className="btn-secondary">Boot from C:</button>
-      <button onClick={onReset} className="btn-danger">Reset</button>
+      <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Boot Control:</Text>
+      <Group gap="xs">
+        <Button onClick={onBootA} color="blue" size="compact-sm">Boot from A:</Button>
+        <Button onClick={onBootC} color="blue" size="compact-sm">Boot from C:</Button>
+        <Button onClick={onReset} color="red" size="compact-sm">Reset</Button>
+      </Group>
     </div>
   )
 }

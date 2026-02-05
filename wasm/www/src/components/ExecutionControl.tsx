@@ -1,3 +1,5 @@
+import { Group, Button, Text } from '@mantine/core'
+
 interface ExecutionControlProps {
   isRunning: boolean;
   onStart: () => void;
@@ -8,10 +10,12 @@ interface ExecutionControlProps {
 export function ExecutionControl({ isRunning, onStart, onStop, onStep }: ExecutionControlProps) {
   return (
     <div className="control-group">
-      <label className="control-label">Execution Control:</label>
-      <button onClick={onStart} disabled={isRunning}>Start</button>
-      <button onClick={onStop} disabled={!isRunning} className="btn-danger">Stop</button>
-      <button onClick={onStep} className="btn-secondary">Step</button>
+      <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Execution Control:</Text>
+      <Group gap="xs">
+        <Button onClick={onStart} disabled={isRunning} color="green" size="compact-sm">Start</Button>
+        <Button onClick={onStop} disabled={!isRunning} color="red" size="compact-sm">Stop</Button>
+        <Button onClick={onStep} color="blue" size="compact-sm">Step</Button>
+      </Group>
     </div>
   )
 }

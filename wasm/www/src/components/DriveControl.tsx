@@ -1,4 +1,5 @@
-import { useRef } from 'react'
+import { useState } from 'react'
+import { Group, Button, FileButton, Text } from '@mantine/core'
 import { Emu86Computer } from '../types/wasm'
 
 interface DriveControlProps {
@@ -16,22 +17,21 @@ async function loadFile(file: File): Promise<Uint8Array> {
 }
 
 export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
-  const floppyAInputRef = useRef<HTMLInputElement>(null)
-  const floppyBInputRef = useRef<HTMLInputElement>(null)
-  const hddInputRef = useRef<HTMLInputElement>(null)
+  const [floppyAFile, setFloppyAFile] = useState<File | null>(null)
+  const [floppyBFile, setFloppyBFile] = useState<File | null>(null)
+  const [hddFile, setHddFile] = useState<File | null>(null)
 
   const handleLoadFloppyA = async () => {
-    const input = floppyAInputRef.current
-    if (!input || input.files?.length === 0) {
+    if (!floppyAFile) {
       onStatusUpdate('Please select a file first')
       return
     }
 
     try {
       onStatusUpdate('Loading floppy A...')
-      const data = await loadFile(input.files![0])
+      const data = await loadFile(floppyAFile)
       computer?.load_floppy(0, data)
-      onStatusUpdate(`Loaded floppy A: ${input.files![0].name} (${data.length} bytes)`)
+      onStatusUpdate(`Loaded floppy A: ${floppyAFile.name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading floppy A: ${e}`)
       console.error(e)
@@ -41,6 +41,7 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
   const handleEjectFloppyA = () => {
     try {
       computer?.eject_floppy(0)
+      setFloppyAFile(null)
       onStatusUpdate('Floppy A ejected')
     } catch (e) {
       onStatusUpdate(`Error ejecting floppy A: ${e}`)
@@ -49,17 +50,16 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
   }
 
   const handleLoadFloppyB = async () => {
-    const input = floppyBInputRef.current
-    if (!input || input.files?.length === 0) {
+    if (!floppyBFile) {
       onStatusUpdate('Please select a file first')
       return
     }
 
     try {
       onStatusUpdate('Loading floppy B...')
-      const data = await loadFile(input.files![0])
+      const data = await loadFile(floppyBFile)
       computer?.load_floppy(1, data)
-      onStatusUpdate(`Loaded floppy B: ${input.files![0].name} (${data.length} bytes)`)
+      onStatusUpdate(`Loaded floppy B: ${floppyBFile.name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading floppy B: ${e}`)
       console.error(e)
@@ -69,6 +69,7 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
   const handleEjectFloppyB = () => {
     try {
       computer?.eject_floppy(1)
+      setFloppyBFile(null)
       onStatusUpdate('Floppy B ejected')
     } catch (e) {
       onStatusUpdate(`Error ejecting floppy B: ${e}`)
@@ -77,17 +78,16 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
   }
 
   const handleLoadHDD = async () => {
-    const input = hddInputRef.current
-    if (!input || input.files?.length === 0) {
+    if (!hddFile) {
       onStatusUpdate('Please select a file first')
       return
     }
 
     try {
       onStatusUpdate('Loading hard drive C...')
-      const data = await loadFile(input.files![0])
+      const data = await loadFile(hddFile)
       computer?.add_hard_drive(data)
-      onStatusUpdate(`Loaded hard drive C: ${input.files![0].name} (${data.length} bytes)`)
+      onStatusUpdate(`Loaded hard drive C: ${hddFile.name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading hard drive: ${e}`)
       console.error(e)
@@ -99,38 +99,35 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
   return (
     <>
       <div className="control-group">
-        <label className="control-label">Floppy Drive A:</label>
-        <input
-          ref={floppyAInputRef}
-          type="file"
-          className="file-input"
-          accept=".img,.ima,.dsk"
-        />
-        <button onClick={handleLoadFloppyA}>Load A:</button>
-        <button onClick={handleEjectFloppyA} className="btn-danger">Eject A:</button>
+        <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Floppy Drive A:</Text>
+        <Group gap="xs">
+          <FileButton onChange={setFloppyAFile} accept=".img,.ima,.dsk">
+            {(props) => <Button {...props} size="compact-sm" variant="default">{floppyAFile ? floppyAFile.name : 'Choose File'}</Button>}
+          </FileButton>
+          <Button onClick={handleLoadFloppyA} size="compact-sm" color="green" disabled={!floppyAFile}>Load A:</Button>
+          <Button onClick={handleEjectFloppyA} size="compact-sm" color="red">Eject A:</Button>
+        </Group>
       </div>
 
       <div className="control-group">
-        <label className="control-label">Floppy Drive B:</label>
-        <input
-          ref={floppyBInputRef}
-          type="file"
-          className="file-input"
-          accept=".img,.ima,.dsk"
-        />
-        <button onClick={handleLoadFloppyB}>Load B:</button>
-        <button onClick={handleEjectFloppyB} className="btn-danger">Eject B:</button>
+        <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Floppy Drive B:</Text>
+        <Group gap="xs">
+          <FileButton onChange={setFloppyBFile} accept=".img,.ima,.dsk">
+            {(props) => <Button {...props} size="compact-sm" variant="default">{floppyBFile ? floppyBFile.name : 'Choose File'}</Button>}
+          </FileButton>
+          <Button onClick={handleLoadFloppyB} size="compact-sm" color="green" disabled={!floppyBFile}>Load B:</Button>
+          <Button onClick={handleEjectFloppyB} size="compact-sm" color="red">Eject B:</Button>
+        </Group>
       </div>
 
       <div className="control-group">
-        <label className="control-label">Hard Drive C:</label>
-        <input
-          ref={hddInputRef}
-          type="file"
-          className="file-input"
-          accept=".img,.ima,.dsk,.vhd"
-        />
-        <button onClick={handleLoadHDD}>Load C:</button>
+        <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Hard Drive C:</Text>
+        <Group gap="xs">
+          <FileButton onChange={setHddFile} accept=".img,.ima,.dsk,.vhd">
+            {(props) => <Button {...props} size="compact-sm" variant="default">{hddFile ? hddFile.name : 'Choose File'}</Button>}
+          </FileButton>
+          <Button onClick={handleLoadHDD} size="compact-sm" color="green" disabled={!hddFile}>Load C:</Button>
+        </Group>
       </div>
     </>
   )

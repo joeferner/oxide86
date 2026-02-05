@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react'
+import { Container, Title, Group, Paper, Stack } from '@mantine/core'
 import { useEmulator } from './hooks/useEmulator'
 import { usePointerLock } from './hooks/usePointerLock'
 import { EmulatorCanvas } from './components/EmulatorCanvas'
@@ -40,45 +41,49 @@ function App() {
   }, [boot])
 
   return (
-    <>
-      <h1>emu86 - Intel 8086 Emulator</h1>
+    <Container size="xl" p="md">
+      <Title order={1} ta="center" mb="md">emu86 - Intel 8086 Emulator</Title>
 
       <InfoBox isPointerLocked={isLocked} />
 
-      <div id="main-container">
-        <EmulatorCanvas
-          ref={canvasRef}
-          computer={computer}
-          onStatusUpdate={handleStatusUpdate}
-        />
-
-        <div className="controls">
-          <DriveControl
+      <Group align="flex-start" gap="md" mt="md" wrap="nowrap">
+        <Stack gap="xs">
+          <EmulatorCanvas
+            ref={canvasRef}
             computer={computer}
             onStatusUpdate={handleStatusUpdate}
           />
+          <Group gap="md" grow>
+            <RunningIndicator isRunning={isRunning} />
+            <PerformanceDisplay performance={performance} />
+          </Group>
+        </Stack>
 
-          <BootControl
-            onBootA={handleBootA}
-            onBootC={handleBootC}
-            onReset={reset}
-          />
+        <Paper shadow="sm" p="md" style={{ flex: 1, minWidth: 300 }} withBorder>
+          <Stack gap="xs">
+            <DriveControl
+              computer={computer}
+              onStatusUpdate={handleStatusUpdate}
+            />
 
-          <ExecutionControl
-            isRunning={isRunning}
-            onStart={startExecution}
-            onStop={stopExecution}
-            onStep={stepExecution}
-          />
+            <BootControl
+              onBootA={handleBootA}
+              onBootC={handleBootC}
+              onReset={reset}
+            />
 
-          <StatusDisplay status={status} />
+            <ExecutionControl
+              isRunning={isRunning}
+              onStart={startExecution}
+              onStop={stopExecution}
+              onStep={stepExecution}
+            />
 
-          <RunningIndicator isRunning={isRunning} />
-
-          <PerformanceDisplay performance={performance} />
-        </div>
-      </div>
-    </>
+            <StatusDisplay status={status} />
+          </Stack>
+        </Paper>
+      </Group>
+    </Container>
   )
 }
 
