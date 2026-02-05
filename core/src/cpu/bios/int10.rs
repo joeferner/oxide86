@@ -7,7 +7,7 @@ impl Cpu {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
-            0x00 => self.int10_set_video_mode(video),
+            0x00 => self.int10_set_video_mode(memory, video),
             0x01 => self.int10_set_cursor_shape(memory),
             0x02 => self.int10_set_cursor_position(video),
             0x03 => self.int10_get_cursor_position(memory, video),
@@ -45,7 +45,7 @@ impl Cpu {
     ///     0x06 = CGA 640x200, 2 colors
     ///     0x07 = monochrome text 80x25
     /// Output: None
-    fn int10_set_video_mode(&mut self, video: &mut crate::video::Video) {
+    fn int10_set_video_mode(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
         let mode = (self.ax & 0xFF) as u8; // AL
 
         // Support text modes (0x00-0x03, 0x07) and CGA graphics modes (0x04-0x06)
@@ -54,6 +54,26 @@ impl Cpu {
                 video.set_mode(mode);
                 // Reset cursor to top-left (only relevant for text modes)
                 video.set_cursor(0, 0);
+
+                // Update BDA with new video mode settings
+                memory.write_u8(
+                    crate::memory::BDA_START + crate::memory::BDA_VIDEO_MODE,
+                    mode,
+                );
+
+                let cols = video.get_cols();
+                let rows = video.get_rows();
+                memory.write_u16(
+                    crate::memory::BDA_START + crate::memory::BDA_SCREEN_COLUMNS,
+                    cols as u16,
+                );
+
+                // Page size = cols * rows * 2 (char + attr)
+                let page_size = cols * rows * 2;
+                memory.write_u16(
+                    crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_SIZE,
+                    page_size as u16,
+                );
             }
             _ => {
                 log::warn!("Unsupported video mode: 0x{:02X}", mode);
@@ -475,7 +495,7 @@ impl Cpu {
     ///   BH = active display page
     fn int10_get_video_mode(&mut self, video: &crate::video::Video) {
         let mode = video.get_mode();
-        let columns: u8 = 80; // Standard 80-column mode
+        let columns: u8 = video.get_cols() as u8;
         let page = video.get_active_page();
 
         self.ax = ((columns as u16) << 8) | (mode as u16);
@@ -791,11 +811,14 @@ impl Cpu {
         memory.write_u8(buffer_addr + 4, video.get_mode());
 
         // Offset 05h-06h: Number of columns
-        memory.write_u16(buffer_addr + 5, 80);
+        let cols = video.get_cols();
+        memory.write_u16(buffer_addr + 5, cols as u16);
 
         // Offset 07h-08h: Length of regen buffer (page size in bytes)
-        // For 80x25 text mode: 80 * 25 * 2 = 4000 bytes
-        memory.write_u16(buffer_addr + 7, 4000);
+        // cols * rows * 2 bytes per cell (char + attr)
+        let rows = video.get_rows();
+        let buffer_size = cols * rows * 2;
+        memory.write_u16(buffer_addr + 7, buffer_size as u16);
 
         // Offset 09h-0Ah: Starting address in regen buffer (current page offset)
         memory.write_u16(buffer_addr + 9, 0x0000);
@@ -834,7 +857,7 @@ impl Cpu {
         memory.write_u8(buffer_addr + 0x21, 0x00);
 
         // Offset 22h: Number of rows - 1
-        memory.write_u8(buffer_addr + 0x22, 24); // 25 rows - 1
+        memory.write_u8(buffer_addr + 0x22, (rows - 1) as u8);
 
         // Offset 23h-24h: Character height (scan lines per character)
         memory.write_u16(buffer_addr + 0x23, 16); // 16 scan lines for VGA
@@ -905,10 +928,12 @@ impl Cpu {
         let saved_dx = self.dx;
 
         // Set up parameters for scroll_up
+        let rows = video.get_rows() as u8;
+        let cols = video.get_cols() as u8;
         self.ax = (self.ax & 0xFF00) | (lines as u16); // AL = lines
         self.bx = 0x0700; // BH = 0x07 (white on black)
         self.cx = 0x0000; // CH=0, CL=0 (top-left)
-        self.dx = 0x184F; // DH=24, DL=79 (bottom-right)
+        self.dx = (((rows - 1) as u16) << 8) | ((cols - 1) as u16); // DH=rows-1, DL=cols-1 (bottom-right)
 
         self.int10_scroll_up(video);
 
