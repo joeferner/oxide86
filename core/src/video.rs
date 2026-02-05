@@ -352,15 +352,25 @@ impl Video {
     /// Read a single byte from video memory
     pub fn read_byte(&self, offset: usize) -> u8 {
         match &self.mode_type {
-            VideoMode::Text { .. } => {
-                // Text mode: existing logic
-                if offset >= TEXT_MODE_BUFFER_SIZE {
+            VideoMode::Text { cols, .. } => {
+                // Text mode: handle different column widths
+                let bytes_per_row = cols * 2; // 2 bytes per cell (char + attr)
+                let max_offset = cols * TEXT_MODE_ROWS * 2;
+
+                if offset >= max_offset {
                     return 0;
                 }
-                let cell_index = offset / 2;
+
+                // Calculate row and column in the actual video mode
+                let row = offset / bytes_per_row;
+                let col = (offset % bytes_per_row) / 2;
+
+                // Map to internal 80-column buffer
+                let cell_index = row * TEXT_MODE_COLS + col;
                 if cell_index >= self.buffer.len() {
                     return 0;
                 }
+
                 if offset.is_multiple_of(2) {
                     self.buffer[cell_index].character
                 } else {
@@ -381,15 +391,25 @@ impl Video {
     /// Update a single byte in video memory
     pub fn write_byte(&mut self, offset: usize, value: u8) {
         match &self.mode_type {
-            VideoMode::Text { .. } => {
-                // Text mode: existing logic
-                if offset >= TEXT_MODE_BUFFER_SIZE {
+            VideoMode::Text { cols, .. } => {
+                // Text mode: handle different column widths
+                let bytes_per_row = cols * 2; // 2 bytes per cell (char + attr)
+                let max_offset = cols * TEXT_MODE_ROWS * 2;
+
+                if offset >= max_offset {
                     return;
                 }
-                let cell_index = offset / 2;
+
+                // Calculate row and column in the actual video mode
+                let row = offset / bytes_per_row;
+                let col = (offset % bytes_per_row) / 2;
+
+                // Map to internal 80-column buffer
+                let cell_index = row * TEXT_MODE_COLS + col;
                 if cell_index >= self.buffer.len() {
                     return;
                 }
+
                 if offset.is_multiple_of(2) {
                     self.buffer[cell_index].character = value;
                 } else {
@@ -497,6 +517,22 @@ impl Video {
         self.mode_type
     }
 
+    /// Get the current column count for the active mode
+    pub fn get_cols(&self) -> usize {
+        match self.mode_type {
+            VideoMode::Text { cols, .. } => cols,
+            _ => TEXT_MODE_COLS, // Default for non-text modes
+        }
+    }
+
+    /// Get the current row count for the active mode
+    pub fn get_rows(&self) -> usize {
+        match self.mode_type {
+            VideoMode::Text { rows, .. } => rows,
+            _ => TEXT_MODE_ROWS, // Default for non-text modes
+        }
+    }
+
     /// Set CGA palette (from I/O port 0x3D9)
     pub fn set_palette(&mut self, value: u8) {
         self.palette = CgaPalette::from_register(value);
@@ -548,7 +584,8 @@ impl VgaIoPorts {
 
     /// Handle write to CRT controller data register (0x3D5)
     /// Returns Some(CursorPosition) if cursor position was updated
-    pub fn write_data(&mut self, value: u8) -> Option<CursorPosition> {
+    /// cols: current video mode column count (40 or 80)
+    pub fn write_data(&mut self, value: u8, cols: usize) -> Option<CursorPosition> {
         match self.crtc_index {
             0x0E => {
                 // Cursor location high byte
@@ -558,11 +595,11 @@ impl VgaIoPorts {
             0x0F => {
                 // Cursor location low byte
                 self.cursor_location_low = value;
-                // Calculate cursor position
+                // Calculate cursor position using actual column count
                 let offset =
                     ((self.cursor_location_high as u16) << 8) | (self.cursor_location_low as u16);
-                let row = (offset as usize) / TEXT_MODE_COLS;
-                let col = (offset as usize) % TEXT_MODE_COLS;
+                let row = (offset as usize) / cols;
+                let col = (offset as usize) % cols;
                 Some(CursorPosition { row, col })
             }
             _ => None,

@@ -60,6 +60,16 @@ self.set_flag(cpu_flag::CARRY, false);  // clear
 - 0xF3 (REP/REPE): MOVS, STOS, LODS, CMPS, SCAS
 - 0xF2 (REPNE): CMPS, SCAS
 
+### Video Mode Column/Row Handling
+
+**Critical:** Never hardcode 80x25 dimensions when working with video modes.
+
+- Internal buffer is always 80x25, but modes 0x00/0x01 use 40x25 addressing
+- Always use `video.get_cols()` and `video.get_rows()` instead of hardcoded values
+- Memory addressing translates 40-column offsets to 80-column buffer indices
+- Rendering loops must use actual mode dimensions, not `TEXT_MODE_COLS`/`TEXT_MODE_ROWS`
+- Files with video mode logic: `core/src/video.rs`, `core/src/cpu/bios/int10.rs`, `native-gui/src/gui_video.rs`, `wasm/src/web_video.rs`, `native-cli/src/terminal_video.rs`
+
 ### Multi-Drive Management (core/src/drive_manager.rs)
 
 The `DriveManager` struct manages multiple floppy and hard drives:

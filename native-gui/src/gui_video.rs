@@ -217,11 +217,17 @@ impl PixelsVideoController {
             }
         }
 
+        // Get actual mode dimensions
+        let (actual_cols, actual_rows) = match self.current_mode {
+            VideoMode::Text { cols, rows } => (cols, rows),
+            _ => (TEXT_MODE_COLS, TEXT_MODE_ROWS),
+        };
+
         if self.needs_full_redraw {
             // Clear screen and render everything
             frame.fill(0);
-            for row in 0..TEXT_MODE_ROWS {
-                for col in 0..TEXT_MODE_COLS {
+            for row in 0..actual_rows {
+                for col in 0..actual_cols {
                     let idx = row * TEXT_MODE_COLS + col;
                     self.render_cell(frame, row, col, &self.current_buffer[idx]);
                 }
@@ -231,8 +237,8 @@ impl PixelsVideoController {
             self.needs_full_redraw = false;
         } else {
             // Only redraw changed cells for performance
-            for row in 0..TEXT_MODE_ROWS {
-                for col in 0..TEXT_MODE_COLS {
+            for row in 0..actual_rows {
+                for col in 0..actual_cols {
                     let idx = row * TEXT_MODE_COLS + col;
                     if self.current_buffer[idx] != self.last_rendered_buffer[idx] {
                         self.render_cell(frame, row, col, &self.current_buffer[idx]);

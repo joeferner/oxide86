@@ -5,7 +5,7 @@ use crossterm::{
 };
 use emu86_core::{
     TextModePalette,
-    video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController},
+    video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController, VideoMode},
 };
 use std::io::{self, Write};
 
@@ -47,6 +47,7 @@ fn vga_to_crossterm_color(vga_color: u8) -> Color {
 pub struct TerminalVideo {
     last_buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
     last_cursor: Option<CursorPosition>,
+    current_mode: VideoMode,
 }
 
 impl TerminalVideo {
@@ -68,6 +69,10 @@ impl TerminalVideo {
         Self {
             last_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
             last_cursor: None,
+            current_mode: VideoMode::Text {
+                cols: TEXT_MODE_COLS,
+                rows: TEXT_MODE_ROWS,
+            },
         }
     }
 }
@@ -76,9 +81,15 @@ impl VideoController for TerminalVideo {
     fn update_display(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
         let mut stdout = io::stdout();
 
+        // Get actual mode dimensions
+        let (actual_cols, actual_rows) = match self.current_mode {
+            VideoMode::Text { cols, rows } => (cols, rows),
+            _ => (TEXT_MODE_COLS, TEXT_MODE_ROWS),
+        };
+
         // Only update changed cells for efficiency
-        for row in 0..TEXT_MODE_ROWS {
-            for col in 0..TEXT_MODE_COLS {
+        for row in 0..actual_rows {
+            for col in 0..actual_cols {
                 let idx = row * TEXT_MODE_COLS + col;
                 if buffer[idx] != self.last_buffer[idx] {
                     let cell = &buffer[idx];
@@ -130,7 +141,16 @@ impl VideoController for TerminalVideo {
         self.last_cursor = Some(position);
     }
 
-    fn set_video_mode(&mut self, _mode: u8) {
+    fn set_video_mode(&mut self, mode: u8) {
+        // Update current mode based on video mode number
+        self.current_mode = match mode {
+            0x00 | 0x01 => VideoMode::Text { cols: 40, rows: 25 },
+            0x02 | 0x03 | 0x07 => VideoMode::Text { cols: 80, rows: 25 },
+            0x04 | 0x05 => emu86_core::video::VideoMode::Graphics320x200,
+            0x06 => emu86_core::video::VideoMode::Graphics640x200,
+            _ => VideoMode::Text { cols: 80, rows: 25 }, // Default to text mode
+        };
+
         let mut stdout = io::stdout();
 
         // Clear screen on mode change

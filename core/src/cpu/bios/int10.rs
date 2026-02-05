@@ -71,7 +71,10 @@ impl Cpu {
         let row = (self.dx >> 8) as u8; // DH
         let col = (self.dx & 0xFF) as u8; // DL
 
-        if row < 25 && col < 80 {
+        let cols = video.get_cols();
+        let rows = video.get_rows();
+
+        if (row as usize) < rows && (col as usize) < cols {
             video.set_cursor(row as usize, col as usize);
         }
     }
@@ -93,8 +96,11 @@ impl Cpu {
         let bottom = (self.dx >> 8) as u8; // DH
         let right = (self.dx & 0xFF) as u8; // DL
 
+        let cols = video.get_cols();
+        let rows = video.get_rows();
+
         // Validate bounds
-        if top > bottom || left > right || bottom >= 25 || right >= 80 {
+        if top > bottom || left > right || (bottom as usize) >= rows || (right as usize) >= cols {
             return;
         }
 
@@ -102,7 +108,7 @@ impl Cpu {
             // Clear entire window
             for row in top..=bottom {
                 for col in left..=right {
-                    let offset = (row as usize * 80 + col as usize) * 2;
+                    let offset = (row as usize * cols + col as usize) * 2;
                     video.write_byte(offset, b' ');
                     video.write_byte(offset + 1, attr);
                 }
@@ -111,12 +117,12 @@ impl Cpu {
             // Scroll up by 'lines' rows
             for row in top..=bottom {
                 for col in left..=right {
-                    let dest_offset = (row as usize * 80 + col as usize) * 2;
+                    let dest_offset = (row as usize * cols + col as usize) * 2;
                     let src_row = row + lines;
 
                     if src_row <= bottom {
                         // Copy from below - read from video buffer, not memory
-                        let src_offset = (src_row as usize * 80 + col as usize) * 2;
+                        let src_offset = (src_row as usize * cols + col as usize) * 2;
                         let ch = video.read_byte(src_offset);
                         let at = video.read_byte(src_offset + 1);
                         video.write_byte(dest_offset, ch);
@@ -148,8 +154,11 @@ impl Cpu {
         let bottom = (self.dx >> 8) as u8; // DH
         let right = (self.dx & 0xFF) as u8; // DL
 
+        let cols = video.get_cols();
+        let rows = video.get_rows();
+
         // Validate bounds
-        if top > bottom || left > right || bottom >= 25 || right >= 80 {
+        if top > bottom || left > right || (bottom as usize) >= rows || (right as usize) >= cols {
             return;
         }
 
@@ -157,7 +166,7 @@ impl Cpu {
             // Clear entire window
             for row in top..=bottom {
                 for col in left..=right {
-                    let offset = (row as usize * 80 + col as usize) * 2;
+                    let offset = (row as usize * cols + col as usize) * 2;
                     video.write_byte(offset, b' ');
                     video.write_byte(offset + 1, attr);
                 }
@@ -166,12 +175,12 @@ impl Cpu {
             // Scroll down by 'lines' rows (process bottom to top)
             for row in (top..=bottom).rev() {
                 for col in left..=right {
-                    let dest_offset = (row as usize * 80 + col as usize) * 2;
+                    let dest_offset = (row as usize * cols + col as usize) * 2;
 
                     if row >= top + lines {
                         // Copy from above - read from video buffer, not memory
                         let src_row = row - lines;
-                        let src_offset = (src_row as usize * 80 + col as usize) * 2;
+                        let src_offset = (src_row as usize * cols + col as usize) * 2;
                         let ch = video.read_byte(src_offset);
                         let at = video.read_byte(src_offset + 1);
                         video.write_byte(dest_offset, ch);
@@ -194,7 +203,8 @@ impl Cpu {
     ///   AL = character
     fn int10_read_char_attr(&mut self, video: &crate::video::Video) {
         let cursor = video.get_cursor();
-        let offset = (cursor.row * 80 + cursor.col) * 2;
+        let cols = video.get_cols();
+        let offset = (cursor.row * cols + cursor.col) * 2;
 
         let ch = video.read_byte(offset);
         let attr = video.read_byte(offset + 1);
@@ -214,10 +224,12 @@ impl Cpu {
         let attr = (self.bx & 0xFF) as u8; // BL
         let count = self.cx;
         let cursor = video.get_cursor();
+        let cols = video.get_cols();
+        let rows = video.get_rows();
 
         for i in 0..count {
-            let pos = cursor.row * 80 + cursor.col + (i as usize);
-            if pos >= 80 * 25 {
+            let pos = cursor.row * cols + cursor.col + (i as usize);
+            if pos >= cols * rows {
                 break; // Don't write beyond screen
             }
             let offset = pos * 2;
@@ -237,10 +249,12 @@ impl Cpu {
         let ch = (self.ax & 0xFF) as u8; // AL
         let count = self.cx;
         let cursor = video.get_cursor();
+        let cols = video.get_cols();
+        let rows = video.get_rows();
 
         for i in 0..count {
-            let pos = cursor.row * 80 + cursor.col + (i as usize);
-            if pos >= 80 * 25 {
+            let pos = cursor.row * cols + cursor.col + (i as usize);
+            if pos >= cols * rows {
                 break; // Don't write beyond screen
             }
             let offset = pos * 2;
@@ -259,6 +273,8 @@ impl Cpu {
     pub(crate) fn int10_teletype_output(&mut self, video: &mut crate::video::Video) {
         let ch = (self.ax & 0xFF) as u8; // AL
         let cursor = video.get_cursor();
+        let cols = video.get_cols();
+        let rows = video.get_rows();
 
         match ch {
             b'\r' => {
@@ -267,10 +283,10 @@ impl Cpu {
             }
             b'\n' => {
                 // Line feed - move to next line
-                let new_row = if cursor.row >= 24 {
+                let new_row = if cursor.row >= rows - 1 {
                     // Need to scroll
                     self.scroll_up_internal(video, 1);
-                    24
+                    rows - 1
                 } else {
                     cursor.row + 1
                 };
@@ -284,17 +300,17 @@ impl Cpu {
             }
             _ => {
                 // Normal character - write and advance
-                let offset = (cursor.row * 80 + cursor.col) * 2;
+                let offset = (cursor.row * cols + cursor.col) * 2;
                 video.write_byte(offset, ch);
                 // Don't modify attribute byte (preserve existing color)
 
                 // Advance cursor
                 let new_col = cursor.col + 1;
-                if new_col >= 80 {
+                if new_col >= cols {
                     // Wrap to next line
-                    let new_row = if cursor.row >= 24 {
+                    let new_row = if cursor.row >= rows - 1 {
                         self.scroll_up_internal(video, 1);
-                        24
+                        rows - 1
                     } else {
                         cursor.row + 1
                     };
@@ -329,6 +345,8 @@ impl Cpu {
         // Set initial position
         video.set_cursor(row as usize, col as usize);
 
+        let cols = video.get_cols();
+        let rows = video.get_rows();
         let mut addr = Self::physical_address(self.es, self.bp);
 
         for _ in 0..length {
@@ -344,17 +362,17 @@ impl Cpu {
             };
 
             let cursor = video.get_cursor();
-            if cursor.row >= 25 {
+            if cursor.row >= rows {
                 break;
             }
 
-            let offset = (cursor.row * 80 + cursor.col) * 2;
+            let offset = (cursor.row * cols + cursor.col) * 2;
             video.write_byte(offset, ch);
             video.write_byte(offset + 1, current_attr);
 
             // Advance cursor (even if not updating final position)
             let new_col = cursor.col + 1;
-            if new_col >= 80 {
+            if new_col >= cols {
                 video.set_cursor(cursor.row + 1, 0);
             } else {
                 video.set_cursor(cursor.row, new_col);

@@ -90,7 +90,13 @@ impl WebVideo {
 
     /// Draw the cursor at the specified position
     fn draw_cursor(&mut self, cursor: &CursorPosition) {
-        if cursor.row >= TEXT_MODE_ROWS || cursor.col >= TEXT_MODE_COLS {
+        // Get actual mode dimensions
+        let (cols, rows) = match self.current_mode {
+            VideoMode::Text { cols, rows } => (cols, rows),
+            _ => (TEXT_MODE_COLS, TEXT_MODE_ROWS),
+        };
+
+        if cursor.row >= rows || cursor.col >= cols {
             return;
         }
 
@@ -129,9 +135,15 @@ impl WebVideo {
 
     /// Render the entire screen
     fn render_full_screen(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
+        // Get actual mode dimensions
+        let (actual_cols, actual_rows) = match self.current_mode {
+            VideoMode::Text { cols, rows } => (cols, rows),
+            _ => (TEXT_MODE_COLS, TEXT_MODE_ROWS),
+        };
+
         // Render all characters to the pixel buffer
-        for row in 0..TEXT_MODE_ROWS {
-            for col in 0..TEXT_MODE_COLS {
+        for row in 0..actual_rows {
+            for col in 0..actual_cols {
                 let index = row * TEXT_MODE_COLS + col;
                 self.render_char_to_buffer(row, col, &buffer[index]);
             }
