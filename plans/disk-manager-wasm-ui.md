@@ -1,26 +1,15 @@
 # Plan: WASM Disk Management Features
 
 ## Overview
-Add comprehensive disk editing and file management capabilities to the WASM interface, enabling users to create blank disks, download disk images, browse directory structures, and upload/download files.
+Add disk editing and file management capabilities to the WASM interface, enabling users to download disk images, browse directory structures, and upload/download files. Users must provide pre-formatted disk images (created externally).
 
 ## Requirements
-1. Create new blank floppy (1.44MB, 720KB) and hard drive images
-2. Download floppy and hard drive images to browser
-3. Interface (modal dialog) to browse disk directory structure
-4. Download individual files from disk to browser
-5. Upload files/directories from browser into disk
+1. Download floppy and hard drive images to browser
+2. Interface (modal dialog) to browse disk directory structure
+3. Download individual files from disk to browser
+4. Upload files/directories from browser into disk
 
 ## Key Design Decisions
-
-### FAT Formatting Strategy
-**Decision:** Use pre-formatted disk templates
-**Rationale:** The fatfs crate is read/write only (no formatting). Implementing full FAT12/FAT16 formatting is complex. Pre-formatted templates provide standard formats with minimal code.
-
-**Approach:**
-- Create minimal formatted disk images using native tools (mformat/mkfs.msdos)
-- Extract boot sector + FAT tables as byte array constants
-- At runtime, copy template and resize for target geometry
-- Supports: FAT12 1.44MB floppy, FAT12 720KB floppy, FAT16 hard drives
 
 ### UI Architecture
 **Decision:** Modal dialog with tabbed/sectioned interface
@@ -37,8 +26,8 @@ Add comprehensive disk editing and file management capabilities to the WASM inte
 ## Architecture
 
 ```
-JavaScript Layer (UI)
-    ↓ (WASM bindings)
+React/TypeScript UI Layer (DiskManager.tsx)
+    ↓ (WASM bindings via wasm-bindgen)
 Rust WASM Methods (wasm/src/lib.rs)
     ↓ (uses existing)
 DriveManager + fatfs (core/src/drive_manager.rs)
@@ -48,49 +37,11 @@ MemoryDiskBackend (core/src/disk.rs)
 
 ## Implementation Phases
 
-### Phase 1: FAT Templates Module
-
-**New file:** `wasm/src/fat_templates.rs`
-
-Create pre-formatted boot sector templates:
-```rust
-pub const FAT12_1440K_TEMPLATE: &[u8] = &[/* boot sector + FATs */];
-pub const FAT12_720K_TEMPLATE: &[u8] = &[/* boot sector + FATs */];
-pub const FAT16_10MB_TEMPLATE: &[u8] = &[/* boot sector + FATs */];
-
-pub fn format_floppy_1440k() -> Vec<u8>
-pub fn format_floppy_720k() -> Vec<u8>
-pub fn format_hard_drive(size_mb: u32) -> Vec<u8>
-```
-
-**Generation steps:**
-1. Use mformat/mkfs.msdos to create minimal formatted images on host
-2. Extract first few sectors (boot sector + FAT tables)
-3. Embed as const byte arrays
-4. Pad to full geometry at runtime
-
-**Modifications needed:**
-- Add `mod fat_templates;` to `wasm/src/lib.rs`
-
-### Phase 2: Core WASM Methods
+### Phase 1: Core WASM Methods
 
 **File:** `wasm/src/lib.rs`
 
 Add methods to `Emu86Computer` struct:
-
-#### Disk Creation Methods
-```rust
-#[wasm_bindgen]
-pub fn create_blank_floppy_1440k(&mut self) -> Result<(), JsValue>
-pub fn create_blank_floppy_720k(&mut self) -> Result<(), JsValue>
-pub fn create_blank_hard_drive(&mut self, size_mb: u32) -> Result<(), JsValue>
-```
-
-Implementation pattern:
-- Get formatted template from fat_templates module
-- Create MemoryDiskBackend with template data
-- Wrap in BackedDisk
-- Insert into appropriate drive slot via DriveManager
 
 #### Disk Download Methods
 ```rust
@@ -161,84 +112,88 @@ serde-wasm-bindgen = "0.6"
 serde_json = "1.0"
 ```
 
-### Phase 3: JavaScript UI Component
+**Note:** React and Mantine dependencies are already installed in `wasm/www/package.json`:
+- `react` + `react-dom`
+- `@mantine/core` + `@mantine/hooks` (provides Modal, Tabs, Table, Button, FileButton, etc.)
 
-**New file:** `wasm/www/disk-manager.js`
+### Phase 2: React UI Component
 
-Create modular disk management component:
-```javascript
-export class DiskManager {
-    constructor(computer, updateStatusCallback)
+**New file:** `wasm/www/src/components/DiskManager.tsx`
 
-    // UI initialization
-    createUI()
-    createDiskManagerButton()
-    createModalDialog()
+Create disk management modal component using Mantine UI:
 
-    // Disk operations
-    async createBlankDisk(type, geometry)
-    async downloadDisk(driveType, driveNumber)
-    async browseDisk(drive)
+**TypeScript Interfaces:**
+```typescript
+interface FileEntry {
+  name: string;
+  path: string;
+  size: number;
+  isDirectory: boolean;
+  date: string;
+  time: string;
+  attributes: number;
+}
 
-    // File operations
-    async downloadFile(drive, path)
-    async uploadFile(drive, file, targetPath)
-    async deleteFile(drive, path)
-
-    // UI rendering
-    showDiskBrowser(drive)
-    renderDirectoryTree(entries, currentPath)
-    renderFileList(entries)
-
-    // Event handlers
-    attachBrowserEventHandlers(drive, modal)
-    handleFileSelection(event)
-    handleDirectoryClick(path)
+interface DiskManagerProps {
+  computer: Emu86Computer | null;
+  opened: boolean;
+  onClose: () => void;
+  onStatusUpdate: (message: string) => void;
 }
 ```
 
-**Key UI methods:**
+**Component Implementation:**
+```typescript
+export function DiskManager({ computer, opened, onClose, onStatusUpdate }: DiskManagerProps) {
+  const [activeTab, setActiveTab] = useState<'browse' | 'download'>('browse');
+  const [currentDrive, setCurrentDrive] = useState<number>(0);
+  const [currentPath, setCurrentPath] = useState<string>('/');
+  const [files, setFiles] = useState<FileEntry[]>([]);
+  const [loading, setLoading] = useState(false);
 
-`createUI()`: Creates modal dialog structure
-```javascript
-<div class="disk-manager-modal">
-  <div class="modal-dialog">
-    <div class="modal-header">
-      <h2>Disk Manager</h2>
-      <button class="close-button">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="tabs">
-        <button data-tab="create">Create Disk</button>
-        <button data-tab="download">Download Disk</button>
-        <button data-tab="browse">Browse Disk</button>
-      </div>
-      <div class="tab-content" id="tab-content">
-        <!-- Dynamic content -->
-      </div>
-    </div>
-  </div>
-</div>
+  // Disk operations
+  const downloadDisk = async (driveType: 'floppy' | 'hdd', driveNumber: number)
+  const browseDisk = async (drive: number, path: string)
+
+  // File operations
+  const downloadFile = async (drive: number, path: string)
+  const uploadFile = async (drive: number, file: File, targetPath: string)
+  const deleteFile = async (drive: number, path: string)
+  const createDirectory = async (drive: number, path: string)
+}
 ```
 
-`renderFileList()`: Displays directory contents
-```javascript
-<ul class="file-list">
-  <li class="directory" data-path="/DOCS">
-    📁 DOCS <span class="date">2024-01-15</span>
-  </li>
-  <li class="file" data-path="/README.TXT">
-    📄 README.TXT <span class="size">1.2 KB</span> <span class="date">2024-01-15</span>
-  </li>
-</ul>
+**Component Structure:**
+```tsx
+<Modal opened={opened} onClose={() => setOpened(false)} size="xl" title="Disk Manager">
+  <Tabs value={activeTab} onChange={setActiveTab}>
+    <Tabs.List>
+      <Tabs.Tab value="browse">Browse Files</Tabs.Tab>
+      <Tabs.Tab value="download">Download Disk</Tabs.Tab>
+    </Tabs.List>
+
+    <Tabs.Panel value="browse">
+      <FileList />
+    </Tabs.Panel>
+
+    <Tabs.Panel value="download">
+      <DownloadDiskForm />
+    </Tabs.Panel>
+  </Tabs>
+</Modal>
 ```
+
+**Key Functions:**
 
 `downloadDisk()`: Downloads disk image as blob
-```javascript
-async downloadDisk(driveType, driveNumber) {
+```typescript
+const downloadDisk = async (driveType: 'floppy' | 'hdd', driveNumber: number) => {
+  try {
     const data = driveType === 'floppy'
-        ? await this.computer.get_floppy_data(driveNumber)
-        : await this.computer.get_hard_drive_data(driveNumber);
+      ? await computer?.get_floppy_data(driveNumber)
+      : await computer?.get_hard_drive_data(driveNumber);
+
+    if (!data) throw new Error('No data returned');
 
     const blob = new Blob([data], { type: 'application/octet-stream' });
     const url = URL.createObjectURL(blob);
@@ -247,181 +202,239 @@ async downloadDisk(driveType, driveNumber) {
     a.download = `drive_${driveType}_${driveNumber}.img`;
     a.click();
     URL.revokeObjectURL(url);
+    onStatusUpdate(`Downloaded ${driveType} ${driveNumber}`);
+  } catch (e) {
+    onStatusUpdate(`Error: ${e}`);
+  }
 }
 ```
 
 `uploadFile()`: Uploads file with directory creation
-```javascript
-async uploadFile(drive, file, targetPath) {
-    const data = new Uint8Array(await file.arrayBuffer());
-    await this.computer.write_file_to_disk(drive, targetPath, data);
-    this.updateStatus(`Uploaded ${file.name} to ${targetPath}`);
+```typescript
+const uploadFile = async (drive: number, file: File, targetPath: string) => {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const data = new Uint8Array(arrayBuffer);
+    await computer?.write_file_to_disk(drive, targetPath, data);
+    onStatusUpdate(`Uploaded ${file.name} to ${targetPath}`);
+    await browseDisk(drive, currentPath); // Refresh listing
+  } catch (e) {
+    onStatusUpdate(`Error uploading: ${e}`);
+  }
 }
 ```
 
-### Phase 4: HTML/CSS Integration
+**FileList Component:**
+```tsx
+<Stack>
+  <Group justify="space-between">
+    <Breadcrumbs>{pathParts.map(/* ... */)}</Breadcrumbs>
+    <Group>
+      <FileButton onChange={(file) => file && uploadFile(currentDrive, file, currentPath)}>
+        {(props) => <Button {...props}>Upload File</Button>}
+      </FileButton>
+      <Button onClick={() => refreshListing()}>Refresh</Button>
+    </Group>
+  </Group>
 
-**File:** `wasm/www/index.html`
+  <Table>
+    <Table.Thead>
+      <Table.Tr>
+        <Table.Th>Name</Table.Th>
+        <Table.Th>Size</Table.Th>
+        <Table.Th>Date</Table.Th>
+        <Table.Th>Actions</Table.Th>
+      </Table.Tr>
+    </Table.Thead>
+    <Table.Tbody>
+      {files.map((file) => (
+        <Table.Tr key={file.name}>
+          <Table.Td>
+            {file.isDirectory ? '📁' : '📄'} {file.name}
+          </Table.Td>
+          <Table.Td>{file.isDirectory ? '-' : formatSize(file.size)}</Table.Td>
+          <Table.Td>{file.date}</Table.Td>
+          <Table.Td>
+            <Group gap="xs">
+              {!file.isDirectory && (
+                <Button size="compact-xs" onClick={() => downloadFile(currentDrive, file.path)}>
+                  Download
+                </Button>
+              )}
+              <Button size="compact-xs" color="red" onClick={() => deleteFile(currentDrive, file.path)}>
+                Delete
+              </Button>
+            </Group>
+          </Table.Td>
+        </Table.Tr>
+      ))}
+    </Table.Tbody>
+  </Table>
+</Stack>
+```
+
+### Phase 3: React Integration
+
+**File:** `wasm/www/src/App.tsx`
 
 **Modifications:**
 
-1. Import disk-manager.js module
-```html
-<script type="module">
-    import { DiskManager } from './disk-manager.js';
-    let diskManager = null;
-
-    async function main() {
-        // ... existing initialization ...
-        computer = new Emu86Computer('display');
-        diskManager = new DiskManager(computer, updateStatus);
-        diskManager.createUI();
-        // ... rest of setup ...
-    }
-</script>
+1. Import DiskManager component
+```typescript
+import { DiskManager } from './components/DiskManager'
 ```
 
-2. Add "Disk Manager" button in controls section
-```html
-<div class="disk-operations">
-    <button id="disk-manager-btn" class="secondary">Disk Manager</button>
-</div>
+2. Add state for DiskManager modal
+```typescript
+const [diskManagerOpened, setDiskManagerOpened] = useState(false)
 ```
 
-3. Add CSS styles for modal and file browser
-```css
-.disk-manager-modal {
-    position: fixed;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.7);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 1000;
-}
-
-.modal-dialog {
-    background: #2a2a2a;
-    border: 1px solid #444;
-    border-radius: 8px;
-    width: 80%;
-    max-width: 800px;
-    max-height: 80vh;
-    display: flex;
-    flex-direction: column;
-}
-
-.file-list {
-    list-style: none;
-    padding: 0;
-    overflow-y: auto;
-}
-
-.file-list li {
-    padding: 8px 12px;
-    border-bottom: 1px solid #333;
-    cursor: pointer;
-}
-
-.file-list li:hover {
-    background: #3a3a3a;
-}
-
-.file-list .directory { font-weight: bold; }
+3. Add DiskManager button to controls section
+```typescript
+<Group gap="xs" mt="xs">
+  <Button
+    onClick={() => setDiskManagerOpened(true)}
+    variant="default"
+    fullWidth
+  >
+    Disk Manager
+  </Button>
+</Group>
 ```
 
-4. Wire up event handlers
-```javascript
-document.getElementById('disk-manager-btn').addEventListener('click', () => {
-    diskManager.showDiskBrowser(0); // Default to drive A
-});
+4. Add DiskManager component (renders when opened)
+```typescript
+<DiskManager
+  computer={computer}
+  opened={diskManagerOpened}
+  onClose={() => setDiskManagerOpened(false)}
+  onStatusUpdate={handleStatusUpdate}
+/>
 ```
+
+**Full Integration Example:**
+```typescript
+function App() {
+  // ... existing state ...
+  const [diskManagerOpened, setDiskManagerOpened] = useState(false)
+
+  return (
+    <Container size="xl" p="md">
+      {/* ... existing UI ... */}
+
+      <Paper shadow="sm" p="md" style={{ flex: 1, minWidth: 300 }} withBorder>
+        <Stack gap="xs">
+          <DriveControl
+            computer={computer}
+            onStatusUpdate={handleStatusUpdate}
+          />
+
+          {/* Add Disk Manager button */}
+          <Button
+            onClick={() => setDiskManagerOpened(true)}
+            variant="default"
+            disabled={!computer}
+          >
+            Disk Manager
+          </Button>
+
+          {/* ... existing controls ... */}
+        </Stack>
+      </Paper>
+
+      {/* Disk Manager Modal */}
+      <DiskManager
+        computer={computer}
+        opened={diskManagerOpened}
+        onClose={() => setDiskManagerOpened(false)}
+        onStatusUpdate={handleStatusUpdate}
+      />
+    </Container>
+  )
+}
+```
+
+**Styling:**
+- Mantine components handle all styling automatically
+- Use Mantine theme for consistent look and feel
+- No custom CSS needed for modal/dialog behavior
+- Use SCSS modules only for custom component-specific styles if needed
 
 ## Critical Files
 
 ### Files to Modify
 1. **`wasm/src/lib.rs`** - Add all WASM methods to Emu86Computer
 2. **`wasm/Cargo.toml`** - Add serde dependencies
-3. **`wasm/www/index.html`** - Add UI button, modal structure, CSS, initialization
+3. **`wasm/www/src/App.tsx`** - Add DiskManager button and modal state
 4. **`core/src/drive_manager.rs`** - Reference only (may need minor visibility adjustments)
 
 ### Files to Create
-1. **`wasm/src/fat_templates.rs`** - Pre-formatted disk templates
-2. **`wasm/www/disk-manager.js`** - Complete UI component module
+1. **`wasm/www/src/components/DiskManager.tsx`** - Complete React component with modal UI
+2. **`wasm/www/src/components/DiskManager.module.scss`** - Component-specific styles (if needed)
 
 ## Implementation Order
 
-1. **Day 1-2: FAT Templates**
-   - Generate formatted disk images using native tools
-   - Extract boot sectors and FAT tables
-   - Create fat_templates.rs with constants
-   - Test blank disk creation manually
-
-2. **Day 3-4: WASM Methods (Part 1)**
-   - Implement create_blank_* methods
+1. **Day 1-2: WASM Methods (Part 1)**
    - Implement get_*_data methods
    - Test with browser console commands
 
-3. **Day 5-6: WASM Methods (Part 2)**
+2. **Day 3-4: WASM Methods (Part 2)**
    - Implement list_directory method
    - Implement read_file_from_disk method
    - Implement write_file_to_disk method
-   - Test each method individually
+   - Test each method individually with TypeScript
 
-4. **Day 7-8: JavaScript UI Component**
-   - Create disk-manager.js skeleton
-   - Implement modal dialog structure
-   - Implement file list rendering
-   - Test UI without backend integration
+3. **Day 5-6: React Component Structure**
+   - Create DiskManager.tsx component skeleton
+   - Define TypeScript interfaces for props and file entries
+   - Implement modal using Mantine's Modal component
+   - Create tabbed interface using Mantine's Tabs component
+   - Test UI rendering without WASM integration
 
-5. **Day 9-10: Integration & Testing**
-   - Wire up all buttons and event handlers
-   - Connect JavaScript UI to WASM methods
+4. **Day 7-8: React Component Logic**
+   - Implement disk operations (download, browse)
+   - Implement file operations (upload, download, delete)
+   - Add state management with useState hooks
+   - Connect component to WASM methods
+   - Add error handling with try-catch
+
+5. **Day 9: Integration & Polish**
+   - Integrate DiskManager into App.tsx
    - Test complete workflows end-to-end
-   - Add error handling and status updates
-
-6. **Day 11: Polish**
-   - Add CSS styling and animations
-   - Add progress indicators for large files
-   - Add confirmation dialogs for destructive operations
+   - Add loading states and progress indicators
+   - Add confirmation dialogs for destructive operations (using Mantine modals)
    - Final testing of all features
 
 ## Verification Steps
 
 ### Manual Testing Checklist
 
-1. **Disk Creation**
-   - [ ] Create 1.44MB floppy, verify boots
-   - [ ] Create 720KB floppy, verify boots
-   - [ ] Create 10MB hard drive, verify recognizes partitions
-   - [ ] Boot created disk, verify empty filesystem
-
-2. **Disk Download**
+1. **Disk Download**
    - [ ] Download floppy A with data
    - [ ] Re-upload same image, verify data persists
    - [ ] Download hard drive C
    - [ ] Verify downloaded .img file size matches geometry
 
-3. **Directory Browsing**
+2. **Directory Browsing**
    - [ ] Browse empty disk (shows no entries)
    - [ ] Browse disk with files (shows all files)
    - [ ] Browse nested directories (shows correct path)
    - [ ] Verify directory vs file icons
 
-4. **File Download**
+3. **File Download**
    - [ ] Download text file, verify contents
    - [ ] Download binary file, verify byte-for-byte
    - [ ] Download file from subdirectory
    - [ ] Download large file (>100KB)
 
-5. **File Upload**
+4. **File Upload**
    - [ ] Upload text file to root
    - [ ] Upload file to subdirectory (creates dirs)
    - [ ] Upload multiple files
    - [ ] Upload large file (>1MB), verify no corruption
    - [ ] Boot emulator and verify files are accessible
 
-6. **Error Handling**
+5. **Error Handling**
    - [ ] Try to download from empty drive (shows error)
    - [ ] Upload to non-existent drive (shows error)
    - [ ] Upload to full disk (shows error)
@@ -433,12 +446,16 @@ document.getElementById('disk-manager-btn').addEventListener('click', () => {
 cd wasm
 ./scripts/build.sh
 
-# Serve locally
+# Start Vite dev server (from wasm/www directory)
 cd www
-python3 -m http.server 8080
+npm run dev
 
-# Open browser to http://localhost:8080
+# Open browser to http://localhost:5173 (or URL shown by Vite)
 # Run through manual testing checklist above
+
+# Production build test
+npm run build
+npm run preview
 ```
 
 ## Edge Cases & Error Handling
@@ -466,6 +483,8 @@ python3 -m http.server 8080
 
 - All disk operations work in-memory (MemoryDiskBackend)
 - No persistence between page reloads unless user downloads
+- Users must provide pre-formatted disk images (use native tools like mformat, mkfs.msdos, or other disk image creation tools)
+- Supported formats: FAT12 (floppy), FAT16 (hard drive)
 - FAT12 maximum volume size: ~32MB
 - FAT16 recommended for hard drives >32MB
 - DOS 8.3 filename format enforced (FILENAME.EXT)

@@ -14,6 +14,7 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 - when logging unimplemented features use log::warn!
 - always write plans to the plans directory with a meaningful name
 - when create test-programs place them in the appropriate directory and update test-programs/README.md
+- when updating wasm use wasm/www/pkg/emu86_wasm.d.ts interfaces instead of creating your own
 
 ## Architecture
 

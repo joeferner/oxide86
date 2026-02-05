@@ -1,11 +1,11 @@
 # TODO
 
-- [ ] Test CGA using check-it >1.10a (see plans/02-cga.md)
-- [ ] Update plans/disk-manager-wasm-ui.md now that we changed to react
-- [ ] WASM - Implement options to create a new harddrive or floppy (see plans/disk-manager-wasm-ui.md)
-- [ ] WASM - Add support to download floppy and hard drive data (see plans/disk-manager-wasm-ui.md)
+- [ ] WASM - Implement disk manager with React (see plans/disk-manager-wasm-ui.md)
+  - download disks, browse files, upload/download individual files
+- [ ] WASM - support creating new disks
 - [ ] More accurate instruction timing instead of assuming all instructions are a fixed cycle count
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
+- [ ] check-it 2 locks up
 - [ ] Test CGA Applications
   - [ ] Alley Cat
   - [ ] Flight Simulator 1.0
