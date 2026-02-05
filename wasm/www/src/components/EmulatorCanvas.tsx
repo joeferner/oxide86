@@ -1,6 +1,7 @@
 import { useRef, useEffect, forwardRef } from 'react'
 import { usePointerLock } from '../hooks/usePointerLock'
 import { Emu86Computer } from '../types/wasm'
+import styles from './EmulatorCanvas.module.scss'
 
 interface EmulatorCanvasProps {
   computer: Emu86Computer | null;
@@ -107,9 +108,10 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
     }, [computer, isLocked, requestLock, exitLock])
 
     return (
-      <div id="emulator-container">
+      <div className={styles.container}>
         <canvas
           ref={canvasRef}
+          className={styles.canvas}
           id="display"
           width="640"
           height="400"

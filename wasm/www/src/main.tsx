@@ -2,7 +2,7 @@ import ReactDOM from 'react-dom/client'
 import { MantineProvider, createTheme } from '@mantine/core'
 import '@mantine/core/styles.css'
 import App from './App'
-import './styles/App.css'
+import './styles/global.scss'
 
 const theme = createTheme({
   primaryColor: 'green',

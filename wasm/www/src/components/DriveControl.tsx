@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Group, Button, FileButton, Text } from '@mantine/core'
 import { Emu86Computer } from '../types/wasm'
+import styles from './ControlGroup.module.scss'
 
 interface DriveControlProps {
   computer: Emu86Computer | null;
@@ -98,7 +99,7 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
 
   return (
     <>
-      <div className="control-group">
+      <div className={styles.controlGroup}>
         <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Floppy Drive A:</Text>
         <Group gap="xs">
           <FileButton onChange={setFloppyAFile} accept=".img,.ima,.dsk">
@@ -109,7 +110,7 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
         </Group>
       </div>
 
-      <div className="control-group">
+      <div className={styles.controlGroup}>
         <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Floppy Drive B:</Text>
         <Group gap="xs">
           <FileButton onChange={setFloppyBFile} accept=".img,.ima,.dsk">
@@ -120,7 +121,7 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
         </Group>
       </div>
 
-      <div className="control-group">
+      <div className={styles.controlGroup}>
         <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Hard Drive C:</Text>
         <Group gap="xs">
           <FileButton onChange={setHddFile} accept=".img,.ima,.dsk,.vhd">

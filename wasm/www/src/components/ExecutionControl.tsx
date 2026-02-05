@@ -1,4 +1,5 @@
 import { Group, Button, Text } from '@mantine/core'
+import styles from './ControlGroup.module.scss'
 
 interface ExecutionControlProps {
   isRunning: boolean;
@@ -9,7 +10,7 @@ interface ExecutionControlProps {
 
 export function ExecutionControl({ isRunning, onStart, onStop, onStep }: ExecutionControlProps) {
   return (
-    <div className="control-group">
+    <div className={styles.controlGroup}>
       <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Execution Control:</Text>
       <Group gap="xs">
         <Button onClick={onStart} disabled={isRunning} color="green" size="compact-sm">Start</Button>
