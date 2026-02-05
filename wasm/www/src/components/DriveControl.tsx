@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Group, Button, FileButton, Text } from '@mantine/core'
-import { Emu86Computer } from '../types/wasm'
+import { Emu86Computer } from '../../pkg/emu86_wasm'
 import styles from './ControlGroup.module.scss'
 
 interface DriveControlProps {

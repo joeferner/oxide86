@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, RefObject } from 'react'
-import { Emu86Computer, WasmModule } from '../types/wasm'
+import wasmInit, { Emu86Computer } from '../../pkg/emu86_wasm'
 
 interface Performance {
   target: number;
@@ -55,11 +55,10 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>): UseEmulato
       try {
         initializedRef.current = true
 
-        // Dynamically import WASM module
-        const wasmModule = await import('../../pkg/emu86_wasm.js') as unknown as WasmModule
-        await wasmModule.default()
+        // Initialize WASM module
+        await wasmInit()
 
-        const comp = new wasmModule.Emu86Computer('display')
+        const comp = new Emu86Computer('display')
         comp.attach_serial_mouse_com1()
 
         if (mounted) {

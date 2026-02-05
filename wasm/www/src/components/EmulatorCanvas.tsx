@@ -1,6 +1,6 @@
 import { useRef, useEffect, forwardRef } from 'react'
 import { usePointerLock } from '../hooks/usePointerLock'
-import { Emu86Computer } from '../types/wasm'
+import { Emu86Computer } from '../../pkg/emu86_wasm'
 import styles from './EmulatorCanvas.module.scss'
 
 interface EmulatorCanvasProps {
