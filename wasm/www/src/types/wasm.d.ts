@@ -21,6 +21,9 @@ export interface Emu86Computer {
   eject_floppy(slot: number): void;
   add_hard_drive(data: Uint8Array): void;
 
+  // Program loading
+  load_program(data: Uint8Array, segment: number, offset: number): void;
+
   // Input handling
   handle_key_event(
     code: string,

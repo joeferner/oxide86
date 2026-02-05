@@ -1,11 +1,12 @@
-import { useCallback, useRef } from 'react'
-import { Container, Title, Group, Paper, Stack } from '@mantine/core'
+import { useCallback, useRef, useState } from 'react'
+import { Container, Title, Group, Paper, Stack, SegmentedControl } from '@mantine/core'
 import { useEmulator } from './hooks/useEmulator'
 import { usePointerLock } from './hooks/usePointerLock'
 import { EmulatorCanvas } from './components/EmulatorCanvas'
 import { InfoBox } from './components/InfoBox'
 import { DriveControl } from './components/DriveControl'
 import { BootControl } from './components/BootControl'
+import { ProgramControl } from './components/ProgramControl'
 import { ExecutionControl } from './components/ExecutionControl'
 import { StatusDisplay } from './components/StatusDisplay'
 import { RunningIndicator } from './components/RunningIndicator'
@@ -14,6 +15,7 @@ import { PerformanceDisplay } from './components/PerformanceDisplay'
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { isLocked } = usePointerLock(canvasRef)
+  const [mode, setMode] = useState<'boot' | 'program'>('boot')
 
   const {
     computer,
@@ -25,6 +27,7 @@ function App() {
     stopExecution,
     stepExecution,
     boot,
+    loadProgram,
     reset,
   } = useEmulator(canvasRef)
 
@@ -39,6 +42,17 @@ function App() {
   const handleBootC = useCallback(() => {
     boot(0x80)
   }, [boot])
+
+  const handleLoadProgram = useCallback(async (file: File, segment: number, offset: number) => {
+    try {
+      const arrayBuffer = await file.arrayBuffer()
+      const data = new Uint8Array(arrayBuffer)
+      loadProgram(data, segment, offset)
+    } catch (e) {
+      setStatus(`Failed to load file: ${e}`)
+      console.error(e)
+    }
+  }, [loadProgram, setStatus])
 
   return (
     <Container size="xl" p="md">
@@ -66,11 +80,29 @@ function App() {
               onStatusUpdate={handleStatusUpdate}
             />
 
-            <BootControl
-              onBootA={handleBootA}
-              onBootC={handleBootC}
-              onReset={reset}
+            <SegmentedControl
+              value={mode}
+              onChange={(value) => setMode(value as 'boot' | 'program')}
+              data={[
+                { label: 'Boot from Disk', value: 'boot' },
+                { label: 'Load Program', value: 'program' }
+              ]}
+              fullWidth
+              mb="xs"
             />
+
+            {mode === 'boot' ? (
+              <BootControl
+                onBootA={handleBootA}
+                onBootC={handleBootC}
+                onReset={reset}
+              />
+            ) : (
+              <ProgramControl
+                onLoadProgram={handleLoadProgram}
+                onReset={reset}
+              />
+            )}
 
             <ExecutionControl
               isRunning={isRunning}

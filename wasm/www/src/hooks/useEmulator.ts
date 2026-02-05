@@ -16,6 +16,7 @@ interface UseEmulatorReturn {
   stopExecution: () => void;
   stepExecution: () => void;
   boot: (driveNumber: number) => void;
+  loadProgram: (data: Uint8Array, segment: number, offset: number) => void;
   reset: () => void;
 }
 
@@ -168,6 +169,18 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>): UseEmulato
     }
   }
 
+  const loadProgram = (data: Uint8Array, segment: number, offset: number) => {
+    if (!computer) return
+
+    try {
+      computer.load_program(data, segment, offset)
+      setStatus(`Loaded program: ${data.length} bytes at ${segment.toString(16).toUpperCase().padStart(4, '0')}:${offset.toString(16).toUpperCase().padStart(4, '0')}`)
+    } catch (e) {
+      setStatus(`Load error: ${e}`)
+      console.error(e)
+    }
+  }
+
   const reset = () => {
     if (!computer) return
 
@@ -191,6 +204,7 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>): UseEmulato
     stopExecution,
     stepExecution,
     boot,
+    loadProgram,
     reset,
   }
 }

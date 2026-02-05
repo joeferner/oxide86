@@ -291,6 +291,9 @@ impl Emu86Computer {
             .load_program(&data, segment, offset)
             .map_err(|e| JsValue::from_str(&e.to_string()))?;
 
+        // Force initial video render to show blank screen
+        self.computer.force_video_redraw();
+
         log::info!(
             "Loaded program: {} bytes at {:04X}:{:04X}",
             data.len(),
@@ -310,7 +313,12 @@ impl Emu86Computer {
         let drive_number = DriveNumber::from_standard(drive);
         self.computer
             .boot(drive_number)
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+        // Force initial video render to show blank screen
+        self.computer.force_video_redraw();
+
+        Ok(())
     }
 
     /// Execute one instruction and return whether CPU is still running.
@@ -340,6 +348,8 @@ impl Emu86Computer {
 
         while remaining > 0 {
             if self.computer.is_halted() {
+                // Update video one last time before returning
+                self.computer.update_video();
                 return false;
             }
 
