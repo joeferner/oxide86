@@ -1,5 +1,4 @@
 ; simple_beep.asm - Simple 1000 Hz beep test
-; Compile: nasm -f bin simple_beep.asm -o simple_beep.com
 org 0x100
 
 ; Set PIT Channel 2 to Mode 3 (square wave), 1000 Hz

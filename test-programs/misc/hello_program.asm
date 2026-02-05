@@ -1,5 +1,4 @@
 ; Simple test program for program loading
-; Assemble with: nasm -f bin hello_program.asm -o hello_program.com
 
 org 0x0100          ; .COM files start at CS:0100h
 

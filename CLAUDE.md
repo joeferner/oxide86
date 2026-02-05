@@ -5,7 +5,6 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 ## Coding Rules
 
 - Examples in x86 assembly; nasm assumed installed
-- Use `examples/run.sh` for compiling/running examples
 - Avoid python; don't write tests unless directed
 - Code in core must support both native and wasm
 - No backwards compatibility
@@ -14,6 +13,7 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 - use Rust crates when possible
 - when logging unimplemented features use log::warn!
 - always write plans to the plans directory with a meaningful name
+- when create test-programs place them in the appropriate directory and update test-programs/README.md
 
 ## Architecture
 

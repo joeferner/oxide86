@@ -1,6 +1,4 @@
 ; beep.asm - Test PC speaker with PIT Channel 2
-; Compile: nasm -f bin beep.asm -o beep.com
-; Run: cargo run -p emu86-native-cli -- examples/beep.com
 
 org 0x100
 

@@ -18,7 +18,7 @@ RUST_LOG=info cargo run -p emu86-native-gui -- --boot --hdd examples/hdd.img --b
 
 # Creating a floppy with files
 
-```
+```bash
 # Create a blank 1.44MB image
 mkfs.msdos -C mouse.img 1440
 
