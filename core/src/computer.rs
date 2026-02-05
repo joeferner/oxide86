@@ -288,7 +288,11 @@ impl<V: VideoController> Computer<V> {
 
         // Reload program or re-boot from the stored boot drive if one exists
         if let Some(program) = self.loaded_program.clone() {
-            log::info!("Reloading program at {:04X}:{:04X}", program.segment, program.offset);
+            log::info!(
+                "Reloading program at {:04X}:{:04X}",
+                program.segment,
+                program.offset
+            );
             // Ignore load errors during reset - just log them
             if let Err(e) = self.load_program(&program.data, program.segment, program.offset) {
                 log::error!("Failed to reload program during reset: {}", e);
@@ -506,9 +510,34 @@ impl<V: VideoController> Computer<V> {
 
         // Check if CPU is waiting for keyboard input
         if self.cpu.is_waiting_for_keyboard() {
-            // Check if a key is available now (non-blocking)
-            if self.bios.check_key().is_some() {
-                log::debug!("Key available, resuming from wait state and retrying INT 16h");
+            // Check if there's a pending keyboard IRQ that needs to be fired
+            // We must fire it first to put the key into the BDA buffer before retrying INT 16h
+            if let Some(key) = self.pending_keyboard_irqs.pop_front() {
+                log::debug!(
+                    "Firing pending keyboard IRQ (scan=0x{:02X}, ascii=0x{:02X}) before resuming from wait state",
+                    key.scan_code,
+                    key.ascii_code
+                );
+                self.fire_keyboard_irq(key);
+                // After firing the IRQ, the key is now in the BDA buffer
+                // Resume and retry INT 16h
+                if self.cpu.resume_from_wait() {
+                    self.cpu.int16_read_char(&mut self.memory, &mut self.bios);
+                    return;
+                }
+            }
+
+            // Check if a key is available in the BDA keyboard buffer
+            // (could be from a previously fired IRQ or direct buffer manipulation)
+            let head_addr = memory::BDA_START + memory::BDA_KEYBOARD_BUFFER_HEAD;
+            let tail_addr = memory::BDA_START + memory::BDA_KEYBOARD_BUFFER_TAIL;
+            let head = self.memory.read_u16(head_addr);
+            let tail = self.memory.read_u16(tail_addr);
+
+            if head != tail {
+                log::debug!(
+                    "Key available in BDA buffer, resuming from wait state and retrying INT 16h"
+                );
                 // Resume and check if we should retry INT 16h
                 if self.cpu.resume_from_wait() {
                     // Retry INT 16h AH=00h handler directly
