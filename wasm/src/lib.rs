@@ -278,6 +278,9 @@ impl Emu86Computer {
             geometry.total_size
         );
 
+        // Update BDA hard drive count so BIOS knows the drive exists
+        self.computer.update_bda_hard_drive_count();
+
         Ok(())
     }
 

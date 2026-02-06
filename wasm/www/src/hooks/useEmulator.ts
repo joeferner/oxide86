@@ -15,12 +15,12 @@ interface UseEmulatorReturn {
   startExecution: () => void;
   stopExecution: () => void;
   stepExecution: () => void;
-  boot: (driveNumber: number) => void;
   loadProgram: (data: Uint8Array, segment: number, offset: number) => void;
   reset: () => void;
+  bootAndStart: () => void;
 }
 
-export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>): UseEmulatorReturn {
+export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: number): UseEmulatorReturn {
   const [computer, setComputer] = useState<Emu86Computer | null>(null)
   const [status, setStatus] = useState('Initializing...')
   const [isRunning, setIsRunning] = useState(false)
@@ -155,13 +155,43 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>): UseEmulato
     }
   }
 
-  const boot = (driveNumber: number) => {
-    if (!computer) return
+  const bootAndStart = () => {
+    if (!computer || isRunningRef.current) return
 
     try {
-      computer.boot(driveNumber)
-      const driveName = driveNumber === 0x00 ? 'floppy A:' : 'hard drive C:'
-      setStatus(`Booted from ${driveName}`)
+      // Boot from the selected drive
+      computer.boot(bootDrive)
+      const driveName = bootDrive === 0x00 ? 'floppy A:' : 'hard drive C:'
+      setStatus(`Booted from ${driveName}, starting execution...`)
+
+      // Start execution
+      isRunningRef.current = true
+      setIsRunning(true)
+
+      const frame = () => {
+        if (!isRunningRef.current) return
+
+        try {
+          const stillRunning = computer.run_for_ms(16, window.performance.now())
+          updatePerformance()
+
+          if (!stillRunning) {
+            isRunningRef.current = false
+            setIsRunning(false)
+            setStatus('CPU halted')
+            return
+          }
+          animationFrameRef.current = requestAnimationFrame(frame)
+        } catch (e) {
+          isRunningRef.current = false
+          setIsRunning(false)
+          setStatus(`Execution error: ${e}`)
+          console.error(e)
+        }
+      }
+
+      updatePerformance()
+      animationFrameRef.current = requestAnimationFrame(frame)
     } catch (e) {
       setStatus(`Boot error: ${e}`)
       console.error(e)
@@ -202,8 +232,8 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>): UseEmulato
     startExecution,
     stopExecution,
     stepExecution,
-    boot,
     loadProgram,
     reset,
+    bootAndStart,
   }
 }

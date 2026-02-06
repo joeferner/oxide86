@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Modal, Table, Button, Group, Stack, Breadcrumbs, Anchor, FileButton, ActionIcon, Tooltip } from '@mantine/core';
+import { Modal, Table, Button, Group, Stack, Breadcrumbs, Anchor, FileButton, ActionIcon, Tooltip, Text } from '@mantine/core';
 import { Emu86Computer } from '../../pkg/emu86_wasm';
 
 interface FileEntry {
@@ -19,10 +19,17 @@ interface DiskManagerProps {
   driveNumber: number;
 }
 
+interface DeleteConfirmation {
+  drive: number;
+  path: string;
+  name: string;
+}
+
 export function DiskManager({ computer, opened, onClose, onStatusUpdate, driveNumber }: DiskManagerProps) {
   const [currentPath, setCurrentPath] = useState<string>('/');
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
 
   // Refresh directory listing when drive or path changes
   useEffect(() => {
@@ -102,12 +109,19 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate, driveNu
     }
   };
 
-  // Delete file or directory
-  const deleteItem = async (drive: number, path: string, name: string) => {
-    if (!computer) return;
-    if (!confirm(`Are you sure you want to delete ${name}?`)) return;
+  // Show delete confirmation dialog
+  const deleteItem = (drive: number, path: string, name: string) => {
+    setDeleteConfirmation({ drive, path, name });
+  };
 
+  // Perform actual deletion after confirmation
+  const confirmDelete = async () => {
+    if (!computer || !deleteConfirmation) return;
+
+    const { drive, path, name } = deleteConfirmation;
+    setDeleteConfirmation(null);
     setLoading(true);
+
     try {
       computer.delete_from_disk(drive, path);
       onStatusUpdate(`Deleted ${name}`);
@@ -168,104 +182,133 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate, driveNu
   ];
 
   return (
-    <Modal
-      opened={opened}
-      onClose={onClose}
-      size="xl"
-      title={`Disk Manager - Drive ${getDriveLetter(driveNumber)}:`}
-    >
-      <Stack gap="md">
-        <Group justify="flex-end">
-          <FileButton onChange={(file) => file && uploadFile(file)} accept="*/*">
-            {(props) => <Button {...props} size="sm" disabled={loading} color='blue'>Upload File</Button>}
-          </FileButton>
-          <Button
-            onClick={() => browseDisk(driveNumber, currentPath)}
-            size="sm"
-            disabled={loading}
-            color='blue'
-          >
-            Refresh
-          </Button>
-        </Group>
+    <>
+      <Modal
+        opened={opened}
+        onClose={onClose}
+        size="xl"
+        title={`Disk Manager - Drive ${getDriveLetter(driveNumber)}:`}
+      >
+        <Stack gap="md">
+          <Group justify="flex-end">
+            <FileButton onChange={(file) => file && uploadFile(file)} accept="*/*">
+              {(props) => <Button {...props} size="sm" disabled={loading} color='blue'>Upload File</Button>}
+            </FileButton>
+            <Button
+              onClick={() => browseDisk(driveNumber, currentPath)}
+              size="sm"
+              disabled={loading}
+              color='blue'
+            >
+              Refresh
+            </Button>
+          </Group>
 
-        <Breadcrumbs>{breadcrumbs}</Breadcrumbs>
+          <Breadcrumbs>{breadcrumbs}</Breadcrumbs>
 
-        <Table>
-          <Table.Thead>
-            <Table.Tr>
-              <Table.Th>Name</Table.Th>
-              <Table.Th>Size</Table.Th>
-              <Table.Th>Date</Table.Th>
-              <Table.Th>Actions</Table.Th>
-            </Table.Tr>
-          </Table.Thead>
-          <Table.Tbody>
-            {currentPath !== '/' && (
+          <Table>
+            <Table.Thead>
               <Table.Tr>
-                <Table.Td>
-                  <Anchor onClick={() => navigateToDirectory('..')}>📁 ..</Anchor>
-                </Table.Td>
-                <Table.Td>-</Table.Td>
-                <Table.Td>-</Table.Td>
-                <Table.Td>-</Table.Td>
+                <Table.Th>Name</Table.Th>
+                <Table.Th>Size</Table.Th>
+                <Table.Th>Date</Table.Th>
+                <Table.Th>Actions</Table.Th>
               </Table.Tr>
-            )}
-            {files.map((file, idx) => {
-              const fullPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-              return (
-                <Table.Tr key={idx}>
+            </Table.Thead>
+            <Table.Tbody>
+              {currentPath !== '/' && (
+                <Table.Tr>
                   <Table.Td>
-                    {file.isDirectory ? (
-                      <Anchor onClick={() => navigateToDirectory(file.name)}>
-                        📁 {file.name}
-                      </Anchor>
-                    ) : (
-                      <span>📄 {file.name}</span>
-                    )}
+                    <Anchor onClick={() => navigateToDirectory('..')}>📁 ..</Anchor>
                   </Table.Td>
-                  <Table.Td>{file.isDirectory ? '-' : formatSize(file.size)}</Table.Td>
-                  <Table.Td>{file.date}</Table.Td>
-                  <Table.Td>
-                    <Group gap="xs">
-                      {!file.isDirectory && (
-                        <Tooltip label="Download">
+                  <Table.Td>-</Table.Td>
+                  <Table.Td>-</Table.Td>
+                  <Table.Td>-</Table.Td>
+                </Table.Tr>
+              )}
+              {files.map((file, idx) => {
+                const fullPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+                return (
+                  <Table.Tr key={idx}>
+                    <Table.Td>
+                      {file.isDirectory ? (
+                        <Anchor onClick={() => navigateToDirectory(file.name)}>
+                          📁 {file.name}
+                        </Anchor>
+                      ) : (
+                        <span>📄 {file.name}</span>
+                      )}
+                    </Table.Td>
+                    <Table.Td>{file.isDirectory ? '-' : formatSize(file.size)}</Table.Td>
+                    <Table.Td>{file.date}</Table.Td>
+                    <Table.Td>
+                      <Group gap="xs">
+                        {!file.isDirectory && (
+                          <Tooltip label="Download">
+                            <ActionIcon
+                              size="sm"
+                              color="blue"
+                              variant="light"
+                              onClick={() => downloadFile(driveNumber, fullPath, file.name)}
+                              disabled={loading}
+                            >
+                              <i className="bi bi-download"></i>
+                            </ActionIcon>
+                          </Tooltip>
+                        )}
+                        <Tooltip label="Delete">
                           <ActionIcon
                             size="sm"
-                            color="blue"
+                            color="red"
                             variant="light"
-                            onClick={() => downloadFile(driveNumber, fullPath, file.name)}
+                            onClick={() => deleteItem(driveNumber, fullPath, file.name)}
                             disabled={loading}
                           >
-                            <i className="bi bi-download"></i>
+                            <i className="bi bi-trash"></i>
                           </ActionIcon>
                         </Tooltip>
-                      )}
-                      <Tooltip label="Delete">
-                        <ActionIcon
-                          size="sm"
-                          color="red"
-                          variant="light"
-                          onClick={() => deleteItem(driveNumber, fullPath, file.name)}
-                          disabled={loading}
-                        >
-                          <i className="bi bi-trash"></i>
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Table.Td>
-                </Table.Tr>
-              );
-            })}
-          </Table.Tbody>
-        </Table>
+                      </Group>
+                    </Table.Td>
+                  </Table.Tr>
+                );
+              })}
+            </Table.Tbody>
+          </Table>
 
-        {files.length === 0 && !loading && (
-          <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-            No files found
-          </div>
-        )}
-      </Stack>
-    </Modal>
+          {files.length === 0 && !loading && (
+            <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+              No files found
+            </div>
+          )}
+        </Stack>
+      </Modal>
+
+      <Modal
+        opened={deleteConfirmation !== null}
+        onClose={() => setDeleteConfirmation(null)}
+        title="Confirm Deletion"
+        size="sm"
+      >
+        <Stack gap="md">
+          <Text>
+            Are you sure you want to delete <strong>{deleteConfirmation?.name}</strong>?
+          </Text>
+          <Group justify="flex-end">
+            <Button
+              variant="default"
+              onClick={() => setDeleteConfirmation(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              onClick={confirmDelete}
+            >
+              Delete
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
+    </>
   );
 }

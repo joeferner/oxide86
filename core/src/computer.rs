@@ -855,6 +855,25 @@ impl<V: VideoController> Computer<V> {
         &mut self.bios
     }
 
+    /// Update BDA hard drive count after adding/removing drives
+    /// This should be called after any operation that changes the number of hard drives
+    pub fn update_bda_hard_drive_count(&mut self) {
+        let hard_drive_count = self
+            .bios
+            .disk_get_params(DriveNumber::hard_drive_c())
+            .map(|params| params.drive_count)
+            .unwrap_or(0);
+        self.memory.write_u8(
+            memory::BDA_START + memory::BDA_NUM_HARD_DRIVES,
+            hard_drive_count,
+        );
+        log::info!(
+            "Updated BDA hard drive count to {} at offset 0x{:04X}",
+            hard_drive_count,
+            memory::BDA_START + memory::BDA_NUM_HARD_DRIVES
+        );
+    }
+
     /// Get a mutable reference to the video controller (for platform-specific rendering)
     pub fn video_controller_mut(&mut self) -> &mut V {
         &mut self.video_controller

@@ -86,6 +86,13 @@ DriveManager<D>    // Holds floppy_drives[2], hard_drives: Vec, open_files, sear
 DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 ```
 
+**IMPORTANT - BDA Hard Drive Count:**
+- The BIOS Data Area (BDA) stores hard drive count at offset 0x75
+- This is initialized in `Computer::new()` to the count at that moment
+- **CRITICAL**: After adding/removing hard drives at runtime, you MUST call `computer.update_bda_hard_drive_count()`
+- Failure to update the BDA causes boot failures (BIOS functions check this value)
+- This is automatically done in WASM `add_hard_drive()` and native startup
+
 **Floppy Hot-Swap:**
 - `insert_floppy(slot, disk)` - Sets `disk_changed = true`
 - `eject_floppy(slot)` - Closes open files, returns disk

@@ -30,10 +30,10 @@ function App() {
     startExecution,
     stopExecution,
     stepExecution,
-    boot,
     loadProgram,
     reset,
-  } = useEmulator(canvasRef)
+    bootAndStart,
+  } = useEmulator(canvasRef, bootDrive)
 
   const handleStatusUpdate = useCallback((message: string) => {
     setStatus(message)
@@ -41,13 +41,11 @@ function App() {
 
   const handleBootA = useCallback(() => {
     setBootDrive(0x00)
-    boot(0x00)
-  }, [boot])
+  }, [])
 
   const handleBootC = useCallback(() => {
     setBootDrive(0x80)
-    boot(0x80)
-  }, [boot])
+  }, [])
 
   const handleLoadProgram = useCallback(async (file: File, segment: number, offset: number) => {
     try {
@@ -119,7 +117,7 @@ function App() {
 
             <ExecutionControl
               isRunning={isRunning}
-              onStart={startExecution}
+              onStart={mode === 'boot' ? bootAndStart : startExecution}
               onStop={stopExecution}
               onStep={stepExecution}
             />

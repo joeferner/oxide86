@@ -947,6 +947,11 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
         );
     }
 
+    // Update BDA hard drive count after adding all drives
+    if !cli.hard_disks.is_empty() {
+        computer.update_bda_hard_drive_count();
+    }
+
     // If no drives specified and booting, error out
     if cli.floppy_a.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() && cli.boot {
         return Err(anyhow::anyhow!(
