@@ -3,8 +3,8 @@
 - [ ] CGA Test
   - Mode 04h: 320x200, 4 Colors
   - Mode 06h: 640x200, 2 Colors
+- [ ] can't set log level from command line via RUST_LOG=debug
 - [ ] check-it 2
-  - Handle INT 0x13 function: AH=0x01  2nd floppy disk ( "drive B:" )
   - video graphics tests are failing
 - [ ] Alley Cat locks up after splash screen
 - [ ] Boot error cannot control A20 line

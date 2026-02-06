@@ -20,6 +20,7 @@ impl Cpu {
 
         match function {
             0x00 => self.int13_reset_disk(io),
+            0x01 => self.int13_get_status(io),
             0x02 => self.int13_read_sectors(memory, io),
             0x03 => self.int13_write_sectors(memory, io),
             0x04 => self.int13_verify_sectors(io),
@@ -33,6 +34,7 @@ impl Cpu {
                 // Set error: invalid command
                 self.ax = (self.ax & 0x00FF) | ((DiskError::InvalidCommand as u16) << 8);
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(DiskError::InvalidCommand as u8);
             }
         }
     }
@@ -51,10 +53,34 @@ impl Cpu {
         if success {
             self.ax &= 0x00FF; // AH = 0 (success)
             self.set_flag(cpu_flag::CARRY, false);
+            io.set_last_disk_status(DiskError::Success as u8);
         } else {
             self.ax = (self.ax & 0x00FF) | ((DiskError::ResetFailed as u16) << 8);
             self.set_flag(cpu_flag::CARRY, true);
+            io.set_last_disk_status(DiskError::ResetFailed as u8);
         }
+    }
+
+    /// INT 13h, AH=01h - Get Status of Last Disk Operation
+    /// Input:
+    ///   AH = 0x01
+    ///   DL = drive number (optional, some implementations ignore it)
+    /// Output:
+    ///   AH = status code of last disk operation (0x00 = success, or error code)
+    ///   CF = cleared (always - the status retrieval itself succeeds)
+    fn int13_get_status(&mut self, io: &super::Bios) {
+        // Return the last disk status
+        let status = io.shared.last_disk_status;
+
+        if self.log_interrupts_enabled {
+            log::info!("INT 13h AH=01h: Get Status - returning 0x{:02X}", status);
+        }
+
+        // Set AH to the last status
+        self.ax = (self.ax & 0x00FF) | ((status as u16) << 8);
+
+        // Always clear carry flag - the status retrieval itself succeeds
+        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// INT 13h, AH=02h - Read Sectors into Memory
@@ -116,6 +142,7 @@ impl Cpu {
                 self.ax = (self.ax & 0xFF00) | (sectors_read as u16); // AL = sectors read
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
+                io.set_last_disk_status(DiskError::Success as u8);
             }
             Err(error_code) => {
                 log::warn!(
@@ -126,6 +153,7 @@ impl Cpu {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.ax &= 0xFF00; // AL = 0 (no sectors read)
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(error_code as u8);
             }
         }
     }
@@ -167,11 +195,13 @@ impl Cpu {
                 self.ax = (self.ax & 0xFF00) | (sectors_written as u16); // AL = sectors written
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
+                io.set_last_disk_status(DiskError::Success as u8);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.ax &= 0xFF00; // AL = 0 (no sectors written)
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(error_code as u8);
             }
         }
     }
@@ -209,11 +239,13 @@ impl Cpu {
                 self.ax = (self.ax & 0xFF00) | (sectors_verified as u16); // AL = sectors verified
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
+                io.set_last_disk_status(DiskError::Success as u8);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.ax &= 0xFF00; // AL = 0 (no sectors verified)
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(error_code as u8);
             }
         }
     }
@@ -242,10 +274,12 @@ impl Cpu {
             Ok(()) => {
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
+                io.set_last_disk_status(DiskError::Success as u8);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(error_code as u8);
             }
         }
     }
@@ -261,7 +295,7 @@ impl Cpu {
     ///     CL = maximum sector number (bits 0-5) + high 2 bits of max cylinder (bits 6-7)
     ///     DH = maximum head number
     ///     DL = number of drives
-    fn int13_get_drive_params(&mut self, io: &super::Bios) {
+    fn int13_get_drive_params(&mut self, io: &mut super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         if self.log_interrupts_enabled {
@@ -292,10 +326,12 @@ impl Cpu {
                 self.dx = ((params.max_head as u16) << 8) | (params.drive_count as u16); // DH:DL
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
+                io.set_last_disk_status(DiskError::Success as u8);
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(error_code as u8);
             }
         }
     }
@@ -312,7 +348,7 @@ impl Cpu {
     ///   CF = clear if drive exists, set if drive does not exist
     ///   For type 0x03 (fixed disk):
     ///     CX:DX = number of 512-byte sectors (32-bit value, CX=high word, DX=low word)
-    fn int13_get_disk_type(&mut self, io: &super::Bios) {
+    fn int13_get_disk_type(&mut self, io: &mut super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         match io.disk_get_type(drive) {
@@ -330,11 +366,13 @@ impl Cpu {
 
                 // Clear carry flag (drive exists)
                 self.set_flag(cpu_flag::CARRY, false);
+                io.set_last_disk_status(DiskError::Success as u8);
             }
             Err(_) => {
                 // Drive not present
                 self.ax &= 0x00FF; // AH = 0x00 (drive not present)
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(DiskError::InvalidCommand as u8);
             }
         }
     }
@@ -358,15 +396,18 @@ impl Cpu {
                     // Disk was changed
                     self.ax = (self.ax & 0x00FF) | ((DiskError::DiskChanged as u16) << 8);
                     self.set_flag(cpu_flag::CARRY, true);
+                    io.set_last_disk_status(DiskError::DiskChanged as u8);
                 } else {
                     // Disk not changed
                     self.ax &= 0x00FF; // AH = 0 (not changed)
                     self.set_flag(cpu_flag::CARRY, false);
+                    io.set_last_disk_status(DiskError::Success as u8);
                 }
             }
             Err(error_code) => {
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8);
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(error_code as u8);
             }
         }
     }
@@ -384,7 +425,7 @@ impl Cpu {
     ///   CF = clear if successful, set on error
     ///   On success:
     ///     ES:DI = pointer to 11-byte Disk Base Table (DBT)
-    fn int13_set_dasd_type(&mut self, memory: &mut Memory, io: &super::Bios) {
+    fn int13_set_dasd_type(&mut self, memory: &mut Memory, io: &mut super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
         let tracks_low = (self.cx >> 8) as u8; // CH
         let sectors_and_tracks_high = (self.cx & 0xFF) as u8; // CL
@@ -412,6 +453,7 @@ impl Cpu {
                     // Invalid parameters
                     self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
                     self.set_flag(cpu_flag::CARRY, true);
+                    io.set_last_disk_status(DiskError::InvalidCommand as u8);
                     return;
                 }
 
@@ -446,6 +488,7 @@ impl Cpu {
                 self.di = DBT_OFFSET;
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
+                io.set_last_disk_status(DiskError::Success as u8);
                 if self.log_interrupts_enabled {
                     log::info!(
                         "INT 13h AH=18h: Success, DBT at {:04X}:{:04X}",
@@ -461,6 +504,7 @@ impl Cpu {
                 }
                 self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
                 self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(DiskError::InvalidCommand as u8);
             }
         }
     }

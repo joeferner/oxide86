@@ -164,6 +164,8 @@ pub struct SharedBiosState {
     pub device_handles: HashMap<u16, DosDevice>,
     /// Next device handle to allocate. Shared between device handles and file handles.
     pub next_device_handle: u16,
+    /// Last disk operation status (for INT 13h AH=01h)
+    pub last_disk_status: u8,
 }
 
 impl SharedBiosState {
@@ -174,6 +176,7 @@ impl SharedBiosState {
             memory_allocator: MemoryAllocator::new(),
             device_handles: HashMap::new(),
             next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
+            last_disk_status: 0x00, // Success
         }
     }
 
@@ -236,6 +239,11 @@ impl Bios {
             mouse,
             serial_ports: [SerialPortController::new(0), SerialPortController::new(1)],
         }
+    }
+
+    /// Set the last disk operation status (for INT 13h AH=01h)
+    pub fn set_last_disk_status(&mut self, status: u8) {
+        self.shared.last_disk_status = status;
     }
 
     /// Reset BIOS state (memory allocator, open files, device handles) while keeping drives attached

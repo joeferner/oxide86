@@ -83,7 +83,7 @@ fn main() {
         .filter_module("emu86_core", LevelFilter::Info)
         .filter_module("emu86_native_gui", LevelFilter::Info)
         .filter_module("wgpu_core", LevelFilter::Info)
-        .filter_module("wgpu_hal", LevelFilter::Info)
+        .filter_module("wgpu_hal", LevelFilter::Error)
         .format(|buf, record| {
             use chrono::Timelike;
             let now = chrono::Local::now();
@@ -992,7 +992,6 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
             .context("Failed to boot from disk")?;
 
         log::info!("Boot sector loaded at 0x0000:0x7C00");
-        log::info!("Starting execution...\n");
     } else if let Some(program_path) = &cli.program {
         // Load program from file
         let program_data = std::fs::read(program_path)
@@ -1011,8 +1010,8 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
             segment,
             offset
         );
-        log::info!("Starting execution...\n");
     }
+    log::info!("Starting execution...");
 
     Ok(computer)
 }

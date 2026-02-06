@@ -217,7 +217,6 @@ fn main() -> Result<()> {
             .context("Failed to boot from disk")?;
 
         log::info!("Boot sector loaded at 0x0000:0x7C00");
-        log::info!("Starting execution... (Press F12 for command mode)\n");
     } else {
         // Load program from file
         let program_path = cli.program.as_ref().unwrap(); // Safe because of required_unless_present
@@ -237,8 +236,8 @@ fn main() -> Result<()> {
             segment,
             offset
         );
-        log::info!("Starting execution... (Press F12 for command mode)\n");
     }
+    log::info!("Starting execution... (Press F12 for command mode)");
 
     // Attach serial devices if specified
     if let Some(device) = &cli.com1_device {
