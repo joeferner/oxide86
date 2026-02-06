@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Modal, Table, Button, Group, Stack, Breadcrumbs, Anchor, FileButton } from '@mantine/core';
-import { Emu86Computer } from '../types/wasm';
+import { Modal, Table, Button, Group, Stack, Breadcrumbs, Anchor, FileButton, ActionIcon, Tooltip } from '@mantine/core';
+import { Emu86Computer } from '../../pkg/emu86_wasm';
 
 interface FileEntry {
   name: string;
@@ -66,7 +66,9 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate, driveNu
     setLoading(true);
     try {
       const data = computer.read_file_from_disk(drive, filePath);
-      const blob = new Blob([data], { type: 'application/octet-stream' });
+      // Create a new Uint8Array to ensure proper ArrayBuffer type
+      const arrayData = new Uint8Array(data);
+      const blob = new Blob([arrayData], { type: 'application/octet-stream' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -90,7 +92,7 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate, driveNu
       const arrayBuffer = await file.arrayBuffer();
       const data = new Uint8Array(arrayBuffer);
       const targetPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-      computer.write_file_to_disk(driveNumber, targetPath, Array.from(data));
+      computer.write_file_to_disk(driveNumber, targetPath, data);
       onStatusUpdate(`Uploaded ${file.name} to ${getDriveLetter(driveNumber)}:${targetPath}`);
       await browseDisk(driveNumber, currentPath); // Refresh listing
     } catch (e) {
@@ -175,12 +177,13 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate, driveNu
       <Stack gap="md">
         <Group justify="flex-end">
           <FileButton onChange={(file) => file && uploadFile(file)} accept="*/*">
-            {(props) => <Button {...props} size="sm" disabled={loading}>Upload File</Button>}
+            {(props) => <Button {...props} size="sm" disabled={loading} color='blue'>Upload File</Button>}
           </FileButton>
           <Button
             onClick={() => browseDisk(driveNumber, currentPath)}
             size="sm"
             disabled={loading}
+            color='blue'
           >
             Refresh
           </Button>
@@ -226,22 +229,29 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate, driveNu
                   <Table.Td>
                     <Group gap="xs">
                       {!file.isDirectory && (
-                        <Button
-                          size="compact-xs"
-                          onClick={() => downloadFile(driveNumber, fullPath, file.name)}
+                        <Tooltip label="Download">
+                          <ActionIcon
+                            size="sm"
+                            color="blue"
+                            variant="light"
+                            onClick={() => downloadFile(driveNumber, fullPath, file.name)}
+                            disabled={loading}
+                          >
+                            <i className="bi bi-download"></i>
+                          </ActionIcon>
+                        </Tooltip>
+                      )}
+                      <Tooltip label="Delete">
+                        <ActionIcon
+                          size="sm"
+                          color="red"
+                          variant="light"
+                          onClick={() => deleteItem(driveNumber, fullPath, file.name)}
                           disabled={loading}
                         >
-                          Download
-                        </Button>
-                      )}
-                      <Button
-                        size="compact-xs"
-                        color="red"
-                        onClick={() => deleteItem(driveNumber, fullPath, file.name)}
-                        disabled={loading}
-                      >
-                        Delete
-                      </Button>
+                          <i className="bi bi-trash"></i>
+                        </ActionIcon>
+                      </Tooltip>
                     </Group>
                   </Table.Td>
                 </Table.Tr>

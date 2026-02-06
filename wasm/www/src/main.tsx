@@ -1,11 +1,12 @@
 import ReactDOM from 'react-dom/client'
 import { MantineProvider, createTheme } from '@mantine/core'
 import '@mantine/core/styles.css'
+import 'bootstrap-icons/font/bootstrap-icons.css'
 import App from './App'
 import './styles/global.scss'
 
 const theme = createTheme({
-  primaryColor: 'green',
+  primaryColor: 'blue',
   colors: {
     dark: [
       '#e0e0e0',

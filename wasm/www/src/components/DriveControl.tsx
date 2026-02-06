@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Group, Button, FileButton, Text } from '@mantine/core'
+import { Group, Button, FileButton, Text, ActionIcon, Tooltip } from '@mantine/core'
 import { Emu86Computer } from '../../pkg/emu86_wasm'
 import styles from './ControlGroup.module.scss'
 
@@ -136,9 +136,21 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
             {(props) => <Button {...props} size="compact-sm" variant="default">{floppyAFile ? floppyAFile.name : 'Choose File'}</Button>}
           </FileButton>
           <Button onClick={handleLoadFloppyA} size="compact-sm" color="green" disabled={!floppyAFile}>Load A:</Button>
-          <Button onClick={handleEjectFloppyA} size="compact-sm" color="red">Eject A:</Button>
-          <Button onClick={() => onManageDrive(0)} size="compact-sm" variant="light">Manage</Button>
-          <Button onClick={() => handleDownloadDrive('floppy', 0)} size="compact-sm" variant="light">Download</Button>
+          <Tooltip label="Eject A:">
+            <ActionIcon onClick={handleEjectFloppyA} size="md" color="red">
+              <i className="bi bi-eject"></i>
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Manage Drive A:">
+            <ActionIcon onClick={() => onManageDrive(0)} size="md" color="blue">
+              <i className="bi bi-gear-fill"></i>
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Download Drive A:">
+            <ActionIcon onClick={() => handleDownloadDrive('floppy', 0)} size="md" color="blue">
+              <i className="bi bi-download"></i>
+            </ActionIcon>
+          </Tooltip>
         </Group>
       </div>
 
@@ -149,9 +161,21 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
             {(props) => <Button {...props} size="compact-sm" variant="default">{floppyBFile ? floppyBFile.name : 'Choose File'}</Button>}
           </FileButton>
           <Button onClick={handleLoadFloppyB} size="compact-sm" color="green" disabled={!floppyBFile}>Load B:</Button>
-          <Button onClick={handleEjectFloppyB} size="compact-sm" color="red">Eject B:</Button>
-          <Button onClick={() => onManageDrive(1)} size="compact-sm" variant="light">Manage</Button>
-          <Button onClick={() => handleDownloadDrive('floppy', 1)} size="compact-sm" variant="light">Download</Button>
+          <Tooltip label="Eject B:">
+            <ActionIcon onClick={handleEjectFloppyB} size="md" color="red">
+              <i className="bi bi-eject"></i>
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Manage Drive B:">
+            <ActionIcon onClick={() => onManageDrive(1)} size="md" color="blue">
+              <i className="bi bi-gear-fill"></i>
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Download Drive B:">
+            <ActionIcon onClick={() => handleDownloadDrive('floppy', 1)} size="md" color="blue">
+              <i className="bi bi-download"></i>
+            </ActionIcon>
+          </Tooltip>
         </Group>
       </div>
 
@@ -162,8 +186,16 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
             {(props) => <Button {...props} size="compact-sm" variant="default">{hddFile ? hddFile.name : 'Choose File'}</Button>}
           </FileButton>
           <Button onClick={handleLoadHDD} size="compact-sm" color="green" disabled={!hddFile}>Load C:</Button>
-          <Button onClick={() => onManageDrive(0x80)} size="compact-sm" variant="light">Manage</Button>
-          <Button onClick={() => handleDownloadDrive('hdd', 0x80)} size="compact-sm" variant="light">Download</Button>
+          <Tooltip label="Manage Drive C:">
+            <ActionIcon onClick={() => onManageDrive(0x80)} size="md" color="blue">
+              <i className="bi bi-gear-fill"></i>
+            </ActionIcon>
+          </Tooltip>
+          <Tooltip label="Download Drive C:">
+            <ActionIcon onClick={() => handleDownloadDrive('hdd', 0x80)} size="md" color="blue">
+              <i className="bi bi-download"></i>
+            </ActionIcon>
+          </Tooltip>
         </Group>
       </div>
     </>
