@@ -52,20 +52,19 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
     }
   }
 
-  const handleLoadFloppyA = async () => {
-    if (!floppyAFile) {
-      onStatusUpdate('Please select a file first')
-      return
-    }
+  const handleFloppyAChange = async (file: File | null) => {
+    if (!file) return
 
+    setFloppyAFile(file)
     try {
       onStatusUpdate('Loading floppy A...')
-      const data = await loadFile(floppyAFile)
+      const data = await loadFile(file)
       computer?.load_floppy(0, data)
-      onStatusUpdate(`Loaded floppy A: ${floppyAFile.name} (${data.length} bytes)`)
+      onStatusUpdate(`Loaded floppy A: ${file.name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading floppy A: ${e}`)
       console.error(e)
+      setFloppyAFile(null)
     }
   }
 
@@ -80,20 +79,19 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
     }
   }
 
-  const handleLoadFloppyB = async () => {
-    if (!floppyBFile) {
-      onStatusUpdate('Please select a file first')
-      return
-    }
+  const handleFloppyBChange = async (file: File | null) => {
+    if (!file) return
 
+    setFloppyBFile(file)
     try {
       onStatusUpdate('Loading floppy B...')
-      const data = await loadFile(floppyBFile)
+      const data = await loadFile(file)
       computer?.load_floppy(1, data)
-      onStatusUpdate(`Loaded floppy B: ${floppyBFile.name} (${data.length} bytes)`)
+      onStatusUpdate(`Loaded floppy B: ${file.name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading floppy B: ${e}`)
       console.error(e)
+      setFloppyBFile(null)
     }
   }
 
@@ -108,20 +106,19 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
     }
   }
 
-  const handleLoadHDD = async () => {
-    if (!hddFile) {
-      onStatusUpdate('Please select a file first')
-      return
-    }
+  const handleHDDChange = async (file: File | null) => {
+    if (!file) return
 
+    setHddFile(file)
     try {
       onStatusUpdate('Loading hard drive C...')
-      const data = await loadFile(hddFile)
+      const data = await loadFile(file)
       computer?.add_hard_drive(data)
-      onStatusUpdate(`Loaded hard drive C: ${hddFile.name} (${data.length} bytes)`)
+      onStatusUpdate(`Loaded hard drive C: ${file.name} (${data.length} bytes)`)
     } catch (e) {
       onStatusUpdate(`Error loading hard drive: ${e}`)
       console.error(e)
+      setHddFile(null)
     }
   }
 
@@ -132,10 +129,9 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
       <div className={styles.controlGroup}>
         <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Floppy Drive A:</Text>
         <Group gap="xs">
-          <FileButton onChange={setFloppyAFile} accept=".img,.ima,.dsk">
+          <FileButton onChange={handleFloppyAChange} accept=".img,.ima,.dsk">
             {(props) => <Button {...props} size="compact-sm" variant="default">{floppyAFile ? floppyAFile.name : 'Choose File'}</Button>}
           </FileButton>
-          <Button onClick={handleLoadFloppyA} size="compact-sm" color="green" disabled={!floppyAFile}>Load A:</Button>
           <Tooltip label="Eject A:">
             <ActionIcon onClick={handleEjectFloppyA} size="md" color="red">
               <i className="bi bi-eject"></i>
@@ -157,10 +153,9 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
       <div className={styles.controlGroup}>
         <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Floppy Drive B:</Text>
         <Group gap="xs">
-          <FileButton onChange={setFloppyBFile} accept=".img,.ima,.dsk">
+          <FileButton onChange={handleFloppyBChange} accept=".img,.ima,.dsk">
             {(props) => <Button {...props} size="compact-sm" variant="default">{floppyBFile ? floppyBFile.name : 'Choose File'}</Button>}
           </FileButton>
-          <Button onClick={handleLoadFloppyB} size="compact-sm" color="green" disabled={!floppyBFile}>Load B:</Button>
           <Tooltip label="Eject B:">
             <ActionIcon onClick={handleEjectFloppyB} size="md" color="red">
               <i className="bi bi-eject"></i>
@@ -182,10 +177,9 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
       <div className={styles.controlGroup}>
         <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Hard Drive C:</Text>
         <Group gap="xs">
-          <FileButton onChange={setHddFile} accept=".img,.ima,.dsk,.vhd">
+          <FileButton onChange={handleHDDChange} accept=".img,.ima,.dsk,.vhd">
             {(props) => <Button {...props} size="compact-sm" variant="default">{hddFile ? hddFile.name : 'Choose File'}</Button>}
           </FileButton>
-          <Button onClick={handleLoadHDD} size="compact-sm" color="green" disabled={!hddFile}>Load C:</Button>
           <Tooltip label="Manage Drive C:">
             <ActionIcon onClick={() => onManageDrive(0x80)} size="md" color="blue">
               <i className="bi bi-gear-fill"></i>
