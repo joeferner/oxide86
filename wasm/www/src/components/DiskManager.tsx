@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Modal, Tabs, Table, Button, Group, Stack, Select, Breadcrumbs, Anchor, FileButton } from '@mantine/core';
+import { Modal, Table, Button, Group, Stack, Breadcrumbs, Anchor, FileButton } from '@mantine/core';
 import { Emu86Computer } from '../types/wasm';
 
 interface FileEntry {
@@ -16,29 +16,20 @@ interface DiskManagerProps {
   opened: boolean;
   onClose: () => void;
   onStatusUpdate: (message: string) => void;
+  driveNumber: number;
 }
 
-export function DiskManager({ computer, opened, onClose, onStatusUpdate }: DiskManagerProps) {
-  const [activeTab, setActiveTab] = useState<string | null>('browse');
-  const [currentDrive, setCurrentDrive] = useState<number>(0x80); // Default to C: (0x80)
+export function DiskManager({ computer, opened, onClose, onStatusUpdate, driveNumber }: DiskManagerProps) {
   const [currentPath, setCurrentPath] = useState<string>('/');
   const [files, setFiles] = useState<FileEntry[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // Drive options
-  const driveOptions = [
-    { value: '0', label: 'A: (Floppy)' },
-    { value: '1', label: 'B: (Floppy)' },
-    { value: '128', label: 'C: (Hard Drive)' },
-    { value: '129', label: 'D: (Hard Drive)' },
-  ];
-
   // Refresh directory listing when drive or path changes
   useEffect(() => {
-    if (opened && computer && activeTab === 'browse') {
-      browseDisk(currentDrive, currentPath);
+    if (opened && computer) {
+      browseDisk(driveNumber, currentPath);
     }
-  }, [opened, computer, currentDrive, currentPath, activeTab]);
+  }, [opened, computer, driveNumber, currentPath]);
 
   // Browse disk directory
   const browseDisk = async (drive: number, path: string) => {
@@ -63,33 +54,6 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate }: DiskM
     } catch (e) {
       onStatusUpdate(`Error browsing ${getDriveLetter(drive)}: ${e}`);
       setFiles([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Download entire disk image
-  const downloadDisk = async (driveType: 'floppy' | 'hdd', driveNumber: number) => {
-    if (!computer) return;
-
-    setLoading(true);
-    try {
-      const data = driveType === 'floppy'
-        ? computer.get_floppy_data(driveNumber)
-        : computer.get_hard_drive_data(driveNumber - 0x80);
-
-      if (!data) throw new Error('No data returned');
-
-      const blob = new Blob([data], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `drive_${getDriveLetter(driveType === 'floppy' ? driveNumber : driveNumber)}.img`;
-      a.click();
-      URL.revokeObjectURL(url);
-      onStatusUpdate(`Downloaded ${getDriveLetter(driveType === 'floppy' ? driveNumber : driveNumber)}`);
-    } catch (e) {
-      onStatusUpdate(`Error downloading disk: ${e}`);
     } finally {
       setLoading(false);
     }
@@ -126,9 +90,9 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate }: DiskM
       const arrayBuffer = await file.arrayBuffer();
       const data = new Uint8Array(arrayBuffer);
       const targetPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-      computer.write_file_to_disk(currentDrive, targetPath, Array.from(data));
-      onStatusUpdate(`Uploaded ${file.name} to ${getDriveLetter(currentDrive)}:${targetPath}`);
-      await browseDisk(currentDrive, currentPath); // Refresh listing
+      computer.write_file_to_disk(driveNumber, targetPath, Array.from(data));
+      onStatusUpdate(`Uploaded ${file.name} to ${getDriveLetter(driveNumber)}:${targetPath}`);
+      await browseDisk(driveNumber, currentPath); // Refresh listing
     } catch (e) {
       onStatusUpdate(`Error uploading file: ${e}`);
     } finally {
@@ -145,7 +109,7 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate }: DiskM
     try {
       computer.delete_from_disk(drive, path);
       onStatusUpdate(`Deleted ${name}`);
-      await browseDisk(currentDrive, currentPath); // Refresh listing
+      await browseDisk(driveNumber, currentPath); // Refresh listing
     } catch (e) {
       onStatusUpdate(`Error deleting: ${e}`);
     } finally {
@@ -185,7 +149,7 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate }: DiskM
   const pathParts = currentPath.split('/').filter(p => p);
   const breadcrumbs = [
     <Anchor key="root" onClick={() => setCurrentPath('/')} size="sm">
-      {getDriveLetter(currentDrive)}:
+      {getDriveLetter(driveNumber)}:
     </Anchor>,
     ...pathParts.map((part, idx) => (
       <Anchor
@@ -206,141 +170,92 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate }: DiskM
       opened={opened}
       onClose={onClose}
       size="xl"
-      title="Disk Manager"
+      title={`Disk Manager - Drive ${getDriveLetter(driveNumber)}:`}
     >
-      <Tabs value={activeTab} onChange={setActiveTab}>
-        <Tabs.List>
-          <Tabs.Tab value="browse">Browse Files</Tabs.Tab>
-          <Tabs.Tab value="download">Download Disk</Tabs.Tab>
-        </Tabs.List>
+      <Stack gap="md">
+        <Group justify="flex-end">
+          <FileButton onChange={(file) => file && uploadFile(file)} accept="*/*">
+            {(props) => <Button {...props} size="sm" disabled={loading}>Upload File</Button>}
+          </FileButton>
+          <Button
+            onClick={() => browseDisk(driveNumber, currentPath)}
+            size="sm"
+            disabled={loading}
+          >
+            Refresh
+          </Button>
+        </Group>
 
-        <Tabs.Panel value="browse" pt="md">
-          <Stack gap="md">
-            <Group justify="space-between">
-              <Select
-                label="Drive"
-                value={currentDrive.toString()}
-                onChange={(value) => {
-                  setCurrentDrive(parseInt(value || '128'));
-                  setCurrentPath('/');
-                }}
-                data={driveOptions}
-                style={{ width: 200 }}
-              />
-              <Group>
-                <FileButton onChange={(file) => file && uploadFile(file)} accept="*/*">
-                  {(props) => <Button {...props} size="sm" disabled={loading}>Upload File</Button>}
-                </FileButton>
-                <Button
-                  onClick={() => browseDisk(currentDrive, currentPath)}
-                  size="sm"
-                  disabled={loading}
-                >
-                  Refresh
-                </Button>
-              </Group>
-            </Group>
+        <Breadcrumbs>{breadcrumbs}</Breadcrumbs>
 
-            <Breadcrumbs>{breadcrumbs}</Breadcrumbs>
-
-            <Table>
-              <Table.Thead>
-                <Table.Tr>
-                  <Table.Th>Name</Table.Th>
-                  <Table.Th>Size</Table.Th>
-                  <Table.Th>Date</Table.Th>
-                  <Table.Th>Actions</Table.Th>
-                </Table.Tr>
-              </Table.Thead>
-              <Table.Tbody>
-                {currentPath !== '/' && (
-                  <Table.Tr>
-                    <Table.Td>
-                      <Anchor onClick={() => navigateToDirectory('..')}>📁 ..</Anchor>
-                    </Table.Td>
-                    <Table.Td>-</Table.Td>
-                    <Table.Td>-</Table.Td>
-                    <Table.Td>-</Table.Td>
-                  </Table.Tr>
-                )}
-                {files.map((file, idx) => {
-                  const fullPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-                  return (
-                    <Table.Tr key={idx}>
-                      <Table.Td>
-                        {file.isDirectory ? (
-                          <Anchor onClick={() => navigateToDirectory(file.name)}>
-                            📁 {file.name}
-                          </Anchor>
-                        ) : (
-                          <span>📄 {file.name}</span>
-                        )}
-                      </Table.Td>
-                      <Table.Td>{file.isDirectory ? '-' : formatSize(file.size)}</Table.Td>
-                      <Table.Td>{file.date}</Table.Td>
-                      <Table.Td>
-                        <Group gap="xs">
-                          {!file.isDirectory && (
-                            <Button
-                              size="compact-xs"
-                              onClick={() => downloadFile(currentDrive, fullPath, file.name)}
-                              disabled={loading}
-                            >
-                              Download
-                            </Button>
-                          )}
-                          <Button
-                            size="compact-xs"
-                            color="red"
-                            onClick={() => deleteItem(currentDrive, fullPath, file.name)}
-                            disabled={loading}
-                          >
-                            Delete
-                          </Button>
-                        </Group>
-                      </Table.Td>
-                    </Table.Tr>
-                  );
-                })}
-              </Table.Tbody>
-            </Table>
-
-            {files.length === 0 && !loading && (
-              <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
-                No files found
-              </div>
+        <Table>
+          <Table.Thead>
+            <Table.Tr>
+              <Table.Th>Name</Table.Th>
+              <Table.Th>Size</Table.Th>
+              <Table.Th>Date</Table.Th>
+              <Table.Th>Actions</Table.Th>
+            </Table.Tr>
+          </Table.Thead>
+          <Table.Tbody>
+            {currentPath !== '/' && (
+              <Table.Tr>
+                <Table.Td>
+                  <Anchor onClick={() => navigateToDirectory('..')}>📁 ..</Anchor>
+                </Table.Td>
+                <Table.Td>-</Table.Td>
+                <Table.Td>-</Table.Td>
+                <Table.Td>-</Table.Td>
+              </Table.Tr>
             )}
-          </Stack>
-        </Tabs.Panel>
+            {files.map((file, idx) => {
+              const fullPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+              return (
+                <Table.Tr key={idx}>
+                  <Table.Td>
+                    {file.isDirectory ? (
+                      <Anchor onClick={() => navigateToDirectory(file.name)}>
+                        📁 {file.name}
+                      </Anchor>
+                    ) : (
+                      <span>📄 {file.name}</span>
+                    )}
+                  </Table.Td>
+                  <Table.Td>{file.isDirectory ? '-' : formatSize(file.size)}</Table.Td>
+                  <Table.Td>{file.date}</Table.Td>
+                  <Table.Td>
+                    <Group gap="xs">
+                      {!file.isDirectory && (
+                        <Button
+                          size="compact-xs"
+                          onClick={() => downloadFile(driveNumber, fullPath, file.name)}
+                          disabled={loading}
+                        >
+                          Download
+                        </Button>
+                      )}
+                      <Button
+                        size="compact-xs"
+                        color="red"
+                        onClick={() => deleteItem(driveNumber, fullPath, file.name)}
+                        disabled={loading}
+                      >
+                        Delete
+                      </Button>
+                    </Group>
+                  </Table.Td>
+                </Table.Tr>
+              );
+            })}
+          </Table.Tbody>
+        </Table>
 
-        <Tabs.Panel value="download" pt="md">
-          <Stack gap="md">
-            <div>
-              <h3>Download Floppy Drives</h3>
-              <Group gap="xs">
-                <Button onClick={() => downloadDisk('floppy', 0)} disabled={loading}>
-                  Download A:
-                </Button>
-                <Button onClick={() => downloadDisk('floppy', 1)} disabled={loading}>
-                  Download B:
-                </Button>
-              </Group>
-            </div>
-
-            <div>
-              <h3>Download Hard Drives</h3>
-              <Group gap="xs">
-                <Button onClick={() => downloadDisk('hdd', 0x80)} disabled={loading}>
-                  Download C:
-                </Button>
-                <Button onClick={() => downloadDisk('hdd', 0x81)} disabled={loading}>
-                  Download D:
-                </Button>
-              </Group>
-            </div>
-          </Stack>
-        </Tabs.Panel>
-      </Tabs>
+        {files.length === 0 && !loading && (
+          <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>
+            No files found
+          </div>
+        )}
+      </Stack>
     </Modal>
   );
 }

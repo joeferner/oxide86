@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Container, Title, Group, Paper, Stack, SegmentedControl, Button } from '@mantine/core'
+import { Container, Title, Group, Paper, Stack, SegmentedControl } from '@mantine/core'
 import { useEmulator } from './hooks/useEmulator'
 import { usePointerLock } from './hooks/usePointerLock'
 import { EmulatorCanvas } from './components/EmulatorCanvas'
@@ -18,6 +18,7 @@ function App() {
   const { isLocked } = usePointerLock(canvasRef)
   const [mode, setMode] = useState<'boot' | 'program'>('boot')
   const [diskManagerOpened, setDiskManagerOpened] = useState(false)
+  const [selectedDrive, setSelectedDrive] = useState<number>(0x80)
 
   const {
     computer,
@@ -56,6 +57,11 @@ function App() {
     }
   }, [loadProgram, setStatus])
 
+  const handleManageDrive = useCallback((driveNumber: number) => {
+    setSelectedDrive(driveNumber)
+    setDiskManagerOpened(true)
+  }, [])
+
   return (
     <Container size="xl" p="md">
       <Title order={1} ta="center" mb="md">emu86 - Intel 8086 Emulator</Title>
@@ -80,16 +86,8 @@ function App() {
             <DriveControl
               computer={computer}
               onStatusUpdate={handleStatusUpdate}
+              onManageDrive={handleManageDrive}
             />
-
-            <Button
-              onClick={() => setDiskManagerOpened(true)}
-              variant="default"
-              fullWidth
-              disabled={!computer}
-            >
-              Disk Manager
-            </Button>
 
             <SegmentedControl
               value={mode}
@@ -132,6 +130,7 @@ function App() {
         opened={diskManagerOpened}
         onClose={() => setDiskManagerOpened(false)}
         onStatusUpdate={handleStatusUpdate}
+        driveNumber={selectedDrive}
       />
     </Container>
   )

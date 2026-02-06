@@ -6,6 +6,7 @@ import styles from './ControlGroup.module.scss'
 interface DriveControlProps {
   computer: Emu86Computer | null;
   onStatusUpdate: (message: string) => void;
+  onManageDrive: (driveNumber: number) => void;
 }
 
 async function loadFile(file: File): Promise<Uint8Array> {
@@ -17,10 +18,39 @@ async function loadFile(file: File): Promise<Uint8Array> {
   })
 }
 
-export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
+export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveControlProps) {
   const [floppyAFile, setFloppyAFile] = useState<File | null>(null)
   const [floppyBFile, setFloppyBFile] = useState<File | null>(null)
   const [hddFile, setHddFile] = useState<File | null>(null)
+
+  const handleDownloadDrive = async (driveType: 'floppy' | 'hdd', driveNumber: number) => {
+    if (!computer) return
+
+    try {
+      const data = driveType === 'floppy'
+        ? computer.get_floppy_data(driveNumber)
+        : computer.get_hard_drive_data(driveNumber - 0x80)
+
+      if (!data) throw new Error('No data returned')
+
+      // Create a new Uint8Array to ensure proper ArrayBuffer type
+      const arrayData = new Uint8Array(data)
+      const blob = new Blob([arrayData], { type: 'application/octet-stream' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const driveLetter = driveType === 'floppy'
+        ? String.fromCharCode(65 + driveNumber)
+        : String.fromCharCode(67 + (driveNumber - 0x80))
+      a.download = `drive_${driveLetter}.img`
+      a.click()
+      URL.revokeObjectURL(url)
+      onStatusUpdate(`Downloaded drive ${driveLetter}:`)
+    } catch (e) {
+      onStatusUpdate(`Error downloading disk: ${e}`)
+      console.error(e)
+    }
+  }
 
   const handleLoadFloppyA = async () => {
     if (!floppyAFile) {
@@ -107,6 +137,8 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
           </FileButton>
           <Button onClick={handleLoadFloppyA} size="compact-sm" color="green" disabled={!floppyAFile}>Load A:</Button>
           <Button onClick={handleEjectFloppyA} size="compact-sm" color="red">Eject A:</Button>
+          <Button onClick={() => onManageDrive(0)} size="compact-sm" variant="light">Manage</Button>
+          <Button onClick={() => handleDownloadDrive('floppy', 0)} size="compact-sm" variant="light">Download</Button>
         </Group>
       </div>
 
@@ -118,6 +150,8 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
           </FileButton>
           <Button onClick={handleLoadFloppyB} size="compact-sm" color="green" disabled={!floppyBFile}>Load B:</Button>
           <Button onClick={handleEjectFloppyB} size="compact-sm" color="red">Eject B:</Button>
+          <Button onClick={() => onManageDrive(1)} size="compact-sm" variant="light">Manage</Button>
+          <Button onClick={() => handleDownloadDrive('floppy', 1)} size="compact-sm" variant="light">Download</Button>
         </Group>
       </div>
 
@@ -128,6 +162,8 @@ export function DriveControl({ computer, onStatusUpdate }: DriveControlProps) {
             {(props) => <Button {...props} size="compact-sm" variant="default">{hddFile ? hddFile.name : 'Choose File'}</Button>}
           </FileButton>
           <Button onClick={handleLoadHDD} size="compact-sm" color="green" disabled={!hddFile}>Load C:</Button>
+          <Button onClick={() => onManageDrive(0x80)} size="compact-sm" variant="light">Manage</Button>
+          <Button onClick={() => handleDownloadDrive('hdd', 0x80)} size="compact-sm" variant="light">Download</Button>
         </Group>
       </div>
     </>
