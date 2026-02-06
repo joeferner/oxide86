@@ -2,6 +2,7 @@ use crate::{io::IoDevice, memory::Memory};
 
 pub mod bios;
 mod instructions;
+pub(super) mod timing;
 
 pub struct Cpu {
     // General purpose registers
@@ -44,6 +45,10 @@ pub struct Cpu {
 
     /// if true logs interrupts at info level
     pub log_interrupts_enabled: bool,
+
+    /// Cycle count for the last executed instruction
+    /// Used by Computer::step() to accurately track CPU cycles
+    pub(super) last_instruction_cycles: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -101,6 +106,7 @@ impl Cpu {
             segment_override: None,
             repeat_prefix: None,
             log_interrupts_enabled: false,
+            last_instruction_cycles: 0,
         }
     }
 

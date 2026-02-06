@@ -1,4 +1,4 @@
-use super::super::{Cpu, cpu_flag};
+use super::super::{Cpu, cpu_flag, timing};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -51,6 +51,42 @@ impl Cpu {
             };
             self.write_rm8(mode, rm, addr, result, memory);
         }
+
+        // Calculate cycle timing based on shift type and count
+        self.last_instruction_cycles = match opcode {
+            0xD0 | 0xD1 => {
+                // Shift by 1
+                if mode == 0b11 {
+                    timing::cycles::SHIFT_REG_1
+                } else {
+                    timing::cycles::SHIFT_MEM_1
+                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+                }
+            }
+            0xD2 | 0xD3 => {
+                // Shift by CL
+                if mode == 0b11 {
+                    timing::cycles::SHIFT_REG_CL_BASE
+                        + (timing::cycles::SHIFT_REG_CL_PER_COUNT * count as u64)
+                } else {
+                    timing::cycles::SHIFT_MEM_CL_BASE
+                        + (timing::cycles::SHIFT_MEM_CL_PER_COUNT * count as u64)
+                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+                }
+            }
+            0xC0 | 0xC1 => {
+                // Shift by immediate (80186+)
+                if mode == 0b11 {
+                    timing::cycles::SHIFT_REG_IMM_BASE
+                        + (timing::cycles::SHIFT_REG_IMM_PER_COUNT * count as u64)
+                } else {
+                    timing::cycles::SHIFT_MEM_IMM_BASE
+                        + (timing::cycles::SHIFT_MEM_IMM_PER_COUNT * count as u64)
+                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+                }
+            }
+            _ => unreachable!(),
+        };
     }
 
     // 8-bit shift/rotate operations

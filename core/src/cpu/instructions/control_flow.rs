@@ -1,4 +1,4 @@
-use super::super::{Cpu, cpu_flag};
+use super::super::{Cpu, cpu_flag, timing};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -6,6 +6,9 @@ impl Cpu {
     /// Stops instruction execution until a hardware interrupt occurs
     pub(in crate::cpu) fn hlt(&mut self) {
         self.halted = true;
+
+        // HLT: 2 cycles
+        self.last_instruction_cycles = timing::cycles::HLT;
     }
 
     /// JMP short relative (opcode EB)
@@ -13,6 +16,9 @@ impl Cpu {
     pub(in crate::cpu) fn jmp_short(&mut self, memory: &Memory) {
         let offset = self.fetch_byte(memory) as i8;
         self.ip = self.ip.wrapping_add(offset as i16 as u16);
+
+        // JMP short: 15 cycles
+        self.last_instruction_cycles = timing::cycles::JMP_SHORT;
     }
 
     /// JMP near relative (opcode E9)
@@ -20,6 +26,9 @@ impl Cpu {
     pub(in crate::cpu) fn jmp_near(&mut self, memory: &Memory) {
         let offset = self.fetch_word(memory) as i16;
         self.ip = self.ip.wrapping_add(offset as u16);
+
+        // JMP near direct: 15 cycles
+        self.last_instruction_cycles = timing::cycles::JMP_NEAR_DIRECT;
     }
 
     /// CALL near relative (opcode E8)
@@ -30,6 +39,9 @@ impl Cpu {
         self.push(self.ip, memory);
         // Jump to target
         self.ip = self.ip.wrapping_add(offset as u16);
+
+        // CALL near direct: 19 cycles
+        self.last_instruction_cycles = timing::cycles::CALL_NEAR_DIRECT;
     }
 
     /// RET (opcode C3: near return, C2: near return with imm16 pop)
@@ -47,6 +59,13 @@ impl Cpu {
 
         // Add the immediate to SP (if C2)
         self.sp = self.sp.wrapping_add(bytes_to_pop);
+
+        // RET near: 8 cycles (C3), 12 cycles (C2 with pop)
+        self.last_instruction_cycles = if opcode == 0xC2 {
+            timing::cycles::RET_NEAR_POP
+        } else {
+            timing::cycles::RET_NEAR
+        };
     }
 
     /// Conditional jumps - short relative (opcodes 70-7F)
@@ -82,6 +101,11 @@ impl Cpu {
 
         if condition {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
+            // Conditional jump taken: 16 cycles
+            self.last_instruction_cycles = timing::cycles::CONDITIONAL_JUMP_TAKEN;
+        } else {
+            // Conditional jump not taken: 4 cycles
+            self.last_instruction_cycles = timing::cycles::CONDITIONAL_JUMP_NOT_TAKEN;
         }
     }
 
@@ -92,6 +116,11 @@ impl Cpu {
         self.cx = self.cx.wrapping_sub(1);
         if self.cx != 0 {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
+            // LOOP taken: 17 cycles
+            self.last_instruction_cycles = timing::cycles::LOOP_TAKEN;
+        } else {
+            // LOOP not taken: 5 cycles
+            self.last_instruction_cycles = timing::cycles::LOOP_NOT_TAKEN;
         }
     }
 
@@ -102,6 +131,11 @@ impl Cpu {
         self.cx = self.cx.wrapping_sub(1);
         if self.cx != 0 && self.get_flag(cpu_flag::ZERO) {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
+            // LOOPE taken: 18 cycles
+            self.last_instruction_cycles = timing::cycles::LOOPE_TAKEN;
+        } else {
+            // LOOPE not taken: 6 cycles
+            self.last_instruction_cycles = timing::cycles::LOOPE_NOT_TAKEN;
         }
     }
 
@@ -112,6 +146,11 @@ impl Cpu {
         self.cx = self.cx.wrapping_sub(1);
         if self.cx != 0 && !self.get_flag(cpu_flag::ZERO) {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
+            // LOOPNE taken: 19 cycles
+            self.last_instruction_cycles = timing::cycles::LOOPNE_TAKEN;
+        } else {
+            // LOOPNE not taken: 5 cycles
+            self.last_instruction_cycles = timing::cycles::LOOPNE_NOT_TAKEN;
         }
     }
 
@@ -121,6 +160,11 @@ impl Cpu {
         let offset = self.fetch_byte(memory) as i8;
         if self.cx == 0 {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
+            // JCXZ taken: 18 cycles
+            self.last_instruction_cycles = timing::cycles::JCXZ_TAKEN;
+        } else {
+            // JCXZ not taken: 6 cycles
+            self.last_instruction_cycles = timing::cycles::JCXZ_NOT_TAKEN;
         }
     }
 
@@ -131,6 +175,9 @@ impl Cpu {
         let segment = self.fetch_word(memory);
         self.ip = offset;
         self.cs = segment;
+
+        // JMP far direct: 15 cycles
+        self.last_instruction_cycles = timing::cycles::JMP_FAR_DIRECT;
     }
 
     /// JMP indirect (opcode FF)
@@ -145,6 +192,14 @@ impl Cpu {
                 // JMP r/m16 (near indirect)
                 let offset = self.read_rm16(mode, rm, addr, memory);
                 self.ip = offset;
+
+                // JMP near indirect: 11 cycles (reg), 18+EA (mem)
+                self.last_instruction_cycles = if mode == 0b11 {
+                    timing::cycles::JMP_NEAR_INDIRECT_REG
+                } else {
+                    timing::cycles::JMP_NEAR_INDIRECT_MEM
+                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+                };
             }
             5 => {
                 // JMP m16:16 (far indirect)
@@ -155,6 +210,10 @@ impl Cpu {
                 let segment = memory.read_u16(addr + 2);
                 self.ip = offset;
                 self.cs = segment;
+
+                // JMP far indirect: 24+EA cycles
+                self.last_instruction_cycles = timing::cycles::JMP_FAR_INDIRECT_MEM
+                    + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
             }
             _ => panic!("Invalid JMP indirect operation: {}", operation),
         }
@@ -171,6 +230,9 @@ impl Cpu {
         // Jump to far address
         self.ip = offset;
         self.cs = segment;
+
+        // CALL far direct: 28 cycles
+        self.last_instruction_cycles = timing::cycles::CALL_FAR_DIRECT;
     }
 
     /// CALL indirect (opcode FF)
@@ -186,6 +248,14 @@ impl Cpu {
                 let offset = self.read_rm16(mode, rm, addr, memory);
                 self.push(self.ip, memory);
                 self.ip = offset;
+
+                // CALL near indirect: 16 cycles (reg), 21+EA (mem)
+                self.last_instruction_cycles = if mode == 0b11 {
+                    timing::cycles::CALL_NEAR_INDIRECT_REG
+                } else {
+                    timing::cycles::CALL_NEAR_INDIRECT_MEM
+                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+                };
             }
             3 => {
                 // CALL m16:16 (far indirect)
@@ -198,6 +268,10 @@ impl Cpu {
                 self.push(self.ip, memory);
                 self.ip = offset;
                 self.cs = segment;
+
+                // CALL far indirect: 37+EA cycles
+                self.last_instruction_cycles = timing::cycles::CALL_FAR_INDIRECT_MEM
+                    + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
             }
             _ => panic!("Invalid CALL indirect operation: {}", operation),
         }
@@ -221,6 +295,13 @@ impl Cpu {
 
         // Add the immediate to SP (if CA)
         self.sp = self.sp.wrapping_add(bytes_to_pop);
+
+        // RET far: 18 cycles (CB), 17 cycles (CA with pop)
+        self.last_instruction_cycles = if opcode == 0xCA {
+            timing::cycles::RET_FAR_POP
+        } else {
+            timing::cycles::RET_FAR
+        };
     }
 
     /// INT - Software Interrupt (opcode CD)
@@ -242,6 +323,9 @@ impl Cpu {
         let segment = memory.read_u16(ivt_addr + 2);
         self.ip = offset;
         self.cs = segment;
+
+        // INT: 51 cycles
+        self.last_instruction_cycles = timing::cycles::INT;
     }
 
     /// INT 3 - Breakpoint Interrupt (opcode CC)
@@ -258,6 +342,9 @@ impl Cpu {
         let segment = memory.read_u16(ivt_addr + 2);
         self.ip = offset;
         self.cs = segment;
+
+        // INT 3: 52 cycles
+        self.last_instruction_cycles = timing::cycles::INT3;
     }
 
     /// INTO - Interrupt on Overflow (opcode CE)
@@ -274,6 +361,11 @@ impl Cpu {
             let segment = memory.read_u16(ivt_addr + 2);
             self.ip = offset;
             self.cs = segment;
+            // INTO taken: 53 cycles
+            self.last_instruction_cycles = timing::cycles::INTO_TAKEN;
+        } else {
+            // INTO not taken: 4 cycles
+            self.last_instruction_cycles = timing::cycles::INTO_NOT_TAKEN;
         }
     }
 
@@ -289,6 +381,9 @@ impl Cpu {
         self.cs = new_cs;
         // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
         self.flags = (new_flags & 0x0FFF) | 0x0002;
+
+        // IRET: 24 cycles
+        self.last_instruction_cycles = timing::cycles::IRET;
     }
 
     /// CBW - Convert Byte to Word (opcode 98)
@@ -296,6 +391,9 @@ impl Cpu {
     pub(in crate::cpu) fn cbw(&mut self) {
         let al = (self.ax & 0xFF) as i8;
         self.ax = al as i16 as u16;
+
+        // CBW: 2 cycles
+        self.last_instruction_cycles = timing::cycles::CBW;
     }
 
     /// CWD - Convert Word to Double word (opcode 99)
@@ -308,6 +406,9 @@ impl Cpu {
             // Positive - extend with 0s
             self.dx = 0x0000;
         }
+
+        // CWD: 5 cycles
+        self.last_instruction_cycles = timing::cycles::CWD;
     }
 
     /// ESC - Escape to coprocessor (opcodes D8-DF)
@@ -318,5 +419,8 @@ impl Cpu {
         // Decode ModR/M to consume any displacement bytes
         let _ = self.decode_modrm(modrm, memory);
         // No operation - 8087 coprocessor not emulated
+
+        // ESC: 2 cycles (no coprocessor)
+        self.last_instruction_cycles = timing::cycles::ESC;
     }
 }

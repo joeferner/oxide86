@@ -1,8 +1,17 @@
 # TODO
 
-- [ ] More accurate instruction timing instead of assuming all instructions are a fixed cycle count
-- [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
+- [ ] CGA Test
+  - Mode 04h: 320x200, 4 Colors
+  - Mode 06h: 640x200, 2 Colors
 - [ ] check-it 2 locks up
+  - Handle INT 0x13 function: AH=0x01  2nd floppy disk ( "drive B:" )
+- [ ] Alley Cat locks up after splash screen
+- [ ] keyboard repeat rate (holding a key down)
+  - Create test asm
+  - Test CLI
+  - Test GUI
+  - Test WASM
+- [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
 - [ ] Test CGA Applications
   - [ ] Alley Cat
   - [ ] Flight Simulator 1.0

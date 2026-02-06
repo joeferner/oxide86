@@ -1,4 +1,4 @@
-use super::super::Cpu;
+use super::super::{Cpu, timing};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -18,6 +18,9 @@ impl Cpu {
             let value = self.fetch_byte(memory);
             self.set_reg8(reg, value);
         }
+
+        // MOV immediate to register: 4 cycles
+        self.last_instruction_cycles = timing::cycles::MOV_IMM_REG;
     }
 
     /// MOV register to/from r/m (opcodes 88-8B)
@@ -55,6 +58,20 @@ impl Cpu {
                 self.write_rm8(mode, rm, addr, value, memory);
             }
         }
+
+        // Calculate cycle timing based on operands
+        self.last_instruction_cycles = if mode == 0b11 {
+            // MOV reg, reg: 2 cycles
+            timing::cycles::MOV_REG_REG
+        } else if dir {
+            // MOV reg, mem: 8 + EA cycles
+            timing::cycles::MOV_MEM_REG
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        } else {
+            // MOV mem, reg: 9 + EA cycles
+            timing::cycles::MOV_REG_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
     }
 
     /// PUSH 16-bit register (opcodes 50-57)
@@ -73,6 +90,9 @@ impl Cpu {
             let value = self.get_reg16(reg);
             self.push(value, memory);
         }
+
+        // PUSH register: 11 cycles
+        self.last_instruction_cycles = timing::cycles::PUSH_REG;
     }
 
     /// POP 16-bit register (opcodes 58-5F)
@@ -81,6 +101,9 @@ impl Cpu {
         let reg = opcode & 0x07;
         let value = self.pop(memory);
         self.set_reg16(reg, value);
+
+        // POP register: 8 cycles
+        self.last_instruction_cycles = timing::cycles::POP_REG;
     }
 
     /// PUSH immediate (opcode 68: 16-bit, 6A: sign-extended 8-bit)
@@ -98,6 +121,9 @@ impl Cpu {
             }
         };
         self.push(value, memory);
+
+        // PUSH immediate: 10 cycles (80186+)
+        self.last_instruction_cycles = timing::cycles::PUSH_IMM;
     }
 
     /// MOV immediate to r/m (opcodes C6-C7)
@@ -120,6 +146,16 @@ impl Cpu {
             let value = self.fetch_byte(memory);
             self.write_rm8(mode, rm, addr, value, memory);
         }
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // MOV reg, imm: 4 cycles
+            timing::cycles::MOV_IMM_REG
+        } else {
+            // MOV mem, imm: 10 + EA cycles
+            timing::cycles::MOV_IMM_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
     }
 
     /// MOV accumulator to/from direct memory offset (opcodes A0-A3)
@@ -154,6 +190,13 @@ impl Cpu {
             let value = (self.ax & 0xFF) as u8;
             memory.write_u8(addr, value);
         }
+
+        // MOV acc, [addr] or [addr], acc: 10 cycles (direct addressing)
+        self.last_instruction_cycles = if to_acc {
+            timing::cycles::MOV_MEM_ACC
+        } else {
+            timing::cycles::MOV_ACC_MEM
+        };
     }
 
     /// MOV segment register to r/m16 (opcode 8C)
@@ -166,6 +209,16 @@ impl Cpu {
         // The reg field specifies which segment register (ES=0, CS=1, SS=2, DS=3)
         let value = self.get_segreg(seg_reg);
         self.write_rm16(mode, rm, addr, value, memory);
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // MOV reg, segreg: 2 cycles
+            timing::cycles::MOV_SEGREG_RM_REG
+        } else {
+            // MOV mem, segreg: 9 + EA cycles
+            timing::cycles::MOV_SEGREG_RM_MEM
+                + timing::calculate_ea_cycles(mode, seg_reg, self.segment_override.is_some())
+        };
     }
 
     /// MOV r/m16 to segment register (opcode 8E)
@@ -179,6 +232,16 @@ impl Cpu {
         // The reg field specifies which segment register (ES=0, CS=1, SS=2, DS=3)
         let value = self.read_rm16(mode, rm, addr, memory);
         self.set_segreg(seg_reg, value);
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // MOV segreg, reg: 2 cycles
+            timing::cycles::MOV_RM_SEGREG_REG
+        } else {
+            // MOV segreg, mem: 8 + EA cycles
+            timing::cycles::MOV_RM_SEGREG_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
     }
 
     /// PUSH segment register (opcodes 06, 0E, 16, 1E)
@@ -196,6 +259,9 @@ impl Cpu {
         };
         let value = self.get_segreg(seg);
         self.push(value, memory);
+
+        // PUSH segment register: 10 cycles
+        self.last_instruction_cycles = timing::cycles::PUSH_SEGREG;
     }
 
     /// POP segment register (opcodes 07, 0F, 17, 1F)
@@ -213,12 +279,18 @@ impl Cpu {
         };
         let value = self.pop(memory);
         self.set_segreg(seg, value);
+
+        // POP segment register: 8 cycles
+        self.last_instruction_cycles = timing::cycles::POP_SEGREG;
     }
 
     /// PUSHF - Push Flags Register (opcode 9C)
     /// Pushes the FLAGS register onto the stack
     pub(in crate::cpu) fn pushf(&mut self, memory: &mut Memory) {
         self.push(self.flags, memory);
+
+        // PUSHF: 10 cycles
+        self.last_instruction_cycles = timing::cycles::PUSHF;
     }
 
     /// POPF - Pop Flags Register (opcode 9D)
@@ -228,6 +300,9 @@ impl Cpu {
         let value = self.pop(memory);
         // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
         self.flags = (value & 0x0FFF) | 0x0002;
+
+        // POPF: 8 cycles
+        self.last_instruction_cycles = timing::cycles::POPF;
     }
 
     /// POP r/m16 (opcode 8F) - Group 1A
@@ -247,6 +322,16 @@ impl Cpu {
 
         let value = self.pop(memory);
         self.write_rm16(mode, rm, addr, value, memory);
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // POP reg: 8 cycles
+            timing::cycles::POP_REG
+        } else {
+            // POP mem: 17 + EA cycles
+            timing::cycles::POP_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
     }
 
     /// PUSH r/m16 (opcode FF /6) - Group 5
@@ -266,6 +351,16 @@ impl Cpu {
 
         let value = self.read_rm16(mode, rm, addr, memory);
         self.push(value, memory);
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // PUSH reg: 11 cycles
+            timing::cycles::PUSH_REG
+        } else {
+            // PUSH mem: 16 + EA cycles
+            timing::cycles::PUSH_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
     }
 
     /// XCHG register with accumulator (opcodes 90-97)
@@ -275,11 +370,15 @@ impl Cpu {
         let reg = opcode & 0x07;
         if reg == 0 {
             // NOP - XCHG AX, AX does nothing
+            self.last_instruction_cycles = timing::cycles::NOP;
             return;
         }
         let temp = self.ax;
         self.ax = self.get_reg16(reg);
         self.set_reg16(reg, temp);
+
+        // XCHG AX, reg: 3 cycles
+        self.last_instruction_cycles = timing::cycles::XCHG_REG_ACC;
     }
 
     /// XCHG register/memory with register (opcodes 86-87)
@@ -303,6 +402,16 @@ impl Cpu {
             self.set_reg8(reg, rm_val);
             self.write_rm8(mode, rm, addr, reg_val, memory);
         }
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // XCHG reg, reg: 4 cycles
+            timing::cycles::XCHG_REG_REG
+        } else {
+            // XCHG reg, mem: 17 + EA cycles
+            timing::cycles::XCHG_REG_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
     }
 
     /// XLAT - Table Look-up Translation (opcode 0xD7)
@@ -316,6 +425,9 @@ impl Cpu {
         let addr = Self::physical_address(segment, offset);
         let value = memory.read_u8(addr);
         self.ax = (self.ax & 0xFF00) | (value as u16);
+
+        // XLAT: 11 cycles
+        self.last_instruction_cycles = timing::cycles::XLAT;
     }
 
     /// LEA - Load Effective Address (opcode 0x8D)
@@ -368,6 +480,10 @@ impl Cpu {
         };
 
         self.set_reg16(reg, effective_offset);
+
+        // LEA: 2 + EA cycles (EA calculation is done even though memory isn't accessed)
+        self.last_instruction_cycles = timing::cycles::LEA
+            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
     }
 
     /// LDS - Load Pointer using DS (opcode 0xC5)
@@ -387,6 +503,11 @@ impl Cpu {
 
         self.set_reg16(reg, offset);
         self.ds = segment;
+
+        // LDS: 16 + EA cycles
+        let rm = modrm & 0x07;
+        self.last_instruction_cycles = timing::cycles::LDS
+            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
     }
 
     /// LES - Load Pointer using ES (opcode 0xC4)
@@ -406,6 +527,11 @@ impl Cpu {
 
         self.set_reg16(reg, offset);
         self.es = segment;
+
+        // LES: 16 + EA cycles
+        let rm = modrm & 0x07;
+        self.last_instruction_cycles = timing::cycles::LES
+            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
     }
 
     /// LAHF - Load AH from Flags (opcode 0x9F)
@@ -413,6 +539,9 @@ impl Cpu {
     pub(in crate::cpu) fn lahf(&mut self) {
         let ah = (self.flags & 0xFF) as u8;
         self.ax = (self.ax & 0x00FF) | ((ah as u16) << 8);
+
+        // LAHF: 4 cycles
+        self.last_instruction_cycles = timing::cycles::LAHF;
     }
 
     /// SAHF - Store AH into Flags (opcode 0x9E)
@@ -422,6 +551,9 @@ impl Cpu {
         // Only update lower 8 bits of flags (SF, ZF, 0, AF, 0, PF, 1, CF)
         // Preserve upper 8 bits
         self.flags = (self.flags & 0xFF00) | (ah as u16);
+
+        // SAHF: 4 cycles
+        self.last_instruction_cycles = timing::cycles::SAHF;
     }
 
     /// PUSHA - Push All General Registers (opcode 0x60)
@@ -437,6 +569,9 @@ impl Cpu {
         self.push(self.bp, memory);
         self.push(self.si, memory);
         self.push(self.di, memory);
+
+        // PUSHA: 36 cycles (80186+)
+        self.last_instruction_cycles = timing::cycles::PUSHA;
     }
 
     /// POPA - Pop All General Registers (opcode 0x61)
@@ -451,6 +586,9 @@ impl Cpu {
         self.dx = self.pop(memory);
         self.cx = self.pop(memory);
         self.ax = self.pop(memory);
+
+        // POPA: 51 cycles (80186+)
+        self.last_instruction_cycles = timing::cycles::POPA;
     }
 
     /// BOUND - Check Array Index Against Bounds (opcode 0x62)
@@ -476,10 +614,12 @@ impl Cpu {
         // Check if index is out of bounds
         if index < lower_bound || index > upper_bound {
             // Out of bounds - caller should trigger INT 5
+            self.last_instruction_cycles = timing::cycles::BOUND_OUT; // 48-51 cycles
             return true;
         }
 
         // Within bounds - no exception
+        self.last_instruction_cycles = timing::cycles::BOUND_IN; // 33-35 cycles
         false
     }
 }

@@ -731,9 +731,15 @@ impl<V: VideoController> Computer<V> {
         }
 
         // Increment cycle counter and update timer
-        // Approximate: assume each instruction takes 10 cycles
-        // Real 8086 instructions vary from 2 to 100+ cycles
-        self.increment_cycles(10);
+        // Use accurate cycle count from instruction, or fall back to 10 cycles
+        // if timing not yet implemented for this instruction
+        let cycles = if self.cpu.last_instruction_cycles > 0 {
+            self.cpu.last_instruction_cycles
+        } else {
+            10 // Fallback for instructions without timing implemented
+        };
+        self.increment_cycles(cycles);
+        self.cpu.last_instruction_cycles = 0; // Reset for next instruction
 
         // Update serial devices every 1000 instructions (~18 times per second)
         if self.step_count.is_multiple_of(1000) {

@@ -1,4 +1,4 @@
-use super::super::{Cpu, RepeatPrefix};
+use super::super::{Cpu, RepeatPrefix, timing};
 use crate::cpu::cpu_flag;
 use crate::io::IoDevice;
 use crate::memory::Memory;
@@ -17,12 +17,18 @@ impl Cpu {
 
         // Handle repeat prefix
         if self.repeat_prefix.is_some() {
+            let count = self.cx;
             while self.cx != 0 {
                 self.movs_once(is_word, memory);
                 self.cx = self.cx.wrapping_sub(1);
             }
+            // REP MOVS: 9 + 17*CX cycles
+            self.last_instruction_cycles =
+                timing::cycles::REP_MOVS_BASE + (timing::cycles::REP_MOVS_PER_ITER * count as u64);
         } else {
             self.movs_once(is_word, memory);
+            // MOVS (no REP): 18 cycles
+            self.last_instruction_cycles = timing::cycles::MOVS;
         }
     }
 
@@ -81,6 +87,7 @@ impl Cpu {
         match self.repeat_prefix {
             Some(RepeatPrefix::Rep) | Some(RepeatPrefix::Repe) => {
                 // REPE/REPZ: Repeat while CX != 0 and ZF = 1
+                let start_cx = self.cx;
                 while self.cx != 0 {
                     self.cmps_once(is_word, memory);
                     self.cx = self.cx.wrapping_sub(1);
@@ -88,9 +95,15 @@ impl Cpu {
                         break; // Stop if not equal (ZF=0)
                     }
                 }
+                // Calculate actual iterations performed
+                let iterations = start_cx - self.cx;
+                // REP CMPS: 9 + 22*count cycles
+                self.last_instruction_cycles = timing::cycles::REP_CMPS_BASE
+                    + (timing::cycles::REP_CMPS_PER_ITER * iterations as u64);
             }
             Some(RepeatPrefix::Repne) => {
                 // REPNE/REPNZ: Repeat while CX != 0 and ZF = 0
+                let start_cx = self.cx;
                 while self.cx != 0 {
                     self.cmps_once(is_word, memory);
                     self.cx = self.cx.wrapping_sub(1);
@@ -98,9 +111,16 @@ impl Cpu {
                         break; // Stop if equal (ZF=1)
                     }
                 }
+                // Calculate actual iterations performed
+                let iterations = start_cx - self.cx;
+                // REP CMPS: 9 + 22*count cycles
+                self.last_instruction_cycles = timing::cycles::REP_CMPS_BASE
+                    + (timing::cycles::REP_CMPS_PER_ITER * iterations as u64);
             }
             None => {
                 self.cmps_once(is_word, memory);
+                // CMPS (no REP): 22 cycles
+                self.last_instruction_cycles = timing::cycles::CMPS;
             }
         }
     }
@@ -162,6 +182,7 @@ impl Cpu {
         match self.repeat_prefix {
             Some(RepeatPrefix::Rep) | Some(RepeatPrefix::Repe) => {
                 // REPE/REPZ: Repeat while CX != 0 and ZF = 1
+                let start_cx = self.cx;
                 while self.cx != 0 {
                     self.scas_once(is_word, memory);
                     self.cx = self.cx.wrapping_sub(1);
@@ -169,9 +190,15 @@ impl Cpu {
                         break; // Stop if not equal (ZF=0)
                     }
                 }
+                // Calculate actual iterations performed
+                let iterations = start_cx - self.cx;
+                // REP SCAS: 9 + 15*count cycles
+                self.last_instruction_cycles = timing::cycles::REP_SCAS_BASE
+                    + (timing::cycles::REP_SCAS_PER_ITER * iterations as u64);
             }
             Some(RepeatPrefix::Repne) => {
                 // REPNE/REPNZ: Repeat while CX != 0 and ZF = 0
+                let start_cx = self.cx;
                 while self.cx != 0 {
                     self.scas_once(is_word, memory);
                     self.cx = self.cx.wrapping_sub(1);
@@ -179,9 +206,16 @@ impl Cpu {
                         break; // Stop if equal (ZF=1)
                     }
                 }
+                // Calculate actual iterations performed
+                let iterations = start_cx - self.cx;
+                // REP SCAS: 9 + 15*count cycles
+                self.last_instruction_cycles = timing::cycles::REP_SCAS_BASE
+                    + (timing::cycles::REP_SCAS_PER_ITER * iterations as u64);
             }
             None => {
                 self.scas_once(is_word, memory);
+                // SCAS (no REP): 15 cycles
+                self.last_instruction_cycles = timing::cycles::SCAS;
             }
         }
     }
@@ -232,12 +266,18 @@ impl Cpu {
 
         // Handle repeat prefix
         if self.repeat_prefix.is_some() {
+            let count = self.cx;
             while self.cx != 0 {
                 self.lods_once(is_word, memory);
                 self.cx = self.cx.wrapping_sub(1);
             }
+            // REP LODS: 9 + 13*CX cycles
+            self.last_instruction_cycles =
+                timing::cycles::REP_LODS_BASE + (timing::cycles::REP_LODS_PER_ITER * count as u64);
         } else {
             self.lods_once(is_word, memory);
+            // LODS (no REP): 12 cycles
+            self.last_instruction_cycles = timing::cycles::LODS;
         }
     }
 
@@ -280,12 +320,18 @@ impl Cpu {
 
         // Handle repeat prefix
         if self.repeat_prefix.is_some() {
+            let count = self.cx;
             while self.cx != 0 {
                 self.stos_once(is_word, memory);
                 self.cx = self.cx.wrapping_sub(1);
             }
+            // REP STOS: 9 + 10*CX cycles
+            self.last_instruction_cycles =
+                timing::cycles::REP_STOS_BASE + (timing::cycles::REP_STOS_PER_ITER * count as u64);
         } else {
             self.stos_once(is_word, memory);
+            // STOS (no REP): 11 cycles
+            self.last_instruction_cycles = timing::cycles::STOS;
         }
     }
 
@@ -437,12 +483,18 @@ impl Cpu {
     /// Sets DF to 0, causing string operations to increment SI/DI (forward direction)
     pub(in crate::cpu) fn cld(&mut self) {
         self.set_flag(cpu_flag::DIRECTION, false);
+
+        // CLD: 2 cycles
+        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
     }
 
     /// STD - Set Direction Flag (opcode FD)
     /// Sets DF to 1, causing string operations to decrement SI/DI (backward direction)
     pub(in crate::cpu) fn std_flag(&mut self) {
         self.set_flag(cpu_flag::DIRECTION, true);
+
+        // STD: 2 cycles
+        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
     }
 
     /// Helper function to set flags for 8-bit subtraction
