@@ -129,7 +129,7 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
       <div className={styles.controlGroup}>
         <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Floppy Drive A:</Text>
         <Group gap="xs">
-          <FileButton onChange={handleFloppyAChange} accept=".img,.ima,.dsk">
+          <FileButton key={floppyAFile?.name || 'empty-a'} onChange={handleFloppyAChange} accept=".img,.ima,.dsk">
             {(props) => <Button {...props} size="compact-sm" variant="default">{floppyAFile ? floppyAFile.name : 'Choose File'}</Button>}
           </FileButton>
           <Tooltip label="Eject A:">
@@ -153,7 +153,7 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
       <div className={styles.controlGroup}>
         <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>Floppy Drive B:</Text>
         <Group gap="xs">
-          <FileButton onChange={handleFloppyBChange} accept=".img,.ima,.dsk">
+          <FileButton key={floppyBFile?.name || 'empty-b'} onChange={handleFloppyBChange} accept=".img,.ima,.dsk">
             {(props) => <Button {...props} size="compact-sm" variant="default">{floppyBFile ? floppyBFile.name : 'Choose File'}</Button>}
           </FileButton>
           <Tooltip label="Eject B:">

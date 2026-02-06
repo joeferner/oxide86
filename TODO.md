@@ -1,6 +1,5 @@
 # TODO
 
-- [ ] WASM - support creating new disks
 - [ ] More accurate instruction timing instead of assuming all instructions are a fixed cycle count
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
 - [ ] check-it 2 locks up
@@ -8,6 +7,7 @@
   - [ ] Alley Cat
   - [ ] Flight Simulator 1.0
   - [ ] Kings Quest 1
+- [ ] WASM - support creating new disks
 - [ ] Support 286 (command line switch to choose)
 - [ ] Support EGA
 - [ ] Test EGA Applications

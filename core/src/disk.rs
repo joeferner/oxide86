@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use std::cell::RefCell;
+use std::rc::Rc;
 
 /// Standard sector size for floppy disks (512 bytes)
 pub const SECTOR_SIZE: usize = 512;
@@ -579,56 +580,61 @@ impl<D: DiskController> DiskController for PartitionedDisk<D> {
 }
 
 /// Memory-backed disk storage for WASM and testing.
-/// Entire disk image is stored in memory.
+/// Entire disk image is stored in memory using Rc<RefCell<>> for shared mutable access.
+/// This allows multiple disk instances (e.g., raw + partitioned views) to share the same data.
 #[derive(Debug, Clone)]
 pub struct MemoryDiskBackend {
-    data: Vec<u8>,
+    data: Rc<RefCell<Vec<u8>>>,
 }
 
 impl MemoryDiskBackend {
     /// Create a new memory-backed disk from existing data
     pub fn new(data: Vec<u8>) -> Self {
-        Self { data }
+        Self {
+            data: Rc::new(RefCell::new(data)),
+        }
     }
 
     /// Create a new blank disk of the specified size
     pub fn new_blank(size: usize) -> Self {
         Self {
-            data: vec![0; size],
+            data: Rc::new(RefCell::new(vec![0; size])),
         }
     }
 
     /// Get a copy of the disk data (for downloading)
-    pub fn get_data(&self) -> &[u8] {
-        &self.data
+    pub fn get_data(&self) -> Vec<u8> {
+        self.data.borrow().clone()
     }
 
     /// Get the size of the disk
     pub fn size(&self) -> usize {
-        self.data.len()
+        self.data.borrow().len()
     }
 }
 
 impl DiskBackend for MemoryDiskBackend {
     fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<usize> {
+        let data = self.data.borrow();
         let offset = offset as usize;
-        if offset >= self.data.len() {
+        if offset >= data.len() {
             return Ok(0);
         }
-        let end = (offset + buf.len()).min(self.data.len());
+        let end = (offset + buf.len()).min(data.len());
         let bytes_to_read = end - offset;
-        buf[..bytes_to_read].copy_from_slice(&self.data[offset..end]);
+        buf[..bytes_to_read].copy_from_slice(&data[offset..end]);
         Ok(bytes_to_read)
     }
 
     fn write_at(&mut self, offset: u64, buf: &[u8]) -> Result<usize> {
+        let mut data = self.data.borrow_mut();
         let offset = offset as usize;
-        if offset >= self.data.len() {
+        if offset >= data.len() {
             return Ok(0);
         }
-        let end = (offset + buf.len()).min(self.data.len());
+        let end = (offset + buf.len()).min(data.len());
         let bytes_to_write = end - offset;
-        self.data[offset..end].copy_from_slice(&buf[..bytes_to_write]);
+        data[offset..end].copy_from_slice(&buf[..bytes_to_write]);
         Ok(bytes_to_write)
     }
 
@@ -637,7 +643,7 @@ impl DiskBackend for MemoryDiskBackend {
     }
 
     fn size(&self) -> u64 {
-        self.data.len() as u64
+        self.data.borrow().len() as u64
     }
 }
 

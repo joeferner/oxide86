@@ -240,8 +240,10 @@ impl Emu86Computer {
             ));
         }
 
-        let backend = MemoryDiskBackend::new(data.clone());
-        let disk = BackedDisk::new(backend).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        // MemoryDiskBackend now uses Rc<RefCell<>> internally, so cloning shares the data
+        let backend = MemoryDiskBackend::new(data);
+        let disk =
+            BackedDisk::new(backend.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
         // Check if disk has MBR and partitions
         let sector_0 = disk.read_sector_lba(0).ok();
@@ -258,13 +260,19 @@ impl Emu86Computer {
             );
 
             // Create raw disk for INT 13h operations (MBR access)
-            let raw_backend = MemoryDiskBackend::new(data);
             let raw_disk =
-                BackedDisk::new(raw_backend).map_err(|e| JsValue::from_str(&e.to_string()))?;
+                BackedDisk::new(backend.clone()).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
             // Create partitioned disk for DOS filesystem operations
-            let partitioned =
-                PartitionedDisk::new(disk, partition.start_sector, partition.sector_count);
+            // Both views share the same underlying data via Rc<RefCell<>>
+            let partition_disk =
+                BackedDisk::new(backend).map_err(|e| JsValue::from_str(&e.to_string()))?;
+            let partitioned = PartitionedDisk::new(
+                partition_disk,
+                partition.start_sector,
+                partition.sector_count,
+            );
+
             self.computer
                 .bios_mut()
                 .add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk))
@@ -826,10 +834,15 @@ impl Emu86Computer {
 
         let bios = self.computer.bios_mut();
 
-        // Note: File deletion is not yet implemented in the emulator
-        // For now, we only support directory deletion
+        // Try to delete as a file first
+        if let Ok(()) = bios.file_delete(&dos_path) {
+            log::info!("Deleted file {}", dos_path);
+            return Ok(());
+        }
+
+        // If file deletion fails, try directory deletion
         bios.dir_remove(&dos_path)
-            .map_err(|e| JsValue::from_str(&format!("Failed to delete directory: {}. Note: File deletion is not yet supported, only directory deletion.", e)))?;
+            .map_err(|e| JsValue::from_str(&format!("Failed to delete: {}", e)))?;
 
         log::info!("Deleted directory {}", dos_path);
         Ok(())

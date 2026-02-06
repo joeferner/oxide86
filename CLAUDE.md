@@ -193,7 +193,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 
 ### INT 21h DOS Functions
 - **Console**: 01h read+echo, 02h write, 09h string
-- **Files**: 3Ch create, 3Dh open, 3Eh close, 3Fh read, 40h write, 42h seek, 44h IOCTL, 45h dup
+- **Files**: 3Ch create, 3Dh open, 3Eh close, 3Fh read, 40h write, 41h delete, 42h seek, 44h IOCTL, 45h dup
 - **Dirs**: 39h mkdir, 3Ah rmdir, 3Bh chdir, 47h getcwd, 4Eh/4Fh find
 - **Memory**: 48h alloc, 49h free, 4Ah resize
 - **Process**: 4Bh exec, 4Ch exit, 50h set PSP

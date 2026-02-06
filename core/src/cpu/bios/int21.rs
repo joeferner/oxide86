@@ -68,6 +68,7 @@ impl Cpu {
             0x3E => self.int21_close_file(io),
             0x3F => self.int21_read_file(memory, io),
             0x40 => self.int21_write_file(memory, io, video),
+            0x41 => self.int21_delete_file(memory, io),
             0x42 => self.int21_seek_file(io),
             0x44 => self.int21_ioctl(memory, io),
             0x45 => self.int21_duplicate_file(io),
@@ -568,6 +569,34 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
+                self.ax = error_code as u16;
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 21h, AH=41h - Delete File (UNLINK)
+    /// Input:
+    ///   DS:DX = pointer to null-terminated filename
+    /// Output:
+    ///   CF clear if success
+    ///   CF set if error: AX = error code
+    fn int21_delete_file(&mut self, memory: &Memory, io: &mut super::Bios) {
+        let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
+
+        log::debug!("INT 21h AH=41h: Deleting file '{}'", filename);
+
+        match io.file_delete(&filename) {
+            Ok(()) => {
+                log::debug!("INT 21h AH=41h: Successfully deleted file '{}'", filename);
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            Err(error_code) => {
+                log::warn!(
+                    "INT 21h AH=41h: Failed to delete file '{}' - error {}",
+                    filename,
+                    error_code
+                );
                 self.ax = error_code as u16;
                 self.set_flag(cpu_flag::CARRY, true);
             }

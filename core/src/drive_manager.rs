@@ -853,6 +853,23 @@ impl DriveManager {
         Ok(())
     }
 
+    pub fn file_delete(&mut self, filename: &str) -> Result<(), DosError> {
+        let (drive, path_part) = self.parse_path(filename);
+        let path = self.resolve_path(drive, &path_part);
+
+        let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+        let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
+
+        adapter.reset_position();
+        let fs =
+            fatfs::FileSystem::new(adapter, fatfs::FsOptions::new()).map_err(Self::map_error)?;
+        let root_dir = fs.root_dir();
+
+        root_dir.remove(&path).map_err(Self::map_error)?;
+
+        Ok(())
+    }
+
     pub fn dir_change(&mut self, dirname: &str) -> Result<(), DosError> {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);

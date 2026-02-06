@@ -541,6 +541,10 @@ impl Bios {
         self.shared.drive_manager.dir_remove(dirname)
     }
 
+    pub fn file_delete(&mut self, filename: &str) -> Result<(), DosError> {
+        self.shared.drive_manager.file_delete(filename)
+    }
+
     pub fn dir_change(&mut self, dirname: &str) -> Result<(), DosError> {
         self.shared.drive_manager.dir_change(dirname)
     }
