@@ -7,7 +7,15 @@ use crate::{
 impl Cpu {
     /// INT 0x13 - BIOS Disk Services
     /// AH register contains the function number
+    ///
+    /// Note: AT-class BIOS enables interrupts (STI) during disk operations so that
+    /// timer IRQs (INT 0x08) can still fire. This is important for programs that
+    /// depend on the BDA timer counter advancing during disk benchmarks.
     pub(super) fn handle_int13(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+        // Enable interrupts during disk operations (AT-class BIOS behavior)
+        // This allows timer IRQs to fire even during extended disk operations
+        self.set_flag(cpu_flag::INTERRUPT, true);
+
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {

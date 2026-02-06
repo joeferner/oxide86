@@ -377,26 +377,10 @@ impl Cpu {
         let new_cs = self.pop(memory);
         let new_flags = self.pop(memory);
 
-        log::info!(
-            "IRET: Restoring - IP=0x{:04X} CS=0x{:04X} current_flags=0x{:04X} new_flags=0x{:04X} current_IF={} new_IF={}",
-            new_ip,
-            new_cs,
-            self.flags,
-            new_flags,
-            (self.flags & 0x0200) >> 9,
-            (new_flags & 0x0200) >> 9
-        );
-
         self.ip = new_ip;
         self.cs = new_cs;
         // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
         self.flags = (new_flags & 0x0FFF) | 0x0002;
-
-        log::info!(
-            "IRET: After restore - flags=0x{:04X} IF={}",
-            self.flags,
-            (self.flags & 0x0200) >> 9
-        );
 
         // IRET: 24 cycles
         self.last_instruction_cycles = timing::cycles::IRET;

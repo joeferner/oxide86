@@ -4,10 +4,10 @@
   - Mode 04h: 320x200, 4 Colors
   - Mode 06h: 640x200, 2 Colors
 - [ ] check-it 2
-  - locks up on start
   - Handle INT 0x13 function: AH=0x01  2nd floppy disk ( "drive B:" )
   - video graphics tests are failing
 - [ ] Alley Cat locks up after splash screen
+- [ ] Boot error cannot control A20 line
 - [ ] keyboard repeat rate (holding a key down)
   - Create test asm
   - Test CLI

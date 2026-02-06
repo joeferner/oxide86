@@ -193,19 +193,23 @@ impl Cpu {
         if self.log_interrupts_enabled
             && int_num != 0x10
             && int_num != 0x16
-            && int_num != 0x1a
             && int_num != 0x2a
             && int_num != 0x28
             && int_num != 0x29
         {
             log::info!(
-                "INT 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X} BIOS={}",
+                "INT 0x{:02X} AX={:04X} BX={:04X} CX={:04X} DX={:04X} BIOS={} IF={}",
                 int_num,
                 self.ax,
                 self.bx,
                 self.cx,
                 self.dx,
-                is_bios_handler
+                is_bios_handler,
+                if self.get_flag(cpu_flag::INTERRUPT) {
+                    1
+                } else {
+                    0
+                }
             );
         }
 

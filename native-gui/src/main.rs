@@ -76,6 +76,7 @@ struct Cli {
 }
 
 fn main() {
+    use std::io::Write;
     let log_file = File::create("emu86.log").expect("Failed to create log file");
     env_logger::Builder::from_default_env()
         .filter_level(LevelFilter::Error)
@@ -83,6 +84,21 @@ fn main() {
         .filter_module("emu86_native_gui", LevelFilter::Info)
         .filter_module("wgpu_core", LevelFilter::Info)
         .filter_module("wgpu_hal", LevelFilter::Info)
+        .format(|buf, record| {
+            use chrono::Timelike;
+            let now = chrono::Local::now();
+            writeln!(
+                buf,
+                "[{:02}:{:02}:{:02}.{:03} {:5} {}] {}",
+                now.hour(),
+                now.minute(),
+                now.second(),
+                now.timestamp_subsec_millis(),
+                record.level(),
+                record.target(),
+                record.args()
+            )
+        })
         .target(env_logger::Target::Pipe(Box::new(log_file)))
         .init();
 

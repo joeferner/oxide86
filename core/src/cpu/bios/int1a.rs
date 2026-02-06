@@ -11,7 +11,14 @@ pub const TIMER_TICKS_PER_DAY: u32 = 0x001800B0;
 impl Cpu {
     /// INT 0x1A - Time Services
     /// AH register contains the function number
+    ///
+    /// Note: Like INT 0x13, we enable interrupts (STI) during time services so that
+    /// timer IRQs (INT 0x08) can fire. This is important for programs that poll
+    /// the system time in a tight loop waiting for it to change.
     pub(super) fn handle_int1a(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+        // Enable interrupts during time services (allows timer IRQs to fire)
+        self.set_flag(cpu_flag::INTERRUPT, true);
+
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {

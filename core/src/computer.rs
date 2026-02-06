@@ -45,8 +45,6 @@ pub struct Computer<V: VideoController = NullVideoController> {
     pending_serial_irqs: std::collections::VecDeque<u8>, // Serial port numbers (0=COM1, 1=COM2)
     /// Pending timer IRQs (INT 08h) - counter to handle multiple ticks if CPU is slow
     pending_timer_irqs: u32,
-    /// Debug: track if we've logged timer IRQ blocking (to avoid spam)
-    timer_irq_blocked_logged: bool,
     /// Counter for periodic speaker updates (reduces overhead)
     speaker_update_cycles: u64,
     /// Boot drive for reset/reboot operations
@@ -114,7 +112,6 @@ impl<V: VideoController> Computer<V> {
             pending_keyboard_irqs: std::collections::VecDeque::new(),
             pending_serial_irqs: std::collections::VecDeque::new(),
             pending_timer_irqs: 0,
-            timer_irq_blocked_logged: false,
             speaker_update_cycles: 0,
             boot_drive: None,
             loaded_program: None,
@@ -281,7 +278,6 @@ impl<V: VideoController> Computer<V> {
         self.pending_keyboard_irqs.clear();
         self.pending_serial_irqs.clear();
         self.pending_timer_irqs = 0;
-        self.timer_irq_blocked_logged = false;
 
         // Reset cycle counters
         self.cycle_count = 0;
@@ -340,8 +336,16 @@ impl<V: VideoController> Computer<V> {
     ///
     /// This adds the key to the BIOS keyboard buffer and calls the INT 09h handler.
     /// Programs can install custom INT 09h handlers to intercept keyboard input.
-    fn fire_keyboard_irq(&mut self, key: KeyPress) {
+    /// Returns true if the interrupt was fired, false if blocked (IF=0).
+    fn fire_keyboard_irq(&mut self, key: KeyPress) -> bool {
+        use crate::cpu::cpu_flag;
         use memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START};
+
+        // Only fire if interrupts are enabled
+        if !self.cpu.get_flag(cpu_flag::INTERRUPT) {
+            // Return false - caller should NOT remove from queue
+            return false;
+        }
 
         // Add key to BIOS keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
@@ -366,7 +370,7 @@ impl<V: VideoController> Computer<V> {
                 key.scan_code,
                 key.ascii_code
             );
-            return;
+            return false;
         }
 
         // Add key to buffer
@@ -395,13 +399,14 @@ impl<V: VideoController> Computer<V> {
         self.cpu.push(self.cpu.ip, &mut self.memory);
 
         // Clear IF and TF flags (standard INT behavior)
-        use crate::cpu::cpu_flag;
         self.cpu.set_flag(cpu_flag::INTERRUPT, false);
         self.cpu.set_flag(cpu_flag::TRAP, false);
 
         // Jump to INT 09h handler
         self.cpu.cs = segment;
         self.cpu.ip = offset;
+
+        true
     }
 
     /// Queue a serial port interrupt (IRQ3 for COM2, IRQ4 for COM1)
@@ -416,7 +421,16 @@ impl<V: VideoController> Computer<V> {
     /// Fire INT 0x0C (IRQ4, COM1) or INT 0x0B (IRQ3, COM2)
     ///
     /// This is the hardware interrupt for serial port data reception.
-    fn fire_serial_irq(&mut self, port_num: u8) {
+    /// Returns true if the interrupt was fired, false if blocked (IF=0).
+    fn fire_serial_irq(&mut self, port_num: u8) -> bool {
+        use crate::cpu::cpu_flag;
+
+        // Only fire if interrupts are enabled
+        if !self.cpu.get_flag(cpu_flag::INTERRUPT) {
+            // Return false - caller should NOT remove from queue
+            return false;
+        }
+
         // COM1 = IRQ4 = INT 0x0C, COM2 = IRQ3 = INT 0x0B
         let int_num = if port_num == 0 { 0x0C } else { 0x0B };
 
@@ -438,13 +452,14 @@ impl<V: VideoController> Computer<V> {
         self.cpu.push(self.cpu.ip, &mut self.memory);
 
         // Clear IF and TF flags (standard INT behavior)
-        use crate::cpu::cpu_flag;
         self.cpu.set_flag(cpu_flag::INTERRUPT, false);
         self.cpu.set_flag(cpu_flag::TRAP, false);
 
         // Jump to interrupt handler
         self.cpu.cs = segment;
         self.cpu.ip = offset;
+
+        true
     }
 
     /// Fire INT 0x08 (Timer Hardware Interrupt / IRQ0)
@@ -552,18 +567,27 @@ impl<V: VideoController> Computer<V> {
 
         // Process pending keyboard IRQs before executing the next instruction
         // This simulates hardware interrupts that preempt normal execution
-        if let Some(key) = self.pending_keyboard_irqs.pop_front() {
+        // Only pop from queue if we actually fire (IF=1)
+        if !self.pending_keyboard_irqs.is_empty()
+            && self.cpu.get_flag(crate::cpu::cpu_flag::INTERRUPT)
+            && let Some(key) = self.pending_keyboard_irqs.pop_front()
+        {
             self.fire_keyboard_irq(key);
             // After firing the IRQ, return to let the INT 09h handler execute
             // The handler will run on subsequent step() calls
             return;
         }
+        // If IF=0, leave the IRQ in queue for later
 
         // Process pending serial IRQs
-        if let Some(port_num) = self.pending_serial_irqs.pop_front() {
-            self.fire_serial_irq(port_num);
+        // Only pop from queue if we actually fire (IF=1)
+        if let Some(&port_num) = self.pending_serial_irqs.front()
+            && self.fire_serial_irq(port_num)
+        {
+            self.pending_serial_irqs.pop_front();
             return;
         }
+        // If IF=0, leave the IRQ in queue for later
 
         // Process pending timer IRQs (INT 0x08)
         // Timer has lowest priority among hardware interrupts
@@ -571,7 +595,6 @@ impl<V: VideoController> Computer<V> {
             // Only decrement if we actually fired the IRQ (IF was enabled)
             if self.fire_timer_irq() {
                 self.pending_timer_irqs -= 1;
-                self.timer_irq_blocked_logged = false; // Reset for next potential block
                 return;
             }
         }
@@ -618,14 +641,46 @@ impl<V: VideoController> Computer<V> {
             // If CS:IP changed from F000:int_num, a chain is in progress - don't overwrite
             let chained = !(self.cpu.cs == 0xF000 && self.cpu.ip == current_ip);
             if !chained {
-                // No chaining occurred - normal return path
-                // Pop the FLAGS that DOS pushed before CALL FAR
-                let saved_flags = self.cpu.pop(&self.memory);
-                // BIOS may have modified flags (especially CF for error indication)
-                // Merge: keep the modified CF, ZF, etc. from BIOS, but restore IF from DOS
-                self.cpu.flags = (self.cpu.flags & 0xF8FF) | (saved_flags & 0x0700); // Restore IF, TF, DF
+                // Before restoring flags, check if BIOS handler enabled interrupts (STI)
+                // and there are pending timer IRQs. If so, handle them now while IF=1.
+                // This simulates the timer IRQs that would fire during disk I/O on real hardware.
+                //
+                // We call the BIOS INT 0x08 handler directly (not via fire_timer_irq) because
+                // we're already in the middle of handling an F000 call and don't want to
+                // mess with the stack frames.
+                let if_currently_enabled = self.cpu.get_flag(crate::cpu::cpu_flag::INTERRUPT);
+                while if_currently_enabled && self.pending_timer_irqs > 0 {
+                    // Directly call the BIOS INT 0x08 handler to update BDA timer counter
+                    // This bypasses the full interrupt machinery (no stack frame manipulation)
+                    self.cpu.handle_bios_interrupt_direct(
+                        0x08,
+                        &mut self.memory,
+                        &mut self.bios,
+                        &mut self.video,
+                    );
+                    self.pending_timer_irqs -= 1;
+                }
 
-                // Return to DOS
+                // No chaining occurred - normal return path
+                //
+                // BIOS interrupt handlers return via IRET, which pops IP, CS, FLAGS.
+                // We already popped ret_IP and ret_CS above. Now we need to pop FLAGS
+                // to complete the IRET simulation.
+                //
+                // Two scenarios with same stack handling:
+                // 1. Direct INT/IRQ to F000: Stack had [IP, CS, FLAGS] from INT instruction
+                // 2. Chained via PUSHF+CALL FAR: Stack had [ret_IP, ret_CS, PUSHF'd FLAGS, ...]
+                //    The PUSHF'd FLAGS is what we pop here (simulating BIOS doing IRET)
+                //
+                // In both cases, popping FLAGS is correct:
+                // - Case 1: We restore the original caller's FLAGS
+                // - Case 2: We restore the DOS handler's PUSHF'd FLAGS (IF=0), and the
+                //           DOS handler will later do IRET to restore the original caller's FLAGS
+                let saved_flags = self.cpu.pop(&self.memory);
+                // Restore IF, TF, DF from saved flags (keep CF, ZF, etc. from BIOS handler)
+                self.cpu.flags = (self.cpu.flags & 0xF8FF) | (saved_flags & 0x0700);
+
+                // Return to caller
                 self.cpu.ip = ret_offset;
                 self.cpu.cs = ret_segment;
             } else {
@@ -948,6 +1003,15 @@ impl<V: VideoController> Computer<V> {
         while self.cycle_count >= self.cycles_per_tick {
             self.cycle_count -= self.cycles_per_tick;
             self.pending_timer_irqs += 1;
+            // Warn if many timer IRQs are pending (IF has been 0 for too long)
+            if self.pending_timer_irqs == 10 {
+                log::warn!(
+                    "10 timer IRQs pending! IF=0 for extended period. CS:IP={:04X}:{:04X} FLAGS=0x{:04X}",
+                    self.cpu.cs,
+                    self.cpu.ip,
+                    self.cpu.flags
+                );
+            }
         }
     }
 
