@@ -47,7 +47,19 @@ export function DiskManager({ computer, opened, onClose, onStatusUpdate }: DiskM
     setLoading(true);
     try {
       const result = computer.list_directory(drive, path);
-      setFiles(result as FileEntry[]);
+      const fileList = result as FileEntry[];
+
+      // Sort files: directories first, then files, both alphabetically (case-insensitive)
+      fileList.sort((a, b) => {
+        // Directories come before files
+        if (a.isDirectory && !b.isDirectory) return -1;
+        if (!a.isDirectory && b.isDirectory) return 1;
+
+        // Sort by name (case-insensitive)
+        return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+      });
+
+      setFiles(fileList);
     } catch (e) {
       onStatusUpdate(`Error browsing ${getDriveLetter(drive)}: ${e}`);
       setFiles([]);
