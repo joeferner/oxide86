@@ -19,6 +19,7 @@ function App() {
   const [mode, setMode] = useState<'boot' | 'program'>('boot')
   const [diskManagerOpened, setDiskManagerOpened] = useState(false)
   const [selectedDrive, setSelectedDrive] = useState<number>(0x80)
+  const [bootDrive, setBootDrive] = useState<number>(0x80) // Default to C:
 
   const {
     computer,
@@ -39,10 +40,12 @@ function App() {
   }, [setStatus])
 
   const handleBootA = useCallback(() => {
+    setBootDrive(0x00)
     boot(0x00)
   }, [boot])
 
   const handleBootC = useCallback(() => {
+    setBootDrive(0x80)
     boot(0x80)
   }, [boot])
 
@@ -105,6 +108,7 @@ function App() {
                 onBootA={handleBootA}
                 onBootC={handleBootC}
                 onReset={reset}
+                bootDrive={bootDrive}
               />
             ) : (
               <ProgramControl
