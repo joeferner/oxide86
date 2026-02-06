@@ -136,8 +136,6 @@ fn parse_command(input: &str) -> Result<Command> {
             (true, rest)
         } else if let Some(rest) = rest.strip_prefix("disable") {
             (false, rest)
-        } else if let Ok(steps) = rest.parse::<u32>() {
-            return Ok(Command::LogSteps { steps });
         } else {
             return Err(anyhow::anyhow!("Invalid log command"));
         };
@@ -171,7 +169,6 @@ fn show_help(stdout: &mut Stdout) -> Result<()> {
         Print("  log enable/disable        - Enable/Disable all additional logging\r\n"),
         Print("  log enable/disable exec   - Enable/Disable execution logging\r\n"),
         Print("  log enable/disable int    - Enable/Disable interrupt logging\r\n"),
-        Print("  log <number of steps>     - Enable logging for the number of steps\r\n"),
         Print("  resume (or Enter)         - Resume emulation\r\n"),
         Print("  q, quit, exit             - Halt emulator and exit\r\n"),
     )?;

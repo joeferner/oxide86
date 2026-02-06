@@ -151,6 +151,10 @@ impl<V: VideoController> Computer<V> {
         // Clear boot_drive since we're loading a program, not booting
         self.boot_drive = None;
 
+        // Enable interrupts - DOS programs expect IF=1 (inherited from DOS environment)
+        use crate::cpu::cpu_flag;
+        self.cpu.set_flag(cpu_flag::INTERRUPT, true);
+
         Ok(())
     }
 
@@ -241,6 +245,11 @@ impl<V: VideoController> Computer<V> {
 
         // Clear loaded_program since we're booting, not loading
         self.loaded_program = None;
+
+        // Enable interrupts - real BIOS enables IF before jumping to boot sector
+        // This allows timer IRQs (INT 0x08) to fire and update the BDA timer counter
+        use crate::cpu::cpu_flag;
+        self.cpu.set_flag(cpu_flag::INTERRUPT, true);
 
         Ok(())
     }
