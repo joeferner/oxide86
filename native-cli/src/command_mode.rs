@@ -51,7 +51,6 @@ enum Command {
     Insert { drive: DriveNumber, path: String },
     Eject { drive: DriveNumber },
     ToggleLogging { enable: bool, log: Log },
-    LogSteps { steps: u32 },
     Reset,
     Resume,
     Quit,
@@ -274,16 +273,13 @@ where
                 }
             },
             Command::ToggleLogging { enable, log } => match log {
-                Log::Execution => computer.exec_logging_enabled = enable,
+                Log::Execution => computer.set_exec_logging(enable),
                 Log::Interrupt => computer.set_log_interrupts(enable),
                 Log::All => {
-                    computer.exec_logging_enabled = enable;
+                    computer.set_exec_logging(enable);
                     computer.set_log_interrupts(enable);
                 }
             },
-            Command::LogSteps { steps } => {
-                computer.set_log_steps(steps);
-            }
         }
     };
 

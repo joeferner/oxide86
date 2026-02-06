@@ -122,7 +122,7 @@ pub(super) fn calculate_ea_cycles(mode: u8, rm: u8, has_segment_override: bool) 
 ///
 /// Notation: "+EA" means add EA calculation cycles (see calculate_ea_cycles)
 #[allow(dead_code)]
-pub(super) mod cycles {
+pub mod cycles {
     //
     // Data Transfer Instructions
     //

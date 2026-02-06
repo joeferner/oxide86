@@ -1,4 +1,4 @@
-use super::super::{Cpu, cpu_flag};
+use super::super::{Cpu, cpu_flag, timing};
 use crate::memory::Memory;
 
 impl Cpu {
@@ -55,6 +55,20 @@ impl Cpu {
             self.set_flag(cpu_flag::OVERFLOW, overflow);
             self.set_flag(cpu_flag::AUXILIARY, aux_carry);
         }
+
+        // Set cycle count
+        self.last_instruction_cycles = if mode == 0b11 {
+            // CMP reg, reg: 3 cycles
+            timing::cycles::CMP_REG_REG
+        } else if dir {
+            // CMP reg, mem: 9 + EA cycles
+            timing::cycles::CMP_REG_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        } else {
+            // CMP mem, reg: 9 + EA cycles
+            timing::cycles::CMP_MEM_REG
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
     }
 
     /// CMP immediate to accumulator (opcodes 3C-3D)
@@ -85,5 +99,8 @@ impl Cpu {
             self.set_flag(cpu_flag::OVERFLOW, overflow);
             self.set_flag(cpu_flag::AUXILIARY, aux_carry);
         }
+
+        // CMP immediate with accumulator: 4 cycles
+        self.last_instruction_cycles = timing::cycles::CMP_IMM_ACC;
     }
 }

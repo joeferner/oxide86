@@ -1166,15 +1166,7 @@ fn handle_debug_action(
             log::info!("Computer reset complete");
         }
         MenuAction::ToggleExecutionLogging => {
-            computer.exec_logging_enabled = !computer.exec_logging_enabled;
-            log::info!(
-                "Execution logging {}",
-                if computer.exec_logging_enabled {
-                    "enabled"
-                } else {
-                    "disabled"
-                }
-            );
+            computer.set_exec_logging(!computer.exec_logging_enabled);
         }
         MenuAction::ToggleInterruptLogging => {
             app_state.interrupt_logging_enabled = !app_state.interrupt_logging_enabled;

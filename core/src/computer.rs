@@ -39,7 +39,6 @@ pub struct Computer<V: VideoController = NullVideoController> {
     pub exec_logging_enabled: bool,
     /// if set to true, interrupts will be logged as info level
     log_interrupts_enabled: bool,
-    log_steps: u32,
 
     /// Queue of pending keyboard IRQs (INT 09h)
     pending_keyboard_irqs: std::collections::VecDeque<KeyPress>,
@@ -112,7 +111,6 @@ impl<V: VideoController> Computer<V> {
             step_count: 0,
             exec_logging_enabled: false,
             log_interrupts_enabled: false,
-            log_steps: 0,
             pending_keyboard_irqs: std::collections::VecDeque::new(),
             pending_serial_irqs: std::collections::VecDeque::new(),
             pending_timer_irqs: 0,
@@ -498,14 +496,6 @@ impl<V: VideoController> Computer<V> {
 
     /// Execute a single instruction
     pub fn step(&mut self) {
-        if self.log_steps > 0 {
-            self.log_steps -= 1;
-            if self.log_steps == 0 {
-                self.set_log_interrupts(false);
-                self.exec_logging_enabled = false;
-            }
-        }
-
         self.step_count += 1;
 
         // Check if CPU is waiting for keyboard input
@@ -704,6 +694,8 @@ impl<V: VideoController> Computer<V> {
                     &mut self.bios,
                     &mut self.video,
                 );
+                // Set cycle count for INT instruction (51 cycles)
+                self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT;
             }
             0xCC => {
                 // INT 3 - advance IP and execute INT 3
@@ -711,6 +703,8 @@ impl<V: VideoController> Computer<V> {
                 self.cpu.ip = self.cpu.ip.wrapping_add(1);
                 self.cpu
                     .execute_int_with_io(3, &mut self.memory, &mut self.bios, &mut self.video);
+                // Set cycle count for INT 3 instruction (52 cycles)
+                self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT3;
             }
             _ => {
                 // Normal instruction - use execute_with_io
@@ -982,10 +976,12 @@ impl<V: VideoController> Computer<V> {
         self.cpu.log_interrupts_enabled = enable;
     }
 
-    pub fn set_log_steps(&mut self, steps: u32) {
-        self.exec_logging_enabled = true;
-        self.set_log_interrupts(true);
-        self.log_steps = steps;
+    pub fn set_exec_logging(&mut self, enable: bool) {
+        self.exec_logging_enabled = enable;
+        log::info!(
+            "exec logging {}",
+            if enable { "enabled" } else { "disabled" }
+        );
     }
 
     // Serial port device management
