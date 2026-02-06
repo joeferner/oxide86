@@ -5,8 +5,9 @@
 //! and exposes a JavaScript API for controlling the emulator from web applications.
 
 use emu86_core::{
-    BackedDisk, Computer, DiskGeometry, DriveNumber, KeyPress, KeyboardInput, MemoryDiskBackend,
-    MouseInput, MouseState, NullSpeaker,
+    BackedDisk, Computer, DiskController, DiskGeometry, DriveNumber, KeyPress, KeyboardInput,
+    MemoryDiskBackend, MouseInput, MouseState, NullSpeaker, PartitionedDisk, cpu::bios::FileAccess,
+    parse_mbr,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -239,10 +240,38 @@ impl Emu86Computer {
             ));
         }
 
-        let backend = MemoryDiskBackend::new(data);
+        let backend = MemoryDiskBackend::new(data.clone());
         let disk = BackedDisk::new(backend).map_err(|e| JsValue::from_str(&e.to_string()))?;
 
-        let drive_number = self.computer.bios_mut().add_hard_drive(Box::new(disk));
+        // Check if disk has MBR and partitions
+        let sector_0 = disk.read_sector_lba(0).ok();
+        let has_partitions = sector_0
+            .as_ref()
+            .and_then(parse_mbr)
+            .and_then(|parts| parts[0]);
+
+        let drive_number = if let Some(partition) = has_partitions {
+            log::info!(
+                "Detected MBR: partition 1 at sector {}, {} sectors",
+                partition.start_sector,
+                partition.sector_count
+            );
+
+            // Create raw disk for INT 13h operations (MBR access)
+            let raw_backend = MemoryDiskBackend::new(data);
+            let raw_disk =
+                BackedDisk::new(raw_backend).map_err(|e| JsValue::from_str(&e.to_string()))?;
+
+            // Create partitioned disk for DOS filesystem operations
+            let partitioned =
+                PartitionedDisk::new(disk, partition.start_sector, partition.sector_count);
+            self.computer
+                .bios_mut()
+                .add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk))
+        } else {
+            self.computer.bios_mut().add_hard_drive(Box::new(disk))
+        };
+
         log::info!(
             "Added hard drive {}: ({} bytes)",
             drive_number.to_letter(),
@@ -469,5 +498,337 @@ impl Emu86Computer {
         self.computer
             .set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
         log::info!("Serial mouse attached to COM2");
+    }
+
+    /// Get floppy disk data as a byte array for download.
+    ///
+    /// # Arguments
+    /// * `drive` - Drive number (0 = A:, 1 = B:)
+    ///
+    /// # Returns
+    /// Complete disk image as Vec<u8>
+    #[wasm_bindgen]
+    pub fn get_floppy_data(&self, drive: u8) -> Result<Vec<u8>, JsValue> {
+        let drive_number = match drive {
+            0 => DriveNumber::floppy_a(),
+            1 => DriveNumber::floppy_b(),
+            _ => {
+                return Err(JsValue::from_str(
+                    "Invalid floppy drive number (use 0 or 1)",
+                ));
+            }
+        };
+
+        let bios = self.computer.bios();
+        let disk = bios
+            .shared
+            .drive_manager
+            .get_floppy_disk(drive_number)
+            .ok_or_else(|| JsValue::from_str("No disk in drive"))?;
+
+        let geometry = disk.geometry();
+        let total_sectors = geometry.total_sectors();
+        let total_size = geometry.total_size;
+
+        let mut data = Vec::with_capacity(total_size);
+
+        for sector in 0..total_sectors {
+            let sector_data = disk.read_sector_lba(sector).map_err(|e| {
+                JsValue::from_str(&format!("Failed to read sector {}: {}", sector, e))
+            })?;
+            data.extend_from_slice(&sector_data);
+        }
+
+        log::info!(
+            "Downloaded floppy {}: {} bytes",
+            drive_number.to_letter(),
+            data.len()
+        );
+        Ok(data)
+    }
+
+    /// Get hard drive disk data as a byte array for download.
+    ///
+    /// # Arguments
+    /// * `drive_index` - Hard drive index (0 = C:, 1 = D:, etc.)
+    ///
+    /// # Returns
+    /// Complete disk image as Vec<u8>
+    #[wasm_bindgen]
+    pub fn get_hard_drive_data(&self, drive_index: u8) -> Result<Vec<u8>, JsValue> {
+        let drive_number = DriveNumber::from_standard(0x80 + drive_index);
+
+        let bios = self.computer.bios();
+        let disk = bios
+            .shared
+            .drive_manager
+            .get_hard_drive_disk(drive_number)
+            .ok_or_else(|| JsValue::from_str("No disk in drive"))?;
+
+        let geometry = disk.geometry();
+        let total_sectors = geometry.total_sectors();
+        let total_size = geometry.total_size;
+
+        let mut data = Vec::with_capacity(total_size);
+
+        for sector in 0..total_sectors {
+            let sector_data = disk.read_sector_lba(sector).map_err(|e| {
+                JsValue::from_str(&format!("Failed to read sector {}: {}", sector, e))
+            })?;
+            data.extend_from_slice(&sector_data);
+        }
+
+        log::info!(
+            "Downloaded hard drive {}: {} bytes",
+            drive_number.to_letter(),
+            data.len()
+        );
+        Ok(data)
+    }
+
+    /// List directory contents.
+    ///
+    /// # Arguments
+    /// * `drive` - Drive number (0 = A:, 1 = B:, 0x80 = C:, 0x81 = D:, etc.)
+    /// * `path` - Directory path (e.g., "/" or "/SUBDIR")
+    ///
+    /// # Returns
+    /// JSON array of file entries with name, size, isDirectory, date, time, attributes
+    #[wasm_bindgen]
+    pub fn list_directory(&mut self, drive: u8, path: String) -> Result<JsValue, JsValue> {
+        use serde::Serialize;
+
+        #[derive(Serialize)]
+        struct FileEntry {
+            name: String,
+            size: u32,
+            #[serde(rename = "isDirectory")]
+            is_directory: bool,
+            date: String,
+            time: String,
+            attributes: u8,
+        }
+
+        // Helper to unpack DOS date (bits: YYYYYYYMMMMDDDDD)
+        fn unpack_dos_date(packed: u16) -> String {
+            let year = 1980 + ((packed >> 9) & 0x7F);
+            let month = (packed >> 5) & 0x0F;
+            let day = packed & 0x1F;
+            format!("{:04}-{:02}-{:02}", year, month, day)
+        }
+
+        // Helper to unpack DOS time (bits: HHHHHMMMMMMSS SSS)
+        fn unpack_dos_time(packed: u16) -> String {
+            let hour = (packed >> 11) & 0x1F;
+            let minute = (packed >> 5) & 0x3F;
+            let second = (packed & 0x1F) * 2;
+            format!("{:02}:{:02}:{:02}", hour, minute, second)
+        }
+
+        let drive_number = DriveNumber::from_standard(drive);
+
+        // Build DOS path (e.g., "C:\*.*" or "C:\SUBDIR\*.*")
+        let drive_letter = drive_number.to_letter();
+        let dos_path = if path == "/" || path.is_empty() {
+            format!("{}:\\*.*", drive_letter)
+        } else {
+            let clean_path = path.trim_start_matches('/').replace('/', "\\");
+            format!("{}:\\{}\\*.*", drive_letter, clean_path)
+        };
+
+        let bios = self.computer.bios_mut();
+
+        // Use find_first to start the search (attributes: 0x16 = directories + hidden + system)
+        let (handle, find_data) = bios
+            .find_first(&dos_path, 0x16)
+            .map_err(|e| JsValue::from_str(&format!("Failed to list directory: {}", e)))?;
+
+        let mut entries = Vec::new();
+
+        // Add first entry
+        entries.push(FileEntry {
+            name: find_data.filename.clone(),
+            size: find_data.size,
+            is_directory: find_data.attributes & 0x10 != 0,
+            date: unpack_dos_date(find_data.date),
+            time: unpack_dos_time(find_data.time),
+            attributes: find_data.attributes,
+        });
+
+        // Continue with find_next
+        while let Ok(find_data) = bios.find_next(handle) {
+            entries.push(FileEntry {
+                name: find_data.filename.clone(),
+                size: find_data.size,
+                is_directory: find_data.attributes & 0x10 != 0,
+                date: unpack_dos_date(find_data.date),
+                time: unpack_dos_time(find_data.time),
+                attributes: find_data.attributes,
+            });
+        }
+
+        // Convert to JsValue using serde-wasm-bindgen
+        serde_wasm_bindgen::to_value(&entries).map_err(|e| {
+            JsValue::from_str(&format!("Failed to serialize directory listing: {}", e))
+        })
+    }
+
+    /// Read a file from disk.
+    ///
+    /// # Arguments
+    /// * `drive` - Drive number (0 = A:, 1 = B:, 0x80 = C:, 0x81 = D:, etc.)
+    /// * `path` - File path (e.g., "/README.TXT" or "/SUBDIR/FILE.DAT")
+    ///
+    /// # Returns
+    /// File contents as Vec<u8>
+    #[wasm_bindgen]
+    pub fn read_file_from_disk(&mut self, drive: u8, path: String) -> Result<Vec<u8>, JsValue> {
+        let drive_number = DriveNumber::from_standard(drive);
+
+        // Build DOS path (e.g., "C:\README.TXT")
+        let drive_letter = drive_number.to_letter();
+        let clean_path = path.trim_start_matches('/').replace('/', "\\");
+        let dos_path = format!("{}:\\{}", drive_letter, clean_path);
+
+        let bios = self.computer.bios_mut();
+
+        // Open file for reading
+        let handle = bios
+            .file_open(&dos_path, FileAccess::ReadOnly)
+            .map_err(|e| JsValue::from_str(&format!("Failed to open file: {}", e)))?;
+
+        // Read file in chunks
+        let mut data = Vec::new();
+        let chunk_size = 32768; // 32KB chunks
+
+        loop {
+            let chunk = bios.file_read(handle, chunk_size).map_err(|e| {
+                bios.file_close(handle).ok();
+                JsValue::from_str(&format!("Failed to read file: {}", e))
+            })?;
+
+            if chunk.is_empty() {
+                break;
+            }
+
+            data.extend_from_slice(&chunk);
+        }
+
+        // Close file
+        bios.file_close(handle)
+            .map_err(|e| JsValue::from_str(&format!("Failed to close file: {}", e)))?;
+
+        log::info!("Read file {}: {} bytes", dos_path, data.len());
+        Ok(data)
+    }
+
+    /// Write a file to disk.
+    ///
+    /// # Arguments
+    /// * `drive` - Drive number (0 = A:, 1 = B:, 0x80 = C:, 0x81 = D:, etc.)
+    /// * `path` - File path (e.g., "/README.TXT" or "/SUBDIR/FILE.DAT")
+    /// * `data` - File contents as Vec<u8>
+    #[wasm_bindgen]
+    pub fn write_file_to_disk(
+        &mut self,
+        drive: u8,
+        path: String,
+        data: Vec<u8>,
+    ) -> Result<(), JsValue> {
+        let drive_number = DriveNumber::from_standard(drive);
+
+        // Build DOS path (e.g., "C:\README.TXT")
+        let drive_letter = drive_number.to_letter();
+        let clean_path = path.trim_start_matches('/').replace('/', "\\");
+        let dos_path = format!("{}:\\{}", drive_letter, clean_path);
+
+        // Create parent directories if needed
+        if let Some(parent_idx) = dos_path.rfind('\\') {
+            let parent_path = &dos_path[..parent_idx];
+            if parent_path.len() > 2 {
+                // More than just "C:"
+                let bios = self.computer.bios_mut();
+                // Try to create the directory (ignore error if it already exists)
+                bios.dir_create(parent_path).ok();
+            }
+        }
+
+        let bios = self.computer.bios_mut();
+
+        // Create file (0x00 = normal file attributes)
+        let handle = bios
+            .file_create(&dos_path, 0x00)
+            .map_err(|e| JsValue::from_str(&format!("Failed to create file: {}", e)))?;
+
+        // Write file in chunks
+        let chunk_size = 32768; // 32KB chunks
+        let mut offset = 0;
+
+        while offset < data.len() {
+            let end = (offset + chunk_size).min(data.len());
+            let chunk = &data[offset..end];
+
+            bios.file_write(handle, chunk).map_err(|e| {
+                bios.file_close(handle).ok();
+                JsValue::from_str(&format!("Failed to write file: {}", e))
+            })?;
+
+            offset = end;
+        }
+
+        // Close file
+        bios.file_close(handle)
+            .map_err(|e| JsValue::from_str(&format!("Failed to close file: {}", e)))?;
+
+        log::info!("Wrote file {}: {} bytes", dos_path, data.len());
+        Ok(())
+    }
+
+    /// Create a directory on disk.
+    ///
+    /// # Arguments
+    /// * `drive` - Drive number (0 = A:, 1 = B:, 0x80 = C:, 0x81 = D:, etc.)
+    /// * `path` - Directory path (e.g., "/NEWDIR" or "/PARENT/CHILD")
+    #[wasm_bindgen]
+    pub fn create_directory_on_disk(&mut self, drive: u8, path: String) -> Result<(), JsValue> {
+        let drive_number = DriveNumber::from_standard(drive);
+
+        // Build DOS path (e.g., "C:\NEWDIR")
+        let drive_letter = drive_number.to_letter();
+        let clean_path = path.trim_start_matches('/').replace('/', "\\");
+        let dos_path = format!("{}:\\{}", drive_letter, clean_path);
+
+        let bios = self.computer.bios_mut();
+
+        bios.dir_create(&dos_path)
+            .map_err(|e| JsValue::from_str(&format!("Failed to create directory: {}", e)))?;
+
+        log::info!("Created directory {}", dos_path);
+        Ok(())
+    }
+
+    /// Delete a file or directory from disk.
+    ///
+    /// # Arguments
+    /// * `drive` - Drive number (0 = A:, 1 = B:, 0x80 = C:, 0x81 = D:, etc.)
+    /// * `path` - File or directory path (e.g., "/README.TXT" or "/OLDDIR")
+    #[wasm_bindgen]
+    pub fn delete_from_disk(&mut self, drive: u8, path: String) -> Result<(), JsValue> {
+        let drive_number = DriveNumber::from_standard(drive);
+
+        // Build DOS path (e.g., "C:\README.TXT")
+        let drive_letter = drive_number.to_letter();
+        let clean_path = path.trim_start_matches('/').replace('/', "\\");
+        let dos_path = format!("{}:\\{}", drive_letter, clean_path);
+
+        let bios = self.computer.bios_mut();
+
+        // Note: File deletion is not yet implemented in the emulator
+        // For now, we only support directory deletion
+        bios.dir_remove(&dos_path)
+            .map_err(|e| JsValue::from_str(&format!("Failed to delete directory: {}. Note: File deletion is not yet supported, only directory deletion.", e)))?;
+
+        log::info!("Deleted directory {}", dos_path);
+        Ok(())
     }
 }

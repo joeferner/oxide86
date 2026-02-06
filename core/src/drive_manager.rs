@@ -883,8 +883,30 @@ impl DriveManager {
         pattern: &str,
         attributes: u8,
     ) -> Result<(usize, FindData), DosError> {
-        let (drive, _) = self.parse_path(pattern);
-        let path = self.resolve_path(drive, ".");
+        let (drive, path_pattern) = self.parse_path(pattern);
+
+        // Extract directory path and filename pattern
+        // e.g., "/ZORK1/*.*" -> path="/ZORK1", filename_pattern="*.*"
+        let (mut path, filename_pattern) = if let Some(last_slash) = path_pattern.rfind('/') {
+            let dir = &path_pattern[..last_slash];
+            let file = &path_pattern[last_slash + 1..];
+            (
+                if dir.is_empty() {
+                    "/".to_string()
+                } else {
+                    dir.to_string()
+                },
+                file,
+            )
+        } else {
+            // No slash, use current directory
+            (self.resolve_path(drive, "."), path_pattern.as_str())
+        };
+
+        // Normalize "/." to "/" since fatfs doesn't understand current directory notation
+        if path == "/." {
+            path = String::from("/");
+        }
 
         // Collect entries in a scoped block so fs is dropped before we access self.next_search_id
         let entries = {
@@ -913,15 +935,20 @@ impl DriveManager {
                 }
 
                 // Check if matches pattern (simple wildcard matching)
-                if !Self::matches_pattern(&name, pattern) {
+                if !Self::matches_pattern(&name, filename_pattern) {
                     continue;
                 }
 
                 // Convert to FindData
                 let find_data = Self::entry_to_find_data(&entry)?;
 
-                // Filter by attributes
-                if attributes != 0 && (find_data.attributes & attributes) == 0 {
+                // Filter by attributes (DOS behavior: always include normal files, plus any requested special types)
+                // Special attributes: 0x02=Hidden, 0x04=System, 0x10=Directory
+                const SPECIAL_ATTRS: u8 = 0x02 | 0x04 | 0x10;
+                let is_special = (find_data.attributes & SPECIAL_ATTRS) != 0;
+                let matches_filter = (find_data.attributes & attributes) != 0;
+
+                if attributes != 0 && is_special && !matches_filter {
                     continue;
                 }
 

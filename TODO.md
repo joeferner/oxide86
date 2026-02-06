@@ -1,7 +1,5 @@
 # TODO
 
-- [ ] WASM - Implement disk manager with React (see plans/disk-manager-wasm-ui.md)
-  - download disks, browse files, upload/download individual files
 - [ ] WASM - support creating new disks
 - [ ] More accurate instruction timing instead of assuming all instructions are a fixed cycle count
 - [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
@@ -10,9 +8,13 @@
   - [ ] Alley Cat
   - [ ] Flight Simulator 1.0
   - [ ] Kings Quest 1
+- [ ] Support 286 (command line switch to choose)
+- [ ] Support EGA
 - [ ] Test EGA Applications
   - [ ] Commander Keen
   - [ ] Kings Quest 1
+- [ ] Support 386
+- [ ] Support 486
 - [ ] Test VGA Applications
   - [ ] Battle Chess
 - [ ] Test 8086 Applications

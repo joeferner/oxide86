@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Container, Title, Group, Paper, Stack, SegmentedControl } from '@mantine/core'
+import { Container, Title, Group, Paper, Stack, SegmentedControl, Button } from '@mantine/core'
 import { useEmulator } from './hooks/useEmulator'
 import { usePointerLock } from './hooks/usePointerLock'
 import { EmulatorCanvas } from './components/EmulatorCanvas'
@@ -11,11 +11,13 @@ import { ExecutionControl } from './components/ExecutionControl'
 import { StatusDisplay } from './components/StatusDisplay'
 import { RunningIndicator } from './components/RunningIndicator'
 import { PerformanceDisplay } from './components/PerformanceDisplay'
+import { DiskManager } from './components/DiskManager'
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { isLocked } = usePointerLock(canvasRef)
   const [mode, setMode] = useState<'boot' | 'program'>('boot')
+  const [diskManagerOpened, setDiskManagerOpened] = useState(false)
 
   const {
     computer,
@@ -80,6 +82,15 @@ function App() {
               onStatusUpdate={handleStatusUpdate}
             />
 
+            <Button
+              onClick={() => setDiskManagerOpened(true)}
+              variant="default"
+              fullWidth
+              disabled={!computer}
+            >
+              Disk Manager
+            </Button>
+
             <SegmentedControl
               value={mode}
               onChange={(value) => setMode(value as 'boot' | 'program')}
@@ -115,6 +126,13 @@ function App() {
           </Stack>
         </Paper>
       </Group>
+
+      <DiskManager
+        computer={computer}
+        opened={diskManagerOpened}
+        onClose={() => setDiskManagerOpened(false)}
+        onStatusUpdate={handleStatusUpdate}
+      />
     </Container>
   )
 }
