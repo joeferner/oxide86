@@ -1355,8 +1355,15 @@ impl DriveManager {
     pub fn get_hard_drive_disk(&self, drive: DriveNumber) -> Option<&dyn DiskController> {
         self.hard_drives
             .get(drive.to_hard_drive_index())
-            .and_then(|d| d.adapter.as_ref())
-            .map(|a| a.disk())
+            .and_then(|d| {
+                // Use raw_adapter for partitioned drives (includes MBR)
+                // Fall back to regular adapter for non-partitioned drives
+                if let Some(ref raw) = d.raw_adapter {
+                    Some(raw.disk())
+                } else {
+                    d.adapter.as_ref().map(|a| a.disk())
+                }
+            })
     }
 
     /// Get the number of hard drives
