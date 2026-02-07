@@ -1,6 +1,5 @@
 ; keytest.asm - Keyboard test program
 ; Shows scan code and ASCII for each keypress
-; ESC to exit
 
 org 0x0100
 
@@ -17,10 +16,6 @@ main_loop:
 
     ; Save: BH=scan, BL=ASCII
     mov bx, ax
-
-    ; Check ESC
-    cmp bl, 27
-    je exit_prog
 
     ; Newline
     mov ah, 0x02
@@ -64,6 +59,15 @@ main_loop:
     and al, 0x0F
     call hexdigit
 
+    ; Check for ESC
+    cmp bl, 27
+    jne .check_printable
+    mov ah, 0x09
+    mov dx, esc_msg
+    int 0x21
+    jmp main_loop
+
+.check_printable:
     ; Show char if printable
     cmp bl, 32
     jb main_loop
@@ -106,8 +110,10 @@ banner:
     db '=== Keyboard Test ===', 13, 10
     db 'Format: S:XX A:YY [char]', 13, 10
     db 'S=Scan code, A=ASCII', 13, 10
-    db 'Try: arrows, ESC, Ctrl+keys, F-keys', 13, 10
-    db 'ESC exits', 13, 10, '$'
+    db 'Try: arrows, ESC, Ctrl+keys, F-keys', 13, 10, '$'
+
+esc_msg:
+    db ' ESC', '$'
 
 bye:
     db 13, 10, 'Done!', 13, 10, '$'
