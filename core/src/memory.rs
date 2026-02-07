@@ -61,6 +61,18 @@ pub const EQUIPMENT_FLOPPY_COUNT_MASK: u16 = 0x00C0; // Bits 6-7: number of flop
 pub const EQUIPMENT_SERIAL_COUNT_MASK: u16 = 0x0E00; // Bits 9-11: number of serial ports
 pub const EQUIPMENT_PRINTER_COUNT_MASK: u16 = 0xC000; // Bits 14-15: number of printers
 
+// ROM Font Data locations
+// These addresses are in the ROM BIOS area (F000 segment)
+// Must fit within 1MB memory (0x100000)
+// 8x16 font needs 4096 bytes (0x1000), 8x8 font needs 2048 bytes (0x800)
+pub const FONT_8X16_SEGMENT: u16 = 0xF000;
+pub const FONT_8X16_OFFSET: u16 = 0xB000; // F000:B000
+pub const FONT_8X16_ADDR: usize = 0xFB000; // Physical address, ends at 0xFC000
+
+pub const FONT_8X8_SEGMENT: u16 = 0xF000;
+pub const FONT_8X8_OFFSET: u16 = 0xC000; // F000:C000
+pub const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
+
 pub struct Memory {
     data: Vec<u8>,
     video_writes: Vec<(usize, u8)>,
@@ -334,5 +346,36 @@ impl Memory {
         self.write_u16(BDA_START + BDA_MOUSE_MAX_X, 639); // Maximum X
         self.write_u16(BDA_START + BDA_MOUSE_MIN_Y, 0); // Minimum Y
         self.write_u16(BDA_START + BDA_MOUSE_MAX_Y, 199); // Maximum Y
+    }
+
+    /// Initialize ROM font data
+    /// Loads the 8x16 and 8x8 fonts into ROM BIOS area
+    pub fn initialize_fonts(&mut self) {
+        use crate::font::Cp437Font;
+
+        let font = Cp437Font::new();
+
+        // Copy 8x16 VGA font to ROM at F000:FA6E
+        // 256 characters × 16 bytes = 4096 bytes
+        // Use 0..256 instead of 0..=255u8 to avoid infinite loop (u8 wraps at 255)
+        for ch in 0..256 {
+            let glyph = font.get_glyph_16(ch as u8);
+            let dest_addr = FONT_8X16_ADDR + ch * 16;
+            for (i, &byte) in glyph.iter().enumerate() {
+                self.write_u8(dest_addr + i, byte);
+            }
+        }
+
+        // Copy 8x8 CGA font to ROM at F000:FE6E
+        // 256 characters × 8 bytes = 2048 bytes
+        for ch in 0..256 {
+            let glyph = font.get_glyph_8(ch as u8);
+            let dest_addr = FONT_8X8_ADDR + ch * 8;
+            for (i, &byte) in glyph.iter().enumerate() {
+                self.write_u8(dest_addr + i, byte);
+            }
+        }
+
+        log::debug!("Initialized ROM fonts: 8x16 at {:05X}, 8x8 at {:05X}", FONT_8X16_ADDR, FONT_8X8_ADDR);
     }
 }

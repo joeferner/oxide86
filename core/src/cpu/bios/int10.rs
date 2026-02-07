@@ -1080,11 +1080,21 @@ impl Cpu {
     ///   23h = Set ROM 8x8 graphics character table
     ///   24h = Set ROM 8x16 graphics character table
     ///   30h = Get font information
+    /// Input (for subfunction 30h):
+    ///   BH = pointer type
+    ///     00h = INT 1Fh pointer (8x8 graphics characters)
+    ///     01h = INT 43h pointer (8x14/8x16 graphics characters)
+    ///     02h = ROM 8x14 character font pointer
+    ///     03h = ROM 8x8 double-dot font pointer
+    ///     04h = ROM 8x8 double-dot font (top half)
+    ///     05h = ROM 9x14 alphanumeric alternate
+    ///     06h = ROM 8x16 font
+    ///     07h = ROM 9x16 alternate
     /// Output (for subfunction 30h):
     ///   ES:BP = pointer to font
     ///   CX = bytes per character
     ///   DL = rows on screen - 1
-    fn int10_character_generator(&mut self, _memory: &mut Memory) {
+    fn int10_character_generator(&mut self, memory: &mut Memory) {
         let subfunction = (self.ax & 0xFF) as u8; // AL
 
         match subfunction {
@@ -1108,10 +1118,7 @@ impl Cpu {
             }
             0x30 => {
                 // Get font information
-                log::warn!(
-                    "INT 10h/AH=11h/AL={:02X}h: Get font information",
-                    subfunction
-                );
+                self.int10_get_font_info(memory);
             }
             _ => {
                 log::warn!(
@@ -1120,6 +1127,97 @@ impl Cpu {
                 );
             }
         }
+    }
+
+    /// INT 10h, AH=11h, AL=30h - Get Font Information
+    /// Input:
+    ///   BH = pointer type
+    /// Output:
+    ///   ES:BP = pointer to font
+    ///   CX = bytes per character
+    ///   DL = rows on screen - 1
+    fn int10_get_font_info(&mut self, memory: &Memory) {
+        let pointer_type = (self.bx >> 8) as u8; // BH
+
+        // Determine which font to return based on pointer type
+        let (segment, offset, bytes_per_char, rows) = match pointer_type {
+            0x00 => {
+                // INT 1Fh pointer (8x8 graphics characters)
+                // Read INT 1Fh vector from IVT
+                let int_1f_offset = memory.read_u16(0x1F * 4);
+                let int_1f_segment = memory.read_u16(0x1F * 4 + 2);
+                // If not set, default to our ROM 8x8 font
+                if int_1f_segment == 0xF000 && int_1f_offset < 0x100 {
+                    // Not initialized, use ROM font
+                    (crate::memory::FONT_8X8_SEGMENT, crate::memory::FONT_8X8_OFFSET, 8, 25)
+                } else {
+                    (int_1f_segment, int_1f_offset, 8, 25)
+                }
+            }
+            0x01 => {
+                // INT 43h pointer (8x14/8x16 graphics characters)
+                // Read INT 43h vector from IVT
+                let int_43_offset = memory.read_u16(0x43 * 4);
+                let int_43_segment = memory.read_u16(0x43 * 4 + 2);
+                // If not set, default to our ROM 8x16 font
+                if int_43_segment == 0xF000 && int_43_offset < 0x100 {
+                    // Not initialized, use ROM font
+                    (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+                } else {
+                    (int_43_segment, int_43_offset, 16, 25)
+                }
+            }
+            0x02 => {
+                // ROM 8x14 character font pointer
+                // We don't have a real 8x14 font, return 8x16 instead
+                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+            }
+            0x03 | 0x04 => {
+                // ROM 8x8 double-dot font pointer (both regular and top half)
+                (crate::memory::FONT_8X8_SEGMENT, crate::memory::FONT_8X8_OFFSET, 8, 25)
+            }
+            0x05 => {
+                // ROM 9x14 alphanumeric alternate
+                // We don't have a 9x14 font, return 8x16 instead
+                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+            }
+            0x06 => {
+                // ROM 8x16 font
+                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+            }
+            0x07 => {
+                // ROM 9x16 alternate
+                // We don't have a 9x16 font, return 8x16 instead
+                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+            }
+            _ => {
+                // Unknown pointer type, default to 8x16
+                log::warn!(
+                    "INT 10h/AH=11h/AL=30h: Unknown pointer type BH=0x{:02X}, defaulting to 8x16",
+                    pointer_type
+                );
+                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+            }
+        };
+
+        // Return font pointer in ES:BP
+        self.es = segment;
+        self.bp = offset;
+
+        // Return bytes per character in CX
+        self.cx = bytes_per_char;
+
+        // Return rows - 1 in DL
+        self.dx = (self.dx & 0xFF00) | ((rows - 1) as u16);
+
+        log::debug!(
+            "INT 10h/AH=11h/AL=30h: Get font info BH={:02X}h -> ES:BP={:04X}:{:04X}, CX={}, DL={}",
+            pointer_type,
+            self.es,
+            self.bp,
+            self.cx,
+            rows - 1
+        );
     }
 
     /// INT 10h, AH=15h - Return Physical Display Parameters (VGA)

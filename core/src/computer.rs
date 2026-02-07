@@ -65,6 +65,7 @@ impl<V: VideoController> Computer<V> {
         let mut memory = Memory::new();
         memory.initialize_ivt();
         memory.initialize_bda();
+        memory.initialize_fonts();
 
         // Initialize BDA timer counter from host system time
         let initial_ticks = bios.get_system_ticks();
@@ -263,6 +264,7 @@ impl<V: VideoController> Computer<V> {
         // Reset memory (BDA and IVT)
         self.memory.initialize_ivt();
         self.memory.initialize_bda();
+        self.memory.initialize_fonts();
 
         // Reset BIOS state (memory allocator, open files, device handles)
         // But keep the attached drives (they're the "hardware")

@@ -6,6 +6,7 @@
 - [ ] can't set log level from command line via RUST_LOG=debug
 - [ ] check-it 2
   - video graphics tests are failing
+  - black screen on exit
 - [ ] Alley Cat locks up after splash screen
 - [ ] Boot error cannot control A20 line
 - [ ] keyboard repeat rate (holding a key down)
