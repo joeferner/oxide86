@@ -307,6 +307,13 @@ pub trait VideoController {
         let _ = palette;
         // Default implementation: do nothing
     }
+
+    /// Set border color (overscan) - the area around the display
+    /// Only affects text modes; in graphics modes this is not visible
+    fn set_border_color(&mut self, color: u8) {
+        let _ = color;
+        // Default implementation: do nothing
+    }
 }
 
 /// Null video controller (no display)
@@ -337,6 +344,8 @@ pub struct Video {
     active_page: u8,
     /// CGA palette state (graphics mode only)
     palette: CgaPalette,
+    /// Border color (overscan) for text modes (4 bits, 0-15)
+    border_color: u8,
     /// Dirty flag to minimize unnecessary updates
     dirty: bool,
     /// Flag to track if mode changed (needs controller notification)
@@ -371,6 +380,7 @@ impl Video {
             },
             active_page: 0,
             palette: CgaPalette::new(),
+            border_color: 0, // Black border by default
             dirty: false,
             mode_changed: false,
             vga_dac_palette: default_vga_palette(),
@@ -595,6 +605,24 @@ impl Video {
         &self.palette
     }
 
+    /// Set CGA background color (4 bits, 0-15)
+    pub fn set_cga_background(&mut self, color: u8) {
+        self.palette.background = color & 0x0F;
+        self.dirty = true;
+    }
+
+    /// Set CGA intensity/bright mode
+    pub fn set_cga_intensity(&mut self, enabled: bool) {
+        self.palette.intensity = enabled;
+        self.dirty = true;
+    }
+
+    /// Set CGA palette ID (0 or 1)
+    pub fn set_cga_palette_id(&mut self, palette_id: u8) {
+        self.palette.palette_id = palette_id & 0x01;
+        self.dirty = true;
+    }
+
     /// Set VGA DAC register (6-bit RGB values 0-63)
     pub fn set_vga_dac_register(&mut self, index: u8, red: u8, green: u8, blue: u8) {
         log::info!(
@@ -611,6 +639,18 @@ impl Video {
     /// Get VGA DAC palette (for rendering)
     pub fn get_vga_dac_palette(&self) -> &[[u8; 3]; 256] {
         &self.vga_dac_palette
+    }
+
+    /// Set border color (overscan) for text modes
+    pub fn set_border_color(&mut self, color: u8) {
+        self.border_color = color & 0x0F;
+        self.dirty = true;
+        log::debug!("Video: Border color set to {}", self.border_color);
+    }
+
+    /// Get border color (overscan) for text modes
+    pub fn get_border_color(&self) -> u8 {
+        self.border_color
     }
 
     /// Check if video mode changed and clear the flag

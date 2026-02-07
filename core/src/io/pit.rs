@@ -223,7 +223,7 @@ impl Pit {
             // Latch count value
             if ch.latch_value.is_none() {
                 ch.latch_value = Some(ch.counter);
-                log::debug!("PIT: Channel {} latched count = {}", channel, ch.counter);
+                log::trace!("PIT: Channel {} latched count = {}", channel, ch.counter);
             }
             return;
         }
@@ -243,7 +243,7 @@ impl Pit {
             );
         }
 
-        log::debug!(
+        log::trace!(
             "PIT: Channel {} configured - Mode: {}, Access: {}",
             channel,
             ch.mode,
@@ -283,7 +283,7 @@ impl Pit {
         }
 
         if ch.access_mode != 3 || ch.write_lsb_next {
-            log::debug!(
+            log::trace!(
                 "PIT: Channel {} count = {} (0x{:04X})",
                 channel,
                 ch.count_register,
@@ -327,7 +327,7 @@ impl Pit {
             _ => 0xFF,
         };
 
-        log::debug!("PIT: Channel {} read = 0x{:02X}", channel, result);
+        log::trace!("PIT: Channel {} read = 0x{:02X}", channel, result);
         result
     }
 
@@ -394,7 +394,7 @@ impl Pit {
             ch.reload_counter();
         }
 
-        log::debug!("PIT: Channel {} gate = {}", channel, gate);
+        log::trace!("PIT: Channel {} gate = {}", channel, gate);
     }
 }
 

@@ -17,7 +17,7 @@ impl Cpu {
             0x08 => self.int10_read_char_attr(video),
             0x09 => self.int10_write_char_attr(memory, video),
             0x0A => self.int10_write_char(video),
-            0x0B => self.int10_set_color_palette(),
+            0x0B => self.int10_set_color_palette(video),
             0x0C => self.int10_write_pixel(video),
             0x0D => self.int10_read_pixel(video),
             0x0E => self.int10_teletype_output(video),
@@ -681,32 +681,52 @@ impl Cpu {
     /// INT 10h, AH=0Bh - Set Color Palette
     /// Subfunction in BH:
     ///   00h = Set background/border color
-    ///        BL = color value (bits 0-3 = border color, bit 4 = background intensity)
+    ///        BL = color value (bits 0-3 = border/background color, bit 4 = intensity)
     ///   01h = Set palette
     ///        BL = palette ID (0 = green/red/brown, 1 = cyan/magenta/white)
-    fn int10_set_color_palette(&mut self) {
+    fn int10_set_color_palette(&mut self, video: &mut crate::video::Video) {
         let subfunction = (self.bx >> 8) as u8; // BH
         let value = (self.bx & 0xFF) as u8; // BL
 
         match subfunction {
             0x00 => {
                 // Set background/border color
-                // In text modes: bits 0-3 set border color
-                // Bit 4 enables high-intensity background colors (instead of blinking)
-                let border_color = value & 0x0F;
+                // Behavior depends on video mode:
+                // - Text modes (0x00-0x03, 0x07): bits 0-3 set border (overscan) color
+                // - Graphics modes (0x04-0x06): bits 0-3 set background color (palette entry 0)
+                // - Bit 4: intensity flag (enables high-intensity backgrounds in text mode)
+                let color = value & 0x0F;
                 let intensity = (value & 0x10) != 0;
-                log::warn!(
-                    "INT 10h/AH=0Bh/BH=00h: Set border color={}, intensity={}",
-                    border_color,
-                    intensity
-                );
+
+                if video.is_graphics_mode() {
+                    // Graphics mode: set background color (palette entry 0)
+                    video.set_cga_background(color);
+                    video.set_cga_intensity(intensity);
+                    log::debug!(
+                        "INT 10h/AH=0Bh/BH=00h: Set graphics background={}, intensity={}",
+                        color,
+                        intensity
+                    );
+                } else {
+                    // Text mode: set border (overscan) color
+                    video.set_border_color(color);
+                    // Note: intensity bit behavior in text mode is complex and hardware-dependent
+                    // Some adapters use it for high-intensity backgrounds, others ignore it
+                    log::debug!(
+                        "INT 10h/AH=0Bh/BH=00h: Set border color={}, intensity={}",
+                        color,
+                        intensity
+                    );
+                }
             }
             0x01 => {
                 // Set palette for 320x200 4-color CGA graphics mode
                 // BL = 0: palette 0 (green/red/brown)
                 // BL = 1: palette 1 (cyan/magenta/white)
                 let palette_id = value & 0x01;
-                log::warn!("INT 10h/AH=0Bh/BH=01h: Set CGA palette={}", palette_id);
+                video.set_cga_palette_id(palette_id);
+
+                log::debug!("INT 10h/AH=0Bh/BH=01h: Set CGA palette={}", palette_id);
             }
             _ => {
                 log::warn!(
