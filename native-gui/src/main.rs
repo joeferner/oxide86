@@ -78,10 +78,20 @@ struct Cli {
 fn main() {
     use std::io::Write;
     let log_file = File::create("emu86.log").expect("Failed to create log file");
-    env_logger::Builder::from_default_env()
-        .filter_level(LevelFilter::Error)
-        .filter_module("emu86_core", LevelFilter::Info)
-        .filter_module("emu86_native_gui", LevelFilter::Info)
+
+    // Initialize logger from RUST_LOG env var, or use defaults if not set
+    let mut builder = env_logger::Builder::from_default_env();
+
+    // Only apply defaults if RUST_LOG is not set
+    if std::env::var("RUST_LOG").is_err() {
+        builder
+            .filter_level(LevelFilter::Error)
+            .filter_module("emu86_core", LevelFilter::Info)
+            .filter_module("emu86_native_gui", LevelFilter::Info);
+    }
+
+    // Always filter wgpu logs to reduce noise
+    builder
         .filter_module("wgpu_core", LevelFilter::Info)
         .filter_module("wgpu_hal", LevelFilter::Error)
         .format(|buf, record| {

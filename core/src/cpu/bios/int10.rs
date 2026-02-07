@@ -98,9 +98,17 @@ impl Cpu {
     fn int10_set_cursor_position(&mut self, video: &mut crate::video::Video) {
         let row = (self.dx >> 8) as u8; // DH
         let col = (self.dx & 0xFF) as u8; // DL
+        let page = (self.bx >> 8) as u8; // BH
 
         let cols = video.get_cols();
         let rows = video.get_rows();
+
+        log::info!(
+            "INT 10h AH=02h: Set cursor to row={}, col={}, page={}",
+            row,
+            col,
+            page
+        );
 
         if (row as usize) < rows && (col as usize) < cols {
             video.set_cursor(row as usize, col as usize);
@@ -126,6 +134,27 @@ impl Cpu {
 
         let cols = video.get_cols();
         let rows = video.get_rows();
+
+        if lines == 0 {
+            log::info!(
+                "INT 10h AH=06h: CLEARING window with attr=0x{:02X}, ({},{}) to ({},{})",
+                attr,
+                top,
+                left,
+                bottom,
+                right
+            );
+        } else {
+            log::debug!(
+                "INT 10h AH=06h: Scroll up lines={}, attr=0x{:02X}, window=({},{}) to ({},{})",
+                lines,
+                attr,
+                top,
+                left,
+                bottom,
+                right
+            );
+        }
 
         // Validate bounds
         if top > bottom || left > right || (bottom as usize) >= rows || (right as usize) >= cols {
@@ -184,6 +213,16 @@ impl Cpu {
 
         let cols = video.get_cols();
         let rows = video.get_rows();
+
+        log::debug!(
+            "INT 10h AH=07h: Scroll down lines={}, attr=0x{:02X}, window=({},{}) to ({},{})",
+            lines,
+            attr,
+            top,
+            left,
+            bottom,
+            right
+        );
 
         // Validate bounds
         if top > bottom || left > right || (bottom as usize) >= rows || (right as usize) >= cols {
@@ -335,6 +374,20 @@ impl Cpu {
                     // Text mode: write character byte directly
                     let cols = video.get_cols();
                     let offset = (cursor.row * cols + cursor.col) * 2;
+
+                    // Log existing attribute for debugging
+                    let existing_attr = video.read_byte(offset + 1);
+                    log::trace!(
+                        "INT 10h AH=0Eh: Writing '{}' (0x{:02X}) at ({},{}) - existing attr=0x{:02X} (fg={}, bg={})",
+                        if ch >= 32 && ch < 127 { ch as char } else { '.' },
+                        ch,
+                        cursor.row,
+                        cursor.col,
+                        existing_attr,
+                        existing_attr & 0x0F,
+                        (existing_attr >> 4) & 0x07
+                    );
+
                     video.write_byte(offset, ch);
                     // Don't modify attribute byte (preserve existing color)
                 }
@@ -808,15 +861,18 @@ impl Cpu {
                 //        CH = green value (0-63)
                 //        CL = blue value (0-63)
                 let register = (self.bx & 0xFF) as u8; // Use low byte only
-                let red = ((self.dx >> 8) & 0x3F) as u8;   // DH, mask to 6 bits
+                let red = ((self.dx >> 8) & 0x3F) as u8; // DH, mask to 6 bits
                 let green = ((self.cx >> 8) & 0x3F) as u8; // CH, mask to 6 bits
-                let blue = (self.cx & 0x3F) as u8;         // CL, mask to 6 bits
+                let blue = (self.cx & 0x3F) as u8; // CL, mask to 6 bits
 
                 video.set_vga_dac_register(register, red, green, blue);
 
                 log::debug!(
                     "INT 10h/AH=10h/AL=10h: Set DAC register {} to RGB({}, {}, {})",
-                    register, red, green, blue
+                    register,
+                    red,
+                    green,
+                    blue
                 );
             }
             0x12 => {
@@ -830,7 +886,7 @@ impl Cpu {
 
                 for i in 0..count {
                     let register = first_register.wrapping_add(i as u8);
-                    let red = memory.read_u8(table_addr) & 0x3F;     // Mask to 6 bits
+                    let red = memory.read_u8(table_addr) & 0x3F; // Mask to 6 bits
                     let green = memory.read_u8(table_addr + 1) & 0x3F;
                     let blue = memory.read_u8(table_addr + 2) & 0x3F;
                     table_addr += 3;
@@ -840,7 +896,8 @@ impl Cpu {
 
                 log::debug!(
                     "INT 10h/AH=10h/AL=12h: Set {} DAC registers starting at {}",
-                    count, first_register
+                    count,
+                    first_register
                 );
             }
             _ => {
@@ -875,10 +932,32 @@ impl Cpu {
             }
             0x30 => {
                 // Select vertical resolution
-                // AL = resolution (0=200, 1=350, 2=400)
-                // Returns: AL = 12h if function supported
+                // Input: AL = resolution (0=200, 1=350, 2=400 scan lines)
+                // Output: AL = 12h if function supported
+                let requested_resolution = (self.ax & 0xFF) as u8; // AL
+                let scan_lines = match requested_resolution {
+                    0x00 => 200,
+                    0x01 => 350,
+                    0x02 => 400,
+                    _ => {
+                        log::warn!(
+                            "INT 10h/AH=12h/BL=30h: Invalid resolution code AL=0x{:02X}",
+                            requested_resolution
+                        );
+                        0 // Invalid
+                    }
+                };
+
+                if scan_lines > 0 {
+                    log::debug!(
+                        "INT 10h/AH=12h/BL=30h: Select vertical resolution {} scan lines (AL=0x{:02X})",
+                        scan_lines,
+                        requested_resolution
+                    );
+                }
+
+                // Return AL = 12h to indicate function is supported
                 self.ax = (self.ax & 0xFF00) | 0x12;
-                log::warn!("INT 10h/AH=12h/BL=30h: Select vertical resolution");
             }
             0x31 => {
                 // Palette loading (enable/disable default palette loading)
@@ -1181,7 +1260,12 @@ impl Cpu {
                 // If not set, default to our ROM 8x8 font
                 if int_1f_segment == 0xF000 && int_1f_offset < 0x100 {
                     // Not initialized, use ROM font
-                    (crate::memory::FONT_8X8_SEGMENT, crate::memory::FONT_8X8_OFFSET, 8, 25)
+                    (
+                        crate::memory::FONT_8X8_SEGMENT,
+                        crate::memory::FONT_8X8_OFFSET,
+                        8,
+                        25,
+                    )
                 } else {
                     (int_1f_segment, int_1f_offset, 8, 25)
                 }
@@ -1194,7 +1278,12 @@ impl Cpu {
                 // If not set, default to our ROM 8x16 font
                 if int_43_segment == 0xF000 && int_43_offset < 0x100 {
                     // Not initialized, use ROM font
-                    (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+                    (
+                        crate::memory::FONT_8X16_SEGMENT,
+                        crate::memory::FONT_8X16_OFFSET,
+                        16,
+                        25,
+                    )
                 } else {
                     (int_43_segment, int_43_offset, 16, 25)
                 }
@@ -1202,25 +1291,50 @@ impl Cpu {
             0x02 => {
                 // ROM 8x14 character font pointer
                 // We don't have a real 8x14 font, return 8x16 instead
-                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+                (
+                    crate::memory::FONT_8X16_SEGMENT,
+                    crate::memory::FONT_8X16_OFFSET,
+                    16,
+                    25,
+                )
             }
             0x03 | 0x04 => {
                 // ROM 8x8 double-dot font pointer (both regular and top half)
-                (crate::memory::FONT_8X8_SEGMENT, crate::memory::FONT_8X8_OFFSET, 8, 25)
+                (
+                    crate::memory::FONT_8X8_SEGMENT,
+                    crate::memory::FONT_8X8_OFFSET,
+                    8,
+                    25,
+                )
             }
             0x05 => {
                 // ROM 9x14 alphanumeric alternate
                 // We don't have a 9x14 font, return 8x16 instead
-                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+                (
+                    crate::memory::FONT_8X16_SEGMENT,
+                    crate::memory::FONT_8X16_OFFSET,
+                    16,
+                    25,
+                )
             }
             0x06 => {
                 // ROM 8x16 font
-                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+                (
+                    crate::memory::FONT_8X16_SEGMENT,
+                    crate::memory::FONT_8X16_OFFSET,
+                    16,
+                    25,
+                )
             }
             0x07 => {
                 // ROM 9x16 alternate
                 // We don't have a 9x16 font, return 8x16 instead
-                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+                (
+                    crate::memory::FONT_8X16_SEGMENT,
+                    crate::memory::FONT_8X16_OFFSET,
+                    16,
+                    25,
+                )
             }
             _ => {
                 // Unknown pointer type, default to 8x16
@@ -1228,7 +1342,12 @@ impl Cpu {
                     "INT 10h/AH=11h/AL=30h: Unknown pointer type BH=0x{:02X}, defaulting to 8x16",
                     pointer_type
                 );
-                (crate::memory::FONT_8X16_SEGMENT, crate::memory::FONT_8X16_OFFSET, 16, 25)
+                (
+                    crate::memory::FONT_8X16_SEGMENT,
+                    crate::memory::FONT_8X16_OFFSET,
+                    16,
+                    25,
+                )
             }
         };
 

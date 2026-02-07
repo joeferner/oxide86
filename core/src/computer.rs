@@ -824,9 +824,18 @@ impl<V: VideoController> Computer<V> {
                 mode
             );
             self.video_controller.set_video_mode(mode);
+            // Update VGA DAC palette when mode changes (palette is reset on mode change)
+            log::info!("Computer: Passing palette to renderer (mode change)");
+            self.video_controller
+                .update_vga_dac_palette(self.video.get_vga_dac_palette());
         }
 
         if self.video.is_dirty() {
+            // Update VGA DAC palette (in case it was modified via INT 10h or I/O ports)
+            log::debug!("Computer: Passing palette to renderer (dirty)");
+            self.video_controller
+                .update_vga_dac_palette(self.video.get_vga_dac_palette());
+
             // Update video controller based on current mode
             match self.video.get_mode_type() {
                 crate::video::VideoMode::Text { .. } => {

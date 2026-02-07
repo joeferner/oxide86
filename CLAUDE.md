@@ -16,6 +16,28 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 - when create test-programs place them in the appropriate directory and update test-programs/README.md
 - when updating wasm use wasm/www/pkg/emu86_wasm.d.ts interfaces instead of creating your own
 
+### Logging Configuration
+
+Control log levels via the `RUST_LOG` environment variable:
+
+```bash
+# Set everything to debug
+RUST_LOG=debug cargo run -p emu86-native-cli -- program.com
+
+# Set specific module to debug
+RUST_LOG=emu86_core=debug cargo run -p emu86-native-cli -- program.com
+
+# Multiple modules with different levels
+RUST_LOG=emu86_core=debug,emu86_native=trace cargo run -p emu86-native-gui -- --boot --floppy-a dos.img
+
+# Trace everything (very verbose)
+RUST_LOG=trace cargo run -p emu86-native-cli -- program.com
+```
+
+Default levels when `RUST_LOG` is not set:
+- CLI/GUI: Error globally, Info for emu86 modules
+- GUI also filters wgpu_core=Info and wgpu_hal=Error to reduce graphics noise
+
 ## Architecture
 
 ### Workspace Structure

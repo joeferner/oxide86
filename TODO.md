@@ -1,9 +1,7 @@
 # TODO
 
-- [ ] Implement INT 10h/AH=12h/BL=30h: Select vertical resolution
 - [ ] CGA Test
   - Mode 06h: 640x200, 2 Colors
-- [ ] can't set log level from command line via RUST_LOG=debug
 - [ ] check-it 2
   - video graphics tests are failing
   - black screen on exit

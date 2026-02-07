@@ -699,7 +699,7 @@ impl Bios {
             return 0xFF;
         }
         let value = self.serial_ports[port as usize].read_register(offset);
-        log::debug!(
+        log::trace!(
             "Serial I/O Read: COM{} offset 0x{:X} -> 0x{:02X}",
             port + 1,
             offset,
@@ -715,7 +715,7 @@ impl Bios {
         if port > 1 {
             return;
         }
-        log::debug!(
+        log::trace!(
             "Serial I/O Write: COM{} offset 0x{:X} <- 0x{:02X}",
             port + 1,
             offset,

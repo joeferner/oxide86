@@ -300,6 +300,13 @@ pub trait VideoController {
         let _ = visible;
         // Default implementation: do nothing
     }
+
+    /// Update VGA DAC palette (for text mode color rendering)
+    /// palette: array of 256 RGB triplets, each component is 6-bit (0-63)
+    fn update_vga_dac_palette(&mut self, palette: &[[u8; 3]; 256]) {
+        let _ = palette;
+        // Default implementation: do nothing
+    }
 }
 
 /// Null video controller (no display)
@@ -343,8 +350,8 @@ fn default_vga_palette() -> [[u8; 3]; 256] {
     let mut palette = [[0u8; 3]; 256];
 
     // Initialize first 16 colors with EGA defaults (6-bit RGB values 0-63)
-    for i in 0..16 {
-        palette[i] = crate::palette::TextModePalette::get_dac_color(i as u8);
+    for (i, entry) in palette.iter_mut().enumerate().take(16) {
+        *entry = crate::palette::TextModePalette::get_dac_color(i as u8);
     }
 
     // Registers 16-255 remain black (already zeroed)
@@ -508,6 +515,15 @@ impl Video {
             self.graphics_buffer = None;
         }
 
+        // Reset VGA DAC palette to defaults
+        // This ensures programs that modify the palette don't leave the system
+        // with invisible text (e.g., black text on black background)
+        log::info!("VGA DAC: Resetting palette to defaults on mode change");
+        self.vga_dac_palette = default_vga_palette();
+
+        // Reset CGA palette to defaults
+        self.palette = CgaPalette::new();
+
         self.dirty = true;
         self.mode_changed = true; // Flag that controller needs notification
         log::info!("Video mode set to 0x{:02X} ({:?})", mode, self.mode_type);
@@ -581,6 +597,13 @@ impl Video {
 
     /// Set VGA DAC register (6-bit RGB values 0-63)
     pub fn set_vga_dac_register(&mut self, index: u8, red: u8, green: u8, blue: u8) {
+        log::info!(
+            "VGA DAC: Setting palette[{}] = RGB({}, {}, {}) [6-bit]",
+            index,
+            red & 0x3F,
+            green & 0x3F,
+            blue & 0x3F
+        );
         self.vga_dac_palette[index as usize] = [red & 0x3F, green & 0x3F, blue & 0x3F];
         self.dirty = true;
     }

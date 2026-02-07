@@ -41,6 +41,8 @@ pub struct PixelsVideoController {
     /// Graphics mode colors (for 640x200 2-color mode)
     graphics_fg_color: u8,
     graphics_bg_color: u8,
+    /// VGA DAC palette (256 RGB triplets, 6-bit per component 0-63)
+    vga_dac_palette: [[u8; 3]; 256],
 }
 
 #[allow(dead_code)]
@@ -63,7 +65,18 @@ impl PixelsVideoController {
             graphics_palette: None,
             graphics_fg_color: 15, // White
             graphics_bg_color: 0,  // Black
+            vga_dac_palette: Self::default_vga_dac_palette(),
         }
+    }
+
+    /// Create default VGA DAC palette (same as core::video::default_vga_palette)
+    fn default_vga_dac_palette() -> [[u8; 3]; 256] {
+        let mut palette = [[0u8; 3]; 256];
+        // Initialize first 16 colors with EGA defaults (6-bit RGB values 0-63)
+        for (i, entry) in palette.iter_mut().enumerate().take(16) {
+            *entry = TextModePalette::get_dac_color(i as u8);
+        }
+        palette
     }
 
     /// Check if there are pending updates that need rendering
@@ -71,11 +84,30 @@ impl PixelsVideoController {
         self.has_pending_updates
     }
 
+    /// Convert 6-bit VGA DAC RGB (0-63) to 8-bit RGB (0-255)
+    /// Uses the standard VGA conversion: value * 255 / 63
+    fn dac_to_rgb(&self, dac_value: u8) -> u8 {
+        // Standard VGA DAC conversion: multiply by ~4.047619
+        // Using ((value << 2) | (value >> 4)) for accuracy
+        let val = dac_value & 0x3F; // Ensure 6-bit
+        (val << 2) | (val >> 4)
+    }
+
+    /// Get 8-bit RGB color from VGA DAC palette
+    fn get_palette_color(&self, color_index: u8) -> [u8; 3] {
+        let dac_color = self.vga_dac_palette[color_index as usize];
+        [
+            self.dac_to_rgb(dac_color[0]),
+            self.dac_to_rgb(dac_color[1]),
+            self.dac_to_rgb(dac_color[2]),
+        ]
+    }
+
     /// Render a single character cell at the given screen position
     fn render_cell(&self, frame: &mut [u8], row: usize, col: usize, cell: &TextCell) {
         let glyph = self.font.get_glyph(cell.character);
-        let fg_color = TextModePalette::get_color(cell.attribute.foreground);
-        let bg_color = TextModePalette::get_color(cell.attribute.background);
+        let fg_color = self.get_palette_color(cell.attribute.foreground);
+        let bg_color = self.get_palette_color(cell.attribute.background);
 
         let start_x = col * CHAR_WIDTH;
         let start_y = row * CHAR_HEIGHT;
@@ -138,9 +170,9 @@ impl PixelsVideoController {
                     let shift = 6 - (pixel_in_byte * 2);
                     let color_index = ((byte_val >> shift) & 0x03) as usize;
 
-                    // Get RGB color from palette
+                    // Get RGB color from VGA DAC palette
                     let vga_color = palette[color_index];
-                    let rgb = TextModePalette::get_color(vga_color);
+                    let rgb = self.get_palette_color(vga_color);
 
                     // Draw scaled pixel (2x2 screen pixels per CGA pixel)
                     for dy in 0..scale {
@@ -163,8 +195,8 @@ impl PixelsVideoController {
     /// Render graphics mode 640x200 (2-color) to framebuffer
     fn render_graphics_640x200(&self, frame: &mut [u8]) {
         if let Some(pixel_data) = &self.graphics_data {
-            let fg_rgb = TextModePalette::get_color(self.graphics_fg_color);
-            let bg_rgb = TextModePalette::get_color(self.graphics_bg_color);
+            let fg_rgb = self.get_palette_color(self.graphics_fg_color);
+            let bg_rgb = self.get_palette_color(self.graphics_bg_color);
             let scale = 2; // 640x200 -> 1280x400 (but we'll use 640x400 with 1x horizontal scale)
 
             for y in 0..200 {
@@ -289,6 +321,7 @@ impl Default for PixelsVideoController {
             graphics_palette: None,
             graphics_fg_color: 15, // White
             graphics_bg_color: 0,  // Black
+            vga_dac_palette: Self::default_vga_dac_palette(),
         }
     }
 }
@@ -363,6 +396,21 @@ impl VideoController for PixelsVideoController {
         self.graphics_bg_color = bg_color;
 
         // Mark for update
+        self.has_pending_updates = true;
+    }
+
+    fn update_vga_dac_palette(&mut self, palette: &[[u8; 3]; 256]) {
+        // Update stored VGA DAC palette
+        self.vga_dac_palette.copy_from_slice(palette);
+
+        // Log first 16 colors (standard text mode colors)
+        log::trace!("Renderer: Updating VGA DAC palette");
+        log::trace!("  Color 0 (Black):      RGB({:2}, {:2}, {:2}) 6-bit", palette[0][0], palette[0][1], palette[0][2]);
+        log::trace!("  Color 7 (Light Gray): RGB({:2}, {:2}, {:2}) 6-bit", palette[7][0], palette[7][1], palette[7][2]);
+        log::trace!("  Color 15 (White):     RGB({:2}, {:2}, {:2}) 6-bit", palette[15][0], palette[15][1], palette[15][2]);
+
+        // Mark for full redraw since colors changed
+        self.needs_full_redraw = true;
         self.has_pending_updates = true;
     }
 }

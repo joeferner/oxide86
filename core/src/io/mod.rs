@@ -62,14 +62,14 @@ impl IoDevice {
             _ => self.last_write.get(&port).copied().unwrap_or(0xFF),
         };
 
-        log::debug!("I/O Read:  Port 0x{:04X} -> 0x{:02X}", port, value);
+        log::trace!("I/O Read:  Port 0x{:04X} -> 0x{:02X}", port, value);
 
         value
     }
 
     /// Write a byte to the specified I/O port.
     pub fn write_byte(&mut self, port: u16, value: u8, video: &mut Video) {
-        log::debug!("I/O Write: Port 0x{:04X} <- 0x{:02X}", port, value);
+        log::trace!("I/O Write: Port 0x{:04X} <- 0x{:02X}", port, value);
 
         match port {
             // PIT channel data ports

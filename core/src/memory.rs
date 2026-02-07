@@ -130,7 +130,7 @@ impl Memory {
                 let offset_high = self.data[addr + 1] as u16;
                 let segment_low = self.data[addr + 2] as u16;
                 let segment_high = self.data[addr + 3] as u16;
-                log::debug!(
+                log::trace!(
                     "IVT Write: INT 0x{:02X} vector being modified (addr 0x{:04X}), will be {:04X}:{:04X}+",
                     int_num,
                     addr,
@@ -376,6 +376,10 @@ impl Memory {
             }
         }
 
-        log::debug!("Initialized ROM fonts: 8x16 at {:05X}, 8x8 at {:05X}", FONT_8X16_ADDR, FONT_8X8_ADDR);
+        log::debug!(
+            "Initialized ROM fonts: 8x16 at {:05X}, 8x8 at {:05X}",
+            FONT_8X16_ADDR,
+            FONT_8X8_ADDR
+        );
     }
 }
