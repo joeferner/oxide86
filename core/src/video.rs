@@ -334,6 +334,21 @@ pub struct Video {
     dirty: bool,
     /// Flag to track if mode changed (needs controller notification)
     mode_changed: bool,
+    /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
+    vga_dac_palette: [[u8; 3]; 256],
+}
+
+/// Initialize VGA DAC palette with EGA defaults
+fn default_vga_palette() -> [[u8; 3]; 256] {
+    let mut palette = [[0u8; 3]; 256];
+
+    // Initialize first 16 colors with EGA defaults (6-bit RGB values 0-63)
+    for i in 0..16 {
+        palette[i] = crate::palette::TextModePalette::get_dac_color(i as u8);
+    }
+
+    // Registers 16-255 remain black (already zeroed)
+    palette
 }
 
 impl Video {
@@ -351,6 +366,7 @@ impl Video {
             palette: CgaPalette::new(),
             dirty: false,
             mode_changed: false,
+            vga_dac_palette: default_vga_palette(),
         }
     }
 
@@ -561,6 +577,17 @@ impl Video {
     /// Get palette (for rendering)
     pub fn get_palette(&self) -> &CgaPalette {
         &self.palette
+    }
+
+    /// Set VGA DAC register (6-bit RGB values 0-63)
+    pub fn set_vga_dac_register(&mut self, index: u8, red: u8, green: u8, blue: u8) {
+        self.vga_dac_palette[index as usize] = [red & 0x3F, green & 0x3F, blue & 0x3F];
+        self.dirty = true;
+    }
+
+    /// Get VGA DAC palette (for rendering)
+    pub fn get_vga_dac_palette(&self) -> &[[u8; 3]; 256] {
+        &self.vga_dac_palette
     }
 
     /// Check if video mode changed and clear the flag

@@ -22,7 +22,7 @@ impl Cpu {
             0x0D => self.int10_read_pixel(video),
             0x0E => self.int10_teletype_output(video),
             0x0F => self.int10_get_video_mode(video),
-            0x10 => self.int10_palette_registers(),
+            0x10 => self.int10_palette_registers(memory, video),
             0x11 => self.int10_character_generator(memory),
             0x12 => self.int10_alternate_function_select(),
             0x13 => self.int10_write_string(memory, video),
@@ -777,7 +777,7 @@ impl Cpu {
     ///   17h = Read block of DAC registers
     ///   1Ah = Read color page state
     ///   1Bh = Perform gray-scale summing
-    fn int10_palette_registers(&mut self) {
+    fn int10_palette_registers(&mut self, memory: &Memory, video: &mut crate::video::Video) {
         let subfunction = (self.ax & 0xFF) as u8; // AL
 
         match subfunction {
@@ -803,13 +803,45 @@ impl Cpu {
             }
             0x10 => {
                 // Set individual DAC register
-                // BX = register number, CH = green, CL = blue, DH = red
-                log::warn!("INT 10h/AH=10h/AL=10h: Set DAC register");
+                // Input: BX = register number (0-255)
+                //        DH = red value (0-63)
+                //        CH = green value (0-63)
+                //        CL = blue value (0-63)
+                let register = (self.bx & 0xFF) as u8; // Use low byte only
+                let red = ((self.dx >> 8) & 0x3F) as u8;   // DH, mask to 6 bits
+                let green = ((self.cx >> 8) & 0x3F) as u8; // CH, mask to 6 bits
+                let blue = (self.cx & 0x3F) as u8;         // CL, mask to 6 bits
+
+                video.set_vga_dac_register(register, red, green, blue);
+
+                log::debug!(
+                    "INT 10h/AH=10h/AL=10h: Set DAC register {} to RGB({}, {}, {})",
+                    register, red, green, blue
+                );
             }
             0x12 => {
                 // Set block of DAC registers
-                // BX = first register, CX = count, ES:DX -> table
-                log::warn!("INT 10h/AH=10h/AL=12h: Set DAC register block");
+                // Input: BX = first register number (0-255)
+                //        CX = number of registers to set (0-256)
+                //        ES:DX -> table of RGB triplets (3 bytes per entry)
+                let first_register = (self.bx & 0xFF) as u8; // Use low byte only
+                let count = self.cx;
+                let mut table_addr = Self::physical_address(self.es, self.dx);
+
+                for i in 0..count {
+                    let register = first_register.wrapping_add(i as u8);
+                    let red = memory.read_u8(table_addr) & 0x3F;     // Mask to 6 bits
+                    let green = memory.read_u8(table_addr + 1) & 0x3F;
+                    let blue = memory.read_u8(table_addr + 2) & 0x3F;
+                    table_addr += 3;
+
+                    video.set_vga_dac_register(register, red, green, blue);
+                }
+
+                log::debug!(
+                    "INT 10h/AH=10h/AL=12h: Set {} DAC registers starting at {}",
+                    count, first_register
+                );
             }
             _ => {
                 log::warn!(
