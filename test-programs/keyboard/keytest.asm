@@ -1,6 +1,7 @@
 ; keytest.asm - Keyboard test program
 ; Shows scan code and ASCII for each keypress
 
+[CPU 8086]
 org 0x0100
 
 start:
@@ -32,7 +33,8 @@ main_loop:
 
     ; Scan high nibble
     mov al, bh
-    shr al, 4
+    mov cl, 4
+    shr al, cl
     call hexdigit
 
     ; Scan low nibble
@@ -51,7 +53,8 @@ main_loop:
 
     ; ASCII high nibble
     mov al, bl
-    shr al, 4
+    mov cl, 4
+    shr al, cl
     call hexdigit
 
     ; ASCII low nibble
@@ -61,9 +64,67 @@ main_loop:
 
     ; Check for ESC
     cmp bl, 27
-    jne .check_printable
+    jne .check_backspace
     mov ah, 0x09
     mov dx, esc_msg
+    int 0x21
+    jmp main_loop
+
+.check_backspace:
+    ; Check for Backspace
+    cmp bl, 8
+    jne .check_enter
+    mov ah, 0x09
+    mov dx, backspace_msg
+    int 0x21
+    jmp main_loop
+
+.check_enter:
+    ; Check for Enter
+    cmp bl, 13
+    jne .check_arrows
+    mov ah, 0x09
+    mov dx, enter_msg
+    int 0x21
+    jmp main_loop
+
+.check_arrows:
+    ; Arrow keys have ASCII 0 (extended keys), check scan code
+    cmp bl, 0
+    jne .check_printable
+
+    ; Up arrow
+    cmp bh, 0x48
+    jne .not_up
+    mov ah, 0x09
+    mov dx, up_msg
+    int 0x21
+    jmp main_loop
+
+.not_up:
+    ; Down arrow
+    cmp bh, 0x50
+    jne .not_down
+    mov ah, 0x09
+    mov dx, down_msg
+    int 0x21
+    jmp main_loop
+
+.not_down:
+    ; Left arrow
+    cmp bh, 0x4B
+    jne .not_left
+    mov ah, 0x09
+    mov dx, left_msg
+    int 0x21
+    jmp main_loop
+
+.not_left:
+    ; Right arrow
+    cmp bh, 0x4D
+    jne .check_printable
+    mov ah, 0x09
+    mov dx, right_msg
     int 0x21
     jmp main_loop
 
@@ -114,6 +175,24 @@ banner:
 
 esc_msg:
     db ' ESC', '$'
+
+backspace_msg:
+    db ' BACKSPACE', '$'
+
+enter_msg:
+    db ' ENTER', '$'
+
+up_msg:
+    db ' UP', '$'
+
+down_msg:
+    db ' DOWN', '$'
+
+left_msg:
+    db ' LEFT', '$'
+
+right_msg:
+    db ' RIGHT', '$'
 
 bye:
     db 13, 10, 'Done!', 13, 10, '$'
