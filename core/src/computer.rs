@@ -954,6 +954,11 @@ impl<V: VideoController> Computer<V> {
         &mut self.video_controller
     }
 
+    /// Get an immutable reference to the video controller
+    pub fn video_controller(&self) -> &V {
+        &self.video_controller
+    }
+
     /// Update keyboard shift flags in the BIOS Data Area
     /// This should be called when modifier key state changes (Shift, Ctrl, Alt)
     ///

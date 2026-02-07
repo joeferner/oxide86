@@ -225,6 +225,48 @@ impl PixelsVideoController {
         }
     }
 
+    /// Render current state to a raw RGBA buffer (for screenshots)
+    /// Returns a buffer of size SCREEN_WIDTH * SCREEN_HEIGHT * 4 bytes (RGBA)
+    pub fn render_to_buffer(&self) -> Vec<u8> {
+        let mut buffer = vec![0u8; SCREEN_WIDTH * SCREEN_HEIGHT * 4];
+
+        // Check if we're in graphics mode
+        match self.current_mode {
+            VideoMode::Graphics320x200 => {
+                self.render_graphics_320x200(&mut buffer);
+                return buffer;
+            }
+            VideoMode::Graphics640x200 => {
+                self.render_graphics_640x200(&mut buffer);
+                return buffer;
+            }
+            VideoMode::Text { .. } => {
+                // Continue with text mode rendering below
+            }
+        }
+
+        // Get actual mode dimensions
+        let (actual_cols, actual_rows) = match self.current_mode {
+            VideoMode::Text { cols, rows } => (cols, rows),
+            _ => (TEXT_MODE_COLS, TEXT_MODE_ROWS),
+        };
+
+        // Render all cells
+        for row in 0..actual_rows {
+            for col in 0..actual_cols {
+                let idx = row * TEXT_MODE_COLS + col;
+                self.render_cell(&mut buffer, row, col, &self.current_buffer[idx]);
+            }
+        }
+
+        // Render cursor if visible
+        if let Some(pos) = self.current_cursor {
+            self.render_cursor_at(&mut buffer, pos);
+        }
+
+        buffer
+    }
+
     /// Render the current state to a Pixels framebuffer
     /// This should be called from the main event loop after update_display/update_cursor
     pub fn render(&mut self, pixels: &mut Pixels) {

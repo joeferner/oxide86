@@ -1175,6 +1175,69 @@ fn eject_disk(
     }
 }
 
+fn save_screenshot(
+    computer: &Computer<PixelsVideoController>,
+    notification: &mut Option<Notification>,
+) {
+    use chrono::{Datelike, Timelike};
+
+    // Show file dialog
+    let result = rfd::FileDialog::new()
+        .add_filter("PNG Image", &["png"])
+        .set_directory(".")
+        .set_file_name({
+            let now = chrono::Local::now();
+            format!(
+                "emu86_screenshot_{:04}{:02}{:02}_{:02}{:02}{:02}.png",
+                now.year(),
+                now.month(),
+                now.day(),
+                now.hour(),
+                now.minute(),
+                now.second()
+            )
+        })
+        .set_title("Save Screenshot")
+        .save_file();
+
+    if let Some(file_path) = result {
+        let path = file_path.to_string_lossy().to_string();
+
+        // Get the frame buffer from the video controller
+        let buffer = computer.video_controller().render_to_buffer();
+
+        // Save as PNG using the image crate
+        let save_result = image::save_buffer(
+            &path,
+            &buffer,
+            SCREEN_WIDTH as u32,
+            SCREEN_HEIGHT as u32,
+            image::ColorType::Rgba8,
+        );
+
+        match save_result {
+            Ok(()) => {
+                let filename = std::path::Path::new(&path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&path);
+                log::info!("Screenshot saved to {}", path);
+                *notification = Some(Notification::new(
+                    format!("Screenshot saved as {}", filename),
+                    NotificationType::Success,
+                ));
+            }
+            Err(e) => {
+                log::error!("Failed to save screenshot: {}", e);
+                *notification = Some(Notification::new(
+                    format!("Failed to save screenshot: {}", e),
+                    NotificationType::Error,
+                ));
+            }
+        }
+    }
+}
+
 fn handle_debug_action(
     action: menu::MenuAction,
     computer: &mut Computer<PixelsVideoController>,
@@ -1189,6 +1252,9 @@ fn handle_debug_action(
             app_state.notification = None;
             app_state.halted = false;
             log::info!("Computer reset complete");
+        }
+        MenuAction::SaveScreenshot => {
+            save_screenshot(computer, &mut app_state.notification);
         }
         MenuAction::ToggleExecutionLogging => {
             computer.set_exec_logging(!computer.exec_logging_enabled);

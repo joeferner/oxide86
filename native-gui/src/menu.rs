@@ -8,6 +8,7 @@ pub enum MenuAction {
     InsertFloppyB,
     EjectFloppyB,
     Reset,
+    SaveScreenshot,
     ToggleExecutionLogging,
     ToggleInterruptLogging,
     TogglePause,
@@ -22,6 +23,7 @@ impl MenuAction {
             MenuAction::InsertFloppyA | MenuAction::EjectFloppyA => DriveNumber::floppy_a(),
             MenuAction::InsertFloppyB | MenuAction::EjectFloppyB => DriveNumber::floppy_b(),
             MenuAction::Reset
+            | MenuAction::SaveScreenshot
             | MenuAction::ToggleExecutionLogging
             | MenuAction::ToggleInterruptLogging
             | MenuAction::TogglePause
@@ -47,6 +49,7 @@ impl MenuAction {
                 | MenuAction::ToggleTurbo
                 | MenuAction::TogglePerformanceOverlay
                 | MenuAction::Reset
+                | MenuAction::SaveScreenshot
         )
     }
 }
@@ -161,6 +164,17 @@ impl AppMenu {
                         .clicked()
                     {
                         action = Some(MenuAction::Reset);
+                        ui.close_menu();
+                    }
+
+                    ui.separator();
+
+                    if ui
+                        .button("📷 Save Screenshot...")
+                        .on_hover_text("Save screen as PNG image")
+                        .clicked()
+                    {
+                        action = Some(MenuAction::SaveScreenshot);
                         ui.close_menu();
                     }
                 });
