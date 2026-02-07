@@ -172,9 +172,7 @@ impl GraphicsBuffer {
 
     /// Read byte from graphics memory (using interlaced addressing)
     pub fn read_byte(&self, offset: usize) -> u8 {
-        if offset >= self.data.len() {
-            return 0;
-        }
+        // Convert from interlaced CGA address to linear offset
         let linear_offset = self.interlaced_to_linear(offset);
         if linear_offset >= self.data.len() {
             return 0;
@@ -184,9 +182,7 @@ impl GraphicsBuffer {
 
     /// Write byte to graphics memory (using interlaced addressing)
     pub fn write_byte(&mut self, offset: usize, value: u8) {
-        if offset >= self.data.len() {
-            return;
-        }
+        // Convert from interlaced CGA address to linear offset
         let linear_offset = self.interlaced_to_linear(offset);
         if linear_offset >= self.data.len() {
             return;
@@ -528,18 +524,21 @@ impl Video {
     }
 
     /// Get the current column count for the active mode
+    /// Returns character columns (40 for 320px modes, 80 for 640px modes)
     pub fn get_cols(&self) -> usize {
         match self.mode_type {
             VideoMode::Text { cols, .. } => cols,
-            _ => TEXT_MODE_COLS, // Default for non-text modes
+            VideoMode::Graphics320x200 => 40, // 320 pixels / 8 pixels per char = 40 columns
+            VideoMode::Graphics640x200 => 80, // 640 pixels / 8 pixels per char = 80 columns
         }
     }
 
     /// Get the current row count for the active mode
+    /// Returns character rows (25 for 200px CGA modes)
     pub fn get_rows(&self) -> usize {
         match self.mode_type {
             VideoMode::Text { rows, .. } => rows,
-            _ => TEXT_MODE_ROWS, // Default for non-text modes
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => 25, // 200 pixels / 8 pixels per char = 25 rows
         }
     }
 

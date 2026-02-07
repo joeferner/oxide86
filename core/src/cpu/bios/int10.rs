@@ -301,7 +301,6 @@ impl Cpu {
     pub(crate) fn int10_teletype_output(&mut self, video: &mut crate::video::Video) {
         let ch = (self.ax & 0xFF) as u8; // AL
         let cursor = video.get_cursor();
-        let cols = video.get_cols();
         let rows = video.get_rows();
 
         match ch {
@@ -327,12 +326,21 @@ impl Cpu {
                 }
             }
             _ => {
-                // Normal character - write and advance
-                let offset = (cursor.row * cols + cursor.col) * 2;
-                video.write_byte(offset, ch);
-                // Don't modify attribute byte (preserve existing color)
+                // Normal character - handle based on video mode
+                if video.is_graphics_mode() {
+                    // Graphics mode: draw character pixel-by-pixel
+                    let fg_color = (self.bx & 0xFF) as u8; // BL
+                    self.draw_char_graphics(video, ch, cursor.row, cursor.col, fg_color);
+                } else {
+                    // Text mode: write character byte directly
+                    let cols = video.get_cols();
+                    let offset = (cursor.row * cols + cursor.col) * 2;
+                    video.write_byte(offset, ch);
+                    // Don't modify attribute byte (preserve existing color)
+                }
 
                 // Advance cursor
+                let cols = video.get_cols();
                 let new_col = cursor.col + 1;
                 if new_col >= cols {
                     // Wrap to next line
@@ -346,6 +354,109 @@ impl Cpu {
                 } else {
                     video.set_cursor(cursor.row, new_col);
                 }
+            }
+        }
+    }
+
+    /// Draw a character in graphics mode using font data
+    fn draw_char_graphics(
+        &self,
+        video: &mut crate::video::Video,
+        character: u8,
+        row: usize,
+        col: usize,
+        color: u8,
+    ) {
+        use crate::font::Cp437Font;
+
+        let font = Cp437Font::new();
+
+        match video.get_mode_type() {
+            crate::video::VideoMode::Graphics320x200 | crate::video::VideoMode::Graphics640x200 => {
+                // CGA graphics mode: use native 8x8 CGA font
+                let glyph = font.get_glyph_8(character);
+                let char_height = 8;
+                let char_width = 8;
+
+                // Calculate pixel position
+                let start_x = col * char_width;
+                let start_y = row * char_height;
+
+                // Draw each row of the character
+                for (py, &glyph_byte) in glyph.iter().enumerate() {
+                    if start_y + py >= 200 {
+                        break; // Don't draw past bottom of screen
+                    }
+
+                    // Draw each pixel in the row
+                    for px in 0..char_width {
+                        if start_x + px >= 320 {
+                            break; // Don't draw past right edge
+                        }
+
+                        let bit = (glyph_byte >> (7 - px)) & 1;
+                        if bit != 0 {
+                            // Set pixel to foreground color
+                            self.set_pixel_cga(video, start_x + px, start_y + py, color);
+                        }
+                        // Background pixels are left as-is (transparent)
+                    }
+                }
+            }
+            _ => {
+                // Other modes not supported yet
+            }
+        }
+    }
+
+    /// Set a pixel in CGA graphics mode
+    /// Calculates CGA interlaced address: even lines at 0x0000+, odd lines at 0x2000+
+    fn set_pixel_cga(&self, video: &mut crate::video::Video, x: usize, y: usize, color: u8) {
+        match video.get_mode_type() {
+            crate::video::VideoMode::Graphics320x200 => {
+                // 320x200, 4 colors, 2 bits per pixel
+                // Calculate CGA interlaced offset
+                let byte_offset = if y.is_multiple_of(2) {
+                    // Even line: bank 0
+                    (y / 2) * 80 + x / 4
+                } else {
+                    // Odd line: bank 1 (offset by 0x2000)
+                    0x2000 + ((y - 1) / 2) * 80 + x / 4
+                };
+
+                let pixel_in_byte = x % 4;
+                let shift = 6 - (pixel_in_byte * 2);
+
+                // Read-modify-write
+                let mut byte_val = video.read_byte(byte_offset);
+                byte_val &= !(0x03 << shift); // Clear the 2-bit pixel
+                byte_val |= (color & 0x03) << shift; // Set new color
+                video.write_byte(byte_offset, byte_val);
+            }
+            crate::video::VideoMode::Graphics640x200 => {
+                // 640x200, 2 colors, 1 bit per pixel
+                // Calculate CGA interlaced offset
+                let byte_offset = if y.is_multiple_of(2) {
+                    // Even line: bank 0
+                    (y / 2) * 80 + x / 8
+                } else {
+                    // Odd line: bank 1 (offset by 0x2000)
+                    0x2000 + ((y - 1) / 2) * 80 + x / 8
+                };
+
+                let pixel_in_byte = x % 8;
+                let bit_mask = 0x80 >> pixel_in_byte;
+
+                let mut byte_val = video.read_byte(byte_offset);
+                if color & 1 != 0 {
+                    byte_val |= bit_mask; // Set bit
+                } else {
+                    byte_val &= !bit_mask; // Clear bit
+                }
+                video.write_byte(byte_offset, byte_val);
+            }
+            _ => {
+                // Not a graphics mode
             }
         }
     }

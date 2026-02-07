@@ -4,21 +4,21 @@
 org 0x100
 
 start:
-    ; Switch to CGA mode 0x04
+    ; Switch to CGA mode 0x04 (320x200, 4 colors)
     mov ah, 0x00
     mov al, 0x04
     int 0x10
 
-    ; Set palette 1 (cyan, magenta, white)
+    ; Set palette 1 (cyan, magenta, white) with intensity
     mov dx, 0x3D9
-    mov al, 0x30
+    mov al, 0x30        ; Palette 1, intensity on
     out dx, al
 
-    ; Set up video segment
+    ; Set up video segment for direct memory access
     mov ax, 0xB800
     mov es, ax
 
-    ; Macro to draw a box at given row, column, with pattern
+    ; Draw boxes FIRST (so text can overlay them)
     ; Box 1: Row 0, Col 0, Cyan
     mov word [box_row], 0
     mov word [box_col], 0
@@ -55,6 +55,45 @@ start:
     mov byte [box_pattern], 0xE4
     call draw_box
 
+    ; Now print text in the middle (between top and bottom boxes)
+    ; Top boxes end at row 39, bottom boxes start at row 100
+    ; Middle area is rows 40-99 (character rows 5-12)
+
+    ; Position cursor at row 6 (pixel row 48), centered horizontally
+    mov ah, 0x02
+    mov bh, 0
+    mov dh, 6           ; Row 6 (48 pixels from top)
+    mov dl, 6           ; Column 6 (48 pixels from left)
+    int 0x10
+
+    ; Print header text using BIOS teletype
+    mov si, msg_header
+    mov bl, 3           ; White color
+    call print_string
+
+    ; Position cursor for next line (row 8)
+    mov ah, 0x02
+    mov bh, 0
+    mov dh, 8           ; Row 8
+    mov dl, 3           ; Column 3
+    int 0x10
+
+    ; Print instructions
+    mov si, msg_info
+    mov bl, 2           ; Magenta color
+    call print_string
+
+    ; Print completion message at bottom
+    mov ah, 0x02
+    mov bh, 0
+    mov dh, 23          ; Row 23
+    mov dl, 2           ; Column 2
+    int 0x10
+
+    mov si, msg_done
+    mov bl, 1           ; Cyan color
+    call print_string
+
     ; Wait for keypress
     mov ah, 0x00
     int 0x16
@@ -67,6 +106,21 @@ start:
     ; Exit
     mov ah, 0x4C
     int 0x21
+
+; Print null-terminated string using BIOS teletype
+; Input: SI = pointer to string, BL = color
+print_string:
+    pusha
+.loop:
+    lodsb
+    test al, al
+    jz .done
+    mov ah, 0x0E        ; Teletype output
+    int 0x10
+    jmp .loop
+.done:
+    popa
+    ret
 
 ; Draw a 10-byte wide, 40-row tall box
 ; Parameters: box_row, box_col, box_pattern
@@ -122,3 +176,8 @@ draw_box:
 box_row dw 0
 box_col dw 0
 box_pattern db 0
+
+; Messages
+msg_header db "CGA Graphics Mode 0x04 Test", 13, 10, 0
+msg_info db "Drawing test patterns...", 13, 10, 0
+msg_done db "Test complete! Press any key...", 0
