@@ -379,7 +379,11 @@ impl Cpu {
                     let existing_attr = video.read_byte(offset + 1);
                     log::trace!(
                         "INT 10h AH=0Eh: Writing '{}' (0x{:02X}) at ({},{}) - existing attr=0x{:02X} (fg={}, bg={})",
-                        if ch >= 32 && ch < 127 { ch as char } else { '.' },
+                        if (32..127).contains(&ch) {
+                            ch as char
+                        } else {
+                            '.'
+                        },
                         ch,
                         cursor.row,
                         cursor.col,

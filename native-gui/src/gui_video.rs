@@ -447,9 +447,24 @@ impl VideoController for PixelsVideoController {
 
         // Log first 16 colors (standard text mode colors)
         log::trace!("Renderer: Updating VGA DAC palette");
-        log::trace!("  Color 0 (Black):      RGB({:2}, {:2}, {:2}) 6-bit", palette[0][0], palette[0][1], palette[0][2]);
-        log::trace!("  Color 7 (Light Gray): RGB({:2}, {:2}, {:2}) 6-bit", palette[7][0], palette[7][1], palette[7][2]);
-        log::trace!("  Color 15 (White):     RGB({:2}, {:2}, {:2}) 6-bit", palette[15][0], palette[15][1], palette[15][2]);
+        log::trace!(
+            "  Color 0 (Black):      RGB({:2}, {:2}, {:2}) 6-bit",
+            palette[0][0],
+            palette[0][1],
+            palette[0][2]
+        );
+        log::trace!(
+            "  Color 7 (Light Gray): RGB({:2}, {:2}, {:2}) 6-bit",
+            palette[7][0],
+            palette[7][1],
+            palette[7][2]
+        );
+        log::trace!(
+            "  Color 15 (White):     RGB({:2}, {:2}, {:2}) 6-bit",
+            palette[15][0],
+            palette[15][1],
+            palette[15][2]
+        );
 
         // Mark for full redraw since colors changed
         self.needs_full_redraw = true;

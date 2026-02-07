@@ -32,8 +32,6 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
       ]
 
       const handleKeyDown = (event: KeyboardEvent) => {
-        if (event.repeat) return
-
         if (event.code === 'F12' && isLocked) {
           event.preventDefault()
           exitLock()
