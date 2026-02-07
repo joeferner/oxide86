@@ -7,7 +7,16 @@ use crate::{cpu::Cpu, memory::Memory};
 impl Cpu {
     /// INT 0x16 - Keyboard Services
     /// AH register contains the function number
+    ///
+    /// Note: Like INT 0x13 and INT 0x1A, we enable interrupts (STI) during keyboard
+    /// services so that keyboard IRQs (INT 0x09) and timer IRQs (INT 0x08) can fire.
+    /// This is important for programs that poll keyboard status in tight loops with
+    /// interrupts disabled, or block waiting for input via AH=00h.
     pub(super) fn handle_int16(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+        // Enable interrupts during keyboard operations (AT-class BIOS behavior)
+        // This allows keyboard and timer IRQs to fire even when programs poll with IF=0
+        self.set_flag(cpu_flag::INTERRUPT, true);
+
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {

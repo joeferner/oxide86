@@ -387,6 +387,9 @@ impl<V: VideoController> Computer<V> {
             key.ascii_code
         );
 
+        // Set scan code in port 0x60 for custom INT 09h handlers to read
+        self.io_device.set_keyboard_scan_code(key.scan_code);
+
         // Call INT 09h handler
         let int_num = 0x09u8;
         let ivt_addr = (int_num as usize) * 4;
@@ -650,6 +653,10 @@ impl<V: VideoController> Computer<V> {
                 // We call the BIOS INT 0x08 handler directly (not via fire_timer_irq) because
                 // we're already in the middle of handling an F000 call and don't want to
                 // mess with the stack frames.
+                //
+                // Note: We do NOT process keyboard IRQs inline because custom INT 09h handlers
+                // need proper stack frames for IRET. Keyboard IRQs will fire immediately after
+                // this return completes (if IF=1) via the normal IRQ processing in step().
                 let if_currently_enabled = self.cpu.get_flag(crate::cpu::cpu_flag::INTERRUPT);
                 while if_currently_enabled && self.pending_timer_irqs > 0 {
                     // Directly call the BIOS INT 0x08 handler to update BDA timer counter

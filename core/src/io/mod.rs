@@ -18,6 +18,8 @@ pub struct IoDevice {
     pit: Pit,
     /// CGA Mode Control Register (port 3D8h)
     cga_mode_control: CgaModeControl,
+    /// Keyboard controller data port (port 60h) - stores last scan code
+    keyboard_scan_code: u8,
 }
 
 impl IoDevice {
@@ -27,6 +29,7 @@ impl IoDevice {
             system_control_port: SystemControlPort::new(),
             pit: Pit::new(),
             cga_mode_control: CgaModeControl::new(),
+            keyboard_scan_code: 0x00,
         }
     }
 
@@ -39,8 +42,8 @@ impl IoDevice {
             // PIT command port (write-only, return 0xFF on read)
             0x43 => 0xFF,
 
-            // Keyboard controller - return dummy scancode
-            0x60 => 0x1C, // 'a' key scancode
+            // Keyboard controller data port - return last scan code
+            0x60 => self.keyboard_scan_code,
 
             // System control port with Timer 2 output
             0x61 => {
@@ -134,5 +137,11 @@ impl IoDevice {
     /// Get reference to the system control port (for speaker integration)
     pub fn system_control_port(&self) -> &SystemControlPort {
         &self.system_control_port
+    }
+
+    /// Set the keyboard scan code for port 0x60
+    /// Called when firing keyboard IRQ
+    pub fn set_keyboard_scan_code(&mut self, scan_code: u8) {
+        self.keyboard_scan_code = scan_code;
     }
 }
