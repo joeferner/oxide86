@@ -4,7 +4,7 @@
   - Mode 06h: 640x200, 2 Colors
 - [ ] check-it 2
   - video graphics tests are failing
-  - black screen on exit
+  - black screen on exit (docs/teletype-attribute-preservation.md)
 - [ ] Alley Cat locks up after splash screen
 - [ ] Boot error cannot control A20 line
 - [ ] keyboard repeat rate (holding a key down)
