@@ -1,7 +1,5 @@
 # TODO
 
-- [ ] CGA Test
-  - Mode 06h: 640x200, 2 Colors
 - [ ] check-it 2
   - video graphics tests are failing
   - black screen on exit (docs/teletype-attribute-preservation.md)
