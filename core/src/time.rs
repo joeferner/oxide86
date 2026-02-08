@@ -2,22 +2,25 @@ use crate::cpu::bios::{RtcDate, RtcTime};
 
 // Time and RTC operations for BIOS implementations
 
-/// Get local time components (hours, minutes, seconds) - platform-independent
+/// Get local time components with subsecond precision - platform-independent
+/// Returns (hours, minutes, seconds, milliseconds)
 #[cfg(target_arch = "wasm32")]
-fn get_local_time_components() -> (u8, u8, u8) {
+fn get_local_time_components() -> (u8, u8, u8, u16) {
     let date = js_sys::Date::new_0();
     let hours = date.get_hours() as u8;
     let minutes = date.get_minutes() as u8;
     let seconds = date.get_seconds() as u8;
-    (hours, minutes, seconds)
+    let millis = date.get_milliseconds() as u16;
+    (hours, minutes, seconds, millis)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn get_local_time_components() -> (u8, u8, u8) {
-    // Use chrono for accurate local time
+fn get_local_time_components() -> (u8, u8, u8, u16) {
+    // Use chrono for accurate local time with subsecond precision
     use chrono::{Local, Timelike};
     let now = Local::now();
-    (now.hour() as u8, now.minute() as u8, now.second() as u8)
+    let millis = (now.timestamp_subsec_millis()) as u16;
+    (now.hour() as u8, now.minute() as u8, now.second() as u8, millis)
 }
 
 /// Get local date components (century, year, month, day) - platform-independent
@@ -44,24 +47,25 @@ fn get_local_date_components() -> (u8, u8, u8, u8) {
 }
 
 pub fn get_system_ticks() -> u32 {
-    // Get local time components
-    let (hours, minutes, seconds) = get_local_time_components();
+    // Get local time components with subsecond precision
+    let (hours, minutes, seconds, millis) = get_local_time_components();
 
-    // Calculate seconds since midnight
+    // Calculate total milliseconds since midnight
     let seconds_since_midnight = (hours as u32 * 3600) + (minutes as u32 * 60) + (seconds as u32);
+    let millis_since_midnight = (seconds_since_midnight as u64 * 1000) + (millis as u64);
 
-    // Convert to BIOS ticks (18.2 ticks per second)
-    // More precisely: 1193182 / 65536 = 18.2065 Hz
-    // We use: ticks = seconds * 182 / 10
-    let ticks = (seconds_since_midnight as u64 * 182 / 10) as u32;
+    // Convert to BIOS ticks using exact timer frequency
+    // Timer frequency: 1193182 / 65536 = 18.2065 Hz (NOT 18.2!)
+    // Formula: ticks = milliseconds * 1193182 / 65536 / 1000
+    let ticks = (millis_since_midnight * 1193182 / 65536 / 1000) as u32;
 
     // Ensure we don't exceed the maximum tick count for a day
     ticks.min(0x001800B0)
 }
 
 pub fn get_rtc_time() -> Option<RtcTime> {
-    // Get local time components
-    let (hours, minutes, seconds) = get_local_time_components();
+    // Get local time components (ignore milliseconds for RTC)
+    let (hours, minutes, seconds, _millis) = get_local_time_components();
 
     // Return RTC time (DST flag set to 0 for standard time)
     Some(RtcTime {

@@ -781,7 +781,11 @@ impl<V: VideoController> Computer<V> {
                     &mut self.video,
                 );
                 // Set cycle count for INT instruction (51 cycles)
-                self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT;
+                // Only set if the interrupt handler didn't already set a custom cycle count
+                // (e.g., INT 15h AH=86h sets cycles for the wait duration)
+                if self.cpu.last_instruction_cycles == 0 {
+                    self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT;
+                }
             }
             0xCC => {
                 // INT 3 - advance IP and execute INT 3
