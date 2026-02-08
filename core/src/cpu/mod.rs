@@ -219,7 +219,7 @@ impl Cpu {
         }
 
         if is_bios_handler {
-            self.handle_bios_interrupt_impl(int_num, memory, io, video);
+            self.handle_bios_interrupt_impl(int_num, memory, io, video, false);
         } else {
             // Not handled, do normal INT
             // Push flags, CS, and IP

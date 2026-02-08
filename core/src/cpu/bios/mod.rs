@@ -855,14 +855,19 @@ impl Cpu {
 
     /// Handle BIOS interrupt directly without checking IVT
     /// Used when DOS chains back to BIOS via CALL FAR to F000:XXXX
+    ///
+    /// Parameters:
+    /// - skip_int08_chain: If true and int_num is 0x08, skip chaining to INT 1Ch
+    ///   Used when called inline during F000 returns
     pub(crate) fn handle_bios_interrupt_direct(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
         io: &mut Bios,
         video: &mut crate::video::Video,
+        skip_int08_chain: bool,
     ) {
-        self.handle_bios_interrupt_impl(int_num, memory, io, video);
+        self.handle_bios_interrupt_impl(int_num, memory, io, video, skip_int08_chain);
     }
 
     /// Internal implementation of BIOS interrupt handling
@@ -872,9 +877,10 @@ impl Cpu {
         memory: &mut Memory,
         io: &mut Bios,
         video: &mut crate::video::Video,
+        skip_int08_chain: bool,
     ) {
         match int_num {
-            0x08 => self.handle_int08(memory, io, video),
+            0x08 => self.handle_int08(memory, io, video, skip_int08_chain),
             0x09 => self.handle_int09(memory),
             0x10 => self.handle_int10(memory, video),
             0x11 => self.handle_int11(memory),

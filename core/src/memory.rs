@@ -295,6 +295,50 @@ impl Memory {
         self.pending_timer_irqs = count;
     }
 
+    /// Increment the BDA timer counter directly in memory (bypassing interception)
+    ///
+    /// CRITICAL: This is called when decrementing pending_timer_irqs to keep the sum
+    /// (base_counter + pending_timer_irqs) constant. When programs install custom
+    /// INT 08h handlers, the BIOS handler doesn't run, so we must update the base
+    /// counter manually to maintain accurate timer values.
+    ///
+    /// Returns: true if midnight rollover occurred
+    pub fn increment_bda_timer(&mut self) -> bool {
+        const TIMER_TICKS_PER_DAY: u32 = 0x001800B0;
+
+        let counter_addr = BDA_START + BDA_TIMER_COUNTER;
+
+        // Read current counter directly from data[] (bypasses interception)
+        let base_counter = u32::from_le_bytes([
+            self.data[counter_addr],
+            self.data[counter_addr + 1],
+            self.data[counter_addr + 2],
+            self.data[counter_addr + 3],
+        ]);
+
+        // Increment the counter
+        let new_counter = base_counter.wrapping_add(1);
+
+        // Check for midnight rollover
+        let (final_counter, rollover) = if new_counter >= TIMER_TICKS_PER_DAY {
+            // Set midnight overflow flag
+            let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
+            self.data[overflow_addr] = 1;
+            (0, true)
+        } else {
+            (new_counter, false)
+        };
+
+        // Write updated counter back to data[] (bypasses interception)
+        let bytes = final_counter.to_le_bytes();
+        self.data[counter_addr] = bytes[0];
+        self.data[counter_addr + 1] = bytes[1];
+        self.data[counter_addr + 2] = bytes[2];
+        self.data[counter_addr + 3] = bytes[3];
+
+        rollover
+    }
+
     /// Initialize the BIOS Data Area (BDA)
     /// Sets up system information at 0x0040:0000
     pub fn initialize_bda(&mut self) {

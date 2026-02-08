@@ -648,11 +648,13 @@ impl<V: VideoController> Computer<V> {
             // Call our BIOS handler directly
             // We need to bypass the IVT check since we're already being called via CALL FAR from DOS
             // Handle the interrupt directly based on int_num
+            // Don't skip INT 08h -> INT 1Ch chaining for normal interrupt flow
             self.cpu.handle_bios_interrupt_direct(
                 int_num,
                 &mut self.memory,
                 &mut self.bios,
                 &mut self.video,
+                false, // skip_int08_chain
             );
 
             // Check if the handler called chain_to_interrupt() to chain to another handler
@@ -674,12 +676,14 @@ impl<V: VideoController> Computer<V> {
                 let if_currently_enabled = self.cpu.get_flag(crate::cpu::cpu_flag::INTERRUPT);
                 while if_currently_enabled && self.pending_timer_irqs > 0 {
                     // Directly call the BIOS INT 0x08 handler to update BDA timer counter
-                    // This bypasses the full interrupt machinery (no stack frame manipulation)
+                    // Skip chaining to INT 1Ch because we can't properly execute the handler inline
+                    // Timer IRQs that fire through the normal path will chain properly
                     self.cpu.handle_bios_interrupt_direct(
                         0x08,
                         &mut self.memory,
                         &mut self.bios,
                         &mut self.video,
+                        true, // skip_int08_chain
                     );
                     self.dec_pending_timer_irqs();
                 }
@@ -1077,8 +1081,20 @@ impl<V: VideoController> Computer<V> {
     }
 
     /// Decrement pending timer IRQs and sync with memory
+    ///
+    /// CRITICAL: Also increments the BDA timer counter to keep the sum
+    /// (base_counter + pending_timer_irqs) constant. This is necessary
+    /// when programs install custom INT 08h handlers that replace the BIOS handler,
+    /// preventing the BIOS from updating the BDA counter. The memory interception
+    /// returns base_counter + pending_timer_irqs, so we must increment base_counter
+    /// when decrementing pending_timer_irqs to maintain the total.
     #[inline]
     fn dec_pending_timer_irqs(&mut self) {
+        // Increment BDA timer counter in memory (bypasses interception)
+        // This keeps the sum (base_counter + pending_timer_irqs) constant
+        self.memory.increment_bda_timer();
+
+        // Now decrement pending_timer_irqs
         self.pending_timer_irqs -= 1;
         self.memory.set_pending_timer_irqs(self.pending_timer_irqs);
     }

@@ -16,11 +16,16 @@ impl Cpu {
     ///
     /// Programs can install custom INT 0x1C handlers for periodic tasks like
     /// music playback (QBASIC PLAY), animation, or polling.
+    ///
+    /// Parameters:
+    /// - skip_chain: If true, only update BDA counter without chaining to INT 1Ch
+    ///   Used when called inline during F000 returns (can't chain properly)
     pub(super) fn handle_int08(
         &mut self,
         memory: &mut Memory,
         io: &mut super::Bios,
         video: &mut crate::video::Video,
+        skip_chain: bool,
     ) {
         // Read current timer counter from BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
@@ -43,17 +48,22 @@ impl Cpu {
         memory.write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
         memory.write_u16(counter_addr + 2, (tick_count >> 16) as u16);
 
-        // Chain to INT 0x1C (user timer tick)
-        // Check if the IVT still points to BIOS or if a program installed a custom handler
-        let is_bios = Self::is_bios_handler(memory, 0x1C);
+        // Chain to INT 0x1C (user timer tick) unless skip_chain is true
+        // Skip chaining when called inline during F000 returns because chain_to_interrupt()
+        // only sets up CPU state but doesn't execute the handler, causing custom INT 1Ch
+        // handlers (like QBasic PLAY) to never run.
+        if !skip_chain {
+            // Check if the IVT still points to BIOS or if a program installed a custom handler
+            let is_bios = Self::is_bios_handler(memory, 0x1C);
 
-        if is_bios {
-            // BIOS handler - call directly (it's a no-op stub anyway)
-            self.handle_int1c(memory, io, video);
-        } else {
-            // User-installed handler - set up CPU to execute it
-            // This simulates an INT 0x1C instruction being executed
-            self.chain_to_interrupt(0x1C, memory);
+            if is_bios {
+                // BIOS handler - call directly (it's a no-op stub anyway)
+                self.handle_int1c(memory, io, video);
+            } else {
+                // User-installed handler - set up CPU to execute it
+                // This simulates an INT 0x1C instruction being executed
+                self.chain_to_interrupt(0x1C, memory);
+            }
         }
     }
 
