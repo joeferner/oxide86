@@ -758,6 +758,12 @@ impl<V: VideoController> Computer<V> {
                 // INT with immediate - need to fetch the interrupt number
                 let int_num = self.memory.read_u8(addr + 1);
 
+                // Before executing INT 16h (keyboard read), flush any pending video
+                // updates so the screen is current before we potentially block.
+                if int_num == 0x16 && self.video.is_dirty() {
+                    self.update_video();
+                }
+
                 // Manually advance IP past the INT instruction
                 self.cpu.ip = self.cpu.ip.wrapping_add(2);
                 // Execute with BIOS I/O
