@@ -527,6 +527,20 @@ impl<V: VideoController> Computer<V> {
     pub fn step(&mut self) {
         self.step_count += 1;
 
+        // If CPU is busy-waiting (INT 15h AH=86h), burn cycles instead of executing
+        // This simulates busy-waiting like real hardware, works for both native and WASM
+        if self.cpu.pending_sleep_cycles > 0 {
+            // Burn cycles equivalent to a NOP instruction (~3 cycles)
+            const CYCLES_PER_WAIT_STEP: u64 = 3;
+            let cycles_to_burn = CYCLES_PER_WAIT_STEP.min(self.cpu.pending_sleep_cycles);
+
+            self.increment_cycles(cycles_to_burn);
+            self.cpu.pending_sleep_cycles -= cycles_to_burn;
+
+            // Return early - don't execute an instruction while waiting
+            return;
+        }
+
         // Check if CPU is waiting for keyboard input
         if self.cpu.is_waiting_for_keyboard() {
             // Check if there's a pending keyboard IRQ that needs to be fired

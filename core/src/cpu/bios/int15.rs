@@ -63,22 +63,27 @@ impl Cpu {
     /// Output:
     ///   CF = 0 if successful, 1 if not supported or interrupted
     ///
-    /// Note: This emulates the wait by accounting for the CPU cycles that would
-    /// be consumed during the delay. At 4.77 MHz, 1 microsecond ≈ 4.77 cycles.
+    /// Note: This emulates the wait by both accounting for CPU cycles AND
+    /// sleeping in real time (on native platforms). This matches real hardware
+    /// behavior where busy-waiting consumes both CPU cycles and wall clock time.
     fn int15_wait(&mut self, _memory: &mut Memory) {
         let wait_time_high = self.cx as u64;
         let wait_time_low = self.dx as u64;
         let wait_microseconds = (wait_time_high << 16) | wait_time_low;
 
         // Calculate cycles to simulate for the wait
-        // At 4.77 MHz: 4.77 cycles per microsecond (approximately)
-        // We use 5 cycles per microsecond for simplicity (close to 4.77)
-        let wait_cycles = wait_microseconds * 5;
+        // At 4.77 MHz: exactly 4.77 cycles per microsecond
+        // Formula: cycles = microseconds * 4.77 = (microseconds * 477) / 100
+        let wait_cycles = (wait_microseconds * 477) / 100;
 
-        // Account for these cycles in the last_instruction_cycles
-        // This will be added to the cycle counter by Computer::step()
-        // We add a base overhead of 100 cycles for the BIOS function itself
-        self.last_instruction_cycles = wait_cycles + 100;
+        // Request a busy-wait by setting pending_sleep_cycles
+        // Computer::step() will burn these cycles without executing instructions
+        // This matches real hardware behavior where busy-waiting consumes CPU time
+        self.pending_sleep_cycles = wait_cycles;
+
+        // Also account for INT instruction overhead (51 cycles)
+        // This will be added separately by Computer::step()
+        self.last_instruction_cycles = 51;
 
         log::debug!(
             "INT 15h AH=86h: Wait {} microseconds (~{} cycles)",

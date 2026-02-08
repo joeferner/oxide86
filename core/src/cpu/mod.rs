@@ -49,6 +49,10 @@ pub struct Cpu {
     /// Cycle count for the last executed instruction
     /// Used by Computer::step() to accurately track CPU cycles
     pub(super) last_instruction_cycles: u64,
+
+    /// Pending sleep cycles (set by INT 15h AH=86h)
+    /// When > 0, Computer's step() will burn cycles instead of executing instructions
+    pub(super) pending_sleep_cycles: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -107,6 +111,7 @@ impl Cpu {
             repeat_prefix: None,
             log_interrupts_enabled: false,
             last_instruction_cycles: 0,
+            pending_sleep_cycles: 0,
         }
     }
 

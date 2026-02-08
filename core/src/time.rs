@@ -20,7 +20,12 @@ fn get_local_time_components() -> (u8, u8, u8, u16) {
     use chrono::{Local, Timelike};
     let now = Local::now();
     let millis = (now.timestamp_subsec_millis()) as u16;
-    (now.hour() as u8, now.minute() as u8, now.second() as u8, millis)
+    (
+        now.hour() as u8,
+        now.minute() as u8,
+        now.second() as u8,
+        millis,
+    )
 }
 
 /// Get local date components (century, year, month, day) - platform-independent
