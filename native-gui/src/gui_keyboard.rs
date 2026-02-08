@@ -256,6 +256,121 @@ fn apply_modifier_to_scan_code(
         return 0x86;
     }
 
+    // Handle Ctrl+letter combinations
+    if modifiers.control_key()
+        && !modifiers.alt_key()
+        && let PhysicalKey::Code(code) = physical_key
+    {
+        // Ctrl+letter combinations (Ctrl+A = 0x01, Ctrl+B = 0x02, ..., Ctrl+Z = 0x1A)
+        match code {
+            KeyCode::KeyA => {
+                *ascii_code = 0x01;
+                return base_scan_code;
+            }
+            KeyCode::KeyB => {
+                *ascii_code = 0x02;
+                return base_scan_code;
+            }
+            KeyCode::KeyC => {
+                *ascii_code = 0x03;
+                return base_scan_code;
+            }
+            KeyCode::KeyD => {
+                *ascii_code = 0x04;
+                return base_scan_code;
+            }
+            KeyCode::KeyE => {
+                *ascii_code = 0x05;
+                return base_scan_code;
+            }
+            KeyCode::KeyF => {
+                *ascii_code = 0x06;
+                return base_scan_code;
+            }
+            KeyCode::KeyG => {
+                *ascii_code = 0x07;
+                return base_scan_code;
+            }
+            KeyCode::KeyH => {
+                *ascii_code = 0x08;
+                return base_scan_code;
+            }
+            KeyCode::KeyI => {
+                *ascii_code = 0x09;
+                return base_scan_code;
+            }
+            KeyCode::KeyJ => {
+                *ascii_code = 0x0A;
+                return base_scan_code;
+            }
+            KeyCode::KeyK => {
+                *ascii_code = 0x0B;
+                return base_scan_code;
+            }
+            KeyCode::KeyL => {
+                *ascii_code = 0x0C;
+                return base_scan_code;
+            }
+            KeyCode::KeyM => {
+                *ascii_code = 0x0D;
+                return base_scan_code;
+            }
+            KeyCode::KeyN => {
+                *ascii_code = 0x0E;
+                return base_scan_code;
+            }
+            KeyCode::KeyO => {
+                *ascii_code = 0x0F;
+                return base_scan_code;
+            }
+            KeyCode::KeyP => {
+                *ascii_code = 0x10;
+                return base_scan_code;
+            }
+            KeyCode::KeyQ => {
+                *ascii_code = 0x11;
+                return base_scan_code;
+            }
+            KeyCode::KeyR => {
+                *ascii_code = 0x12;
+                return base_scan_code;
+            }
+            KeyCode::KeyS => {
+                *ascii_code = 0x13;
+                return base_scan_code;
+            }
+            KeyCode::KeyT => {
+                *ascii_code = 0x14;
+                return base_scan_code;
+            }
+            KeyCode::KeyU => {
+                *ascii_code = 0x15;
+                return base_scan_code;
+            }
+            KeyCode::KeyV => {
+                *ascii_code = 0x16;
+                return base_scan_code;
+            }
+            KeyCode::KeyW => {
+                *ascii_code = 0x17;
+                return base_scan_code;
+            }
+            KeyCode::KeyX => {
+                *ascii_code = 0x18;
+                return base_scan_code;
+            }
+            KeyCode::KeyY => {
+                *ascii_code = 0x19;
+                return base_scan_code;
+            }
+            KeyCode::KeyZ => {
+                *ascii_code = 0x1A;
+                return base_scan_code;
+            }
+            _ => {}
+        }
+    }
+
     // Handle Alt+letter and Alt+number combinations
     if modifiers.alt_key()
         && let PhysicalKey::Code(code) = physical_key

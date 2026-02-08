@@ -91,7 +91,7 @@ main_loop:
 .check_arrows:
     ; Arrow keys have ASCII 0 (extended keys), check scan code
     cmp bl, 0
-    jne .check_printable
+    jne .check_ctrl
 
     ; Up arrow
     cmp bh, 0x48
@@ -122,10 +122,37 @@ main_loop:
 .not_left:
     ; Right arrow
     cmp bh, 0x4D
-    jne .check_printable
+    jne .check_ctrl
     mov ah, 0x09
     mov dx, right_msg
     int 0x21
+    jmp main_loop
+
+.check_ctrl:
+    ; Check for Ctrl+letter (ASCII 1-26 = Ctrl+A through Ctrl+Z)
+    cmp bl, 1
+    jb .check_printable
+    cmp bl, 26
+    ja .check_printable
+
+    ; Check for Ctrl+C (ASCII 3) - exit
+    cmp bl, 3
+    je exit_prog
+
+    ; Display "Ctrl+"
+    mov ah, 0x02
+    mov dl, ' '
+    int 0x21
+    mov ah, 0x09
+    mov dx, ctrl_msg
+    int 0x21
+
+    ; Convert ASCII to letter (add 'A'-1 to get the letter)
+    mov ah, 0x02
+    mov dl, bl
+    add dl, 'A' - 1
+    int 0x21
+
     jmp main_loop
 
 .check_printable:
@@ -193,6 +220,9 @@ left_msg:
 
 right_msg:
     db ' RIGHT', '$'
+
+ctrl_msg:
+    db 'Ctrl+', '$'
 
 bye:
     db 13, 10, 'Done!', 13, 10, '$'
