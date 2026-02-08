@@ -6,7 +6,6 @@
   - black screen on exit (docs/teletype-attribute-preservation.md)
 - [ ] Alley Cat locks up after splash screen
 - [ ] Boot error cannot control A20 line
-- [ ] Fix examples/audio.bas audio timing and high pitched noise (see plans/fix-play-sound-issues.md)
 - [ ] Test CGA Applications
   - [ ] Alley Cat
   - [ ] Flight Simulator 1.0

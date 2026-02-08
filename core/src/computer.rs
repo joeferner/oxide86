@@ -29,9 +29,6 @@ pub struct Computer<V: VideoController = NullVideoController> {
     cycle_count: u64,
     /// Total cycles executed (never resets)
     total_cycles: u64,
-    /// Cycles per timer tick (PIT frequency / 18.2 Hz)
-    /// 8086 at 4.77 MHz: approximately 262144 cycles per tick
-    cycles_per_tick: u64,
     /// Instruction step counter for debugging
     step_count: u64,
 
@@ -104,9 +101,6 @@ impl<V: VideoController> Computer<V> {
             speaker,
             cycle_count: 0,
             total_cycles: 0,
-            // 8086 at 4.77 MHz with PIT at 18.2 Hz: ~262144 cycles per tick
-            // This is approximate: 4770000 / 18.2 ≈ 262088
-            cycles_per_tick: 262088,
             step_count: 0,
             exec_logging_enabled: false,
             log_interrupts_enabled: false,
@@ -1052,8 +1046,10 @@ impl<V: VideoController> Computer<V> {
         self.memory.write_u8(flags_addr, flags);
     }
 
-    /// Increment cycle counter and queue timer interrupts when tick threshold reached
-    /// This simulates the PIT (Programmable Interval Timer) running at 18.2 Hz
+    /// Increment cycle counter and queue timer interrupts when tick threshold reached.
+    /// The tick rate is derived from PIT Channel 0's actual count register, so programs
+    /// that reprogram the PIT (e.g., games wanting 100 Hz or 1000 Hz timers) will
+    /// automatically get the correct interrupt rate.
     fn increment_cycles(&mut self, cycles: u64) {
         self.cycle_count += cycles;
         self.total_cycles += cycles;
@@ -1069,10 +1065,16 @@ impl<V: VideoController> Computer<V> {
             self.update_speaker();
         }
 
+        // Derive cycles_per_tick from PIT Channel 0's current count register.
+        // Default count of 0 means 65536, giving ~18.2 Hz. Programs can write
+        // a smaller divisor for faster timer rates (e.g., 1193 for ~1000 Hz).
+        // Formula: cpu_cycles_per_tick = pit_count * (CPU_FREQ / PIT_FREQ)
+        let cycles_per_tick = self.get_cycles_per_tick();
+
         // Queue timer interrupts when tick threshold reached
         // The INT 0x08 handler will update BDA timer counter and chain to INT 0x1C
-        while self.cycle_count >= self.cycles_per_tick {
-            self.cycle_count -= self.cycles_per_tick;
+        while self.cycle_count >= cycles_per_tick {
+            self.cycle_count -= cycles_per_tick;
             self.inc_pending_timer_irqs();
             // Warn if many timer IRQs are pending (IF has been 0 for too long)
             if self.pending_timer_irqs == 10 {
@@ -1084,6 +1086,21 @@ impl<V: VideoController> Computer<V> {
                 );
             }
         }
+    }
+
+    /// Calculate CPU cycles per timer tick from PIT Channel 0's count register.
+    /// PIT base frequency is 1,193,182 Hz. CPU runs at 4,770,000 Hz.
+    /// cycles_per_tick = pit_count * (4_770_000 / 1_193_182)
+    fn get_cycles_per_tick(&self) -> u64 {
+        let pit_count = self.io_device.pit().get_channel_count(0);
+        let count = if pit_count == 0 {
+            65536u64
+        } else {
+            pit_count as u64
+        };
+        // Use integer math: count * 4_770_000 / 1_193_182
+        // For default count 65536: 65536 * 4770000 / 1193182 = 261,887 (~262K cycles)
+        (count * 4_770_000) / 1_193_182
     }
 
     /// Increment pending timer IRQs and sync with memory
