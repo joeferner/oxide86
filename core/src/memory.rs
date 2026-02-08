@@ -76,6 +76,9 @@ pub const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
 pub struct Memory {
     data: Vec<u8>,
     video_writes: Vec<(usize, u8)>,
+    /// Pending timer IRQs that haven't fired yet (updated by Computer)
+    /// Used to calculate accurate BDA timer counter values when programs read directly from memory
+    pending_timer_irqs: u32,
 }
 
 impl Memory {
@@ -83,6 +86,7 @@ impl Memory {
         Self {
             data: vec![0; MEMORY_SIZE],
             video_writes: Vec::new(),
+            pending_timer_irqs: 0,
         }
     }
 
@@ -111,7 +115,40 @@ impl Memory {
     }
 
     pub fn read_u8(&self, address: usize) -> u8 {
-        self.data[address % MEMORY_SIZE]
+        let addr = address % MEMORY_SIZE;
+
+        // Intercept reads from BDA timer counter (0x46C-0x46F)
+        // Calculate the correct value including pending timer IRQs
+        let timer_start = BDA_START + BDA_TIMER_COUNTER;
+        let timer_end = timer_start + 4; // 32-bit counter
+
+        if (timer_start..timer_end).contains(&addr) {
+            // Read the base counter value from memory
+            let base_counter = u32::from_le_bytes([
+                self.data[timer_start],
+                self.data[timer_start + 1],
+                self.data[timer_start + 2],
+                self.data[timer_start + 3],
+            ]);
+
+            // Add pending timer IRQs to get the true current count
+            let current_counter = base_counter.wrapping_add(self.pending_timer_irqs);
+
+            // Handle midnight rollover
+            let ticks_per_day = 0x001800B0;
+            let final_counter = if current_counter >= ticks_per_day {
+                current_counter - ticks_per_day
+            } else {
+                current_counter
+            };
+
+            // Return the appropriate byte
+            let byte_offset = addr - timer_start;
+            let bytes = final_counter.to_le_bytes();
+            return bytes[byte_offset];
+        }
+
+        self.data[addr]
     }
 
     pub fn write_u8(&mut self, address: usize, value: u8) {
@@ -250,6 +287,12 @@ impl Memory {
     /// Drain video memory writes collected during instruction execution
     pub fn drain_video_writes(&mut self) -> std::vec::Drain<'_, (usize, u8)> {
         self.video_writes.drain(..)
+    }
+
+    /// Set the number of pending timer IRQs
+    /// This is used to calculate accurate BDA timer counter values when programs read directly from memory
+    pub fn set_pending_timer_irqs(&mut self, count: u32) {
+        self.pending_timer_irqs = count;
     }
 
     /// Initialize the BIOS Data Area (BDA)

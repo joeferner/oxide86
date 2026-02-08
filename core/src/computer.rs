@@ -279,7 +279,7 @@ impl<V: VideoController> Computer<V> {
         // Clear pending interrupts
         self.pending_keyboard_irqs.clear();
         self.pending_serial_irqs.clear();
-        self.pending_timer_irqs = 0;
+        self.reset_pending_timer_irqs();
 
         // Reset cycle counters
         self.cycle_count = 0;
@@ -613,7 +613,7 @@ impl<V: VideoController> Computer<V> {
         if self.pending_timer_irqs > 0 {
             // Only decrement if we actually fired the IRQ (IF was enabled)
             if self.fire_timer_irq() {
-                self.pending_timer_irqs -= 1;
+                self.dec_pending_timer_irqs();
                 return;
             }
         }
@@ -681,7 +681,7 @@ impl<V: VideoController> Computer<V> {
                         &mut self.bios,
                         &mut self.video,
                     );
-                    self.pending_timer_irqs -= 1;
+                    self.dec_pending_timer_irqs();
                 }
 
                 // No chaining occurred - normal return path
@@ -1056,7 +1056,7 @@ impl<V: VideoController> Computer<V> {
         // The INT 0x08 handler will update BDA timer counter and chain to INT 0x1C
         while self.cycle_count >= self.cycles_per_tick {
             self.cycle_count -= self.cycles_per_tick;
-            self.pending_timer_irqs += 1;
+            self.inc_pending_timer_irqs();
             // Warn if many timer IRQs are pending (IF has been 0 for too long)
             if self.pending_timer_irqs == 10 {
                 log::warn!(
@@ -1067,6 +1067,27 @@ impl<V: VideoController> Computer<V> {
                 );
             }
         }
+    }
+
+    /// Increment pending timer IRQs and sync with memory
+    #[inline]
+    fn inc_pending_timer_irqs(&mut self) {
+        self.pending_timer_irqs += 1;
+        self.memory.set_pending_timer_irqs(self.pending_timer_irqs);
+    }
+
+    /// Decrement pending timer IRQs and sync with memory
+    #[inline]
+    fn dec_pending_timer_irqs(&mut self) {
+        self.pending_timer_irqs -= 1;
+        self.memory.set_pending_timer_irqs(self.pending_timer_irqs);
+    }
+
+    /// Reset pending timer IRQs to zero and sync with memory
+    #[inline]
+    fn reset_pending_timer_irqs(&mut self) {
+        self.pending_timer_irqs = 0;
+        self.memory.set_pending_timer_irqs(0);
     }
 
     /// Synchronize BDA timer counter with pending timer ticks
@@ -1112,7 +1133,7 @@ impl<V: VideoController> Computer<V> {
             current_counter,
             final_counter
         );
-        self.pending_timer_irqs = 0;
+        self.reset_pending_timer_irqs();
     }
 
     /// Update speaker output based on PIT Channel 2 state and port 0x61 control bits
