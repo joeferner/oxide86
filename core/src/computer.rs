@@ -764,6 +764,13 @@ impl<V: VideoController> Computer<V> {
                     self.update_video();
                 }
 
+                // Before executing INT 1Ah (time) or INT 21h (DOS), sync BDA timer
+                // to include pending timer ticks. This ensures accurate time reading
+                // even when IF has been 0 for extended periods.
+                if int_num == 0x1A || int_num == 0x21 {
+                    self.sync_bda_timer();
+                }
+
                 // Manually advance IP past the INT instruction
                 self.cpu.ip = self.cpu.ip.wrapping_add(2);
                 // Execute with BIOS I/O
@@ -1042,6 +1049,52 @@ impl<V: VideoController> Computer<V> {
                 );
             }
         }
+    }
+
+    /// Synchronize BDA timer counter with pending timer ticks
+    ///
+    /// This updates the BDA timer counter to reflect all accumulated timer ticks,
+    /// including those that are pending (queued but INT 08h hasn't fired yet due to IF=0).
+    /// This ensures that time-reading functions (INT 1Ah, INT 21h AH=2Ch) return accurate
+    /// time even when interrupts have been disabled for extended periods.
+    fn sync_bda_timer(&mut self) {
+        if self.pending_timer_irqs == 0 {
+            return; // No pending ticks, BDA is already up to date
+        }
+
+        // Read current BDA timer counter
+        let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
+        let current_counter = self.memory.read_u32(counter_addr);
+
+        // Add pending ticks to get the true current tick count
+        let new_counter = current_counter.wrapping_add(self.pending_timer_irqs);
+
+        // Check for midnight rollover (ticks per day = 0x001800B0)
+        let ticks_per_day = 0x001800B0;
+        let (final_counter, overflow) = if new_counter >= ticks_per_day {
+            (new_counter - ticks_per_day, true)
+        } else {
+            (new_counter, false)
+        };
+
+        // Write updated counter to BDA
+        self.memory.write_u32(counter_addr, final_counter);
+
+        // Set midnight overflow flag if we rolled over
+        if overflow {
+            let overflow_addr = memory::BDA_START + memory::BDA_TIMER_OVERFLOW;
+            self.memory.write_u8(overflow_addr, 1);
+        }
+
+        // Clear pending IRQs since we've applied them to the BDA
+        // Note: We don't actually fire INT 08h here, just update the counter
+        log::debug!(
+            "Synced BDA timer: applied {} pending ticks, counter {} -> {}",
+            self.pending_timer_irqs,
+            current_counter,
+            final_counter
+        );
+        self.pending_timer_irqs = 0;
     }
 
     /// Update speaker output based on PIT Channel 2 state and port 0x61 control bits

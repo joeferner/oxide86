@@ -162,6 +162,19 @@ impl Memory {
         self.write_u8(address + 1, (value >> 8) as u8);
     }
 
+    // Read a 32-bit double word (little-endian)
+    pub fn read_u32(&self, address: usize) -> u32 {
+        let low = self.read_u16(address) as u32;
+        let high = self.read_u16(address + 2) as u32;
+        (high << 16) | low
+    }
+
+    // Write a 32-bit double word (little-endian)
+    pub fn write_u32(&mut self, address: usize, value: u32) {
+        self.write_u16(address, (value & 0xFFFF) as u16);
+        self.write_u16(address + 2, (value >> 16) as u16);
+    }
+
     /// Initialize the Interrupt Vector Table (IVT)
     /// Sets up interrupt handlers for BIOS and DOS-like services
     pub fn initialize_ivt(&mut self) {

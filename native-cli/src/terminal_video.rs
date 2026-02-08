@@ -33,21 +33,13 @@ fn cp437_to_unicode(byte: u8) -> char {
     }
 }
 
-/// Map VGA color to crossterm Color
-fn vga_to_crossterm_color(vga_color: u8) -> Color {
-    let color_tuple = TextModePalette::get_color(vga_color);
-    Color::Rgb {
-        r: color_tuple[0],
-        g: color_tuple[1],
-        b: color_tuple[2],
-    }
-}
-
 /// Terminal-based video controller using crossterm
 pub struct TerminalVideo {
     last_buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
     last_cursor: Option<CursorPosition>,
     current_mode: VideoMode,
+    /// VGA DAC palette (256 RGB triplets, 6-bit per component 0-63)
+    vga_dac_palette: [[u8; 3]; 256],
 }
 
 impl TerminalVideo {
@@ -73,6 +65,46 @@ impl TerminalVideo {
                 cols: TEXT_MODE_COLS,
                 rows: TEXT_MODE_ROWS,
             },
+            vga_dac_palette: Self::default_vga_dac_palette(),
+        }
+    }
+
+    /// Create default VGA DAC palette (same as core::video::default_vga_palette)
+    fn default_vga_dac_palette() -> [[u8; 3]; 256] {
+        let mut palette = [[0u8; 3]; 256];
+        // Initialize first 16 colors with EGA defaults (6-bit RGB values 0-63)
+        for (i, entry) in palette.iter_mut().enumerate().take(16) {
+            *entry = TextModePalette::get_dac_color(i as u8);
+        }
+        palette
+    }
+
+    /// Convert 6-bit VGA DAC RGB (0-63) to 8-bit RGB (0-255)
+    /// Uses the standard VGA conversion: value * 255 / 63
+    fn dac_to_rgb(&self, dac_value: u8) -> u8 {
+        // Standard VGA DAC conversion: multiply by ~4.047619
+        // Using ((value << 2) | (value >> 4)) for accuracy
+        let val = dac_value & 0x3F; // Ensure 6-bit
+        (val << 2) | (val >> 4)
+    }
+
+    /// Get 8-bit RGB color from VGA DAC palette
+    fn get_palette_color(&self, color_index: u8) -> [u8; 3] {
+        let dac_color = self.vga_dac_palette[color_index as usize];
+        [
+            self.dac_to_rgb(dac_color[0]),
+            self.dac_to_rgb(dac_color[1]),
+            self.dac_to_rgb(dac_color[2]),
+        ]
+    }
+
+    /// Map VGA color to crossterm Color using the VGA DAC palette
+    fn vga_to_crossterm_color(&self, vga_color: u8) -> Color {
+        let color_tuple = self.get_palette_color(vga_color);
+        Color::Rgb {
+            r: color_tuple[0],
+            g: color_tuple[1],
+            b: color_tuple[2],
         }
     }
 }
@@ -101,14 +133,14 @@ impl VideoController for TerminalVideo {
 
                     // Set colors
                     stdout
-                        .queue(SetForegroundColor(vga_to_crossterm_color(
-                            cell.attribute.foreground,
-                        )))
+                        .queue(SetForegroundColor(
+                            self.vga_to_crossterm_color(cell.attribute.foreground),
+                        ))
                         .unwrap();
                     stdout
-                        .queue(SetBackgroundColor(vga_to_crossterm_color(
-                            cell.attribute.background,
-                        )))
+                        .queue(SetBackgroundColor(
+                            self.vga_to_crossterm_color(cell.attribute.background),
+                        ))
                         .unwrap();
 
                     // Print character (convert CP437 to Unicode)
@@ -167,6 +199,15 @@ impl VideoController for TerminalVideo {
 
         // Now update_display will redraw everything since all cells will differ
         self.update_display(buffer);
+    }
+
+    fn update_vga_dac_palette(&mut self, palette: &[[u8; 3]; 256]) {
+        // Update stored VGA DAC palette
+        self.vga_dac_palette.copy_from_slice(palette);
+
+        // Force full redraw since colors changed
+        self.last_buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
+        self.last_cursor = None;
     }
 }
 

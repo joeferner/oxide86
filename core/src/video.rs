@@ -641,6 +641,11 @@ impl Video {
         &self.vga_dac_palette
     }
 
+    /// Get individual VGA DAC register (6-bit RGB values 0-63)
+    pub fn get_vga_dac_register(&self, index: u8) -> [u8; 3] {
+        self.vga_dac_palette[index as usize]
+    }
+
     /// Set border color (overscan) for text modes
     pub fn set_border_color(&mut self, color: u8) {
         self.border_color = color & 0x0F;

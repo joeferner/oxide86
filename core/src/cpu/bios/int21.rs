@@ -54,6 +54,10 @@ impl Cpu {
             0x0E => self.int21_select_disk(io),
             0x19 => self.int21_get_current_drive(io),
             0x25 => self.int21_set_interrupt_vector(memory),
+            0x2A => self.int21_get_date(io),
+            0x2B => self.int21_set_date(),
+            0x2C => self.int21_get_time(memory),
+            0x2D => self.int21_set_time(memory),
             0x30 => self.int21_get_dos_version(),
             0x31 => self.int21_terminate_stay_resident(memory, io),
             0x32 => self.int21_get_dpb(memory, io),
@@ -938,6 +942,173 @@ impl Cpu {
             num_drives
         );
         self.ax = (self.ax & 0xFF00) | (num_drives as u16);
+    }
+
+    /// INT 21h, AH=2Ah - Get System Date
+    /// Output:
+    ///   CX = year (1980-2099)
+    ///   DH = month (1-12)
+    ///   DL = day (1-31)
+    ///   AL = day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
+    fn int21_get_date(&mut self, io: &super::Bios) {
+        // Get RTC date from BIOS
+        if let Some(date) = io.get_rtc_date() {
+            let year = (date.century as u16) * 100 + (date.year as u16);
+            self.cx = year; // CX = year
+            self.dx = ((date.month as u16) << 8) | (date.day as u16); // DH=month, DL=day
+
+            // Calculate day of week (Zeller's congruence)
+            let mut m = date.month as i32;
+            let mut y = year as i32;
+            let d = date.day as i32;
+
+            // January and February are treated as months 13 and 14 of the previous year
+            if m < 3 {
+                m += 12;
+                y -= 1;
+            }
+
+            let day_of_week = (d + (13 * (m + 1)) / 5 + y + y / 4 - y / 100 + y / 400) % 7;
+            // Adjust: Zeller gives 0=Saturday, we need 0=Sunday
+            let day_of_week = ((day_of_week + 6) % 7) as u8;
+
+            self.ax = (self.ax & 0xFF00) | (day_of_week as u16); // AL = day of week
+
+            log::debug!(
+                "INT 21h AH=2Ah: Get date - {}-{:02}-{:02} (day of week: {})",
+                year,
+                date.month,
+                date.day,
+                day_of_week
+            );
+        } else {
+            // If RTC not available, return default date
+            self.cx = 1980; // Year 1980 (DOS epoch)
+            self.dx = 0x0101; // January 1
+            self.ax = (self.ax & 0xFF00) | 2; // Tuesday
+            log::warn!("INT 21h AH=2Ah: RTC not available, returning 1980-01-01");
+        }
+    }
+
+    /// INT 21h, AH=2Bh - Set System Date
+    /// Input:
+    ///   CX = year (1980-2099)
+    ///   DH = month (1-12)
+    ///   DL = day (1-31)
+    /// Output:
+    ///   AL = 0x00 if successful, 0xFF if invalid date
+    fn int21_set_date(&mut self) {
+        let year = self.cx;
+        let month = ((self.dx >> 8) & 0xFF) as u8;
+        let day = (self.dx & 0xFF) as u8;
+
+        // Validate date
+        if !(1980..=2099).contains(&year) || !(1..=12).contains(&month) || !(1..=31).contains(&day)
+        {
+            self.ax = (self.ax & 0xFF00) | 0xFF; // AL = 0xFF (invalid)
+            log::warn!(
+                "INT 21h AH=2Bh: Invalid date {}-{:02}-{:02}",
+                year,
+                month,
+                day
+            );
+            return;
+        }
+
+        log::warn!(
+            "INT 21h AH=2Bh: Set date to {}-{:02}-{:02} (not implemented - date is read-only in emulator)",
+            year,
+            month,
+            day
+        );
+
+        // Note: We don't actually set the system date in the emulator
+        // because get_rtc_date() always reads the host system clock.
+        // Return success anyway since programs expect it.
+        self.ax &= 0xFF00; // AL = 0x00 (success)
+    }
+
+    /// INT 21h, AH=2Ch - Get System Time
+    /// Output:
+    ///   CH = hours (0-23)
+    ///   CL = minutes (0-59)
+    ///   DH = seconds (0-59)
+    ///   DL = hundredths of seconds (0-99)
+    ///
+    /// Note: This reads from the BDA timer counter (updated by INT 08h at 18.2 Hz),
+    /// not from the RTC. The timer counter is synced before this function is called
+    /// to include pending timer ticks.
+    fn int21_get_time(&mut self, memory: &Memory) {
+        use crate::memory::{BDA_START, BDA_TIMER_COUNTER};
+
+        // Read timer counter from BDA (4 bytes, little-endian)
+        let counter_addr = BDA_START + BDA_TIMER_COUNTER;
+        let tick_count = memory.read_u32(counter_addr);
+
+        // Convert ticks to time
+        // Timer frequency: 18.2065 Hz (exactly 1193182 / 65536)
+        // More precisely: ticks = seconds * 1193182 / 65536
+        // So: seconds = ticks * 65536 / 1193182
+        let total_centiseconds = (tick_count as u64 * 6553600) / 1193182;
+        let total_seconds = (total_centiseconds / 100) as u32;
+        let hundredths = (total_centiseconds % 100) as u8;
+
+        let hours = (total_seconds / 3600) as u8;
+        let minutes = ((total_seconds % 3600) / 60) as u8;
+        let seconds = (total_seconds % 60) as u8;
+
+        self.cx = ((hours as u16) << 8) | (minutes as u16); // CH=hours, CL=minutes
+        self.dx = ((seconds as u16) << 8) | (hundredths as u16); // DH=seconds, DL=hundredths
+
+        log::debug!(
+            "INT 21h AH=2Ch: Get time - {:02}:{:02}:{:02}.{:02} (from {} ticks)",
+            hours,
+            minutes,
+            seconds,
+            hundredths,
+            tick_count
+        );
+    }
+
+    /// INT 21h, AH=2Dh - Set System Time
+    /// Input:
+    ///   CH = hours (0-23)
+    ///   CL = minutes (0-59)
+    ///   DH = seconds (0-59)
+    ///   DL = hundredths of seconds (0-99)
+    /// Output:
+    ///   AL = 0x00 if successful, 0xFF if invalid time
+    fn int21_set_time(&mut self, _memory: &mut Memory) {
+        let hours = ((self.cx >> 8) & 0xFF) as u8;
+        let minutes = (self.cx & 0xFF) as u8;
+        let seconds = ((self.dx >> 8) & 0xFF) as u8;
+        let hundredths = (self.dx & 0xFF) as u8;
+
+        // Validate time
+        if hours > 23 || minutes > 59 || seconds > 59 || hundredths > 99 {
+            self.ax = (self.ax & 0xFF00) | 0xFF; // AL = 0xFF (invalid)
+            log::warn!(
+                "INT 21h AH=2Dh: Invalid time {:02}:{:02}:{:02}.{:02}",
+                hours,
+                minutes,
+                seconds,
+                hundredths
+            );
+            return;
+        }
+
+        log::warn!(
+            "INT 21h AH=2Dh: Set time to {:02}:{:02}:{:02}.{:02} (not implemented - time is read-only in emulator)",
+            hours,
+            minutes,
+            seconds,
+            hundredths
+        );
+
+        // Note: We don't actually set the system time in the emulator
+        // because get_rtc_time() always reads the host system clock.
+        // Return success anyway since programs expect it.
+        self.ax &= 0xFF00; // AL = 0x00 (success)
     }
 
     /// INT 21h, AH=32h - Get Drive Parameter Block (DPB) (undocumented)

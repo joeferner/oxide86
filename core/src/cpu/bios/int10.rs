@@ -854,7 +854,7 @@ impl Cpu {
     ///   17h = Read block of DAC registers
     ///   1Ah = Read color page state
     ///   1Bh = Perform gray-scale summing
-    fn int10_palette_registers(&mut self, memory: &Memory, video: &mut crate::video::Video) {
+    fn int10_palette_registers(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
         let subfunction = (self.ax & 0xFF) as u8; // AL
 
         match subfunction {
@@ -920,6 +920,51 @@ impl Cpu {
 
                 log::debug!(
                     "INT 10h/AH=10h/AL=12h: Set {} DAC registers starting at {}",
+                    count,
+                    first_register
+                );
+            }
+            0x15 => {
+                // Read individual DAC register
+                // Input: BX = register number (0-255)
+                // Output: DH = red value (0-63)
+                //         CH = green value (0-63)
+                //         CL = blue value (0-63)
+                let register = (self.bx & 0xFF) as u8;
+                let rgb = video.get_vga_dac_register(register);
+
+                self.dx = (self.dx & 0x00FF) | ((rgb[0] as u16) << 8); // DH = red
+                self.cx = ((rgb[1] as u16) << 8) | (rgb[2] as u16); // CH = green, CL = blue
+
+                log::debug!(
+                    "INT 10h/AH=10h/AL=15h: Read DAC register {} = RGB({}, {}, {})",
+                    register,
+                    rgb[0],
+                    rgb[1],
+                    rgb[2]
+                );
+            }
+            0x17 => {
+                // Read block of DAC registers
+                // Input: BX = first register number (0-255)
+                //        CX = number of registers to read (0-256)
+                //        ES:DX -> buffer for RGB triplets (3 bytes per entry)
+                let first_register = (self.bx & 0xFF) as u8;
+                let count = self.cx;
+                let mut table_addr = Self::physical_address(self.es, self.dx);
+
+                for i in 0..count {
+                    let register = first_register.wrapping_add(i as u8);
+                    let rgb = video.get_vga_dac_register(register);
+
+                    memory.write_u8(table_addr, rgb[0]); // Red
+                    memory.write_u8(table_addr + 1, rgb[1]); // Green
+                    memory.write_u8(table_addr + 2, rgb[2]); // Blue
+                    table_addr += 3;
+                }
+
+                log::debug!(
+                    "INT 10h/AH=10h/AL=17h: Read {} DAC registers starting at {}",
                     count,
                     first_register
                 );

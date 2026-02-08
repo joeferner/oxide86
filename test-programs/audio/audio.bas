@@ -1,5 +1,5 @@
 CLS
-PRINT "Starting..."
+PRINT "Starting: "; TIME$
 start! = TIMER
 
 PRINT "Playing music..."

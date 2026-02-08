@@ -1,34 +1,54 @@
 use crate::cpu::bios::{RtcDate, RtcTime};
 
-#[cfg(not(target_arch = "wasm32"))]
-use std::time::SystemTime;
-
 // Time and RTC operations for BIOS implementations
 
-/// Get milliseconds since Unix epoch (platform-independent)
-fn get_epoch_millis() -> u64 {
-    #[cfg(target_arch = "wasm32")]
-    {
-        js_sys::Date::now() as u64
-    }
-    #[cfg(not(target_arch = "wasm32"))]
-    {
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_millis() as u64
-    }
+/// Get local time components (hours, minutes, seconds) - platform-independent
+#[cfg(target_arch = "wasm32")]
+fn get_local_time_components() -> (u8, u8, u8) {
+    let date = js_sys::Date::new_0();
+    let hours = date.get_hours() as u8;
+    let minutes = date.get_minutes() as u8;
+    let seconds = date.get_seconds() as u8;
+    (hours, minutes, seconds)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn get_local_time_components() -> (u8, u8, u8) {
+    // Use chrono for accurate local time
+    use chrono::{Local, Timelike};
+    let now = Local::now();
+    (now.hour() as u8, now.minute() as u8, now.second() as u8)
+}
+
+/// Get local date components (century, year, month, day) - platform-independent
+#[cfg(target_arch = "wasm32")]
+fn get_local_date_components() -> (u8, u8, u8, u8) {
+    let date = js_sys::Date::new_0();
+    let full_year = date.get_full_year() as i32;
+    let century = (full_year / 100) as u8;
+    let year_in_century = (full_year % 100) as u8;
+    let month = (date.get_month() + 1) as u8; // JavaScript months are 0-indexed
+    let day = date.get_date() as u8;
+    (century, year_in_century, month, day)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn get_local_date_components() -> (u8, u8, u8, u8) {
+    // Use chrono for accurate local time
+    use chrono::{Datelike, Local};
+    let now = Local::now();
+    let year = now.year();
+    let century = (year / 100) as u8;
+    let year_in_century = (year % 100) as u8;
+    (century, year_in_century, now.month() as u8, now.day() as u8)
 }
 
 pub fn get_system_ticks() -> u32 {
-    // Get current system time
-    let millis = get_epoch_millis();
-    let total_seconds = millis / 1000;
+    // Get local time components
+    let (hours, minutes, seconds) = get_local_time_components();
 
-    // Calculate seconds since midnight (local time approximation)
-    // Note: This is simplified and doesn't account for timezones properly
-    let seconds_in_day = 24 * 60 * 60;
-    let seconds_since_midnight = (total_seconds % seconds_in_day) as u32;
+    // Calculate seconds since midnight
+    let seconds_since_midnight = (hours as u32 * 3600) + (minutes as u32 * 60) + (seconds as u32);
 
     // Convert to BIOS ticks (18.2 ticks per second)
     // More precisely: 1193182 / 65536 = 18.2065 Hz
@@ -40,18 +60,8 @@ pub fn get_system_ticks() -> u32 {
 }
 
 pub fn get_rtc_time() -> Option<RtcTime> {
-    // Get current system time
-    let millis = get_epoch_millis();
-    let total_seconds = millis / 1000;
-
-    // Calculate time of day (simplified, doesn't account for timezone)
-    let seconds_in_day = 24 * 60 * 60;
-    let seconds_since_midnight = (total_seconds % seconds_in_day) as u32;
-
-    // Convert to hours, minutes, seconds
-    let hours = (seconds_since_midnight / 3600) as u8;
-    let minutes = ((seconds_since_midnight % 3600) / 60) as u8;
-    let seconds = (seconds_since_midnight % 60) as u8;
+    // Get local time components
+    let (hours, minutes, seconds) = get_local_time_components();
 
     // Return RTC time (DST flag set to 0 for standard time)
     Some(RtcTime {
@@ -63,60 +73,13 @@ pub fn get_rtc_time() -> Option<RtcTime> {
 }
 
 pub fn get_rtc_date() -> Option<RtcDate> {
-    // Get current system time
-    let millis = get_epoch_millis();
-    let total_seconds = millis / 1000;
-
-    // Calculate date (simplified Gregorian calendar calculation)
-    // Days since Unix epoch (January 1, 1970)
-    let days_since_epoch = (total_seconds / 86400) as i32;
-
-    // Calculate year, month, day using a simplified algorithm
-    // This is an approximation that works for dates between 1970-2099
-    let mut days_remaining = days_since_epoch;
-
-    // Start from 1970
-    let mut year = 1970;
-    loop {
-        let days_in_year = if is_leap_year(year) { 366 } else { 365 };
-        if days_remaining < days_in_year {
-            break;
-        }
-        days_remaining -= days_in_year;
-        year += 1;
-    }
-
-    // Find month and day
-    let days_in_months = if is_leap_year(year) {
-        [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    } else {
-        [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    };
-
-    let mut month = 1u8;
-    for &days_in_month in &days_in_months {
-        if days_remaining < days_in_month {
-            break;
-        }
-        days_remaining -= days_in_month;
-        month += 1;
-    }
-
-    let day = (days_remaining + 1) as u8;
-
-    // Calculate century and year within century
-    let century = (year / 100) as u8;
-    let year_in_century = (year % 100) as u8;
+    // Get local date components
+    let (century, year, month, day) = get_local_date_components();
 
     Some(RtcDate {
         century,
-        year: year_in_century,
+        year,
         month,
         day,
     })
-}
-
-/// Check if a year is a leap year
-fn is_leap_year(year: i32) -> bool {
-    (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0)
 }

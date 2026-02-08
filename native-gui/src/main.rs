@@ -92,6 +92,7 @@ fn main() {
 
     // Always filter wgpu logs to reduce noise
     builder
+        .filter_module("naga", LevelFilter::Info)
         .filter_module("wgpu_core", LevelFilter::Info)
         .filter_module("wgpu_hal", LevelFilter::Error)
         .format(|buf, record| {

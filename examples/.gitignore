@@ -1,3 +1,4 @@
 *.bin
 *.img
 workdir/
+emu86_screenshot_*.png

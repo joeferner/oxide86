@@ -63,13 +63,29 @@ impl Cpu {
     /// Output:
     ///   CF = 0 if successful, 1 if not supported or interrupted
     ///
-    /// Note: In this emulator, we don't actually delay - we just return success
+    /// Note: This emulates the wait by accounting for the CPU cycles that would
+    /// be consumed during the delay. At 4.77 MHz, 1 microsecond ≈ 4.77 cycles.
     fn int15_wait(&mut self, _memory: &mut Memory) {
-        let _wait_time_high = self.cx;
-        let _wait_time_low = self.dx;
+        let wait_time_high = self.cx as u64;
+        let wait_time_low = self.dx as u64;
+        let wait_microseconds = (wait_time_high << 16) | wait_time_low;
 
-        // In a real system, this would wait for CX:DX microseconds
-        // For emulation purposes, we just return success immediately
+        // Calculate cycles to simulate for the wait
+        // At 4.77 MHz: 4.77 cycles per microsecond (approximately)
+        // We use 5 cycles per microsecond for simplicity (close to 4.77)
+        let wait_cycles = wait_microseconds * 5;
+
+        // Account for these cycles in the last_instruction_cycles
+        // This will be added to the cycle counter by Computer::step()
+        // We add a base overhead of 100 cycles for the BIOS function itself
+        self.last_instruction_cycles = wait_cycles + 100;
+
+        log::debug!(
+            "INT 15h AH=86h: Wait {} microseconds (~{} cycles)",
+            wait_microseconds,
+            wait_cycles
+        );
+
         self.set_flag(cpu_flag::CARRY, false);
     }
 

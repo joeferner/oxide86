@@ -1031,6 +1031,7 @@ name = "emu86-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "criterion",
  "fatfs",
  "js-sys",
