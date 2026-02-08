@@ -761,12 +761,25 @@ impl<V: VideoController> Computer<V> {
                 current_ip,
                 Some(&self.cpu),
             );
+
+            // Combine register and memory values for logging
+            let mut values = String::new();
+            if !decoded.reg_values.is_empty() {
+                values.push_str(&decoded.reg_values);
+            }
+            if !decoded.mem_values.is_empty() {
+                if !values.is_empty() {
+                    values.push(' ');
+                }
+                values.push_str(&decoded.mem_values);
+            }
+
             log::info!(
                 "OP {:04X}:{:04X} {:30} {}",
                 current_cs,
                 current_ip,
                 decoded.text,
-                decoded.reg_values,
+                values,
             );
         }
 

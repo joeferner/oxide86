@@ -76,6 +76,14 @@ struct Cli {
     /// Device to attach to COM2 (e.g., "mouse")
     #[arg(long = "com2", value_name = "DEVICE")]
     com2_device: Option<String>,
+
+    /// Enable execution logging (logs each instruction to emu86.log)
+    #[arg(long = "exec-log")]
+    exec_log: bool,
+
+    /// Enable interrupt logging (logs INT calls to emu86.log)
+    #[arg(long = "int-log")]
+    int_log: bool,
 }
 
 fn main() -> Result<()> {
@@ -246,6 +254,16 @@ fn main() -> Result<()> {
             offset
         );
     }
+    // Enable logging flags from CLI
+    if cli.exec_log {
+        computer.set_exec_logging(true);
+        log::info!("Execution logging enabled");
+    }
+    if cli.int_log {
+        computer.set_log_interrupts(true);
+        log::info!("Interrupt logging enabled");
+    }
+
     log::info!("Starting execution... (Press F12 for command mode)");
 
     // Attach serial devices if specified

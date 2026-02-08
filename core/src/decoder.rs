@@ -7,6 +7,8 @@ pub struct DecodedInstruction {
     pub text: String,
     /// Formatted string of input register values (e.g., "AX=1234 CX=5678")
     pub reg_values: String,
+    /// Formatted string of memory values (e.g., "[0x24bc]=1234 [bx+4]=5678")
+    pub mem_values: String,
 }
 
 /// Decode instruction at given CS:IP and return human-readable assembly string
@@ -24,13 +26,37 @@ pub fn decode_instruction_with_regs(
     let mut decoder = InstructionDecoder::new(memory, cs, ip);
     let text = decoder.decode();
 
-    let reg_values = if let Some(cpu) = cpu {
-        decoder.format_input_registers(cpu)
+    let (reg_values, mem_values) = if let Some(cpu) = cpu {
+        (
+            decoder.format_input_registers(cpu),
+            decoder.format_memory_values(cpu, memory),
+        )
     } else {
-        String::new()
+        (String::new(), String::new())
     };
 
-    DecodedInstruction { text, reg_values }
+    DecodedInstruction {
+        text,
+        reg_values,
+        mem_values,
+    }
+}
+
+/// Information about a memory reference in the instruction
+#[derive(Clone)]
+struct MemoryRef {
+    /// Display string (e.g., "[0x24bc]", "[bx+si+4]")
+    display: String,
+    /// ModR/M byte that encodes this memory reference (if applicable)
+    modrm: Option<u8>,
+    /// Segment override, or None to use default
+    segment_override: Option<u16>,
+    /// Direct address (for mode 00, rm 110)
+    direct_address: Option<u16>,
+    /// Displacement value (0 for no displacement, 8-bit or 16-bit)
+    displacement: i16,
+    /// Whether this is a word (16-bit) access
+    is_word: bool,
 }
 
 struct InstructionDecoder<'a> {
@@ -43,6 +69,8 @@ struct InstructionDecoder<'a> {
     uses_bx: bool,
     uses_cx: bool,
     uses_dx: bool,
+    /// Memory references found in this instruction
+    memory_refs: Vec<MemoryRef>,
 }
 
 impl<'a> InstructionDecoder<'a> {
@@ -57,6 +85,7 @@ impl<'a> InstructionDecoder<'a> {
             uses_bx: false,
             uses_cx: false,
             uses_dx: false,
+            memory_refs: Vec::new(),
         }
     }
 
@@ -84,6 +113,86 @@ impl<'a> InstructionDecoder<'a> {
         if self.uses_dx {
             parts.push(format!("DX={:04X}", cpu.dx));
         }
+        parts.join(" ")
+    }
+
+    fn format_memory_values(&self, cpu: &Cpu, memory: &Memory) -> String {
+        let mut parts = Vec::new();
+
+        for mem_ref in &self.memory_refs {
+            // Calculate the effective address
+            let address = if let Some(direct_addr) = mem_ref.direct_address {
+                // Direct addressing mode [0x1234]
+                // Use segment override if present, otherwise DS
+                let segment = match mem_ref.segment_override {
+                    Some(0) => cpu.es,
+                    Some(1) => cpu.cs,
+                    Some(2) => cpu.ss,
+                    Some(3) | None => cpu.ds, // DS is default
+                    Some(4) => cpu.es,        // FS -> ES for 8086
+                    Some(5) => cpu.es,        // GS -> ES for 8086
+                    _ => cpu.ds,
+                };
+                Cpu::physical_address(segment, direct_addr)
+            } else if let Some(modrm) = mem_ref.modrm {
+                // Calculate effective address from modrm byte and CPU registers
+                let rm = modrm & 0x07;
+
+                // Calculate base offset based on addressing mode
+                let base_offset = match rm {
+                    0b000 => cpu.bx.wrapping_add(cpu.si),
+                    0b001 => cpu.bx.wrapping_add(cpu.di),
+                    0b010 => cpu.bp.wrapping_add(cpu.si),
+                    0b011 => cpu.bp.wrapping_add(cpu.di),
+                    0b100 => cpu.si,
+                    0b101 => cpu.di,
+                    0b110 => cpu.bp,
+                    0b111 => cpu.bx,
+                    _ => 0,
+                };
+
+                // Add displacement to get final offset
+                let offset = base_offset.wrapping_add(mem_ref.displacement as u16);
+
+                // Determine default segment (BP-based uses SS, others use DS)
+                let default_segment = if matches!(rm, 0b010 | 0b011 | 0b110) {
+                    cpu.ss
+                } else {
+                    cpu.ds
+                };
+
+                // Apply segment override if present
+                let segment = match mem_ref.segment_override {
+                    Some(0) => cpu.es,
+                    Some(1) => cpu.cs,
+                    Some(2) => cpu.ss,
+                    Some(3) => cpu.ds,
+                    Some(4) => cpu.es, // FS -> ES for 8086
+                    Some(5) => cpu.es, // GS -> ES for 8086
+                    None => default_segment,
+                    _ => default_segment,
+                };
+
+                Cpu::physical_address(segment, offset)
+            } else {
+                continue; // Skip if we can't calculate the address
+            };
+
+            // Read the value from memory
+            let value = if mem_ref.is_word {
+                memory.read_u16(address)
+            } else {
+                memory.read_u8(address) as u16
+            };
+
+            // Format as "display=value"
+            if mem_ref.is_word {
+                parts.push(format!("{}={:04X}", mem_ref.display, value));
+            } else {
+                parts.push(format!("{}={:02X}", mem_ref.display, value as u8));
+            }
+        }
+
         parts.join(" ")
     }
 
@@ -167,12 +276,25 @@ impl<'a> InstructionDecoder<'a> {
         let mut ea = String::new();
 
         // Add segment override if present
+        let segment_override_value = match self.segment_override {
+            Some("es") => Some(0), // Will be resolved to ES register value later
+            Some("cs") => Some(1),
+            Some("ss") => Some(2),
+            Some("ds") => Some(3),
+            Some("fs") => Some(4),
+            Some("gs") => Some(5),
+            _ => None,
+        };
+
         if let Some(seg) = self.segment_override {
             ea.push_str(seg);
             ea.push(':');
         }
 
         ea.push('[');
+
+        // Track displacement
+        let mut displacement: i16 = 0;
 
         // Base addressing mode
         let base = match rm {
@@ -187,6 +309,17 @@ impl<'a> InstructionDecoder<'a> {
                     // Direct address
                     let disp = self.fetch_word();
                     ea.push_str(&format!("0x{:04x}]", disp));
+
+                    // Record this memory reference
+                    self.memory_refs.push(MemoryRef {
+                        display: ea.clone(),
+                        modrm: None,
+                        segment_override: segment_override_value,
+                        direct_address: Some(disp),
+                        displacement: 0,
+                        is_word: w,
+                    });
+
                     return (reg, rm, ea);
                 } else {
                     "bp"
@@ -204,6 +337,7 @@ impl<'a> InstructionDecoder<'a> {
             0b01 => {
                 // 8-bit signed displacement
                 let disp = self.fetch_byte() as i8;
+                displacement = disp as i16;
                 if disp >= 0 {
                     ea.push_str(&format!("+0x{:02x}", disp));
                 } else {
@@ -213,6 +347,7 @@ impl<'a> InstructionDecoder<'a> {
             0b10 => {
                 // 16-bit displacement
                 let disp = self.fetch_word();
+                displacement = disp as i16;
                 if disp > 0 {
                     ea.push_str(&format!("+0x{:04x}", disp));
                 }
@@ -221,6 +356,17 @@ impl<'a> InstructionDecoder<'a> {
         }
 
         ea.push(']');
+
+        // Record this memory reference (non-direct addressing)
+        self.memory_refs.push(MemoryRef {
+            display: ea.clone(),
+            modrm: Some(modrm),
+            segment_override: segment_override_value,
+            direct_address: None,
+            displacement,
+            is_word: w,
+        });
+
         (reg, rm, ea)
     }
 
@@ -673,11 +819,29 @@ impl<'a> InstructionDecoder<'a> {
             // MOV accumulator to/from memory
             0xA0 => {
                 let offset = self.fetch_word();
-                format!("mov al, [0x{:04x}]", offset)
+                let display = format!("[0x{:04x}]", offset);
+                self.memory_refs.push(MemoryRef {
+                    display: display.clone(),
+                    modrm: None,
+                    segment_override: None,
+                    direct_address: Some(offset),
+                    displacement: 0,
+                    is_word: false,
+                });
+                format!("mov al, {}", display)
             }
             0xA1 => {
                 let offset = self.fetch_word();
-                format!("mov ax, [0x{:04x}]", offset)
+                let display = format!("[0x{:04x}]", offset);
+                self.memory_refs.push(MemoryRef {
+                    display: display.clone(),
+                    modrm: None,
+                    segment_override: None,
+                    direct_address: Some(offset),
+                    displacement: 0,
+                    is_word: true,
+                });
+                format!("mov ax, {}", display)
             }
             0xA2 => {
                 let offset = self.fetch_word();

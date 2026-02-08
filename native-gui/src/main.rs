@@ -73,6 +73,14 @@ struct Cli {
     /// Run at maximum speed (no throttling)
     #[arg(long)]
     turbo: bool,
+
+    /// Enable execution logging (logs each instruction to emu86.log)
+    #[arg(long = "exec-log")]
+    exec_log: bool,
+
+    /// Enable interrupt logging (logs INT calls to emu86.log)
+    #[arg(long = "int-log")]
+    int_log: bool,
 }
 
 fn main() {
@@ -692,6 +700,16 @@ fn run(cli: Cli) -> Result<()> {
     // Initialize computer
     let mut computer = create_computer(&cli, gui_mouse.clone_shared())?;
 
+    // Enable logging flags from CLI
+    if cli.exec_log {
+        computer.set_exec_logging(true);
+        log::info!("Execution logging enabled");
+    }
+    if cli.int_log {
+        computer.set_log_interrupts(true);
+        log::info!("Interrupt logging enabled");
+    }
+
     // Attach serial devices if specified
     attach_serial_devices(&mut computer, &cli, &gui_mouse);
 
@@ -704,7 +722,7 @@ fn run(cli: Cli) -> Result<()> {
         floppy_a_present: cli.floppy_a.is_some(),
         floppy_b_present: cli.floppy_b.is_some(),
         is_paused: false,
-        interrupt_logging_enabled: false,
+        interrupt_logging_enabled: cli.int_log,
         turbo_mode: cli.turbo,
         show_performance_overlay: false,
         perf_tracker: PerformanceTracker::new(),

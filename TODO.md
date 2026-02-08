@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] simplify IRQ chaining (plans/irq-chaining-simplification.md)
 - [ ] check-it 2
   - video graphics tests are failing
   - black screen on exit (docs/teletype-attribute-preservation.md)
