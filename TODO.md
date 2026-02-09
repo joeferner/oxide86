@@ -5,7 +5,7 @@
   - black screen on exit (docs/teletype-attribute-preservation.md)
 - [ ] Boot error cannot control A20 line
 - [ ] Test CGA Applications
-  - [ ] Alley Cat
+  - [x] Alley Cat
   - [ ] Flight Simulator 1.0
   - [ ] Kings Quest 1
 - [ ] WASM - support creating new disks

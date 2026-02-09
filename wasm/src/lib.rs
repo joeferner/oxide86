@@ -432,6 +432,7 @@ impl Emu86Computer {
     /// * `shift` - Shift key state
     /// * `ctrl` - Control key state
     /// * `alt` - Alt key state
+    /// * `pressed` - true for keydown, false for keyup
     #[wasm_bindgen]
     pub fn handle_key_event(
         &mut self,
@@ -440,10 +441,17 @@ impl Emu86Computer {
         shift: bool,
         ctrl: bool,
         alt: bool,
+        pressed: bool,
     ) {
         // Convert the keyboard event to a KeyPress and queue it for IRQ processing
         // Don't add to WebKeyboard buffer - let INT 09h handle it
-        if let Some(key_press) = web_keyboard::event_to_keypress(&code, &key, shift, ctrl, alt) {
+        if let Some(mut key_press) = web_keyboard::event_to_keypress(&code, &key, shift, ctrl, alt)
+        {
+            // For key release, set bit 7 of scan code and clear ASCII code
+            if !pressed {
+                key_press.scan_code |= 0x80;
+                key_press.ascii_code = 0;
+            }
             self.computer.process_keyboard_irq(key_press);
         }
     }

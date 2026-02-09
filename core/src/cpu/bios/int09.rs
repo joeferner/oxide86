@@ -11,7 +11,7 @@
 // handlers can read port 0x60 directly and handle keys themselves.
 
 use super::Cpu;
-use crate::memory::{Memory, BDA_START, BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL};
+use crate::memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START, Memory};
 
 impl Cpu {
     /// INT 09h - Keyboard Hardware Interrupt

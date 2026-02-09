@@ -48,7 +48,27 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
             event.key,
             event.shiftKey,
             event.ctrlKey,
-            event.altKey
+            event.altKey,
+            true  // pressed = true for keydown
+          )
+        } catch (e) {
+          console.error('Keyboard event error:', e)
+        }
+      }
+
+      const handleKeyUp = (event: KeyboardEvent) => {
+        if (preventDefaultKeys.includes(event.code) || event.altKey) {
+          event.preventDefault()
+        }
+
+        try {
+          computer.handle_key_event(
+            event.code,
+            event.key,
+            event.shiftKey,
+            event.ctrlKey,
+            event.altKey,
+            false  // pressed = false for keyup
           )
         } catch (e) {
           console.error('Keyboard event error:', e)
@@ -91,6 +111,7 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
       }
 
       canvas.addEventListener('keydown', handleKeyDown)
+      canvas.addEventListener('keyup', handleKeyUp)
       canvas.addEventListener('mousemove', handleMouseMove)
       canvas.addEventListener('mousedown', handleMouseDown)
       canvas.addEventListener('mouseup', handleMouseUp)
@@ -98,6 +119,7 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
 
       return () => {
         canvas.removeEventListener('keydown', handleKeyDown)
+        canvas.removeEventListener('keyup', handleKeyUp)
         canvas.removeEventListener('mousemove', handleMouseMove)
         canvas.removeEventListener('mousedown', handleMouseDown)
         canvas.removeEventListener('mouseup', handleMouseUp)

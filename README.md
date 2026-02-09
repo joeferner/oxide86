@@ -40,6 +40,7 @@ mcopy -i mouse.img -s * ::
 
 - Games
   - :white_check_mark: Zork 1
+  - :white_check_mark: Alley Cat
 
 # History
 
