@@ -74,6 +74,7 @@ impl<V: VideoController> Computer<V> {
             memory::BDA_START + memory::BDA_TIMER_COUNTER + 2,
             (initial_ticks >> 16) as u16,
         );
+        // BDA timer counter initialized above from host system time
 
         // Initialize BDA hard drive count
         // Query drive 0x80 to get the number of installed hard drives
@@ -273,7 +274,7 @@ impl<V: VideoController> Computer<V> {
         // Clear pending interrupts
         self.pending_keyboard_irqs.clear();
         self.pending_serial_irqs.clear();
-        self.reset_pending_timer_irqs();
+        self.pending_timer_irqs = 0;
 
         // Reset cycle counters
         self.cycle_count = 0;
@@ -467,12 +468,14 @@ impl<V: VideoController> Computer<V> {
     /// The INT 0x08 handler increments the BDA timer counter and chains to INT 0x1C.
     ///
     /// Returns true if the IRQ was fired, false if interrupts were disabled.
-    fn fire_timer_irq(&mut self) -> bool {
+    /// Unified timer IRQ processing - handles both normal and inline cases
+    ///
+    /// Returns true if IRQ was processed (and caller should decrement pending count)
+    fn process_timer_irq(&mut self) -> bool {
         use crate::cpu::cpu_flag;
 
-        // Only fire if interrupts are enabled
+        // Only process if interrupts are enabled
         if !self.cpu.get_flag(cpu_flag::INTERRUPT) {
-            // Return false - caller should NOT decrement pending count
             return false;
         }
 
@@ -481,31 +484,87 @@ impl<V: VideoController> Computer<V> {
             self.cpu.clear_halt();
         }
 
+        // Check if custom INT 08h handler is installed
         let int_num: u8 = 0x08;
-        let ivt_addr = (int_num as usize) * 4;
-        let offset = self.memory.read_u16(ivt_addr);
-        let segment = self.memory.read_u16(ivt_addr + 2);
+        let is_bios_handler = Cpu::is_bios_handler(&self.memory, int_num);
 
-        if self.log_interrupts_enabled {
-            log::info!(
-                "INT 0x08: Firing timer IRQ - handler at {:04X}:{:04X}",
-                segment,
-                offset
-            );
+        if !is_bios_handler {
+            // Custom INT 08h handler - use full interrupt with stack frame
+            let ivt_addr = (int_num as usize) * 4;
+            let offset = self.memory.read_u16(ivt_addr);
+            let segment = self.memory.read_u16(ivt_addr + 2);
+
+            if self.log_interrupts_enabled {
+                log::info!(
+                    "INT 0x08: Firing timer IRQ (custom) - handler at {:04X}:{:04X}",
+                    segment,
+                    offset
+                );
+            }
+
+            // Push flags, CS, IP (simulating INT instruction)
+            self.cpu.push(self.cpu.flags, &mut self.memory);
+            self.cpu.push(self.cpu.cs, &mut self.memory);
+            self.cpu.push(self.cpu.ip, &mut self.memory);
+
+            // Clear IF and TF flags (standard INT behavior)
+            self.cpu.set_flag(cpu_flag::INTERRUPT, false);
+            self.cpu.set_flag(cpu_flag::TRAP, false);
+
+            // Jump to INT 0x08 handler
+            self.cpu.cs = segment;
+            self.cpu.ip = offset;
+        } else {
+            // BIOS INT 08h handler - update BDA counter directly from memory
+            let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
+            let lo = self.memory.read_u16(counter_addr) as u32;
+            let hi = self.memory.read_u16(counter_addr + 2) as u32;
+            let mut tick_count = (hi << 16) | lo;
+            tick_count = tick_count.wrapping_add(1);
+
+            // Check for midnight rollover (ticks per day = 0x001800B0)
+            let ticks_per_day = 0x001800B0;
+            if tick_count >= ticks_per_day {
+                tick_count = 0;
+                // Set midnight overflow flag
+                let overflow_addr = memory::BDA_START + memory::BDA_TIMER_OVERFLOW;
+                self.memory.write_u8(overflow_addr, 1);
+            }
+
+            // Write updated counter to BDA
+            self.memory
+                .write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
+            self.memory
+                .write_u16(counter_addr + 2, (tick_count >> 16) as u16);
+
+            // Check if custom INT 1Ch handler is installed
+            let is_custom_1ch = !Cpu::is_bios_handler(&self.memory, 0x1C);
+
+            if is_custom_1ch {
+                // Custom INT 1Ch - chain to it
+                let return_cs = self.cpu.cs;
+                let return_ip = self.cpu.ip;
+                let return_flags = self.cpu.flags;
+
+                self.cpu.begin_irq_chain(
+                    0x08,
+                    0x1C,
+                    return_cs,
+                    return_ip,
+                    return_flags,
+                    &mut self.memory,
+                );
+
+                if self.log_interrupts_enabled {
+                    log::info!(
+                        "INT 0x08: Chaining to custom INT 0x1Ch at {:04X}:{:04X}",
+                        self.cpu.cs,
+                        self.cpu.ip
+                    );
+                }
+            }
+            // BIOS INT 1Ch is a no-op, so nothing more to do
         }
-
-        // Push flags, CS, IP (simulating INT instruction)
-        self.cpu.push(self.cpu.flags, &mut self.memory);
-        self.cpu.push(self.cpu.cs, &mut self.memory);
-        self.cpu.push(self.cpu.ip, &mut self.memory);
-
-        // Clear IF and TF flags (standard INT behavior)
-        self.cpu.set_flag(cpu_flag::INTERRUPT, false);
-        self.cpu.set_flag(cpu_flag::TRAP, false);
-
-        // Jump to INT 0x08 handler
-        self.cpu.cs = segment;
-        self.cpu.ip = offset;
 
         true
     }
@@ -605,8 +664,8 @@ impl<V: VideoController> Computer<V> {
         // Process pending timer IRQs (INT 0x08)
         // Timer has lowest priority among hardware interrupts
         if self.pending_timer_irqs > 0 {
-            // Only decrement if we actually fired the IRQ (IF was enabled)
-            if self.fire_timer_irq() {
+            // Only decrement if we actually processed the IRQ (IF was enabled)
+            if self.process_timer_irq() {
                 self.dec_pending_timer_irqs();
                 return;
             }
@@ -641,105 +700,53 @@ impl<V: VideoController> Computer<V> {
 
             // Call our BIOS handler directly
             // We need to bypass the IVT check since we're already being called via CALL FAR from DOS
-            // Handle the interrupt directly based on int_num
-            // Don't skip INT 08h -> INT 1Ch chaining for normal interrupt flow
             self.cpu.handle_bios_interrupt_direct(
                 int_num,
                 &mut self.memory,
                 &mut self.bios,
                 &mut self.video,
-                false, // skip_int08_chain
             );
 
-            // Check if the handler called chain_to_interrupt() to chain to another handler
-            // (e.g., INT 0x08 chains to INT 0x1C for user timer tick)
-            // If CS:IP changed from F000:int_num, a chain is in progress - don't overwrite
-            let chained = !(self.cpu.cs == 0xF000 && self.cpu.ip == current_ip);
-            if !chained {
-                // Before restoring flags, check if BIOS handler enabled interrupts (STI)
-                // and there are pending timer IRQs. If so, handle them now while IF=1.
-                // This simulates the timer IRQs that would fire during disk I/O on real hardware.
-                //
-                // We call the BIOS INT 0x08 handler directly (not via fire_timer_irq) because
-                // we're already in the middle of handling an F000 call and don't want to
-                // mess with the stack frames.
-                //
-                // Note: We do NOT process keyboard IRQs inline because custom INT 09h handlers
-                // need proper stack frames for IRET. Keyboard IRQs will fire immediately after
-                // this return completes (if IF=1) via the normal IRQ processing in step().
-                let if_currently_enabled = self.cpu.get_flag(crate::cpu::cpu_flag::INTERRUPT);
-                while if_currently_enabled && self.pending_timer_irqs > 0 {
-                    // Directly call the BIOS INT 0x08 handler to update BDA timer counter
-                    // Skip chaining to INT 1Ch because we can't properly execute the handler inline
-                    // Timer IRQs that fire through the normal path will chain properly
-                    self.cpu.handle_bios_interrupt_direct(
-                        0x08,
-                        &mut self.memory,
-                        &mut self.bios,
-                        &mut self.video,
-                        true, // skip_int08_chain
-                    );
+            // Check if handler started an IRQ chain (e.g., INT 0x08 chains to INT 0x1C)
+            if self.cpu.is_in_irq_chain() {
+                // Chain in progress - let it complete naturally via IRET
+                // The chain context has already been set up with proper return address
+                return;
+            }
+
+            // No chaining - normal return path
+            //
+            // BIOS interrupt handlers return via IRET, which pops IP, CS, FLAGS.
+            // We already popped ret_IP and ret_CS above. Now we need to pop FLAGS
+            // to complete the IRET simulation.
+            //
+            // Two scenarios with same stack handling:
+            // 1. Direct INT/IRQ to F000: Stack had [IP, CS, FLAGS] from INT instruction
+            // 2. Chained via PUSHF+CALL FAR: Stack had [ret_IP, ret_CS, PUSHF'd FLAGS, ...]
+            //    The PUSHF'd FLAGS is what we pop here (simulating BIOS doing IRET)
+            //
+            // In both cases, popping FLAGS is correct:
+            // - Case 1: We restore the original caller's FLAGS
+            // - Case 2: We restore the DOS handler's PUSHF'd FLAGS (IF=0), and the
+            //           DOS handler will later do IRET to restore the original caller's FLAGS
+            let saved_flags = self.cpu.pop(&self.memory);
+            // Restore IF, TF, DF from saved flags (keep CF, ZF, etc. from BIOS handler)
+            self.cpu.flags = (self.cpu.flags & 0xF8FF) | (saved_flags & 0x0700);
+
+            // Return to caller
+            self.cpu.ip = ret_offset;
+            self.cpu.cs = ret_segment;
+
+            // Process pending timer IRQs inline if IF=1
+            // This simulates the timer IRQs that would fire during disk I/O on real hardware.
+            // Note: We do NOT process keyboard IRQs inline because custom INT 09h handlers
+            // need proper stack frames for IRET. Keyboard IRQs will fire immediately after
+            // this return completes (if IF=1) via the normal IRQ processing in step().
+            while self.cpu.get_flag(crate::cpu::cpu_flag::INTERRUPT) && self.pending_timer_irqs > 0
+            {
+                if self.process_timer_irq() {
                     self.dec_pending_timer_irqs();
                 }
-
-                // No chaining occurred - normal return path
-                //
-                // BIOS interrupt handlers return via IRET, which pops IP, CS, FLAGS.
-                // We already popped ret_IP and ret_CS above. Now we need to pop FLAGS
-                // to complete the IRET simulation.
-                //
-                // Two scenarios with same stack handling:
-                // 1. Direct INT/IRQ to F000: Stack had [IP, CS, FLAGS] from INT instruction
-                // 2. Chained via PUSHF+CALL FAR: Stack had [ret_IP, ret_CS, PUSHF'd FLAGS, ...]
-                //    The PUSHF'd FLAGS is what we pop here (simulating BIOS doing IRET)
-                //
-                // In both cases, popping FLAGS is correct:
-                // - Case 1: We restore the original caller's FLAGS
-                // - Case 2: We restore the DOS handler's PUSHF'd FLAGS (IF=0), and the
-                //           DOS handler will later do IRET to restore the original caller's FLAGS
-                let saved_flags = self.cpu.pop(&self.memory);
-                // Restore IF, TF, DF from saved flags (keep CF, ZF, etc. from BIOS handler)
-                self.cpu.flags = (self.cpu.flags & 0xF8FF) | (saved_flags & 0x0700);
-
-                // Return to caller
-                self.cpu.ip = ret_offset;
-                self.cpu.cs = ret_segment;
-            } else {
-                // Handler chained to another interrupt (e.g., INT 0x08 chains to INT 0x1C)
-                //
-                // Stack layout at this point (from bottom/high address to top/low address):
-                // - original_flags (from fire_timer_irq, at SP before chain_to_interrupt)
-                // - chained_flags (from chain_to_interrupt)
-                // - 0xF000 (from chain_to_interrupt)
-                // - 0x0008 (from chain_to_interrupt) <- current SP
-                //
-                // We need to fix up the stack so when INT 1C does IRET:
-                // - It returns to the original interrupted code (ret_segment:ret_offset)
-                // - Stack is properly balanced
-
-                // Pop what chain_to_interrupt pushed
-                let _chained_ip = self.cpu.pop(&self.memory);
-                let _chained_cs = self.cpu.pop(&self.memory);
-                let _chained_flags = self.cpu.pop(&self.memory);
-
-                // Pop the original flags left from fire_timer_irq (step() only popped 2 of 3)
-                // These have IF=1 (interrupts were enabled before the timer IRQ)
-                let original_flags = self.cpu.pop(&self.memory);
-
-                // Push proper return frame for INT 1C's IRET
-                // Use original_flags (with IF=1) so interrupts are re-enabled after IRET
-                self.cpu.push(original_flags, &mut self.memory);
-                self.cpu.push(ret_segment, &mut self.memory);
-                self.cpu.push(ret_offset, &mut self.memory);
-
-                log::debug!(
-                    "INT 0x{:02X}: Chained to {:04X}:{:04X}, IRET will return to {:04X}:{:04X}",
-                    int_num,
-                    self.cpu.cs,
-                    self.cpu.ip,
-                    ret_segment,
-                    ret_offset
-                );
             }
 
             return;
@@ -1103,37 +1110,37 @@ impl<V: VideoController> Computer<V> {
         (count * 4_770_000) / 1_193_182
     }
 
-    /// Increment pending timer IRQs and sync with memory
+    /// Increment pending timer IRQs
     #[inline]
     fn inc_pending_timer_irqs(&mut self) {
         self.pending_timer_irqs += 1;
-        self.memory.set_pending_timer_irqs(self.pending_timer_irqs);
     }
 
-    /// Decrement pending timer IRQs and sync with memory
-    ///
-    /// CRITICAL: Also increments the BDA timer counter to keep the sum
-    /// (base_counter + pending_timer_irqs) constant. This is necessary
-    /// when programs install custom INT 08h handlers that replace the BIOS handler,
-    /// preventing the BIOS from updating the BDA counter. The memory interception
-    /// returns base_counter + pending_timer_irqs, so we must increment base_counter
-    /// when decrementing pending_timer_irqs to maintain the total.
+    /// Decrement pending timer IRQs counter
     #[inline]
     fn dec_pending_timer_irqs(&mut self) {
-        // Increment BDA timer counter in memory (bypasses interception)
-        // This keeps the sum (base_counter + pending_timer_irqs) constant
-        self.memory.increment_bda_timer();
-
-        // Now decrement pending_timer_irqs
         self.pending_timer_irqs -= 1;
-        self.memory.set_pending_timer_irqs(self.pending_timer_irqs);
     }
 
-    /// Reset pending timer IRQs to zero and sync with memory
-    #[inline]
-    fn reset_pending_timer_irqs(&mut self) {
-        self.pending_timer_irqs = 0;
-        self.memory.set_pending_timer_irqs(0);
+    /// Write BDA timer counter directly to memory
+    fn write_bda_timer(&mut self, tick_count: u32) {
+        let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
+        self.memory
+            .write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
+        self.memory
+            .write_u16(counter_addr + 2, (tick_count >> 16) as u16);
+    }
+
+    /// Read BDA timer counter (includes pending IRQs)
+    ///
+    /// Returns the accurate current tick count by reading memory and adding pending IRQs.
+    /// This ensures accurate time even when interrupts are disabled.
+    fn read_bda_timer(&self) -> u32 {
+        let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
+        let lo = self.memory.read_u16(counter_addr) as u32;
+        let hi = self.memory.read_u16(counter_addr + 2) as u32;
+        let bda_value = (hi << 16) | lo;
+        bda_value.wrapping_add(self.pending_timer_irqs)
     }
 
     /// Synchronize BDA timer counter with pending timer ticks
@@ -1147,12 +1154,8 @@ impl<V: VideoController> Computer<V> {
             return; // No pending ticks, BDA is already up to date
         }
 
-        // Read current BDA timer counter
-        let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
-        let current_counter = self.memory.read_u32(counter_addr);
-
-        // Add pending ticks to get the true current tick count
-        let new_counter = current_counter.wrapping_add(self.pending_timer_irqs);
+        // Calculate the accurate current tick count
+        let new_counter = self.read_bda_timer();
 
         // Check for midnight rollover (ticks per day = 0x001800B0)
         let ticks_per_day = 0x001800B0;
@@ -1163,7 +1166,7 @@ impl<V: VideoController> Computer<V> {
         };
 
         // Write updated counter to BDA
-        self.memory.write_u32(counter_addr, final_counter);
+        self.write_bda_timer(final_counter);
 
         // Set midnight overflow flag if we rolled over
         if overflow {
@@ -1174,12 +1177,11 @@ impl<V: VideoController> Computer<V> {
         // Clear pending IRQs since we've applied them to the BDA
         // Note: We don't actually fire INT 08h here, just update the counter
         log::debug!(
-            "Synced BDA timer: applied {} pending ticks, counter {} -> {}",
+            "Synced BDA timer: applied {} pending ticks, counter now {}",
             self.pending_timer_irqs,
-            current_counter,
             final_counter
         );
-        self.reset_pending_timer_irqs();
+        self.pending_timer_irqs = 0;
     }
 
     /// Update speaker output based on PIT Channel 2 state and port 0x61 control bits

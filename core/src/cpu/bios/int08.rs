@@ -12,20 +12,14 @@ impl Cpu {
     /// The handler:
     /// 1. Increments the BDA timer counter at 0x0040:0x006C
     /// 2. Checks for midnight rollover (sets flag at 0x0040:0x0070)
-    /// 3. Chains to INT 0x1C (user timer tick hook)
     ///
-    /// Programs can install custom INT 0x1C handlers for periodic tasks like
-    /// music playback (QBASIC PLAY), animation, or polling.
-    ///
-    /// Parameters:
-    /// - skip_chain: If true, only update BDA counter without chaining to INT 1Ch
-    ///   Used when called inline during F000 returns (can't chain properly)
+    /// Note: Chaining to INT 0x1C is now handled by Computer::process_timer_irq()
+    /// which properly handles both custom and BIOS handlers using begin_irq_chain().
     pub(super) fn handle_int08(
         &mut self,
         memory: &mut Memory,
-        io: &mut super::Bios,
-        video: &mut crate::video::Video,
-        skip_chain: bool,
+        _io: &mut super::Bios,
+        _video: &mut crate::video::Video,
     ) {
         // Read current timer counter from BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
@@ -48,57 +42,7 @@ impl Cpu {
         memory.write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
         memory.write_u16(counter_addr + 2, (tick_count >> 16) as u16);
 
-        // Chain to INT 0x1C (user timer tick) unless skip_chain is true
-        // Skip chaining when called inline during F000 returns because chain_to_interrupt()
-        // only sets up CPU state but doesn't execute the handler, causing custom INT 1Ch
-        // handlers (like QBasic PLAY) to never run.
-        if !skip_chain {
-            // Check if the IVT still points to BIOS or if a program installed a custom handler
-            let is_bios = Self::is_bios_handler(memory, 0x1C);
-
-            if is_bios {
-                // BIOS handler - call directly (it's a no-op stub anyway)
-                self.handle_int1c(memory, io, video);
-            } else {
-                // User-installed handler - set up CPU to execute it
-                // This simulates an INT 0x1C instruction being executed
-                self.chain_to_interrupt(0x1C, memory);
-            }
-        }
-    }
-
-    /// Chain to another interrupt handler during BIOS interrupt processing
-    ///
-    /// This simulates the effect of an INT instruction within a BIOS handler.
-    /// It pushes FLAGS, CS, IP onto the stack and sets CS:IP to the interrupt handler.
-    /// When that handler executes IRET, control returns to the instruction after
-    /// the original INT.
-    fn chain_to_interrupt(&mut self, int_num: u8, memory: &mut Memory) {
-        use crate::cpu::cpu_flag;
-
-        // Push current state onto stack (simulating INT instruction)
-        self.push(self.flags, memory);
-        self.push(self.cs, memory);
-        self.push(self.ip, memory);
-
-        // Clear IF and TF flags (standard INT behavior)
-        self.set_flag(cpu_flag::INTERRUPT, false);
-        self.set_flag(cpu_flag::TRAP, false);
-
-        // Load interrupt vector from IVT
-        let ivt_addr = (int_num as usize) * 4;
-        let offset = memory.read_u16(ivt_addr);
-        let segment = memory.read_u16(ivt_addr + 2);
-
-        // Set CS:IP to interrupt handler
-        self.cs = segment;
-        self.ip = offset;
-
-        log::debug!(
-            "INT 0x08: Chaining to INT 0x{:02X} at {:04X}:{:04X}",
-            int_num,
-            segment,
-            offset
-        );
+        // Chaining to INT 0x1C is handled by Computer::process_timer_irq()
+        // which has access to the full execution context needed for proper chaining
     }
 }

@@ -53,6 +53,26 @@ pub struct Cpu {
     /// Pending sleep cycles (set by INT 15h AH=86h)
     /// When > 0, Computer's step() will burn cycles instead of executing instructions
     pub(super) pending_sleep_cycles: u64,
+
+    /// IRQ chain context - tracks nested interrupt chaining
+    /// None = normal execution
+    /// Some(IrqChainContext) = currently processing a chained interrupt
+    irq_chain_context: Option<IrqChainContext>,
+}
+
+/// IRQ chain context - tracks state when one interrupt chains to another
+/// (e.g., INT 08h -> INT 1Ch)
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct IrqChainContext {
+    /// The original interrupt that started the chain (e.g., 0x08)
+    original_int: u8,
+    /// Stack pointer before chain started (for validation)
+    original_sp: u16,
+    /// Return address after chain completes
+    return_cs: u16,
+    return_ip: u16,
+    /// Flags to restore after chain
+    return_flags: u16,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -112,6 +132,7 @@ impl Cpu {
             log_interrupts_enabled: false,
             last_instruction_cycles: 0,
             pending_sleep_cycles: 0,
+            irq_chain_context: None,
         }
     }
 
@@ -183,6 +204,89 @@ impl Cpu {
         should_retry
     }
 
+    /// Begin an IRQ chain (e.g., INT 08h -> INT 1Ch)
+    ///
+    /// Called when a BIOS interrupt handler needs to chain to another interrupt.
+    /// Sets up the chain context and transfers control to the target interrupt.
+    ///
+    /// # Arguments
+    /// * `from_int` - The original interrupt number (e.g., 0x08)
+    /// * `to_int` - The target interrupt to chain to (e.g., 0x1C)
+    /// * `return_cs` - Code segment to return to after chain completes
+    /// * `return_ip` - Instruction pointer to return to after chain completes
+    /// * `return_flags` - Flags to restore after chain completes
+    /// * `memory` - Memory for reading IVT and pushing stack frame
+    pub(crate) fn begin_irq_chain(
+        &mut self,
+        from_int: u8,
+        to_int: u8,
+        return_cs: u16,
+        return_ip: u16,
+        return_flags: u16,
+        memory: &mut Memory,
+    ) {
+        // Save chain context
+        self.irq_chain_context = Some(IrqChainContext {
+            original_int: from_int,
+            original_sp: self.sp,
+            return_cs,
+            return_ip,
+            return_flags,
+        });
+
+        // Push return frame for chained handler's IRET
+        self.push(return_flags, memory);
+        self.push(return_cs, memory);
+        self.push(return_ip, memory);
+
+        // Clear IF and TF flags (standard INT behavior)
+        self.set_flag(cpu_flag::INTERRUPT, false);
+        self.set_flag(cpu_flag::TRAP, false);
+
+        // Load interrupt vector from IVT
+        let ivt_addr = (to_int as usize) * 4;
+        let offset = memory.read_u16(ivt_addr);
+        let segment = memory.read_u16(ivt_addr + 2);
+
+        // Transfer control to chained handler
+        self.cs = segment;
+        self.ip = offset;
+
+        log::debug!(
+            "IRQ Chain Begin: INT 0x{:02X} -> INT 0x{:02X} at {:04X}:{:04X}",
+            from_int,
+            to_int,
+            segment,
+            offset
+        );
+    }
+
+    /// Check if CPU is in an IRQ chain
+    pub(crate) fn is_in_irq_chain(&self) -> bool {
+        self.irq_chain_context.is_some()
+    }
+
+    /// Complete an IRQ chain (called when chained handler does IRET)
+    ///
+    /// Validates stack state and clears chain context.
+    /// Returns the chain context if one was active.
+    pub(crate) fn complete_irq_chain(&mut self, _memory: &Memory) -> Option<IrqChainContext> {
+        if let Some(context) = self.irq_chain_context.take() {
+            // Validate that stack pointer matches expected value
+            // IRET already popped IP, CS, FLAGS (6 bytes)
+            if self.sp != context.original_sp {
+                log::warn!(
+                    "Stack mismatch after IRQ chain: expected SP={:04X}, got SP={:04X}",
+                    context.original_sp,
+                    self.sp
+                );
+            }
+            Some(context)
+        } else {
+            None
+        }
+    }
+
     // Execute an INT instruction with BIOS I/O handler
     pub fn execute_int_with_io(
         &mut self,
@@ -219,7 +323,7 @@ impl Cpu {
         }
 
         if is_bios_handler {
-            self.handle_bios_interrupt_impl(int_num, memory, io, video, false);
+            self.handle_bios_interrupt_impl(int_num, memory, io, video);
         } else {
             // Not handled, do normal INT
             // Push flags, CS, and IP

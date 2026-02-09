@@ -847,7 +847,7 @@ impl Bios {
 impl Cpu {
     /// Check if an interrupt vector still points to the BIOS area (F000 segment)
     /// Returns true if the vector is in BIOS ROM area, false if DOS has installed its own handler
-    pub(super) fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
+    pub(crate) fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
         let ivt_addr = (int_num as usize) * 4;
         let segment = memory.read_u16(ivt_addr + 2);
         segment == 0xF000 // BIOS handlers are in the F000 segment (ROM area)
@@ -855,19 +855,14 @@ impl Cpu {
 
     /// Handle BIOS interrupt directly without checking IVT
     /// Used when DOS chains back to BIOS via CALL FAR to F000:XXXX
-    ///
-    /// Parameters:
-    /// - skip_int08_chain: If true and int_num is 0x08, skip chaining to INT 1Ch
-    ///   Used when called inline during F000 returns
     pub(crate) fn handle_bios_interrupt_direct(
         &mut self,
         int_num: u8,
         memory: &mut Memory,
         io: &mut Bios,
         video: &mut crate::video::Video,
-        skip_int08_chain: bool,
     ) {
-        self.handle_bios_interrupt_impl(int_num, memory, io, video, skip_int08_chain);
+        self.handle_bios_interrupt_impl(int_num, memory, io, video);
     }
 
     /// Internal implementation of BIOS interrupt handling
@@ -877,10 +872,9 @@ impl Cpu {
         memory: &mut Memory,
         io: &mut Bios,
         video: &mut crate::video::Video,
-        skip_int08_chain: bool,
     ) {
         match int_num {
-            0x08 => self.handle_int08(memory, io, video, skip_int08_chain),
+            0x08 => self.handle_int08(memory, io, video),
             0x09 => self.handle_int09(memory),
             0x10 => self.handle_int10(memory, video),
             0x11 => self.handle_int11(memory),

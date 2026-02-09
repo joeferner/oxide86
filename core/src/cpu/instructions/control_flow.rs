@@ -382,6 +382,20 @@ impl Cpu {
         // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
         self.flags = (new_flags & 0x0FFF) | 0x0002;
 
+        // Check if this completes an IRQ chain (e.g., INT 08h -> INT 1Ch)
+        if let Some(context) = self.complete_irq_chain(memory) {
+            log::debug!(
+                "IRQ Chain Complete: INT 0x{:02X} (expected return {:04X}:{:04X} FLAGS={:04X}, actual {:04X}:{:04X} FLAGS={:04X})",
+                context.original_int,
+                context.return_cs,
+                context.return_ip,
+                context.return_flags,
+                self.cs,
+                self.ip,
+                self.flags
+            );
+        }
+
         // IRET: 24 cycles
         self.last_instruction_cycles = timing::cycles::IRET;
     }
