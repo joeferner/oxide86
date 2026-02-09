@@ -331,12 +331,15 @@ impl<V: VideoController> Computer<V> {
 
     /// Fire INT 09h (keyboard hardware interrupt)
     ///
-    /// This adds the key to the BIOS keyboard buffer and calls the INT 09h handler.
-    /// Programs can install custom INT 09h handlers to intercept keyboard input.
+    /// The key data (scan code and ASCII) is stored for the INT 09h handler to read.
+    /// - Port 0x60 stores the scan code (for programs that read the keyboard controller directly)
+    /// - The BIOS struct stores both scan code and ASCII for the default BIOS handler
+    /// - The default BIOS INT 09h handler adds keys to the keyboard buffer
+    /// - Programs can install custom INT 09h handlers to intercept keyboard input directly
+    ///
     /// Returns true if the interrupt was fired, false if blocked (IF=0).
     fn fire_keyboard_irq(&mut self, key: KeyPress) -> bool {
         use crate::cpu::cpu_flag;
-        use memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START};
 
         // Only fire if interrupts are enabled
         if !self.cpu.get_flag(cpu_flag::INTERRUPT) {
@@ -344,48 +347,21 @@ impl<V: VideoController> Computer<V> {
             return false;
         }
 
-        // Add key to BIOS keyboard buffer
-        let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
-        let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-        let head = self.memory.read_u16(head_addr);
-        let tail = self.memory.read_u16(tail_addr);
-
-        // Calculate what tail would be after adding this key
-        let buffer_start: u16 = 0x001E; // Relative to BDA
-        let new_tail = if tail == buffer_start + 30 {
-            buffer_start // Wrap around
-        } else {
-            tail + 2
-        };
-
-        // Check if buffer would become full
-        if new_tail == head {
-            // Buffer full - discard key
-            log::warn!("Keyboard buffer full, discarding key");
-            log::warn!(
-                "INT 09h: Keyboard buffer full! Discarding scan=0x{:02X}, ascii=0x{:02X}",
-                key.scan_code,
-                key.ascii_code
-            );
-            return false;
-        }
-
-        // Add key to buffer
-        let char_addr = BDA_START + tail as usize;
-        self.memory.write_u8(char_addr, key.scan_code);
-        self.memory.write_u8(char_addr + 1, key.ascii_code);
-        self.memory.write_u16(tail_addr, new_tail);
+        // Set keyboard data:
+        // 1. Port 0x60 for custom INT 09h handlers that read the keyboard controller
+        // 2. BIOS pending fields for the default BIOS INT 09h handler
+        self.io_device
+            .set_keyboard_data(key.scan_code, key.ascii_code);
+        self.bios.pending_scan_code = key.scan_code;
+        self.bios.pending_ascii_code = key.ascii_code;
 
         log::debug!(
-            "INT 09h: Buffered key - Scan: 0x{:02X}, ASCII: 0x{:02X}",
+            "INT 09h: Firing keyboard IRQ - Scan: 0x{:02X}, ASCII: 0x{:02X}",
             key.scan_code,
             key.ascii_code
         );
 
-        // Set scan code in port 0x60 for custom INT 09h handlers to read
-        self.io_device.set_keyboard_scan_code(key.scan_code);
-
-        // Call INT 09h handler
+        // Call INT 09h handler (either default BIOS or custom handler)
         let int_num = 0x09u8;
         let ivt_addr = (int_num as usize) * 4;
         let offset = self.memory.read_u16(ivt_addr);

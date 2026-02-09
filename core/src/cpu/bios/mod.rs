@@ -228,6 +228,10 @@ pub struct Bios {
     pub mouse: Box<dyn MouseInput>,
     /// Serial port controllers (COM1 and COM2)
     pub serial_ports: [SerialPortController; 2],
+    /// Pending keyboard scan code (set by fire_keyboard_irq(), read by INT 09h handler)
+    pub pending_scan_code: u8,
+    /// Pending keyboard ASCII code (set by fire_keyboard_irq(), read by INT 09h handler)
+    pub pending_ascii_code: u8,
 }
 
 impl Bios {
@@ -238,6 +242,8 @@ impl Bios {
             keyboard,
             mouse,
             serial_ports: [SerialPortController::new(0), SerialPortController::new(1)],
+            pending_scan_code: 0,
+            pending_ascii_code: 0,
         }
     }
 
@@ -875,7 +881,7 @@ impl Cpu {
     ) {
         match int_num {
             0x08 => self.handle_int08(memory, io, video),
-            0x09 => self.handle_int09(memory),
+            0x09 => self.handle_int09(memory, io),
             0x10 => self.handle_int10(memory, video),
             0x11 => self.handle_int11(memory),
             0x12 => self.handle_int12(memory),

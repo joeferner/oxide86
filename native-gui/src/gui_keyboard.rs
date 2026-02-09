@@ -59,13 +59,20 @@ impl GuiKeyboard {
     ///
     /// This is used by the event loop to extract the KeyPress for
     /// firing INT 09h keyboard interrupts.
+    ///
+    /// Returns both key press and key release events:
+    /// - Press: normal scan code
+    /// - Release: scan code with bit 7 set (scan_code | 0x80)
     pub fn event_to_keypress(&self, event: &KeyEvent) -> Option<KeyPress> {
-        // Only process key press events, ignore key release
-        if event.state != ElementState::Pressed {
-            return None;
+        let mut key_press = key_event_to_keypress(event, self.modifiers);
+
+        // For key release, set bit 7 of scan code and clear ASCII code
+        if event.state == ElementState::Released {
+            key_press.scan_code |= 0x80;
+            key_press.ascii_code = 0;
         }
 
-        Some(key_event_to_keypress(event, self.modifiers))
+        Some(key_press)
     }
 
     /// Process a winit keyboard event and buffer the key press.
@@ -160,11 +167,16 @@ impl KeyboardInput for GuiKeyboard {
 
     fn event_to_keypress(&self, event: &dyn std::any::Any) -> Option<KeyPress> {
         if let Some(key_event) = event.downcast_ref::<KeyEvent>() {
-            // Only process key press events, ignore key release
-            if key_event.state != ElementState::Pressed {
-                return None;
+            // Process both key press and key release events
+            let mut key_press = key_event_to_keypress(key_event, self.modifiers);
+
+            // For key release, set bit 7 of scan code and clear ASCII code
+            if key_event.state == ElementState::Released {
+                key_press.scan_code |= 0x80;
+                key_press.ascii_code = 0;
             }
-            Some(key_event_to_keypress(key_event, self.modifiers))
+
+            Some(key_press)
         } else {
             None
         }

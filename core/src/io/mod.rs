@@ -20,6 +20,8 @@ pub struct IoDevice {
     cga_mode_control: CgaModeControl,
     /// Keyboard controller data port (port 60h) - stores last scan code
     keyboard_scan_code: u8,
+    /// ASCII code corresponding to the last scan code (for BIOS INT 09h handler)
+    keyboard_ascii_code: u8,
 }
 
 impl IoDevice {
@@ -30,6 +32,7 @@ impl IoDevice {
             pit: Pit::new(),
             cga_mode_control: CgaModeControl::new(),
             keyboard_scan_code: 0x00,
+            keyboard_ascii_code: 0x00,
         }
     }
 
@@ -139,9 +142,15 @@ impl IoDevice {
         &self.system_control_port
     }
 
-    /// Set the keyboard scan code for port 0x60
+    /// Set the keyboard scan code and ASCII code for INT 09h
     /// Called when firing keyboard IRQ
-    pub fn set_keyboard_scan_code(&mut self, scan_code: u8) {
+    pub fn set_keyboard_data(&mut self, scan_code: u8, ascii_code: u8) {
         self.keyboard_scan_code = scan_code;
+        self.keyboard_ascii_code = ascii_code;
+    }
+
+    /// Get the keyboard ASCII code (for BIOS INT 09h handler)
+    pub fn get_keyboard_ascii_code(&self) -> u8 {
+        self.keyboard_ascii_code
     }
 }

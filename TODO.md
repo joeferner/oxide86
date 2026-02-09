@@ -3,13 +3,13 @@
 - [ ] check-it 2
   - video graphics tests are failing
   - black screen on exit (docs/teletype-attribute-preservation.md)
-- [ ] Alley Cat locks up after splash screen
 - [ ] Boot error cannot control A20 line
 - [ ] Test CGA Applications
   - [ ] Alley Cat
   - [ ] Flight Simulator 1.0
   - [ ] Kings Quest 1
 - [ ] WASM - support creating new disks
+- [ ] native - mount directories into dos filesystem
 - [ ] Support 286 (command line switch to choose)
 - [ ] Support EGA
 - [ ] Test EGA Applications
