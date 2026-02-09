@@ -888,7 +888,7 @@ impl<V: VideoController> Computer<V> {
 
         if self.video.is_dirty() {
             // Update VGA DAC palette (in case it was modified via INT 10h or I/O ports)
-            log::debug!("Computer: Passing palette to renderer (dirty)");
+            log::trace!("Computer: Passing palette to renderer (dirty)");
             self.video_controller
                 .update_vga_dac_palette(self.video.get_vga_dac_palette());
 

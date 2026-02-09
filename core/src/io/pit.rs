@@ -196,7 +196,7 @@ impl Pit {
         // Initialize channel 0 for 18.2 Hz system timer (standard BIOS configuration)
         // Count of 0 means 65536, which gives 1193182 / 65536 ≈ 18.2 Hz
         pit.channels[0].count_register = 0; // 0 = 65536
-        pit.channels[0].counter = 65536;
+        pit.channels[0].reload_counter(); // Set counter and clear null_count flag
 
         // Channel 2 gate starts disabled (controlled by port 0x61 bit 0)
         pit.channels[2].gate = false;
