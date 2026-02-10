@@ -1,4 +1,4 @@
-use emu86_core::video::{CgaPalette, VideoMode};
+use emu86_core::video::VideoMode;
 use emu86_core::{
     Cp437Font, TextModePalette,
     font::{CHAR_HEIGHT, CHAR_WIDTH},
@@ -36,11 +36,11 @@ pub struct PixelsVideoController {
     current_mode: VideoMode,
     /// Graphics mode pixel data (for 320x200 or 640x200 modes)
     graphics_data: Option<Vec<u8>>,
-    /// Graphics mode palette (for 320x200 4-color mode)
-    graphics_palette: Option<[u8; 4]>,
     /// Graphics mode colors (for 640x200 2-color mode)
     graphics_fg_color: u8,
     graphics_bg_color: u8,
+    /// CGA palette for 320x200 mode (4 EGA color indices 0-15)
+    graphics_palette: Option<[u8; 4]>,
     /// VGA DAC palette (256 RGB triplets, 6-bit per component 0-63)
     vga_dac_palette: [[u8; 3]; 256],
 }
@@ -62,9 +62,9 @@ impl PixelsVideoController {
                 rows: TEXT_MODE_ROWS,
             },
             graphics_data: None,
-            graphics_palette: None,
             graphics_fg_color: 15, // White
             graphics_bg_color: 0,  // Black
+            graphics_palette: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
         }
     }
@@ -157,7 +157,8 @@ impl PixelsVideoController {
 
     /// Render graphics mode 320x200 (4-color) to framebuffer
     fn render_graphics_320x200(&self, frame: &mut [u8]) {
-        if let (Some(pixel_data), Some(palette)) = (&self.graphics_data, &self.graphics_palette) {
+        if let (Some(pixel_data), Some(cga_palette)) = (&self.graphics_data, &self.graphics_palette)
+        {
             let scale = 2; // Scale factor: 320x200 -> 640x400 window
 
             // Iterate through all pixels
@@ -170,9 +171,10 @@ impl PixelsVideoController {
                     let shift = 6 - (pixel_in_byte * 2);
                     let color_index = ((byte_val >> shift) & 0x03) as usize;
 
-                    // Get RGB color from VGA DAC palette
-                    let vga_color = palette[color_index];
-                    let rgb = self.get_palette_color(vga_color);
+                    // Map pixel value to CGA palette entry (EGA color index)
+                    // For CGA compatibility, use fixed CGA palette colors, not VGA DAC
+                    let ega_color = cga_palette[color_index];
+                    let rgb = TextModePalette::get_color(ega_color);
 
                     // Draw scaled pixel (2x2 screen pixels per CGA pixel)
                     for dy in 0..scale {
@@ -360,9 +362,9 @@ impl Default for PixelsVideoController {
                 rows: TEXT_MODE_ROWS,
             },
             graphics_data: None,
-            graphics_palette: None,
             graphics_fg_color: 15, // White
             graphics_bg_color: 0,  // Black
+            graphics_palette: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
         }
     }
@@ -396,11 +398,9 @@ impl VideoController for PixelsVideoController {
         match self.current_mode {
             VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
                 self.graphics_data = None;
-                self.graphics_palette = None;
             }
             VideoMode::Text { .. } => {
                 self.graphics_data = None;
-                self.graphics_palette = None;
             }
         }
 
@@ -417,13 +417,10 @@ impl VideoController for PixelsVideoController {
         self.has_pending_updates = true;
     }
 
-    fn update_graphics_320x200(&mut self, pixel_data: &[u8], palette: &CgaPalette) {
-        // Store pixel data
+    fn update_graphics_320x200(&mut self, pixel_data: &[u8], cga_palette: [u8; 4]) {
+        // Store pixel data and CGA palette (EGA color indices)
         self.graphics_data = Some(pixel_data.to_vec());
-
-        // Store palette colors
-        let colors = palette.get_colors();
-        self.graphics_palette = Some(colors);
+        self.graphics_palette = Some(cga_palette);
 
         // Mark for update
         self.has_pending_updates = true;

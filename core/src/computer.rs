@@ -952,8 +952,10 @@ impl<V: VideoController> Computer<V> {
                 }
                 crate::video::VideoMode::Graphics320x200 => {
                     if let Some(buffer) = self.video.get_graphics_buffer() {
+                        let palette = self.video.get_palette();
+                        let colors = palette.get_colors();
                         self.video_controller
-                            .update_graphics_320x200(buffer.get_pixels(), self.video.get_palette());
+                            .update_graphics_320x200(buffer.get_pixels(), colors);
                     }
                 }
                 crate::video::VideoMode::Graphics640x200 => {
@@ -989,8 +991,10 @@ impl<V: VideoController> Computer<V> {
             }
             crate::video::VideoMode::Graphics320x200 => {
                 if let Some(buffer) = self.video.get_graphics_buffer() {
+                    let palette = self.video.get_palette();
+                    let colors = palette.get_colors();
                     self.video_controller
-                        .update_graphics_320x200(buffer.get_pixels(), self.video.get_palette());
+                        .update_graphics_320x200(buffer.get_pixels(), colors);
                 }
             }
             crate::video::VideoMode::Graphics640x200 => {

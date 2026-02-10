@@ -1,8 +1,7 @@
 use emu86_core::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
 use emu86_core::palette::TextModePalette;
 use emu86_core::video::{
-    CgaPalette, CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController,
-    VideoMode,
+    CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController, VideoMode,
 };
 use wasm_bindgen::Clamped;
 use wasm_bindgen::prelude::*;
@@ -22,9 +21,23 @@ pub struct WebVideo {
     last_cursor: Option<CursorPosition>,
     /// Current video mode (for tracking text vs graphics)
     current_mode: VideoMode,
+    /// CGA palette for 320x200 mode (4 EGA color indices 0-15)
+    graphics_palette: Option<[u8; 4]>,
+    /// VGA DAC palette (256 colors, RGB 6-bit values 0-63)
+    vga_dac_palette: [[u8; 3]; 256],
 }
 
 impl WebVideo {
+    /// Initialize VGA DAC palette with EGA defaults
+    fn default_vga_dac_palette() -> [[u8; 3]; 256] {
+        let mut palette = [[0u8; 3]; 256];
+        // Initialize first 16 colors with EGA defaults (6-bit RGB values 0-63)
+        for (i, entry) in palette.iter_mut().enumerate().take(16) {
+            *entry = TextModePalette::get_dac_color(i as u8);
+        }
+        palette
+    }
+
     /// Create a new WebVideo controller
     ///
     /// # Arguments
@@ -55,6 +68,8 @@ impl WebVideo {
                 cols: TEXT_MODE_COLS,
                 rows: TEXT_MODE_ROWS,
             },
+            graphics_palette: None,
+            vga_dac_palette: Self::default_vga_dac_palette(),
         })
     }
 
@@ -151,16 +166,17 @@ impl WebVideo {
     }
 
     /// Render graphics mode 320x200 (4-color) using ImageData API
-    fn render_graphics_320x200(
-        &mut self,
-        pixel_data: &[u8],
-        palette: &CgaPalette,
-    ) -> Result<(), JsValue> {
+    fn render_graphics_320x200(&mut self, pixel_data: &[u8]) -> Result<(), JsValue> {
+        // Get CGA palette or return early if not set
+        let cga_palette = match &self.graphics_palette {
+            Some(p) => *p,
+            None => return Ok(()), // No palette set yet, skip rendering
+        };
+
         // Resize canvas for graphics mode
         self.canvas.set_width(640); // 320 * 2 (scaled)
         self.canvas.set_height(400); // 200 * 2 (scaled)
 
-        let colors = palette.get_colors();
         let width = 320;
         let height = 200;
         let scale = 2;
@@ -180,9 +196,10 @@ impl WebVideo {
                 let shift = 6 - (pixel_in_byte * 2);
                 let color_index = ((byte_val >> shift) & 0x03) as usize;
 
-                // Get RGB color from palette
-                let vga_color = colors[color_index];
-                let rgb = TextModePalette::get_color(vga_color);
+                // Map pixel value to CGA palette entry (EGA color index)
+                // For CGA compatibility, use fixed CGA palette colors, not VGA DAC
+                let ega_color = cga_palette[color_index];
+                let rgb = TextModePalette::get_color(ega_color);
 
                 // Draw scaled pixel (2x2 screen pixels per CGA pixel)
                 for dy in 0..scale {
@@ -341,8 +358,11 @@ impl VideoController for WebVideo {
         self.update_display(buffer);
     }
 
-    fn update_graphics_320x200(&mut self, pixel_data: &[u8], palette: &CgaPalette) {
-        if let Err(e) = self.render_graphics_320x200(pixel_data, palette) {
+    fn update_graphics_320x200(&mut self, pixel_data: &[u8], cga_palette: [u8; 4]) {
+        // Store CGA palette for rendering
+        self.graphics_palette = Some(cga_palette);
+
+        if let Err(e) = self.render_graphics_320x200(pixel_data) {
             log::error!("Failed to render 320x200 graphics: {:?}", e);
         }
     }
@@ -351,5 +371,11 @@ impl VideoController for WebVideo {
         if let Err(e) = self.render_graphics_640x200(pixel_data, fg_color, bg_color) {
             log::error!("Failed to render 640x200 graphics: {:?}", e);
         }
+    }
+
+    fn update_vga_dac_palette(&mut self, palette: &[[u8; 3]; 256]) {
+        // Update stored VGA DAC palette
+        self.vga_dac_palette.copy_from_slice(palette);
+        log::trace!("WebVideo: Updated VGA DAC palette");
     }
 }

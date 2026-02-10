@@ -187,6 +187,41 @@ impl GraphicsBuffer {
         if linear_offset >= self.data.len() {
             return;
         }
+
+        // Debug logging for graphics writes
+        if value != 0 && self.bits_per_pixel == 2 {
+            // Calculate screen coordinates for 320x200 mode
+            let bytes_per_line = 80; // 320 pixels / 4 pixels per byte
+            let (y, x_byte) = if offset < 0x2000 {
+                // Even line (bank 0)
+                let line_in_bank = offset / bytes_per_line;
+                (line_in_bank * 2, offset % bytes_per_line)
+            } else {
+                // Odd line (bank 1)
+                let offset_in_bank = offset - 0x2000;
+                let line_in_bank = offset_in_bank / bytes_per_line;
+                (line_in_bank * 2 + 1, offset_in_bank % bytes_per_line)
+            };
+            let x = x_byte * 4; // 4 pixels per byte
+
+            // Decode pixel values (2 bits per pixel, 4 pixels per byte)
+            let px0 = (value >> 6) & 0x03;
+            let px1 = (value >> 4) & 0x03;
+            let px2 = (value >> 2) & 0x03;
+            let px3 = value & 0x03;
+            log::debug!(
+                "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X}, pixels=[{},{},{},{}]",
+                offset,
+                x,
+                y,
+                value,
+                px0,
+                px1,
+                px2,
+                px3
+            );
+        }
+
         self.data[linear_offset] = value;
     }
 
@@ -222,22 +257,21 @@ impl CgaPalette {
         let bg = self.background;
 
         if self.palette_id == 0 {
-            // Palette 0 (bit 5 = 0): Green, Red, Brown/Yellow
+            // Palette 0 (bit 5 = 0): Green, Red, Brown
             if self.intensity {
                 [bg, colors::LIGHT_GREEN, colors::LIGHT_RED, colors::YELLOW]
             } else {
-                // Use YELLOW (14) instead of BROWN (6) for better appearance
-                // Real CGA used color 6, but it appeared more yellow on period monitors
-                [bg, colors::GREEN, colors::RED, colors::YELLOW]
+                // Use actual CGA hardware colors for accuracy
+                [bg, colors::GREEN, colors::RED, colors::BROWN]
             }
         } else {
-            // Palette 1 (bit 5 = 1): Cyan, Magenta, White
+            // Palette 1 (bit 5 = 1): Cyan, Magenta, Light Gray/White
             if self.intensity {
                 [bg, colors::LIGHT_CYAN, colors::LIGHT_MAGENTA, colors::WHITE]
             } else {
-                // Use WHITE (15) instead of LIGHT_GRAY (7) for better appearance on modern displays
-                // Real CGA used color 7, but it appeared bright white due to analog monitor characteristics
-                [bg, colors::CYAN, colors::MAGENTA, colors::WHITE]
+                // Use actual CGA hardware color (Light Gray)
+                // On period monitors this appeared bright/white-ish
+                [bg, colors::CYAN, colors::MAGENTA, colors::LIGHT_GRAY]
             }
         }
     }
@@ -285,10 +319,12 @@ pub trait VideoController {
     fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]);
 
     /// Update graphics display (320x200, 4 colors)
-    /// pixel_data: linear pixel array, palette: current CGA palette
-    fn update_graphics_320x200(&mut self, pixel_data: &[u8], palette: &CgaPalette) {
+    /// pixel_data: linear pixel array
+    /// cga_palette: 4 EGA color indices (0-15) from CGA palette [bg, color1, color2, color3]
+    /// For CGA compatibility, pixel values 0-3 map to these EGA colors, not VGA DAC
+    fn update_graphics_320x200(&mut self, pixel_data: &[u8], cga_palette: [u8; 4]) {
         // Default implementation: log warning
-        let _ = (pixel_data, palette);
+        let _ = (pixel_data, cga_palette);
         log::warn!("Graphics mode 320x200 not implemented for this platform");
     }
 
@@ -536,7 +572,20 @@ impl Video {
         self.vga_dac_palette = default_vga_palette();
 
         // Reset CGA palette to defaults
-        self.palette = CgaPalette::new();
+        // For graphics modes (0x04-0x06), IBM CGA BIOS initializes to palette 1
+        // For text modes, use palette 0
+        self.palette = if matches!(self.mode_type, VideoMode::Graphics320x200 | VideoMode::Graphics640x200) {
+            CgaPalette {
+                background: 0,
+                palette_id: 1, // Palette 1 (Cyan/Magenta/Light Gray) for graphics
+                intensity: false,
+            }
+        } else {
+            CgaPalette::new() // Palette 0 for text modes
+        };
+
+        // Sync VGA DAC entries 0-3 from CGA palette (for 320x200 4-color mode)
+        self.update_vga_dac_from_cga_palette();
 
         self.dirty = true;
         self.mode_changed = true; // Flag that controller needs notification
@@ -591,6 +640,7 @@ impl Video {
     /// Set CGA palette (from I/O port 0x3D9)
     pub fn set_palette(&mut self, value: u8) {
         self.palette = CgaPalette::from_register(value);
+        self.update_vga_dac_from_cga_palette();
         self.dirty = true;
     }
 
@@ -612,19 +662,43 @@ impl Video {
     /// Set CGA background color (4 bits, 0-15)
     pub fn set_cga_background(&mut self, color: u8) {
         self.palette.background = color & 0x0F;
+        self.update_vga_dac_from_cga_palette();
         self.dirty = true;
     }
 
     /// Set CGA intensity/bright mode
     pub fn set_cga_intensity(&mut self, enabled: bool) {
         self.palette.intensity = enabled;
+        self.update_vga_dac_from_cga_palette();
         self.dirty = true;
     }
 
     /// Set CGA palette ID (0 or 1)
     pub fn set_cga_palette_id(&mut self, palette_id: u8) {
         self.palette.palette_id = palette_id & 0x01;
+        self.update_vga_dac_from_cga_palette();
         self.dirty = true;
+    }
+
+    /// Update VGA DAC palette entries 0-3 to match current CGA palette
+    /// This allows CGA palette selection (INT 10h AH=0Bh) to work alongside
+    /// VGA DAC programming (INT 10h AH=10h)
+    fn update_vga_dac_from_cga_palette(&mut self) {
+        let cga_colors = self.palette.get_colors(); // [bg, color1, color2, color3] as EGA indices
+        let default_palette = default_vga_palette();
+
+        // Map each CGA color slot to its VGA DAC entry
+        for (i, &ega_color) in cga_colors.iter().enumerate() {
+            let rgb = default_palette[ega_color as usize];
+            self.vga_dac_palette[i] = rgb;
+        }
+
+        log::debug!(
+            "VGA DAC: Synced entries 0-3 from CGA palette (id={}, intensity={}, bg={})",
+            self.palette.palette_id,
+            self.palette.intensity,
+            self.palette.background
+        );
     }
 
     /// Set VGA DAC register (6-bit RGB values 0-63)
