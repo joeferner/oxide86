@@ -1,5 +1,18 @@
 use crate::{cpu::Cpu, memory::Memory};
 
+/// Drawing mode for characters in graphics mode
+#[derive(Debug, Clone, Copy)]
+enum GraphicsDrawMode {
+    /// Transparent: draw only foreground pixels, leave background unchanged
+    Transparent,
+    /// Opaque: draw foreground and background (bg=0)
+    Opaque,
+    /// XOR: XOR foreground pixels with existing content
+    Xor,
+    /// XOR with inverted glyph: used for inverse video effect (char & attr both have bit 7 set)
+    XorInverted,
+}
+
 impl Cpu {
     /// INT 0x10 - Video Services
     /// AH register contains the function number
@@ -296,8 +309,18 @@ impl Cpu {
 
         if video.is_graphics_mode() {
             // Graphics mode: draw character pixel-by-pixel
-            // BL contains foreground color (0-3 for 320x200, 0-1 for 640x200)
-            let fg_color = attr & 0x0F; // Use lower 4 bits as color index
+            // IBM CGA BIOS behavior:
+            // - BL bit 7 = 1: XOR mode
+            // - BL bit 7 = 0: Normal mode
+            // - When BOTH char bit 7 AND attr bit 7 are set: invert glyph for inverse effect
+            let fg_color = attr & 0x0F; // Lower 4 bits = color index
+            let xor_mode = (attr & 0x80) != 0; // Bit 7 = XOR mode
+            let invert_glyph = (ch & 0x80) != 0 && xor_mode; // Invert if both bits set
+
+            log::debug!(
+                "INT 10h AH=09h: char=0x{:02X} attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
+                ch, attr, xor_mode, invert_glyph, fg_color, count, cursor.row, cursor.col
+            );
 
             for i in 0..count {
                 let col = cursor.col + (i as usize) % cols;
@@ -305,8 +328,15 @@ impl Cpu {
                 if row >= rows {
                     break;
                 }
-                // AH=09h draws opaque characters - background is color 0
-                self.draw_char_graphics(video, ch, row, col, fg_color, Some(0));
+                // Determine draw mode based on attribute and character bits
+                let draw_mode = if invert_glyph {
+                    GraphicsDrawMode::XorInverted
+                } else if xor_mode {
+                    GraphicsDrawMode::Xor
+                } else {
+                    GraphicsDrawMode::Opaque
+                };
+                self.draw_char_graphics(video, ch, row, col, fg_color, draw_mode);
             }
         } else {
             // Text mode: write to video memory
@@ -348,8 +378,15 @@ impl Cpu {
                 if row >= rows {
                     break;
                 }
-                // AH=0Ah draws transparent characters - no background
-                self.draw_char_graphics(video, ch, row, col, fg_color, None);
+                // AH=0Ah draws transparent characters - no background, no XOR
+                self.draw_char_graphics(
+                    video,
+                    ch,
+                    row,
+                    col,
+                    fg_color,
+                    GraphicsDrawMode::Transparent,
+                );
             }
         } else {
             // Text mode: write to video memory
@@ -404,8 +441,15 @@ impl Cpu {
                 if video.is_graphics_mode() {
                     // Graphics mode: draw character pixel-by-pixel
                     let fg_color = (self.bx & 0xFF) as u8; // BL
-                    // AH=0Eh (teletype) draws transparent characters - no background
-                    self.draw_char_graphics(video, ch, cursor.row, cursor.col, fg_color, None);
+                    // AH=0Eh (teletype) draws transparent characters - no background, no XOR
+                    self.draw_char_graphics(
+                        video,
+                        ch,
+                        cursor.row,
+                        cursor.col,
+                        fg_color,
+                        GraphicsDrawMode::Transparent,
+                    );
                 } else {
                     // Text mode: write character byte directly
                     let cols = video.get_cols();
@@ -452,9 +496,6 @@ impl Cpu {
     }
 
     /// Draw a character in graphics mode using font data
-    ///
-    /// Parameters:
-    /// - bg_color: Some(color) to draw opaque (with background), None for transparent
     fn draw_char_graphics(
         &self,
         video: &mut crate::video::Video,
@@ -462,7 +503,7 @@ impl Cpu {
         row: usize,
         col: usize,
         fg_color: u8,
-        bg_color: Option<u8>,
+        mode: GraphicsDrawMode,
     ) {
         use crate::font::Cp437Font;
 
@@ -471,7 +512,14 @@ impl Cpu {
         match video.get_mode_type() {
             crate::video::VideoMode::Graphics320x200 | crate::video::VideoMode::Graphics640x200 => {
                 // CGA graphics mode: use native 8x8 CGA font
-                let glyph = font.get_glyph_8(character);
+                // In XorInverted mode, strip bit 7 from character to get base glyph
+                // (e.g., 0x80 -> 0x00, then invert to get solid block)
+                let char_code = if matches!(mode, GraphicsDrawMode::XorInverted) {
+                    character & 0x7F
+                } else {
+                    character
+                };
+                let glyph = font.get_glyph_8(char_code);
                 let char_height = 8;
                 let char_width = 8;
 
@@ -487,11 +535,15 @@ impl Cpu {
                 let start_y = row * char_height;
 
                 log::debug!(
-                    "Drawing char 0x{:02X} ('{}') at row={} col={} (pixel {},{}) fg={} bg={:?} mode={}",
+                    "Drawing char 0x{:02X}->0x{:02X} at row={} col={} (pixel {},{}) fg={} mode={:?}",
                     character,
-                    if (32..127).contains(&character) { character as char } else { '.' },
-                    row, col, start_x, start_y, fg_color, bg_color,
-                    if bg_color.is_some() { "opaque" } else { "transparent" }
+                    char_code,
+                    row,
+                    col,
+                    start_x,
+                    start_y,
+                    fg_color,
+                    mode
                 );
 
                 // Draw each row of the character
@@ -500,19 +552,44 @@ impl Cpu {
                         break; // Don't draw past bottom of screen
                     }
 
+                    // In XorInverted mode, invert the glyph (swap foreground/background pixels)
+                    // This makes character 0x80 (blank in CGA font) become a solid block for inverse effect
+                    let final_glyph_byte = if matches!(mode, GraphicsDrawMode::XorInverted) {
+                        !glyph_byte // Invert all bits
+                    } else {
+                        glyph_byte
+                    };
+
                     // Draw each pixel in the row
                     for px in 0..char_width {
                         if start_x + px >= screen_width {
                             break; // Don't draw past right edge
                         }
 
-                        let bit = (glyph_byte >> (7 - px)) & 1;
+                        let bit = (final_glyph_byte >> (7 - px)) & 1;
                         if bit != 0 {
-                            // Foreground pixel - use fg_color
-                            self.set_pixel_cga(video, start_x + px, start_y + py, fg_color);
-                        } else if let Some(bg) = bg_color {
-                            // Background pixel - draw if bg_color is specified (opaque mode)
-                            self.set_pixel_cga(video, start_x + px, start_y + py, bg);
+                            // Foreground pixel
+                            match mode {
+                                GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted => {
+                                    // XOR mode: read current pixel and XOR with fg_color
+                                    let current =
+                                        self.get_pixel_cga(video, start_x + px, start_y + py);
+                                    let new_color = current ^ fg_color;
+                                    self.set_pixel_cga(
+                                        video,
+                                        start_x + px,
+                                        start_y + py,
+                                        new_color,
+                                    );
+                                }
+                                GraphicsDrawMode::Transparent | GraphicsDrawMode::Opaque => {
+                                    // Normal mode: use fg_color
+                                    self.set_pixel_cga(video, start_x + px, start_y + py, fg_color);
+                                }
+                            }
+                        } else if matches!(mode, GraphicsDrawMode::Opaque) {
+                            // Background pixel - only draw in opaque mode (bg=0)
+                            self.set_pixel_cga(video, start_x + px, start_y + py, 0);
                         }
                         // Otherwise leave background transparent (don't draw)
                     }
@@ -521,6 +598,38 @@ impl Cpu {
             _ => {
                 // Other modes not supported yet
             }
+        }
+    }
+
+    /// Get a pixel value in CGA graphics mode
+    /// Calculates CGA interlaced address: even lines at 0x0000+, odd lines at 0x2000+
+    fn get_pixel_cga(&self, video: &crate::video::Video, x: usize, y: usize) -> u8 {
+        match video.get_mode_type() {
+            crate::video::VideoMode::Graphics320x200 => {
+                // 320x200, 4 colors, 2 bits per pixel
+                let byte_offset = if y.is_multiple_of(2) {
+                    (y / 2) * 80 + x / 4
+                } else {
+                    0x2000 + ((y - 1) / 2) * 80 + x / 4
+                };
+                let pixel_in_byte = x % 4;
+                let shift = 6 - (pixel_in_byte * 2);
+                let byte_val = video.read_byte(byte_offset);
+                (byte_val >> shift) & 0x03
+            }
+            crate::video::VideoMode::Graphics640x200 => {
+                // 640x200, 2 colors, 1 bit per pixel
+                let byte_offset = if y.is_multiple_of(2) {
+                    (y / 2) * 80 + x / 8
+                } else {
+                    0x2000 + ((y - 1) / 2) * 80 + x / 8
+                };
+                let pixel_in_byte = x % 8;
+                let shift = 7 - pixel_in_byte;
+                let byte_val = video.read_byte(byte_offset);
+                (byte_val >> shift) & 0x01
+            }
+            _ => 0,
         }
     }
 
@@ -623,8 +732,15 @@ impl Cpu {
             if video.is_graphics_mode() {
                 // Graphics mode: draw character pixel-by-pixel
                 let fg_color = current_attr & 0x0F; // Use lower 4 bits as color
-                // AH=13h draws opaque characters - background is color 0
-                self.draw_char_graphics(video, ch, cursor.row, cursor.col, fg_color, Some(0));
+                // AH=13h draws opaque characters - background is color 0, no XOR
+                self.draw_char_graphics(
+                    video,
+                    ch,
+                    cursor.row,
+                    cursor.col,
+                    fg_color,
+                    GraphicsDrawMode::Opaque,
+                );
             } else {
                 // Text mode: write to video memory
                 let offset = (cursor.row * cols + cursor.col) * 2;

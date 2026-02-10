@@ -1,15 +1,17 @@
 # TODO
 
 - [ ] check-it 2
-  - video graphics tests are failing
   - black screen on exit (docs/teletype-attribute-preservation.md)
+  - Resetting computer on a graphics screen does not work
+  - Graphics screen 1 should be white on black
+  - Can't type "Y" enter on graphics screen.
 - [ ] Boot error cannot control A20 line
 - [ ] Test CGA Applications
   - [x] Alley Cat
   - [ ] Flight Simulator 1.0
   - [ ] Kings Quest 1
 - [ ] WASM - support creating new disks
-- [ ] native - mount directories into dos filesystem
+- [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
 - [ ] Support 286 (command line switch to choose)
 - [ ] Support EGA
 - [ ] Test EGA Applications
