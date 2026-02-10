@@ -43,6 +43,14 @@ impl DiskGeometry {
         total_size: 368_640, // 40 * 2 * 9 * 512
     };
 
+    /// 5.25" SS/SD floppy: 160 KB (40 tracks, 1 head, 8 sectors/track)
+    pub const FLOPPY_160K: Self = Self {
+        cylinders: 40,
+        heads: 1,
+        sectors_per_track: 8,
+        total_size: 163_840, // 40 * 1 * 8 * 512
+    };
+
     /// Create a hard drive geometry from total sector count
     /// Uses standard CHS parameters: 63 sectors/track, 16 heads
     /// Maximum 1024 cylinders (CHS addressing limit)
@@ -67,6 +75,7 @@ impl DiskGeometry {
             1_474_560 => Some(Self::FLOPPY_1440K),
             737_280 => Some(Self::FLOPPY_720K),
             368_640 => Some(Self::FLOPPY_360K),
+            163_840 => Some(Self::FLOPPY_160K),
             _ if size >= 2_000_000 && size.is_multiple_of(SECTOR_SIZE) => {
                 // Treat as hard drive (>= ~2MB and sector-aligned)
                 let total_sectors = size / SECTOR_SIZE;
@@ -78,7 +87,7 @@ impl DiskGeometry {
 
     /// Check if this geometry represents a floppy disk
     pub fn is_floppy(&self) -> bool {
-        matches!(self.total_size, 1_474_560 | 737_280 | 368_640)
+        matches!(self.total_size, 1_474_560 | 737_280 | 368_640 | 163_840)
     }
 
     /// Calculate total number of sectors
