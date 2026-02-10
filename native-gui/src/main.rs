@@ -125,8 +125,8 @@ fn main() {
     let cli = Cli::parse();
 
     if let Err(e) = run(cli) {
-        log::error!("Application error: {}", e);
-        eprintln!("Error: {}", e);
+        log::error!("Application error: {:#}", e);
+        eprintln!("Error: {:#}", e);
         std::process::exit(1);
     }
 }
@@ -1131,11 +1131,11 @@ fn load_and_insert_disk(
             ));
         }
         Err(e) => {
-            log::error!("Failed to insert disk: {}", e);
+            log::error!("Failed to insert disk: {:#}", e);
 
             // Show error notification
             *notification = Some(Notification::new(
-                format!("Failed to load disk into {}: {}", drive_label, e),
+                format!("Failed to load disk into {}: {:#}", drive_label, e),
                 NotificationType::Error,
             ));
         }

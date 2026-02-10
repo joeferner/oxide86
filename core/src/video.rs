@@ -574,7 +574,10 @@ impl Video {
         // Reset CGA palette to defaults
         // For graphics modes (0x04-0x06), IBM CGA BIOS initializes to palette 1
         // For text modes, use palette 0
-        self.palette = if matches!(self.mode_type, VideoMode::Graphics320x200 | VideoMode::Graphics640x200) {
+        self.palette = if matches!(
+            self.mode_type,
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200
+        ) {
             CgaPalette {
                 background: 0,
                 palette_id: 1, // Palette 1 (Cyan/Magenta/Light Gray) for graphics
