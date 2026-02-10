@@ -9,6 +9,7 @@
   - [ ] Flight Simulator 1.0
   - [ ] Kings Quest 1
 - [ ] WASM - support creating new disks
+- [ ] WASM - add feature to save ram or video ram
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
 - [ ] Support 286 (command line switch to choose)
 - [ ] Support EGA

@@ -11,6 +11,7 @@ pub use crate::disk_backend::FileDiskBackend;
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 pub use crate::io::Pit;
 pub use crate::keyboard::KeyboardInput;
+pub use crate::memory::{MEMORY_SIZE, Memory};
 pub use crate::memory_allocator::MemoryAllocator;
 pub use crate::mouse::{MouseInput, MouseState, NullMouse};
 #[cfg(feature = "audio-rodio")]
@@ -19,8 +20,8 @@ pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
 pub use crate::speaker::{NullSpeaker, SpeakerOutput};
 pub use crate::video::{
-    CgaPalette, CursorPosition, NullVideoController, TextAttribute, TextCell, Video,
-    VideoController, VideoMode, colors,
+    CgaPalette, CursorPosition, NullVideoController, TextAttribute, TextCell, VIDEO_MEMORY_END,
+    VIDEO_MEMORY_SIZE, VIDEO_MEMORY_START, Video, VideoController, VideoMode, colors,
 };
 pub use computer::Computer;
 pub use font::Cp437Font;

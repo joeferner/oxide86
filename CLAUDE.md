@@ -9,6 +9,7 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 - Code in core must support both native and wasm
 - No backwards compatibility
 - Run ./scripts/pre-commit.sh when done; update CLAUDE.md for future edits
+- Instead of running cargo build or clippy run ./scripts/pre-commit.sh instead
 - logs are written to emu86.log
 - use Rust crates when possible
 - when logging unimplemented features use log::warn!

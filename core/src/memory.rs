@@ -396,4 +396,9 @@ impl Memory {
             FONT_8X8_ADDR
         );
     }
+
+    /// Get a reference to the entire memory data
+    pub fn data(&self) -> &[u8] {
+        &self.data
+    }
 }

@@ -9,6 +9,8 @@ pub enum MenuAction {
     EjectFloppyB,
     Reset,
     SaveScreenshot,
+    SaveRam,
+    SaveVideoRam,
     ToggleExecutionLogging,
     ToggleInterruptLogging,
     TogglePause,
@@ -24,6 +26,8 @@ impl MenuAction {
             MenuAction::InsertFloppyB | MenuAction::EjectFloppyB => DriveNumber::floppy_b(),
             MenuAction::Reset
             | MenuAction::SaveScreenshot
+            | MenuAction::SaveRam
+            | MenuAction::SaveVideoRam
             | MenuAction::ToggleExecutionLogging
             | MenuAction::ToggleInterruptLogging
             | MenuAction::TogglePause
@@ -50,6 +54,8 @@ impl MenuAction {
                 | MenuAction::TogglePerformanceOverlay
                 | MenuAction::Reset
                 | MenuAction::SaveScreenshot
+                | MenuAction::SaveRam
+                | MenuAction::SaveVideoRam
         )
     }
 }
@@ -175,6 +181,24 @@ impl AppMenu {
                         .clicked()
                     {
                         action = Some(MenuAction::SaveScreenshot);
+                        ui.close_menu();
+                    }
+
+                    if ui
+                        .button("💾 Save RAM...")
+                        .on_hover_text("Save entire RAM to file")
+                        .clicked()
+                    {
+                        action = Some(MenuAction::SaveRam);
+                        ui.close_menu();
+                    }
+
+                    if ui
+                        .button("🖥️ Save Video RAM...")
+                        .on_hover_text("Save video RAM to file")
+                        .clicked()
+                    {
+                        action = Some(MenuAction::SaveVideoRam);
                         ui.close_menu();
                     }
                 });

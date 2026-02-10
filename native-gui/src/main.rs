@@ -7,8 +7,9 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
-    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, NullSpeaker,
-    PartitionedDisk, RodioSpeaker, parse_mbr,
+    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, MEMORY_SIZE, NullSpeaker,
+    PartitionedDisk, RodioSpeaker, VIDEO_MEMORY_END, VIDEO_MEMORY_SIZE, VIDEO_MEMORY_START,
+    parse_mbr,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -1257,6 +1258,121 @@ fn save_screenshot(
     }
 }
 
+fn save_ram(computer: &Computer<PixelsVideoController>, notification: &mut Option<Notification>) {
+    use chrono::{Datelike, Timelike};
+
+    // Show file dialog
+    let result = rfd::FileDialog::new()
+        .add_filter("Binary File", &["bin"])
+        .set_directory(".")
+        .set_file_name({
+            let now = chrono::Local::now();
+            format!(
+                "emu86_ram_{:04}{:02}{:02}_{:02}{:02}{:02}.bin",
+                now.year(),
+                now.month(),
+                now.day(),
+                now.hour(),
+                now.minute(),
+                now.second()
+            )
+        })
+        .set_title("Save RAM")
+        .save_file();
+
+    if let Some(file_path) = result {
+        let path = file_path.to_string_lossy().to_string();
+
+        // Get the memory data
+        let memory_data = computer.memory().data();
+
+        // Write to file
+        let save_result = std::fs::write(&path, memory_data);
+
+        match save_result {
+            Ok(()) => {
+                let filename = std::path::Path::new(&path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&path);
+                log::info!("RAM saved to {} ({} bytes)", path, MEMORY_SIZE);
+                *notification = Some(Notification::new(
+                    format!("RAM saved as {} ({} bytes)", filename, MEMORY_SIZE),
+                    NotificationType::Success,
+                ));
+            }
+            Err(e) => {
+                log::error!("Failed to save RAM: {}", e);
+                *notification = Some(Notification::new(
+                    format!("Failed to save RAM: {}", e),
+                    NotificationType::Error,
+                ));
+            }
+        }
+    }
+}
+
+fn save_video_ram(
+    computer: &Computer<PixelsVideoController>,
+    notification: &mut Option<Notification>,
+) {
+    use chrono::{Datelike, Timelike};
+
+    // Show file dialog
+    let result = rfd::FileDialog::new()
+        .add_filter("Binary File", &["bin"])
+        .set_directory(".")
+        .set_file_name({
+            let now = chrono::Local::now();
+            format!(
+                "emu86_vram_{:04}{:02}{:02}_{:02}{:02}{:02}.bin",
+                now.year(),
+                now.month(),
+                now.day(),
+                now.hour(),
+                now.minute(),
+                now.second()
+            )
+        })
+        .set_title("Save Video RAM")
+        .save_file();
+
+    if let Some(file_path) = result {
+        let path = file_path.to_string_lossy().to_string();
+
+        // Get the memory data and extract video RAM portion
+        let memory_data = computer.memory().data();
+        let video_ram = &memory_data[VIDEO_MEMORY_START..=VIDEO_MEMORY_END];
+
+        // Write to file
+        let save_result = std::fs::write(&path, video_ram);
+
+        match save_result {
+            Ok(()) => {
+                let filename = std::path::Path::new(&path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&path);
+                log::info!("Video RAM saved to {} ({} bytes)", path, VIDEO_MEMORY_SIZE);
+                *notification = Some(Notification::new(
+                    format!(
+                        "Video RAM saved as {} ({} bytes)",
+                        filename, VIDEO_MEMORY_SIZE
+                    ),
+                    NotificationType::Success,
+                ));
+            }
+            Err(e) => {
+                log::error!("Failed to save video RAM: {}", e);
+                *notification = Some(Notification::new(
+                    format!("Failed to save video RAM: {}", e),
+                    NotificationType::Error,
+                ));
+            }
+        }
+    }
+}
+
 fn handle_debug_action(
     action: menu::MenuAction,
     computer: &mut Computer<PixelsVideoController>,
@@ -1274,6 +1390,12 @@ fn handle_debug_action(
         }
         MenuAction::SaveScreenshot => {
             save_screenshot(computer, &mut app_state.notification);
+        }
+        MenuAction::SaveRam => {
+            save_ram(computer, &mut app_state.notification);
+        }
+        MenuAction::SaveVideoRam => {
+            save_video_ram(computer, &mut app_state.notification);
         }
         MenuAction::ToggleExecutionLogging => {
             computer.set_exec_logging(!computer.exec_logging_enabled);

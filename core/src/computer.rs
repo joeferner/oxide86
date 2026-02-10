@@ -1067,6 +1067,11 @@ impl<V: VideoController> Computer<V> {
         &self.video_controller
     }
 
+    /// Get a reference to the memory
+    pub fn memory(&self) -> &Memory {
+        &self.memory
+    }
+
     /// Update keyboard shift flags in the BIOS Data Area
     /// This should be called when modifier key state changes (Shift, Ctrl, Alt)
     ///
