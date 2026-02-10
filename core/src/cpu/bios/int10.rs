@@ -319,7 +319,14 @@ impl Cpu {
 
             log::debug!(
                 "INT 10h AH=09h: char=0x{:02X} attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
-                ch, attr, xor_mode, invert_glyph, fg_color, count, cursor.row, cursor.col
+                ch,
+                attr,
+                xor_mode,
+                invert_glyph,
+                fg_color,
+                count,
+                cursor.row,
+                cursor.col
             );
 
             for i in 0..count {

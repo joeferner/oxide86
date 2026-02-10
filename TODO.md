@@ -4,7 +4,7 @@
   - black screen on exit (docs/teletype-attribute-preservation.md)
   - Resetting computer on a graphics screen does not work
   - Graphics screen 1 should be white on black
-  - Can't type "Y" enter on graphics screen.
+  - Can't type "Y" enter on graphics screen. (e8eaefb4775fa930dabc401cf358f5c4d8a32a2e)
 - [ ] Boot error cannot control A20 line
 - [ ] Test CGA Applications
   - [x] Alley Cat
