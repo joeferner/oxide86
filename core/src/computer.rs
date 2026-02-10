@@ -268,6 +268,11 @@ impl<V: VideoController> Computer<V> {
         // Reset video to blank screen
         self.video = Video::new();
 
+        // Notify video controller of mode reset (Video::new() defaults to mode 0x03)
+        self.video_controller.set_video_mode(0x03);
+        self.video_controller
+            .update_vga_dac_palette(self.video.get_vga_dac_palette());
+
         // Reset IO devices
         self.io_device = IoDevice::new();
 
@@ -321,7 +326,7 @@ impl<V: VideoController> Computer<V> {
     /// Programs like edit.exe install custom INT 09h handlers to implement enhanced
     /// keyboard features and maintain their own keyboard buffers.
     pub fn process_keyboard_irq(&mut self, key: KeyPress) {
-        log::debug!(
+        log::trace!(
             "Queueing keyboard IRQ: scan=0x{:02X}, ascii=0x{:02X}",
             key.scan_code,
             key.ascii_code
@@ -355,7 +360,7 @@ impl<V: VideoController> Computer<V> {
         self.bios.pending_scan_code = key.scan_code;
         self.bios.pending_ascii_code = key.ascii_code;
 
-        log::debug!(
+        log::trace!(
             "INT 09h: Firing keyboard IRQ - Scan: 0x{:02X}, ASCII: 0x{:02X}",
             key.scan_code,
             key.ascii_code
@@ -412,7 +417,7 @@ impl<V: VideoController> Computer<V> {
             let offset = self.memory.read_u16(ivt_addr);
             let segment = self.memory.read_u16(ivt_addr + 2);
 
-            log::debug!(
+            log::trace!(
                 "INT 09h: Calling custom handler at {:04X}:{:04X}",
                 segment,
                 offset

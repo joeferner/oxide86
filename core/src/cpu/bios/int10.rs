@@ -541,7 +541,7 @@ impl Cpu {
                 let start_x = col * char_width;
                 let start_y = row * char_height;
 
-                log::debug!(
+                log::trace!(
                     "Drawing char 0x{:02X}->0x{:02X} at row={} col={} (pixel {},{}) fg={} mode={:?}",
                     character,
                     char_code,

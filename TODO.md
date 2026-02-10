@@ -2,7 +2,6 @@
 
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)
-  - Resetting computer on a graphics screen does not work
   - Graphics screen 1 should be white on black
 - [ ] Boot error cannot control A20 line
 - [ ] Test CGA Applications

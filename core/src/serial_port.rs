@@ -357,7 +357,7 @@ impl SerialPortController {
                 0x07 => "9600",
                 _ => "unknown",
             };
-            log::debug!(
+            log::trace!(
                 "COM{} baud rate changed: divisor=0x{:04X} -> {} baud (code 0x{:02X})",
                 self.port_number + 1,
                 self.divisor_latch,
@@ -397,7 +397,7 @@ impl SerialPortController {
             };
             let stop_bits = if self.params.stop_bits == 0 { "1" } else { "2" };
 
-            log::debug!(
+            log::trace!(
                 "COM{} line format changed: {}{}{}",
                 self.port_number + 1,
                 data_bits,

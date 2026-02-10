@@ -222,22 +222,22 @@ impl CgaPalette {
         let bg = self.background;
 
         if self.palette_id == 0 {
-            // Palette 0 (bit 5 = 0): Cyan, Magenta, White
-            if self.intensity {
-                [bg, colors::LIGHT_CYAN, colors::LIGHT_MAGENTA, colors::WHITE]
-            } else {
-                // Use WHITE (15) instead of LIGHT_GRAY (7) for better appearance on modern displays
-                // Real CGA used color 7, but it appeared bright white due to analog monitor characteristics
-                [bg, colors::CYAN, colors::MAGENTA, colors::WHITE]
-            }
-        } else {
-            // Palette 1 (bit 5 = 1): Green, Red, Brown/Yellow
+            // Palette 0 (bit 5 = 0): Green, Red, Brown/Yellow
             if self.intensity {
                 [bg, colors::LIGHT_GREEN, colors::LIGHT_RED, colors::YELLOW]
             } else {
                 // Use YELLOW (14) instead of BROWN (6) for better appearance
                 // Real CGA used color 6, but it appeared more yellow on period monitors
                 [bg, colors::GREEN, colors::RED, colors::YELLOW]
+            }
+        } else {
+            // Palette 1 (bit 5 = 1): Cyan, Magenta, White
+            if self.intensity {
+                [bg, colors::LIGHT_CYAN, colors::LIGHT_MAGENTA, colors::WHITE]
+            } else {
+                // Use WHITE (15) instead of LIGHT_GRAY (7) for better appearance on modern displays
+                // Real CGA used color 7, but it appeared bright white due to analog monitor characteristics
+                [bg, colors::CYAN, colors::MAGENTA, colors::WHITE]
             }
         }
     }
