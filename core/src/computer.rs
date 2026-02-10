@@ -361,26 +361,87 @@ impl<V: VideoController> Computer<V> {
             key.ascii_code
         );
 
-        // Call INT 09h handler (either default BIOS or custom handler)
-        let int_num = 0x09u8;
-        let ivt_addr = (int_num as usize) * 4;
-        let offset = self.memory.read_u16(ivt_addr);
-        let segment = self.memory.read_u16(ivt_addr + 2);
+        // Check if custom INT 09h handler is installed
+        let int_num: u8 = 0x09;
+        let is_bios_handler = Cpu::is_bios_handler(&self.memory, int_num);
 
-        log::debug!("INT 09h: Calling handler at {:04X}:{:04X}", segment, offset);
+        if !is_bios_handler {
+            // Custom INT 09h handler installed by program (e.g., CheckIt, edit.exe)
+            //
+            // Pre-buffer the key for custom handlers (like real PC hardware behavior).
+            // Custom handlers expect the BIOS to have already processed the key.
+            // If they chain to F000:0009, our BIOS handler will detect the duplicate
+            // and skip re-adding it.
+            //
+            // Skip key releases (bit 7 set) - only buffer key presses
+            if key.scan_code & 0x80 == 0 {
+                use memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START};
 
-        // Push flags, CS, IP (simulating INT instruction)
-        self.cpu.push(self.cpu.flags, &mut self.memory);
-        self.cpu.push(self.cpu.cs, &mut self.memory);
-        self.cpu.push(self.cpu.ip, &mut self.memory);
+                let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
+                let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
+                let head = self.memory.read_u16(head_addr);
+                let tail = self.memory.read_u16(tail_addr);
 
-        // Clear IF and TF flags (standard INT behavior)
-        self.cpu.set_flag(cpu_flag::INTERRUPT, false);
-        self.cpu.set_flag(cpu_flag::TRAP, false);
+                // Calculate what tail would be after adding this key
+                let buffer_start: u16 = 0x001E; // Relative to BDA
+                let new_tail = if tail == buffer_start + 30 {
+                    buffer_start // Wrap around
+                } else {
+                    tail + 2
+                };
 
-        // Jump to INT 09h handler
-        self.cpu.cs = segment;
-        self.cpu.ip = offset;
+                // Check if buffer would become full
+                if new_tail != head {
+                    // Add key to buffer
+                    let char_addr = BDA_START + tail as usize;
+                    self.memory.write_u8(char_addr, key.scan_code);
+                    self.memory.write_u8(char_addr + 1, key.ascii_code);
+                    self.memory.write_u16(tail_addr, new_tail);
+                    self.bios.key_was_prebuffered = true; // Mark as pre-buffered
+                    log::debug!("INT 09h: Pre-buffered key for custom handler");
+                } else {
+                    log::warn!("INT 09h: Keyboard buffer full, discarding key");
+                }
+            } else {
+                // Key release - not pre-buffered
+                self.bios.key_was_prebuffered = false;
+            }
+
+            // Call the custom INT 09h handler
+            let ivt_addr = (int_num as usize) * 4;
+            let offset = self.memory.read_u16(ivt_addr);
+            let segment = self.memory.read_u16(ivt_addr + 2);
+
+            log::debug!(
+                "INT 09h: Calling custom handler at {:04X}:{:04X}",
+                segment,
+                offset
+            );
+
+            // Push flags, CS, IP (simulating INT instruction)
+            self.cpu.push(self.cpu.flags, &mut self.memory);
+            self.cpu.push(self.cpu.cs, &mut self.memory);
+            self.cpu.push(self.cpu.ip, &mut self.memory);
+
+            // Clear IF and TF flags (standard INT behavior)
+            self.cpu.set_flag(cpu_flag::INTERRUPT, false);
+            self.cpu.set_flag(cpu_flag::TRAP, false);
+
+            // Jump to INT 09h handler
+            self.cpu.cs = segment;
+            self.cpu.ip = offset;
+        } else {
+            // BIOS INT 09h handler - call Rust handler directly
+            // The Rust handler will add the key to the buffer (no pre-buffering)
+            self.bios.key_was_prebuffered = false; // Not pre-buffered for default handler
+            log::debug!("INT 09h: Calling default BIOS handler");
+            self.cpu.handle_bios_interrupt_direct(
+                int_num,
+                &mut self.memory,
+                &mut self.bios,
+                &mut self.video,
+            );
+        }
 
         true
     }
@@ -658,6 +719,16 @@ impl<V: VideoController> Computer<V> {
             // INT 0x13 -> F000:0013, INT 0x21 -> F000:0021, etc.
             // The offset tells us which interrupt this is!
             let int_num = (current_ip & 0xFF) as u8;
+
+            // Extra logging for INT 09h to debug custom handlers
+            if int_num == 0x09 {
+                log::debug!(
+                    "INT 09h: Custom handler chained to BIOS at F000:{:04X}, scan=0x{:02X}, ascii=0x{:02X}",
+                    current_ip,
+                    self.bios.pending_scan_code,
+                    self.bios.pending_ascii_code
+                );
+            }
 
             if self.log_interrupts_enabled {
                 log::info!(
