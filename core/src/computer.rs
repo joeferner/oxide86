@@ -891,6 +891,16 @@ impl<V: VideoController> Computer<V> {
                     &mut self.io_device,
                     &mut self.video,
                 );
+                // Check for CPU exceptions raised during instruction (e.g. divide error = INT 0)
+                if let Some(exc) = self.cpu.pending_exception.take() {
+                    self.cpu.execute_int_with_io(
+                        exc,
+                        &mut self.memory,
+                        &mut self.bios,
+                        &mut self.video,
+                    );
+                    self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT;
+                }
             }
         }
 

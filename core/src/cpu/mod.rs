@@ -54,6 +54,10 @@ pub struct Cpu {
     /// When > 0, Computer's step() will burn cycles instead of executing instructions
     pub(super) pending_sleep_cycles: u64,
 
+    /// Pending CPU exception interrupt number (e.g. 0 = divide error)
+    /// Set by instructions that trigger CPU exceptions; fired by Computer::step()
+    pub(super) pending_exception: Option<u8>,
+
     /// IRQ chain context - tracks nested interrupt chaining
     /// None = normal execution
     /// Some(IrqChainContext) = currently processing a chained interrupt
@@ -132,6 +136,7 @@ impl Cpu {
             log_interrupts_enabled: false,
             last_instruction_cycles: 0,
             pending_sleep_cycles: 0,
+            pending_exception: None,
             irq_chain_context: None,
         }
     }
@@ -149,6 +154,7 @@ impl Cpu {
         self.wait_state = CpuWaitState::Running;
         self.segment_override = None;
         self.repeat_prefix = None;
+        self.pending_exception = None;
         // Other registers are undefined on reset
     }
 

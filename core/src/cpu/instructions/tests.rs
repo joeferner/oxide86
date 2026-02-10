@@ -913,7 +913,6 @@ mod multiply_divide_tests {
     }
 
     #[test]
-    #[should_panic(expected = "Division by zero")]
     fn test_div_by_zero() {
         let (mut cpu, mut memory) = setup();
         cpu.ax = 10;
@@ -921,7 +920,13 @@ mod multiply_divide_tests {
         memory.write_u8(0, 0x36); // op=110 (DIV)
         memory.write_u16(1, 0x1000);
 
-        cpu.unary_group3(0xF6, &mut memory); // Should panic
+        cpu.unary_group3(0xF6, &mut memory);
+        // Divide by zero should set pending_exception = Some(0) (INT 0)
+        assert_eq!(
+            cpu.pending_exception,
+            Some(0),
+            "Should set divide error exception"
+        );
     }
 
     #[test]

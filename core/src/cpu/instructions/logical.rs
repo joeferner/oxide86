@@ -525,13 +525,17 @@ impl Cpu {
                 if is_word {
                     let divisor = self.read_rm16(mode, rm, addr, memory) as u32;
                     if divisor == 0 {
-                        panic!("Division by zero");
+                        log::warn!("DIV16: division by zero at {:04X}:{:04X}", self.cs, self.ip);
+                        self.pending_exception = Some(0);
+                        return;
                     }
                     let dividend = ((self.dx as u32) << 16) | (self.ax as u32);
                     let quotient = dividend / divisor;
                     let remainder = dividend % divisor;
                     if quotient > 0xFFFF {
-                        panic!("Divide overflow");
+                        log::warn!("DIV16: overflow at {:04X}:{:04X}", self.cs, self.ip);
+                        self.pending_exception = Some(0);
+                        return;
                     }
                     self.ax = quotient as u16;
                     self.dx = remainder as u16;
@@ -539,13 +543,17 @@ impl Cpu {
                 } else {
                     let divisor = self.read_rm8(mode, rm, addr, memory) as u16;
                     if divisor == 0 {
-                        panic!("Division by zero");
+                        log::warn!("DIV8: division by zero at {:04X}:{:04X}", self.cs, self.ip);
+                        self.pending_exception = Some(0);
+                        return;
                     }
                     let dividend = self.ax;
                     let quotient: u16 = dividend / divisor;
                     let remainder: u16 = dividend % divisor;
                     if quotient > 0xFF {
-                        panic!("Divide overflow");
+                        log::warn!("DIV8: overflow at {:04X}:{:04X}", self.cs, self.ip);
+                        self.pending_exception = Some(0);
+                        return;
                     }
                     self.ax = (remainder << 8) | quotient;
                     // Flags are undefined after DIV
@@ -570,13 +578,21 @@ impl Cpu {
                 if is_word {
                     let divisor = self.read_rm16(mode, rm, addr, memory) as i16 as i32;
                     if divisor == 0 {
-                        panic!("Division by zero");
+                        log::warn!(
+                            "IDIV16: division by zero at {:04X}:{:04X}",
+                            self.cs,
+                            self.ip
+                        );
+                        self.pending_exception = Some(0);
+                        return;
                     }
                     let dividend = ((self.dx as i16 as i32) << 16) | (self.ax as i32);
                     let quotient = dividend / divisor;
                     let remainder = dividend % divisor;
                     if !(-32768..=32767).contains(&quotient) {
-                        panic!("Divide overflow");
+                        log::warn!("IDIV16: overflow at {:04X}:{:04X}", self.cs, self.ip);
+                        self.pending_exception = Some(0);
+                        return;
                     }
                     self.ax = quotient as u16;
                     self.dx = remainder as u16;
@@ -584,13 +600,17 @@ impl Cpu {
                 } else {
                     let divisor = self.read_rm8(mode, rm, addr, memory) as i8 as i16;
                     if divisor == 0 {
-                        panic!("Division by zero");
+                        log::warn!("IDIV8: division by zero at {:04X}:{:04X}", self.cs, self.ip);
+                        self.pending_exception = Some(0);
+                        return;
                     }
                     let dividend = self.ax as i16;
                     let quotient = dividend / divisor;
                     let remainder = dividend % divisor;
                     if !(-128..=127).contains(&quotient) {
-                        panic!("Divide overflow");
+                        log::warn!("IDIV8: overflow at {:04X}:{:04X}", self.cs, self.ip);
+                        self.pending_exception = Some(0);
+                        return;
                     }
                     let al = quotient as u8;
                     let ah = remainder as u8;
