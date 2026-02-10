@@ -282,7 +282,7 @@ impl Cpu {
     /// INT 10h, AH=09h - Write Character and Attribute at Cursor
     /// Input:
     ///   AL = character to write
-    ///   BL = attribute byte (foreground/background color)
+    ///   BL = attribute byte (foreground/background color in text, foreground color in graphics)
     ///   BH = page number (0 for text mode)
     ///   CX = number of times to write character
     /// Output: None (cursor position unchanged)
@@ -294,14 +294,31 @@ impl Cpu {
         let cols = video.get_cols();
         let rows = video.get_rows();
 
-        for i in 0..count {
-            let pos = cursor.row * cols + cursor.col + (i as usize);
-            if pos >= cols * rows {
-                break; // Don't write beyond screen
+        if video.is_graphics_mode() {
+            // Graphics mode: draw character pixel-by-pixel
+            // BL contains foreground color (0-3 for 320x200, 0-1 for 640x200)
+            let fg_color = attr & 0x0F; // Use lower 4 bits as color index
+
+            for i in 0..count {
+                let col = cursor.col + (i as usize) % cols;
+                let row = cursor.row + (i as usize) / cols;
+                if row >= rows {
+                    break;
+                }
+                // AH=09h draws opaque characters - background is color 0
+                self.draw_char_graphics(video, ch, row, col, fg_color, Some(0));
             }
-            let offset = pos * 2;
-            video.write_byte(offset, ch);
-            video.write_byte(offset + 1, attr);
+        } else {
+            // Text mode: write to video memory
+            for i in 0..count {
+                let pos = cursor.row * cols + cursor.col + (i as usize);
+                if pos >= cols * rows {
+                    break; // Don't write beyond screen
+                }
+                let offset = pos * 2;
+                video.write_byte(offset, ch);
+                video.write_byte(offset + 1, attr);
+            }
         }
         // Cursor position is NOT updated by this function
     }
@@ -309,6 +326,7 @@ impl Cpu {
     /// INT 10h, AH=0Ah - Write Character at Cursor
     /// Input:
     ///   AL = character to write
+    ///   BL = color (in graphics modes only)
     ///   BH = page number (0 for text mode)
     ///   CX = number of times to write character
     /// Output: None (cursor position unchanged, attribute preserved)
@@ -319,14 +337,31 @@ impl Cpu {
         let cols = video.get_cols();
         let rows = video.get_rows();
 
-        for i in 0..count {
-            let pos = cursor.row * cols + cursor.col + (i as usize);
-            if pos >= cols * rows {
-                break; // Don't write beyond screen
+        if video.is_graphics_mode() {
+            // Graphics mode: draw character pixel-by-pixel
+            // BL contains foreground color
+            let fg_color = (self.bx & 0xFF) as u8; // BL
+
+            for i in 0..count {
+                let col = cursor.col + (i as usize) % cols;
+                let row = cursor.row + (i as usize) / cols;
+                if row >= rows {
+                    break;
+                }
+                // AH=0Ah draws transparent characters - no background
+                self.draw_char_graphics(video, ch, row, col, fg_color, None);
             }
-            let offset = pos * 2;
-            video.write_byte(offset, ch);
-            // Don't modify attribute byte (offset + 1) - preserve existing color
+        } else {
+            // Text mode: write to video memory
+            for i in 0..count {
+                let pos = cursor.row * cols + cursor.col + (i as usize);
+                if pos >= cols * rows {
+                    break; // Don't write beyond screen
+                }
+                let offset = pos * 2;
+                video.write_byte(offset, ch);
+                // Don't modify attribute byte (offset + 1) - preserve existing color
+            }
         }
         // Cursor position is NOT updated by this function
     }
@@ -369,7 +404,8 @@ impl Cpu {
                 if video.is_graphics_mode() {
                     // Graphics mode: draw character pixel-by-pixel
                     let fg_color = (self.bx & 0xFF) as u8; // BL
-                    self.draw_char_graphics(video, ch, cursor.row, cursor.col, fg_color);
+                    // AH=0Eh (teletype) draws transparent characters - no background
+                    self.draw_char_graphics(video, ch, cursor.row, cursor.col, fg_color, None);
                 } else {
                     // Text mode: write character byte directly
                     let cols = video.get_cols();
@@ -416,13 +452,17 @@ impl Cpu {
     }
 
     /// Draw a character in graphics mode using font data
+    ///
+    /// Parameters:
+    /// - bg_color: Some(color) to draw opaque (with background), None for transparent
     fn draw_char_graphics(
         &self,
         video: &mut crate::video::Video,
         character: u8,
         row: usize,
         col: usize,
-        color: u8,
+        fg_color: u8,
+        bg_color: Option<u8>,
     ) {
         use crate::font::Cp437Font;
 
@@ -435,9 +475,24 @@ impl Cpu {
                 let char_height = 8;
                 let char_width = 8;
 
+                // Get screen dimensions based on mode
+                let screen_width = match video.get_mode_type() {
+                    crate::video::VideoMode::Graphics320x200 => 320,
+                    crate::video::VideoMode::Graphics640x200 => 640,
+                    _ => 320, // fallback
+                };
+
                 // Calculate pixel position
                 let start_x = col * char_width;
                 let start_y = row * char_height;
+
+                log::debug!(
+                    "Drawing char 0x{:02X} ('{}') at row={} col={} (pixel {},{}) fg={} bg={:?} mode={}",
+                    character,
+                    if (32..127).contains(&character) { character as char } else { '.' },
+                    row, col, start_x, start_y, fg_color, bg_color,
+                    if bg_color.is_some() { "opaque" } else { "transparent" }
+                );
 
                 // Draw each row of the character
                 for (py, &glyph_byte) in glyph.iter().enumerate() {
@@ -447,16 +502,19 @@ impl Cpu {
 
                     // Draw each pixel in the row
                     for px in 0..char_width {
-                        if start_x + px >= 320 {
+                        if start_x + px >= screen_width {
                             break; // Don't draw past right edge
                         }
 
                         let bit = (glyph_byte >> (7 - px)) & 1;
                         if bit != 0 {
-                            // Set pixel to foreground color
-                            self.set_pixel_cga(video, start_x + px, start_y + py, color);
+                            // Foreground pixel - use fg_color
+                            self.set_pixel_cga(video, start_x + px, start_y + py, fg_color);
+                        } else if let Some(bg) = bg_color {
+                            // Background pixel - draw if bg_color is specified (opaque mode)
+                            self.set_pixel_cga(video, start_x + px, start_y + py, bg);
                         }
-                        // Background pixels are left as-is (transparent)
+                        // Otherwise leave background transparent (don't draw)
                     }
                 }
             }
@@ -562,9 +620,17 @@ impl Cpu {
                 break;
             }
 
-            let offset = (cursor.row * cols + cursor.col) * 2;
-            video.write_byte(offset, ch);
-            video.write_byte(offset + 1, current_attr);
+            if video.is_graphics_mode() {
+                // Graphics mode: draw character pixel-by-pixel
+                let fg_color = current_attr & 0x0F; // Use lower 4 bits as color
+                // AH=13h draws opaque characters - background is color 0
+                self.draw_char_graphics(video, ch, cursor.row, cursor.col, fg_color, Some(0));
+            } else {
+                // Text mode: write to video memory
+                let offset = (cursor.row * cols + cursor.col) * 2;
+                video.write_byte(offset, ch);
+                video.write_byte(offset + 1, current_attr);
+            }
 
             // Advance cursor (even if not updating final position)
             let new_col = cursor.col + 1;
