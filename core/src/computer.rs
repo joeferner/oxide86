@@ -175,12 +175,13 @@ impl<V: VideoController> Computer<V> {
         }
 
         // Verify boot signature (0x55AA at offset 510-511)
+        // Some old "booter" games predate the convention and lack this signature; warn but continue.
         if boot_sector[510] != 0x55 || boot_sector[511] != 0xAA {
-            return Err(anyhow::anyhow!(
-                "Invalid boot sector signature: expected 0x55AA, got 0x{:02X}{:02X}",
+            log::warn!(
+                "Boot sector missing 0x55AA signature (got 0x{:02X}{:02X}); proceeding anyway",
                 boot_sector[511],
                 boot_sector[510]
-            ));
+            );
         }
 
         // Load boot sector to 0x0000:0x7C00 (physical address 0x7C00)
@@ -936,6 +937,23 @@ impl<V: VideoController> Computer<V> {
             log::info!("Computer: Passing palette to renderer (mode change)");
             self.video_controller
                 .update_vga_dac_palette(self.video.get_vga_dac_palette());
+
+            // Sync BDA video state (may have been set via CGA hardware registers, not INT 10h)
+            let cols = self.video.get_cols();
+            let rows = self.video.get_rows();
+            self.memory.write_u8(
+                crate::memory::BDA_START + crate::memory::BDA_VIDEO_MODE,
+                mode,
+            );
+            self.memory.write_u16(
+                crate::memory::BDA_START + crate::memory::BDA_SCREEN_COLUMNS,
+                cols as u16,
+            );
+            let page_size = cols * rows * 2;
+            self.memory.write_u16(
+                crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_SIZE,
+                page_size as u16,
+            );
         }
 
         if self.video.is_dirty() {

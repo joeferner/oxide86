@@ -95,6 +95,35 @@ impl IoDevice {
             0x3D8 => {
                 self.cga_mode_control.write(value);
                 log::debug!("CGA Mode Control: 0x{:02X}", value);
+                // Decode mode from CGA mode control register bits and update video mode.
+                // Bit 3 (0x08) = video enable; only switch mode when display is enabled.
+                if value & 0x08 != 0 {
+                    let mode = if value & 0x02 != 0 {
+                        // Graphics mode
+                        if value & 0x10 != 0 {
+                            0x06 // 640x200 2-color (bit 4 = high-res)
+                        } else if value & 0x04 != 0 {
+                            0x05 // 320x200 B&W (bit 2 = monochrome)
+                        } else {
+                            0x04 // 320x200 4-color
+                        }
+                    } else {
+                        // Text mode
+                        if value & 0x01 != 0 {
+                            0x03 // 80x25 color text (bit 0 = 80-col)
+                        } else {
+                            0x01 // 40x25 color text
+                        }
+                    };
+                    if mode != video.get_mode() {
+                        log::info!(
+                            "CGA Mode Control 0x{:02X}: switching to video mode 0x{:02X}",
+                            value,
+                            mode
+                        );
+                        video.set_mode(mode);
+                    }
+                }
             }
 
             // CGA Color Select Register
