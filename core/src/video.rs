@@ -189,36 +189,25 @@ impl GraphicsBuffer {
         }
 
         // Debug logging for graphics writes
-        if value != 0 && self.bits_per_pixel == 2 {
-            // Calculate screen coordinates for 320x200 mode
-            let bytes_per_line = 80; // 320 pixels / 4 pixels per byte
+        if value != 0 {
+            let bytes_per_line = self.width * (self.bits_per_pixel as usize) / 8;
             let (y, x_byte) = if offset < 0x2000 {
-                // Even line (bank 0)
                 let line_in_bank = offset / bytes_per_line;
                 (line_in_bank * 2, offset % bytes_per_line)
             } else {
-                // Odd line (bank 1)
                 let offset_in_bank = offset - 0x2000;
                 let line_in_bank = offset_in_bank / bytes_per_line;
                 (line_in_bank * 2 + 1, offset_in_bank % bytes_per_line)
             };
-            let x = x_byte * 4; // 4 pixels per byte
-
-            // Decode pixel values (2 bits per pixel, 4 pixels per byte)
-            let px0 = (value >> 6) & 0x03;
-            let px1 = (value >> 4) & 0x03;
-            let px2 = (value >> 2) & 0x03;
-            let px3 = value & 0x03;
+            let pixels_per_byte = 8 / self.bits_per_pixel as usize;
+            let x = x_byte * pixels_per_byte;
             log::debug!(
-                "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X}, pixels=[{},{},{},{}]",
+                "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} ({}bpp)",
                 offset,
                 x,
                 y,
                 value,
-                px0,
-                px1,
-                px2,
-                px3
+                self.bits_per_pixel
             );
         }
 

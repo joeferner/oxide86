@@ -11,6 +11,7 @@
 - [ ] WASM - support creating new disks
 - [ ] WASM - add feature to save ram or video ram
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
+- [ ] implement real cga status register (see docs/cga-status-register.md)
 - [ ] Support 286 (command line switch to choose)
 - [ ] Support EGA
 - [ ] Test EGA Applications

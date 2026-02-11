@@ -22,6 +22,9 @@ pub struct IoDevice {
     keyboard_scan_code: u8,
     /// ASCII code corresponding to the last scan code (for BIOS INT 09h handler)
     keyboard_ascii_code: u8,
+    /// Counter for CGA status register (port 3DAh) reads.
+    /// Used to simulate toggling retrace states so programs don't spin forever.
+    cga_status_counter: u32,
 }
 
 impl IoDevice {
@@ -33,6 +36,7 @@ impl IoDevice {
             cga_mode_control: CgaModeControl::new(),
             keyboard_scan_code: 0x00,
             keyboard_ascii_code: 0x00,
+            cga_status_counter: 0,
         }
     }
 
@@ -63,6 +67,22 @@ impl IoDevice {
 
             // CGA Color Select Register (write-only, return 0xFF on read)
             0x3D9 => 0xFF,
+
+            // CGA Status Register (port 3DAh)
+            // Bit 0: Horizontal retrace active
+            // Bit 3: Vertical retrace active
+            // Toggle state on each read so programs waiting for retrace
+            // start/end don't spin forever.
+            0x3DA => {
+                self.cga_status_counter = self.cga_status_counter.wrapping_add(1);
+                // Every other read: alternate between active display (0x00) and
+                // retrace (0x09 = both hsync and vsync bits set)
+                if self.cga_status_counter & 1 == 0 {
+                    0x00
+                } else {
+                    0x09
+                }
+            }
 
             // All other ports return 0xFF (floating high)
             _ => self.last_write.get(&port).copied().unwrap_or(0xFF),

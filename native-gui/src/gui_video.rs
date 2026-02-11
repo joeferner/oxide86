@@ -197,8 +197,11 @@ impl PixelsVideoController {
     /// Render graphics mode 640x200 (2-color) to framebuffer
     fn render_graphics_640x200(&self, frame: &mut [u8]) {
         if let Some(pixel_data) = &self.graphics_data {
-            let fg_rgb = self.get_palette_color(self.graphics_fg_color);
-            let bg_rgb = self.get_palette_color(self.graphics_bg_color);
+            // Use fixed EGA colors for CGA mode 6 (like wasm does), not VGA DAC.
+            // update_vga_dac_from_cga_palette() overwrites DAC[0] with the CGA background
+            // color, so get_palette_color(0) would return white instead of black.
+            let fg_rgb = TextModePalette::get_color(self.graphics_fg_color);
+            let bg_rgb = TextModePalette::get_color(self.graphics_bg_color);
             let scale = 2; // 640x200 -> 1280x400 (but we'll use 640x400 with 1x horizontal scale)
 
             for y in 0..200 {
