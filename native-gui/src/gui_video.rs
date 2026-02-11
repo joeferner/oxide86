@@ -230,6 +230,39 @@ impl PixelsVideoController {
         }
     }
 
+    /// Render EGA graphics mode 320x200 (16-color) to framebuffer
+    fn render_graphics_320x200x16(&self, frame: &mut [u8]) {
+        if let Some(pixel_data) = &self.graphics_data {
+            let scale = 2; // Scale factor: 320x200 -> 640x400 window
+
+            for y in 0..200 {
+                for x in 0..320 {
+                    // Each byte in pixel_data is a 0-15 color index
+                    let color_index = pixel_data[y * 320 + x] as usize;
+
+                    // Look up RGB from VGA DAC palette (6-bit values, scale to 8-bit)
+                    let dac = self.vga_dac_palette[color_index];
+                    let r = (dac[0] << 2) | (dac[0] >> 4);
+                    let g = (dac[1] << 2) | (dac[1] >> 4);
+                    let b = (dac[2] << 2) | (dac[2] >> 4);
+
+                    // Draw scaled pixel (2x2 screen pixels per EGA pixel)
+                    for dy in 0..scale {
+                        for dx in 0..scale {
+                            let screen_x = x * scale + dx;
+                            let screen_y = y * scale + dy;
+                            let offset = (screen_y * SCREEN_WIDTH + screen_x) * 4;
+                            frame[offset] = r;
+                            frame[offset + 1] = g;
+                            frame[offset + 2] = b;
+                            frame[offset + 3] = 0xFF;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Render current state to a raw RGBA buffer (for screenshots)
     /// Returns a buffer of size SCREEN_WIDTH * SCREEN_HEIGHT * 4 bytes (RGBA)
     pub fn render_to_buffer(&self) -> Vec<u8> {
@@ -243,6 +276,10 @@ impl PixelsVideoController {
             }
             VideoMode::Graphics640x200 => {
                 self.render_graphics_640x200(&mut buffer);
+                return buffer;
+            }
+            VideoMode::Graphics320x200x16 => {
+                self.render_graphics_320x200x16(&mut buffer);
                 return buffer;
             }
             VideoMode::Text { .. } => {
@@ -288,6 +325,11 @@ impl PixelsVideoController {
             VideoMode::Graphics640x200 => {
                 // Render graphics mode
                 self.render_graphics_640x200(frame);
+                self.has_pending_updates = false;
+                return;
+            }
+            VideoMode::Graphics320x200x16 => {
+                self.render_graphics_320x200x16(frame);
                 self.has_pending_updates = false;
                 return;
             }
@@ -394,18 +436,12 @@ impl VideoController for PixelsVideoController {
             0x02 | 0x03 | 0x07 => VideoMode::Text { cols: 80, rows: 25 },
             0x04 | 0x05 => VideoMode::Graphics320x200,
             0x06 => VideoMode::Graphics640x200,
+            0x0D => VideoMode::Graphics320x200x16,
             _ => VideoMode::Text { cols: 80, rows: 25 }, // Default to text mode
         };
 
         // Clear graphics data when switching modes
-        match self.current_mode {
-            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
-                self.graphics_data = None;
-            }
-            VideoMode::Text { .. } => {
-                self.graphics_data = None;
-            }
-        }
+        self.graphics_data = None;
 
         // Mark for full redraw
         self.needs_full_redraw = true;
@@ -438,6 +474,11 @@ impl VideoController for PixelsVideoController {
         self.graphics_bg_color = bg_color;
 
         // Mark for update
+        self.has_pending_updates = true;
+    }
+
+    fn update_graphics_320x200x16(&mut self, pixel_data: &[u8]) {
+        self.graphics_data = Some(pixel_data.to_vec());
         self.has_pending_updates = true;
     }
 

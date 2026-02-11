@@ -61,9 +61,9 @@ impl Cpu {
     fn int10_set_video_mode(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
         let mode = (self.ax & 0xFF) as u8; // AL
 
-        // Support text modes (0x00-0x03, 0x07) and CGA graphics modes (0x04-0x06)
+        // Support text modes (0x00-0x03, 0x07), CGA graphics (0x04-0x06), EGA graphics (0x0D)
         match mode {
-            0x00..=0x07 => {
+            0x00..=0x07 | 0x0D => {
                 video.set_mode(mode);
                 // Reset cursor to top-left (only relevant for text modes)
                 video.set_cursor(0, 0);
@@ -116,7 +116,7 @@ impl Cpu {
         let cols = video.get_cols();
         let rows = video.get_rows();
 
-        log::info!(
+        log::debug!(
             "INT 10h AH=02h: Set cursor to row={}, col={}, page={}",
             row,
             col,
@@ -979,6 +979,26 @@ impl Cpu {
             crate::video::VideoMode::Text { .. } => {
                 // Ignore write pixel in text mode
             }
+            crate::video::VideoMode::Graphics320x200x16 => {
+                // EGA 320x200 16-color: write pixel via EGA plane interface
+                if col < 320 && row < 200 {
+                    let byte_offset = row * 40 + col / 8;
+                    let bit = 7 - (col % 8);
+                    // Write color to each plane individually
+                    for plane in 0..4u8 {
+                        let plane_bit = (color >> plane) & 1;
+                        video.set_ega_map_mask(1 << plane);
+                        let mut byte_val = video.read_byte_ega(byte_offset);
+                        if plane_bit != 0 {
+                            byte_val |= 1 << bit;
+                        } else {
+                            byte_val &= !(1 << bit);
+                        }
+                        video.write_byte_ega(byte_offset, byte_val);
+                    }
+                    video.set_ega_map_mask(0x0F); // Restore all planes enabled
+                }
+            }
         }
     }
 
@@ -1023,6 +1043,23 @@ impl Cpu {
                 }
             }
             crate::video::VideoMode::Text { .. } => 0,
+            crate::video::VideoMode::Graphics320x200x16 => {
+                // EGA 320x200 16-color: read pixel from EGA planes
+                if col >= 320 || row >= 200 {
+                    0
+                } else {
+                    let byte_offset = row * 40 + col / 8;
+                    let bit = 7 - (col % 8);
+                    let mut color = 0u8;
+                    for plane in 0..4u8 {
+                        let byte_val = video.read_byte_ega_plane(plane, byte_offset);
+                        if (byte_val >> bit) & 1 != 0 {
+                            color |= 1 << plane;
+                        }
+                    }
+                    color
+                }
+            }
         };
 
         self.ax = (self.ax & 0xFF00) | (color as u16);

@@ -25,10 +25,21 @@ pub struct IoDevice {
     /// Counter for CGA status register (port 3DAh) reads.
     /// Used to simulate toggling retrace states so programs don't spin forever.
     cga_status_counter: u32,
+    /// EGA Sequencer index register (port 0x3C4)
+    ega_sequencer_index: u8,
+    /// EGA Sequencer registers (indexed via 0x3C4/0x3C5)
+    ega_sequencer_regs: [u8; 8],
+    /// EGA Graphics Controller index register (port 0x3CE)
+    ega_graphics_index: u8,
+    /// EGA Graphics Controller registers (indexed via 0x3CE/0x3CF)
+    ega_graphics_regs: [u8; 16],
 }
 
 impl IoDevice {
     pub fn new() -> Self {
+        let mut ega_sequencer_regs = [0u8; 8];
+        ega_sequencer_regs[2] = 0x0F; // Map Mask: all 4 planes enabled by default
+
         Self {
             last_write: HashMap::new(),
             system_control_port: SystemControlPort::new(),
@@ -37,6 +48,10 @@ impl IoDevice {
             keyboard_scan_code: 0x00,
             keyboard_ascii_code: 0x00,
             cga_status_counter: 0,
+            ega_sequencer_index: 0,
+            ega_sequencer_regs,
+            ega_graphics_index: 0,
+            ega_graphics_regs: [0u8; 16],
         }
     }
 
@@ -81,6 +96,32 @@ impl IoDevice {
                     0x00
                 } else {
                     0x09
+                }
+            }
+
+            // EGA Sequencer index port (write-only address, return 0xFF)
+            0x3C4 => self.ega_sequencer_index,
+
+            // EGA Sequencer data port
+            0x3C5 => {
+                let idx = self.ega_sequencer_index as usize;
+                if idx < self.ega_sequencer_regs.len() {
+                    self.ega_sequencer_regs[idx]
+                } else {
+                    0xFF
+                }
+            }
+
+            // EGA Graphics Controller index port
+            0x3CE => self.ega_graphics_index,
+
+            // EGA Graphics Controller data port
+            0x3CF => {
+                let idx = self.ega_graphics_index as usize;
+                if idx < self.ega_graphics_regs.len() {
+                    self.ega_graphics_regs[idx]
+                } else {
+                    0xFF
                 }
             }
 
@@ -150,6 +191,42 @@ impl IoDevice {
             0x3D9 => {
                 video.set_palette(value);
                 log::debug!("CGA Color Select: 0x{:02X}", value);
+            }
+
+            // EGA Sequencer index register
+            0x3C4 => {
+                self.ega_sequencer_index = value;
+            }
+
+            // EGA Sequencer data register
+            0x3C5 => {
+                let idx = self.ega_sequencer_index as usize;
+                if idx < self.ega_sequencer_regs.len() {
+                    self.ega_sequencer_regs[idx] = value;
+                    // Register 2: Map Mask - controls which planes receive writes
+                    if idx == 2 {
+                        video.set_ega_map_mask(value);
+                        log::debug!("EGA Sequencer Map Mask: 0x{:02X}", value);
+                    }
+                }
+            }
+
+            // EGA Graphics Controller index register
+            0x3CE => {
+                self.ega_graphics_index = value;
+            }
+
+            // EGA Graphics Controller data register
+            0x3CF => {
+                let idx = self.ega_graphics_index as usize;
+                if idx < self.ega_graphics_regs.len() {
+                    self.ega_graphics_regs[idx] = value;
+                    // Register 4: Read Map Select - which plane to read
+                    if idx == 4 {
+                        video.set_ega_read_plane(value);
+                        log::debug!("EGA Graphics Read Map Select: plane {}", value & 3);
+                    }
+                }
             }
 
             _ => {}

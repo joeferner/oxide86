@@ -284,6 +284,48 @@ impl WebVideo {
         self.context.put_image_data(&image_data, 0.0, 0.0)?;
         Ok(())
     }
+    /// Render EGA graphics mode 320x200 (16-color) using ImageData API
+    fn render_graphics_320x200x16(&mut self, pixel_data: &[u8]) -> Result<(), JsValue> {
+        self.canvas.set_width(640); // 320 * 2 (scaled)
+        self.canvas.set_height(400); // 200 * 2 (scaled)
+
+        let width = 320;
+        let height = 200;
+        let scale = 2;
+        let scaled_width = width * scale;
+        let scaled_height = height * scale;
+        let mut image_data_buf = vec![0u8; scaled_width * scaled_height * 4];
+
+        for y in 0..height {
+            for x in 0..width {
+                let color_index = pixel_data[y * width + x] as usize;
+                let dac = self.vga_dac_palette[color_index];
+                let r = (dac[0] << 2) | (dac[0] >> 4);
+                let g = (dac[1] << 2) | (dac[1] >> 4);
+                let b = (dac[2] << 2) | (dac[2] >> 4);
+
+                for dy in 0..scale {
+                    for dx in 0..scale {
+                        let screen_x = x * scale + dx;
+                        let screen_y = y * scale + dy;
+                        let offset = (screen_y * scaled_width + screen_x) * 4;
+                        image_data_buf[offset] = r;
+                        image_data_buf[offset + 1] = g;
+                        image_data_buf[offset + 2] = b;
+                        image_data_buf[offset + 3] = 255;
+                    }
+                }
+            }
+        }
+
+        let image_data = ImageData::new_with_u8_clamped_array_and_sh(
+            Clamped(&image_data_buf),
+            scaled_width as u32,
+            scaled_height as u32,
+        )?;
+        self.context.put_image_data(&image_data, 0.0, 0.0)?;
+        Ok(())
+    }
 }
 
 impl VideoController for WebVideo {
@@ -325,6 +367,7 @@ impl VideoController for WebVideo {
             0x02 | 0x03 | 0x07 => VideoMode::Text { cols: 80, rows: 25 },
             0x04 | 0x05 => VideoMode::Graphics320x200,
             0x06 => VideoMode::Graphics640x200,
+            0x0D => VideoMode::Graphics320x200x16,
             _ => {
                 log::warn!(
                     "WASM: Unsupported video mode 0x{:02X}, defaulting to text",
@@ -350,6 +393,10 @@ impl VideoController for WebVideo {
                 // Canvas will be resized in render_graphics_640x200
                 log::info!("WASM: Switched to 640x200 graphics mode");
             }
+            VideoMode::Graphics320x200x16 => {
+                // Canvas will be resized in render_graphics_320x200x16
+                log::info!("WASM: Switched to 320x200x16 EGA graphics mode");
+            }
         }
     }
 
@@ -370,6 +417,12 @@ impl VideoController for WebVideo {
     fn update_graphics_640x200(&mut self, pixel_data: &[u8], fg_color: u8, bg_color: u8) {
         if let Err(e) = self.render_graphics_640x200(pixel_data, fg_color, bg_color) {
             log::error!("Failed to render 640x200 graphics: {:?}", e);
+        }
+    }
+
+    fn update_graphics_320x200x16(&mut self, pixel_data: &[u8]) {
+        if let Err(e) = self.render_graphics_320x200x16(pixel_data) {
+            log::error!("Failed to render 320x200x16 EGA graphics: {:?}", e);
         }
     }
 

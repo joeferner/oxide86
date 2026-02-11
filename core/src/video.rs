@@ -100,6 +100,8 @@ pub enum VideoMode {
     Graphics320x200,
     /// CGA 640x200, 2 colors
     Graphics640x200,
+    /// EGA 320x200, 16 colors (mode 0x0D)
+    Graphics320x200x16,
 }
 
 /// Graphics framebuffer for CGA modes
@@ -220,6 +222,59 @@ impl GraphicsBuffer {
     }
 }
 
+/// EGA planar framebuffer for mode 0x0D (320x200 16-color)
+/// 4 bit planes, each 8000 bytes (320*200/8 pixels per byte)
+pub struct EgaBuffer {
+    /// 4 bit planes, each 8000 bytes
+    planes: [[u8; 8000]; 4],
+}
+
+impl EgaBuffer {
+    pub fn new() -> Self {
+        Self {
+            planes: [[0u8; 8000]; 4],
+        }
+    }
+
+    /// Write a byte to all enabled planes (map_mask = bitmask of planes 0-3)
+    pub fn write_byte(&mut self, map_mask: u8, offset: usize, value: u8) {
+        if offset >= 8000 {
+            return;
+        }
+        for plane in 0..4 {
+            if map_mask & (1 << plane) != 0 {
+                self.planes[plane][offset] = value;
+            }
+        }
+    }
+
+    /// Read a byte from the selected plane
+    pub fn read_byte(&self, read_plane: u8, offset: usize) -> u8 {
+        let plane = (read_plane & 3) as usize;
+        if offset >= 8000 {
+            return 0;
+        }
+        self.planes[plane][offset]
+    }
+
+    /// Compose 16-color pixel data (320*200 = 64000 bytes, each byte is a 0-15 color index)
+    pub fn get_pixels(&self) -> Vec<u8> {
+        let mut pixels = vec![0u8; 320 * 200];
+        for y in 0..200usize {
+            for x in 0..320usize {
+                let byte_offset = y * 40 + x / 8;
+                let bit = 7 - (x % 8);
+                let color = ((self.planes[0][byte_offset] >> bit) & 1)
+                    | (((self.planes[1][byte_offset] >> bit) & 1) << 1)
+                    | (((self.planes[2][byte_offset] >> bit) & 1) << 2)
+                    | (((self.planes[3][byte_offset] >> bit) & 1) << 3);
+                pixels[y * 320 + x] = color;
+            }
+        }
+        pixels
+    }
+}
+
 /// CGA color palette state
 #[derive(Debug, Clone, Copy)]
 pub struct CgaPalette {
@@ -324,6 +379,13 @@ pub trait VideoController {
         log::warn!("Graphics mode 640x200 not implemented for this platform");
     }
 
+    /// Update EGA graphics display (320x200, 16 colors, mode 0x0D)
+    /// pixel_data: linear pixel array (320*200 bytes), each byte is a 0-15 color index
+    fn update_graphics_320x200x16(&mut self, pixel_data: &[u8]) {
+        let _ = pixel_data;
+        log::warn!("Graphics mode 320x200x16 (EGA) not implemented for this platform");
+    }
+
     /// Set cursor visibility
     fn set_cursor_visible(&mut self, visible: bool) {
         let _ = visible;
@@ -365,6 +427,8 @@ pub struct Video {
     buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
     /// Graphics mode buffer (optional, allocated when in graphics mode)
     graphics_buffer: Option<GraphicsBuffer>,
+    /// EGA planar graphics buffer (optional, allocated in EGA modes)
+    ega_buffer: Option<EgaBuffer>,
     /// Current video mode
     mode: u8,
     /// Parsed video mode type
@@ -381,6 +445,10 @@ pub struct Video {
     mode_changed: bool,
     /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
     vga_dac_palette: [[u8; 3]; 256],
+    /// EGA Sequencer Map Mask (register 2): bitmask of planes to write (default 0x0F = all)
+    ega_map_mask: u8,
+    /// EGA Graphics Controller Read Map Select (register 4): which plane to read (0-3)
+    ega_read_plane: u8,
 }
 
 /// Initialize VGA DAC palette with EGA defaults
@@ -402,6 +470,7 @@ impl Video {
             cursor: CursorPosition::default(),
             buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
             graphics_buffer: None,
+            ega_buffer: None,
             mode: 0x03, // 80x25 text mode
             mode_type: VideoMode::Text {
                 cols: TEXT_MODE_COLS,
@@ -413,6 +482,8 @@ impl Video {
             dirty: false,
             mode_changed: false,
             vga_dac_palette: default_vga_palette(),
+            ega_map_mask: 0x0F, // All 4 planes enabled
+            ega_read_plane: 0,  // Read from plane 0
         }
     }
 
@@ -452,6 +523,10 @@ impl Video {
                     0
                 }
             }
+            VideoMode::Graphics320x200x16 => {
+                // EGA mode: B800 reads return 0 (EGA uses A000)
+                0
+            }
         }
     }
 
@@ -488,6 +563,9 @@ impl Video {
                 if let Some(ref mut buffer) = self.graphics_buffer {
                     buffer.write_byte(offset, value);
                 }
+            }
+            VideoMode::Graphics320x200x16 => {
+                // EGA mode: B800 writes are ignored (EGA uses A000 via write_byte_ega)
             }
         }
         self.dirty = true;
@@ -542,6 +620,10 @@ impl Video {
                 self.graphics_buffer = Some(GraphicsBuffer::new_640x200());
                 VideoMode::Graphics640x200
             }
+            0x0D => {
+                self.ega_buffer = Some(EgaBuffer::new());
+                VideoMode::Graphics320x200x16
+            }
             _ => {
                 log::warn!("Unsupported video mode 0x{:02X}, defaulting to text", mode);
                 VideoMode::Text { cols: 80, rows: 25 }
@@ -551,6 +633,9 @@ impl Video {
         // Clear buffers on mode change
         if matches!(self.mode_type, VideoMode::Text { .. }) {
             self.buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
+            self.graphics_buffer = None;
+            self.ega_buffer = None;
+        } else if matches!(self.mode_type, VideoMode::Graphics320x200x16) {
             self.graphics_buffer = None;
         }
 
@@ -573,7 +658,7 @@ impl Video {
                 intensity: false,
             }
         } else {
-            CgaPalette::new() // Palette 0 for text modes
+            CgaPalette::new() // Palette 0 for text modes and EGA
         };
 
         // Sync VGA DAC entries 0-3 from CGA palette (for 320x200 4-color mode)
@@ -615,17 +700,19 @@ impl Video {
     pub fn get_cols(&self) -> usize {
         match self.mode_type {
             VideoMode::Text { cols, .. } => cols,
-            VideoMode::Graphics320x200 => 40, // 320 pixels / 8 pixels per char = 40 columns
-            VideoMode::Graphics640x200 => 80, // 640 pixels / 8 pixels per char = 80 columns
+            VideoMode::Graphics320x200 | VideoMode::Graphics320x200x16 => 40,
+            VideoMode::Graphics640x200 => 80,
         }
     }
 
     /// Get the current row count for the active mode
-    /// Returns character rows (25 for 200px CGA modes)
+    /// Returns character rows (25 for 200px CGA/EGA modes)
     pub fn get_rows(&self) -> usize {
         match self.mode_type {
             VideoMode::Text { rows, .. } => rows,
-            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => 25, // 200 pixels / 8 pixels per char = 25 rows
+            VideoMode::Graphics320x200
+            | VideoMode::Graphics640x200
+            | VideoMode::Graphics320x200x16 => 25,
         }
     }
 
@@ -644,6 +731,49 @@ impl Video {
     /// Get graphics buffer (for rendering)
     pub fn get_graphics_buffer(&self) -> Option<&GraphicsBuffer> {
         self.graphics_buffer.as_ref()
+    }
+
+    /// Get EGA buffer (for rendering)
+    pub fn get_ega_buffer(&self) -> Option<&EgaBuffer> {
+        self.ega_buffer.as_ref()
+    }
+
+    /// Write a byte to EGA planar memory (A000 segment)
+    /// Writes to all planes enabled by the current Map Mask register
+    pub fn write_byte_ega(&mut self, offset: usize, value: u8) {
+        if let Some(buf) = &mut self.ega_buffer {
+            buf.write_byte(self.ega_map_mask, offset, value);
+            self.dirty = true;
+        }
+    }
+
+    /// Read a byte from EGA planar memory (A000 segment)
+    /// Reads from the plane selected by the Read Map Select register
+    pub fn read_byte_ega(&self, offset: usize) -> u8 {
+        if let Some(buf) = &self.ega_buffer {
+            buf.read_byte(self.ega_read_plane, offset)
+        } else {
+            0
+        }
+    }
+
+    /// Read a byte from a specific EGA plane (ignores Read Map Select register)
+    pub fn read_byte_ega_plane(&self, plane: u8, offset: usize) -> u8 {
+        if let Some(buf) = &self.ega_buffer {
+            buf.read_byte(plane & 3, offset)
+        } else {
+            0
+        }
+    }
+
+    /// Set EGA Sequencer Map Mask (register 2): which planes receive writes
+    pub fn set_ega_map_mask(&mut self, value: u8) {
+        self.ega_map_mask = value & 0x0F;
+    }
+
+    /// Set EGA Graphics Controller Read Map Select (register 4): which plane to read
+    pub fn set_ega_read_plane(&mut self, value: u8) {
+        self.ega_read_plane = value & 0x03;
     }
 
     /// Get palette (for rendering)

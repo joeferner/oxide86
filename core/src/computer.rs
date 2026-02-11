@@ -916,6 +916,11 @@ impl<V: VideoController> Computer<V> {
             self.video.write_byte(offset, value);
         }
 
+        // Process EGA memory writes (A000:0000 segment)
+        for (offset, value) in self.memory.drain_ega_writes() {
+            self.video.write_byte_ega(offset, value);
+        }
+
         // Increment cycle counter and update timer
         // Use accurate cycle count from instruction, or fall back to 10 cycles
         // if timing not yet implemented for this instruction
@@ -1022,6 +1027,12 @@ impl<V: VideoController> Computer<V> {
                         );
                     }
                 }
+                crate::video::VideoMode::Graphics320x200x16 => {
+                    if let Some(buffer) = self.video.get_ega_buffer() {
+                        let pixels = buffer.get_pixels();
+                        self.video_controller.update_graphics_320x200x16(&pixels);
+                    }
+                }
             }
             self.video.clear_dirty();
         }
@@ -1057,6 +1068,12 @@ impl<V: VideoController> Computer<V> {
                         15, // Foreground: always bright white in mode 6
                         0,  // Background: always black
                     );
+                }
+            }
+            crate::video::VideoMode::Graphics320x200x16 => {
+                if let Some(buffer) = self.video.get_ega_buffer() {
+                    let pixels = buffer.get_pixels();
+                    self.video_controller.update_graphics_320x200x16(&pixels);
                 }
             }
         }

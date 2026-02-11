@@ -1,4 +1,8 @@
 use crate::video::{VIDEO_MEMORY_END, VIDEO_MEMORY_START};
+
+// EGA video memory range (A000:0000 - A000:FFFF = 0xA0000 - 0xAFFFF)
+pub const EGA_MEMORY_START: usize = 0xA0000;
+pub const EGA_MEMORY_END: usize = 0xAFFFF;
 use anyhow::{Result, anyhow};
 
 // 1MB = 0x100000 bytes
@@ -76,6 +80,7 @@ pub const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
 pub struct Memory {
     data: Vec<u8>,
     video_writes: Vec<(usize, u8)>,
+    ega_writes: Vec<(usize, u8)>,
 }
 
 impl Memory {
@@ -83,6 +88,7 @@ impl Memory {
         Self {
             data: vec![0; MEMORY_SIZE],
             video_writes: Vec::new(),
+            ega_writes: Vec::new(),
         }
     }
 
@@ -143,10 +149,16 @@ impl Memory {
 
         self.data[addr] = value;
 
-        // Check if write is in video memory range
+        // Check if write is in CGA video memory range
         if (VIDEO_MEMORY_START..=VIDEO_MEMORY_END).contains(&addr) {
             let offset = addr - VIDEO_MEMORY_START;
             self.video_writes.push((offset, value));
+        }
+
+        // Check if write is in EGA video memory range (A000:0000)
+        if (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&addr) {
+            let offset = addr - EGA_MEMORY_START;
+            self.ega_writes.push((offset, value));
         }
     }
 
@@ -251,6 +263,11 @@ impl Memory {
     /// Drain video memory writes collected during instruction execution
     pub fn drain_video_writes(&mut self) -> std::vec::Drain<'_, (usize, u8)> {
         self.video_writes.drain(..)
+    }
+
+    /// Drain EGA memory writes collected during instruction execution (A000:0000)
+    pub fn drain_ega_writes(&mut self) -> std::vec::Drain<'_, (usize, u8)> {
+        self.ega_writes.drain(..)
     }
 
     /// Get a slice of the raw video memory (B8000-BFFFF)
