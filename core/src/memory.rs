@@ -253,6 +253,12 @@ impl Memory {
         self.video_writes.drain(..)
     }
 
+    /// Get a slice of the raw video memory (B8000-BFFFF)
+    pub fn get_video_memory(&self) -> &[u8] {
+        let end = (VIDEO_MEMORY_END + 1).min(self.data.len());
+        &self.data[VIDEO_MEMORY_START..end]
+    }
+
     /// Initialize the BIOS Data Area (BDA)
     /// Sets up system information at 0x0040:0000
     pub fn initialize_bda(&mut self) {

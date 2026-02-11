@@ -182,12 +182,6 @@ impl GraphicsBuffer {
 
     /// Write byte to graphics memory (using interlaced addressing)
     pub fn write_byte(&mut self, offset: usize, value: u8) {
-        // Convert from interlaced CGA address to linear offset
-        let linear_offset = self.interlaced_to_linear(offset);
-        if linear_offset >= self.data.len() {
-            return;
-        }
-
         // Debug logging for graphics writes
         if value != 0 {
             let bytes_per_line = self.width * (self.bits_per_pixel as usize) / 8;
@@ -209,6 +203,12 @@ impl GraphicsBuffer {
                 value,
                 self.bits_per_pixel
             );
+        }
+
+        // Convert from interlaced CGA address to linear offset
+        let linear_offset = self.interlaced_to_linear(offset);
+        if linear_offset >= self.data.len() {
+            return;
         }
 
         self.data[linear_offset] = value;

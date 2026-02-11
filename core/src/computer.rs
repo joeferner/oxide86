@@ -955,6 +955,23 @@ impl<V: VideoController> Computer<V> {
             self.video_controller
                 .update_vga_dac_palette(self.video.get_vga_dac_palette());
 
+            // When switching to a graphics mode, sync the graphics buffer from raw video memory.
+            // Programs may write data to B800 while in text mode (e.g., using it as a disk I/O
+            // buffer). The text mode write_byte() drops writes beyond the text page boundary,
+            // but raw memory retains them. Syncing here ensures graphics mode sees the correct
+            // initial content (e.g., MS Flight Simulator loads cockpit data via disk reads in
+            // text mode, then switches to graphics mode expecting that data to be visible).
+            if matches!(
+                self.video.get_mode_type(),
+                crate::video::VideoMode::Graphics320x200 | crate::video::VideoMode::Graphics640x200
+            ) {
+                let raw: Vec<u8> = self.memory.get_video_memory().to_vec();
+                for (offset, value) in raw.into_iter().enumerate() {
+                    self.video.write_byte(offset, value);
+                }
+                log::debug!("Synced graphics buffer from raw video memory on mode change");
+            }
+
             // Sync BDA video state (may have been set via CGA hardware registers, not INT 10h)
             let cols = self.video.get_cols();
             let rows = self.video.get_rows();

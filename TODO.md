@@ -6,7 +6,7 @@
 - [ ] Boot error cannot control A20 line
 - [ ] Test CGA Applications
   - [x] Alley Cat
-  - [ ] Flight Simulator 1.0
+  - [X] Flight Simulator 1.0
   - [ ] Kings Quest 1
 - [ ] WASM - support creating new disks
 - [ ] WASM - add feature to save ram or video ram

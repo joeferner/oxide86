@@ -590,7 +590,7 @@ impl Cpu {
                     let quotient = dividend / divisor;
                     let remainder = dividend % divisor;
                     if !(-32768..=32767).contains(&quotient) {
-                        log::warn!("IDIV16: overflow at {:04X}:{:04X}", self.cs, self.ip);
+                        log::debug!("IDIV16: overflow at {:04X}:{:04X}", self.cs, self.ip);
                         self.pending_exception = Some(0);
                         return;
                     }
