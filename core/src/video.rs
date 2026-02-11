@@ -220,6 +220,81 @@ impl GraphicsBuffer {
     pub fn get_pixels(&self) -> &[u8] {
         &self.data
     }
+
+    /// Scroll window up by `lines` text rows (8 scan lines per row).
+    /// `lines == 0` clears the entire window. Cleared rows are filled with 0 (black).
+    /// Coordinates are in text cells (cols/rows), not pixels.
+    pub fn scroll_up_window(
+        &mut self,
+        lines: usize,
+        top: usize,
+        left: usize,
+        bottom: usize,
+        right: usize,
+    ) {
+        const PIXELS_PER_ROW: usize = 8;
+        let bytes_per_scan_line = self.width * self.bits_per_pixel as usize / 8;
+        let bytes_per_char_col = self.bits_per_pixel as usize; // 2 for 320x200, 1 for 640x200
+        let cx_start = left * bytes_per_char_col;
+        let cx_end = (right + 1) * bytes_per_char_col;
+        let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+
+        for row in top..=bottom {
+            let src_row = row + scroll_lines;
+            for py in 0..PIXELS_PER_ROW {
+                let dst_y = row * PIXELS_PER_ROW + py;
+                let dst_base = dst_y * bytes_per_scan_line;
+                if src_row <= bottom {
+                    let src_y = src_row * PIXELS_PER_ROW + py;
+                    let src_base = src_y * bytes_per_scan_line;
+                    self.data
+                        .copy_within(src_base + cx_start..src_base + cx_end, dst_base + cx_start);
+                } else {
+                    self.data[dst_base + cx_start..dst_base + cx_end].fill(0);
+                }
+            }
+        }
+    }
+
+    /// Scroll window down by `lines` text rows (8 scan lines per row).
+    /// `lines == 0` clears the entire window. Cleared rows are filled with 0 (black).
+    pub fn scroll_down_window(
+        &mut self,
+        lines: usize,
+        top: usize,
+        left: usize,
+        bottom: usize,
+        right: usize,
+    ) {
+        const PIXELS_PER_ROW: usize = 8;
+        let bytes_per_scan_line = self.width * self.bits_per_pixel as usize / 8;
+        let bytes_per_char_col = self.bits_per_pixel as usize;
+        let cx_start = left * bytes_per_char_col;
+        let cx_end = (right + 1) * bytes_per_char_col;
+        let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+
+        // Iterate bottom-to-top so reads are always ahead of writes
+        for row in (top..=bottom).rev() {
+            let dst_base_row = row;
+            let src_row = if row >= top + scroll_lines {
+                row - scroll_lines
+            } else {
+                usize::MAX // sentinel: clear
+            };
+            for py in 0..PIXELS_PER_ROW {
+                let dst_y = dst_base_row * PIXELS_PER_ROW + py;
+                let dst_base = dst_y * bytes_per_scan_line;
+                if src_row != usize::MAX && src_row >= top {
+                    let src_y = src_row * PIXELS_PER_ROW + py;
+                    let src_base = src_y * bytes_per_scan_line;
+                    self.data
+                        .copy_within(src_base + cx_start..src_base + cx_end, dst_base + cx_start);
+                } else {
+                    self.data[dst_base + cx_start..dst_base + cx_end].fill(0);
+                }
+            }
+        }
+    }
 }
 
 /// EGA planar framebuffer for mode 0x0D (320x200 16-color)
@@ -255,6 +330,83 @@ impl EgaBuffer {
             return 0;
         }
         self.planes[plane][offset]
+    }
+
+    /// Scroll window up by `lines` text rows (8 scan lines per row).
+    /// `lines == 0` clears the entire window. Cleared rows are filled with 0 (black).
+    /// Coordinates are in text cells (40 cols x 25 rows for 320x200).
+    pub fn scroll_up_window(
+        &mut self,
+        lines: usize,
+        top: usize,
+        left: usize,
+        bottom: usize,
+        right: usize,
+    ) {
+        const PIXELS_PER_ROW: usize = 8;
+        const BYTES_PER_SCAN_LINE: usize = 40; // 320px / 8px per byte
+        let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+
+        for plane in 0..4usize {
+            for row in top..=bottom {
+                let src_row = row + scroll_lines;
+                for py in 0..PIXELS_PER_ROW {
+                    let dst_y = row * PIXELS_PER_ROW + py;
+                    let dst_base = dst_y * BYTES_PER_SCAN_LINE;
+                    if src_row <= bottom {
+                        let src_y = src_row * PIXELS_PER_ROW + py;
+                        let src_base = src_y * BYTES_PER_SCAN_LINE;
+                        for cx in left..=right {
+                            self.planes[plane][dst_base + cx] = self.planes[plane][src_base + cx];
+                        }
+                    } else {
+                        for cx in left..=right {
+                            self.planes[plane][dst_base + cx] = 0;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scroll window down by `lines` text rows (8 scan lines per row).
+    /// `lines == 0` clears the entire window. Cleared rows are filled with 0 (black).
+    pub fn scroll_down_window(
+        &mut self,
+        lines: usize,
+        top: usize,
+        left: usize,
+        bottom: usize,
+        right: usize,
+    ) {
+        const PIXELS_PER_ROW: usize = 8;
+        const BYTES_PER_SCAN_LINE: usize = 40;
+        let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+
+        for plane in 0..4usize {
+            for row in (top..=bottom).rev() {
+                let src_row = if row >= top + scroll_lines {
+                    row - scroll_lines
+                } else {
+                    usize::MAX
+                };
+                for py in 0..PIXELS_PER_ROW {
+                    let dst_y = row * PIXELS_PER_ROW + py;
+                    let dst_base = dst_y * BYTES_PER_SCAN_LINE;
+                    if src_row != usize::MAX && src_row >= top {
+                        let src_y = src_row * PIXELS_PER_ROW + py;
+                        let src_base = src_y * BYTES_PER_SCAN_LINE;
+                        for cx in left..=right {
+                            self.planes[plane][dst_base + cx] = self.planes[plane][src_base + cx];
+                        }
+                    } else {
+                        for cx in left..=right {
+                            self.planes[plane][dst_base + cx] = 0;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Compose 16-color pixel data (320*200 = 64000 bytes, each byte is a 0-15 color index)
@@ -688,6 +840,62 @@ impl Video {
     /// Check if currently in graphics mode
     pub fn is_graphics_mode(&self) -> bool {
         !matches!(self.mode_type, VideoMode::Text { .. })
+    }
+
+    /// Scroll a text-cell window up in graphics mode.
+    /// Dispatches to the appropriate buffer (CGA interlaced or EGA planar).
+    /// `lines == 0` clears the entire window.
+    pub fn scroll_up_window(&mut self, lines: u8, top: u8, left: u8, bottom: u8, right: u8) {
+        let (lines, top, left, bottom, right) = (
+            lines as usize,
+            top as usize,
+            left as usize,
+            bottom as usize,
+            right as usize,
+        );
+        match self.mode_type {
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
+                if let Some(ref mut buf) = self.graphics_buffer {
+                    buf.scroll_up_window(lines, top, left, bottom, right);
+                }
+                self.dirty = true;
+            }
+            VideoMode::Graphics320x200x16 => {
+                if let Some(ref mut buf) = self.ega_buffer {
+                    buf.scroll_up_window(lines, top, left, bottom, right);
+                }
+                self.dirty = true;
+            }
+            VideoMode::Text { .. } => {}
+        }
+    }
+
+    /// Scroll a text-cell window down in graphics mode.
+    /// Dispatches to the appropriate buffer (CGA interlaced or EGA planar).
+    /// `lines == 0` clears the entire window.
+    pub fn scroll_down_window(&mut self, lines: u8, top: u8, left: u8, bottom: u8, right: u8) {
+        let (lines, top, left, bottom, right) = (
+            lines as usize,
+            top as usize,
+            left as usize,
+            bottom as usize,
+            right as usize,
+        );
+        match self.mode_type {
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
+                if let Some(ref mut buf) = self.graphics_buffer {
+                    buf.scroll_down_window(lines, top, left, bottom, right);
+                }
+                self.dirty = true;
+            }
+            VideoMode::Graphics320x200x16 => {
+                if let Some(ref mut buf) = self.ega_buffer {
+                    buf.scroll_down_window(lines, top, left, bottom, right);
+                }
+                self.dirty = true;
+            }
+            VideoMode::Text { .. } => {}
+        }
     }
 
     /// Get current mode type

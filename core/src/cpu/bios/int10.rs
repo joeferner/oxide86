@@ -169,8 +169,15 @@ impl Cpu {
             );
         }
 
-        // Validate bounds
-        if top > bottom || left > right || (bottom as usize) >= rows || (right as usize) >= cols {
+        // Clamp to valid range (real BIOS behavior: clip out-of-range coords)
+        let right = right.min((cols - 1) as u8);
+        let bottom = bottom.min((rows - 1) as u8);
+        if top > bottom || left > right {
+            return;
+        }
+
+        if video.is_graphics_mode() {
+            video.scroll_up_window(lines, top, left, bottom, right);
             return;
         }
 
@@ -237,8 +244,15 @@ impl Cpu {
             right
         );
 
-        // Validate bounds
-        if top > bottom || left > right || (bottom as usize) >= rows || (right as usize) >= cols {
+        // Clamp to valid range (real BIOS behavior: clip out-of-range coords)
+        let right = right.min((cols - 1) as u8);
+        let bottom = bottom.min((rows - 1) as u8);
+        if top > bottom || left > right {
+            return;
+        }
+
+        if video.is_graphics_mode() {
+            video.scroll_down_window(lines, top, left, bottom, right);
             return;
         }
 

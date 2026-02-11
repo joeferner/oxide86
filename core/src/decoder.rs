@@ -761,8 +761,8 @@ impl<'a> InstructionDecoder<'a> {
                 format!("jg 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
             }
 
-            // Arithmetic/logical immediate to r/m
-            0x80 => self.decode_arith_imm_rm(false, false),
+            // Arithmetic/logical immediate to r/m (0x82 is same as 0x80)
+            0x80 | 0x82 => self.decode_arith_imm_rm(false, false),
             0x81 => self.decode_arith_imm_rm(true, false),
             0x83 => self.decode_arith_imm_rm(true, true),
 

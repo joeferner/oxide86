@@ -549,8 +549,8 @@ impl Cpu {
             // Conditional jumps (70-7F)
             0x70..=0x7F => self.jmp_conditional(opcode, memory),
 
-            // Arithmetic/logical immediate to r/m (80: 8-bit, 81: 16-bit, 83: sign-extended 8-bit to 16-bit)
-            0x80 => self.arith_imm8_rm8(memory),
+            // Arithmetic/logical immediate to r/m (80: 8-bit, 81: 16-bit, 82: same as 80, 83: sign-extended 8-bit to 16-bit)
+            0x80 | 0x82 => self.arith_imm8_rm8(memory),
             0x81 => self.arith_imm16_rm(memory),
             0x83 => self.arith_imm8_rm(memory),
 
