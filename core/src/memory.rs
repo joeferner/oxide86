@@ -79,7 +79,7 @@ pub const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
 
 pub struct Memory {
     data: Vec<u8>,
-    video_writes: Vec<(usize, u8)>,
+    cga_writes: Vec<(usize, u8)>,
     ega_writes: Vec<(usize, u8)>,
 }
 
@@ -87,7 +87,7 @@ impl Memory {
     pub fn new() -> Self {
         Self {
             data: vec![0; MEMORY_SIZE],
-            video_writes: Vec::new(),
+            cga_writes: Vec::new(),
             ega_writes: Vec::new(),
         }
     }
@@ -152,7 +152,7 @@ impl Memory {
         // Check if write is in CGA video memory range
         if (VIDEO_MEMORY_START..=VIDEO_MEMORY_END).contains(&addr) {
             let offset = addr - VIDEO_MEMORY_START;
-            self.video_writes.push((offset, value));
+            self.cga_writes.push((offset, value));
         }
 
         // Check if write is in EGA video memory range (A000:0000)
@@ -262,7 +262,7 @@ impl Memory {
 
     /// Drain video memory writes collected during instruction execution
     pub fn drain_video_writes(&mut self) -> std::vec::Drain<'_, (usize, u8)> {
-        self.video_writes.drain(..)
+        self.cga_writes.drain(..)
     }
 
     /// Drain EGA memory writes collected during instruction execution (A000:0000)

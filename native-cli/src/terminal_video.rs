@@ -5,7 +5,10 @@ use crossterm::{
 };
 use emu86_core::{
     TextModePalette,
-    video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController, VideoMode},
+    video::{
+        CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, VideoController, VideoMode,
+        text::TextBuffer,
+    },
 };
 use std::io::{self, Write};
 
@@ -35,7 +38,7 @@ fn cp437_to_unicode(byte: u8) -> char {
 
 /// Terminal-based video controller using crossterm
 pub struct TerminalVideo {
-    last_buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
+    last_buffer: TextBuffer,
     last_cursor: Option<CursorPosition>,
     current_mode: VideoMode,
     /// VGA DAC palette (256 RGB triplets, 6-bit per component 0-63)
@@ -59,7 +62,7 @@ impl TerminalVideo {
         .unwrap();
 
         Self {
-            last_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            last_buffer: TextBuffer::new(),
             last_cursor: None,
             current_mode: VideoMode::Text {
                 cols: TEXT_MODE_COLS,
@@ -110,7 +113,7 @@ impl TerminalVideo {
 }
 
 impl VideoController for TerminalVideo {
-    fn update_display(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
+    fn update_display(&mut self, buffer: &TextBuffer) {
         let mut stdout = io::stdout();
 
         // Get actual mode dimensions
@@ -152,7 +155,7 @@ impl VideoController for TerminalVideo {
         }
 
         stdout.flush().unwrap();
-        self.last_buffer.copy_from_slice(buffer);
+        self.last_buffer.copy_from(buffer);
     }
 
     fn update_cursor(&mut self, position: CursorPosition) {
@@ -192,9 +195,9 @@ impl VideoController for TerminalVideo {
         stdout.flush().unwrap();
     }
 
-    fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
+    fn force_redraw(&mut self, buffer: &TextBuffer) {
         // Reset cached buffer and cursor to force a full redraw
-        self.last_buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
+        self.last_buffer = TextBuffer::new();
         self.last_cursor = None;
 
         // Now update_display will redraw everything since all cells will differ
@@ -206,7 +209,7 @@ impl VideoController for TerminalVideo {
         self.vga_dac_palette.copy_from_slice(palette);
 
         // Force full redraw since colors changed
-        self.last_buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
+        self.last_buffer = TextBuffer::new();
         self.last_cursor = None;
     }
 }

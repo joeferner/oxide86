@@ -1,13 +1,13 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, DriveNumber, MouseInput, NullVideoController, SerialDevice, SpeakerOutput, TextCell,
-    Video, VideoController,
-    cpu::Cpu,
-    cpu::bios::KeyPress,
+    Bios, DriveNumber, MouseInput, NullVideoController, SerialDevice, SpeakerOutput, Video,
+    VideoController,
+    cpu::{Cpu, bios::KeyPress},
     io::IoDevice,
     keyboard::KeyboardInput,
     memory::{self, Memory},
+    video::text::TextBuffer,
 };
 
 #[derive(Clone)]
@@ -1082,9 +1082,7 @@ impl<V: VideoController> Computer<V> {
     }
 
     /// Get video buffer for inspection
-    pub fn get_video_buffer(
-        &self,
-    ) -> &[TextCell; crate::video::TEXT_MODE_COLS * crate::video::TEXT_MODE_ROWS] {
+    pub fn get_video_buffer(&self) -> &TextBuffer {
         self.video.get_buffer()
     }
 

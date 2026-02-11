@@ -2,10 +2,6 @@
 
 - [ ] kings quest 1 - look water, text should scroll (see logs Scroll up lines)
 - [ ] Support EGA
-  - rename video_writes to cga_writes
-  - rename graphics_buffer to cga_buffer
-  - move video.buffer into a struct
-  - split out CGA and EGA buffers into new files (currently in video.rs)
   - add logging to ega writes
   - kq1-cga is black and white, text is squished to the left
 - [ ] check-it 2

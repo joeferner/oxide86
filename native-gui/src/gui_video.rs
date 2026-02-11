@@ -1,8 +1,9 @@
 use emu86_core::video::VideoMode;
+use emu86_core::video::text::{TextBuffer, TextCell};
 use emu86_core::{
     Cp437Font, TextModePalette,
     font::{CHAR_HEIGHT, CHAR_WIDTH},
-    video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController},
+    video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, VideoController},
 };
 use pixels::Pixels;
 
@@ -21,11 +22,11 @@ const CURSOR_END_ROW: usize = 16; // Exclusive
 pub struct PixelsVideoController {
     font: Cp437Font,
     /// Current buffer state
-    current_buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
+    current_buffer: TextBuffer,
     /// Current cursor position
     current_cursor: Option<CursorPosition>,
     /// Cached buffer to track which cells have changed
-    last_rendered_buffer: [TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS],
+    last_rendered_buffer: TextBuffer,
     /// Last rendered cursor position
     last_rendered_cursor: Option<CursorPosition>,
     /// Flag to force full redraw
@@ -51,9 +52,9 @@ impl PixelsVideoController {
     pub fn new() -> Self {
         Self {
             font: Cp437Font::new(),
-            current_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            current_buffer: TextBuffer::default(),
             current_cursor: None,
-            last_rendered_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            last_rendered_buffer: TextBuffer::default(),
             last_rendered_cursor: None,
             needs_full_redraw: true,
             has_pending_updates: true,
@@ -353,8 +354,7 @@ impl PixelsVideoController {
                     self.render_cell(frame, row, col, &self.current_buffer[idx]);
                 }
             }
-            self.last_rendered_buffer
-                .copy_from_slice(&self.current_buffer);
+            self.last_rendered_buffer.copy_from(&self.current_buffer);
             self.needs_full_redraw = false;
         } else {
             // Only redraw changed cells for performance
@@ -396,9 +396,9 @@ impl Default for PixelsVideoController {
     fn default() -> Self {
         Self {
             font: Cp437Font::new(),
-            current_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            current_buffer: TextBuffer::new(),
             current_cursor: None,
-            last_rendered_buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
+            last_rendered_buffer: TextBuffer::new(),
             last_rendered_cursor: None,
             needs_full_redraw: true,
             has_pending_updates: true,
@@ -416,8 +416,8 @@ impl Default for PixelsVideoController {
 }
 
 impl VideoController for PixelsVideoController {
-    fn update_display(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
-        self.current_buffer.copy_from_slice(buffer);
+    fn update_display(&mut self, buffer: &TextBuffer) {
+        self.current_buffer.copy_from(buffer);
         self.has_pending_updates = true;
     }
 
@@ -446,12 +446,12 @@ impl VideoController for PixelsVideoController {
         // Mark for full redraw
         self.needs_full_redraw = true;
         self.has_pending_updates = true;
-        self.current_buffer = [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS];
+        self.current_buffer = TextBuffer::new();
         self.current_cursor = None;
     }
 
-    fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
-        self.current_buffer.copy_from_slice(buffer);
+    fn force_redraw(&mut self, buffer: &TextBuffer) {
+        self.current_buffer.copy_from(buffer);
         self.needs_full_redraw = true;
         self.has_pending_updates = true;
     }

@@ -1,7 +1,8 @@
 use emu86_core::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
 use emu86_core::palette::TextModePalette;
+use emu86_core::video::text::{TextBuffer, TextCell};
 use emu86_core::video::{
-    CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, TextCell, VideoController, VideoMode,
+    CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, VideoController, VideoMode,
 };
 use wasm_bindgen::Clamped;
 use wasm_bindgen::prelude::*;
@@ -149,7 +150,7 @@ impl WebVideo {
     }
 
     /// Render the entire screen
-    fn render_full_screen(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
+    fn render_full_screen(&mut self, buffer: &TextBuffer) {
         // Get actual mode dimensions
         let (actual_cols, actual_rows) = match self.current_mode {
             VideoMode::Text { cols, rows } => (cols, rows),
@@ -329,7 +330,7 @@ impl WebVideo {
 }
 
 impl VideoController for WebVideo {
-    fn update_display(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
+    fn update_display(&mut self, buffer: &TextBuffer) {
         // Render all characters
         self.render_full_screen(buffer);
 
@@ -400,7 +401,7 @@ impl VideoController for WebVideo {
         }
     }
 
-    fn force_redraw(&mut self, buffer: &[TextCell; TEXT_MODE_COLS * TEXT_MODE_ROWS]) {
+    fn force_redraw(&mut self, buffer: &TextBuffer) {
         // Same as update_display for web implementation
         self.update_display(buffer);
     }
