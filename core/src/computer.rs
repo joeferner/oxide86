@@ -828,10 +828,17 @@ impl<V: VideoController> Computer<V> {
                 values.push_str(&decoded.mem_values);
             }
 
+            let bytes_hex = decoded
+                .bytes
+                .iter()
+                .map(|b| format!("{:02X}", b))
+                .collect::<Vec<_>>()
+                .join(" ");
             log::info!(
-                "OP {:04X}:{:04X} {:30} {}",
+                "OP {:04X}:{:04X} {:<18} {:30} {}",
                 current_cs,
                 current_ip,
+                bytes_hex,
                 decoded.text,
                 values,
             );
@@ -988,15 +995,13 @@ impl<V: VideoController> Computer<V> {
                 }
                 crate::video::VideoMode::Graphics640x200 => {
                     if let Some(buffer) = self.video.get_graphics_buffer() {
-                        let palette = self.video.get_palette();
-                        // CGA mode 6 (640x200): 2-color mode where:
-                        // - Pixel 0 = always black (background)
-                        // - Pixel 1 = background register value (acts as foreground color)
-                        // Programs write the desired foreground color to bits 0-3 of port 0x3D9
+                        // CGA mode 6 (640x200): true monochrome mode.
+                        // On real CGA hardware, the palette register has no effect in mode 6:
+                        // set pixels are always bright white (15), unset pixels always black (0).
                         self.video_controller.update_graphics_640x200(
                             buffer.get_pixels(),
-                            palette.background, // Foreground: background reg = fg color in mode 6
-                            0,                  // Background: always black in mode 6
+                            15, // Foreground: always bright white
+                            0,  // Background: always black
                         );
                     }
                 }
@@ -1030,12 +1035,10 @@ impl<V: VideoController> Computer<V> {
             }
             crate::video::VideoMode::Graphics640x200 => {
                 if let Some(buffer) = self.video.get_graphics_buffer() {
-                    let palette = self.video.get_palette();
-                    // CGA mode 6 (640x200): pixel 0 = black, pixel 1 = background reg value
                     self.video_controller.update_graphics_640x200(
                         buffer.get_pixels(),
-                        palette.background, // Foreground: background reg = fg color in mode 6
-                        0,                  // Background: always black in mode 6
+                        15, // Foreground: always bright white in mode 6
+                        0,  // Background: always black
                     );
                 }
             }

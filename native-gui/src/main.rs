@@ -104,6 +104,7 @@ fn main() {
         .filter_module("naga", LevelFilter::Info)
         .filter_module("wgpu_core", LevelFilter::Info)
         .filter_module("wgpu_hal", LevelFilter::Error)
+        .filter_module("calloop", LevelFilter::Debug)
         .format(|buf, record| {
             use chrono::Timelike;
             let now = chrono::Local::now();

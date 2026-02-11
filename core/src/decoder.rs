@@ -5,6 +5,8 @@ use crate::memory::Memory;
 pub struct DecodedInstruction {
     /// Human-readable assembly string
     pub text: String,
+    /// Raw bytes that make up this instruction
+    pub bytes: Vec<u8>,
     /// Formatted string of input register values (e.g., "AX=1234 CX=5678")
     pub reg_values: String,
     /// Formatted string of memory values (e.g., "[0x24bc]=1234 [bx+4]=5678")
@@ -35,8 +37,16 @@ pub fn decode_instruction_with_regs(
         (String::new(), String::new())
     };
 
+    // Collect the raw bytes consumed during decoding
+    let bytes: Vec<u8> = {
+        let start = ((cs as usize) << 4) + (ip as usize);
+        let end = ((cs as usize) << 4) + (decoder.ip as usize);
+        (start..end).map(|addr| memory.read_u8(addr)).collect()
+    };
+
     DecodedInstruction {
         text,
+        bytes,
         reg_values,
         mem_values,
     }
