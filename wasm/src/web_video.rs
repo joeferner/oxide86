@@ -230,7 +230,8 @@ impl WebVideo {
     }
 
     /// Render graphics mode 640x200 to canvas.
-    /// In composite mode: nibble-to-color (160x200 16-color).
+    /// In composite mode: when in mode 0x04 (2bpp), renders each 2-bit pixel individually
+    /// using composite color palette (320x200 scaled 2x2 to 640x400).
     /// In RGB mode: per-pixel B&W (640x200).
     fn render_graphics_640x200(
         &mut self,
@@ -247,33 +248,8 @@ impl WebVideo {
         let mut image_data_buf = vec![0u8; width * scaled_height * 4];
 
         if composite {
-            let scale_x = 4usize;
-            let scale_y = 2usize;
-            for y in 0..200 {
-                for byte_x in 0..80 {
-                    let byte_val = pixel_data[y * 80 + byte_x];
-                    let high_nibble = (byte_val >> 4) & 0x0F;
-                    let low_nibble = byte_val & 0x0F;
-
-                    let color_left = TextModePalette::get_color(high_nibble);
-                    let color_right = TextModePalette::get_color(low_nibble);
-
-                    for (i, rgb) in [(0usize, color_left), (1usize, color_right)] {
-                        let composite_x = byte_x * 2 + i;
-                        for dy in 0..scale_y {
-                            for dx in 0..scale_x {
-                                let screen_x = composite_x * scale_x + dx;
-                                let screen_y = y * scale_y + dy;
-                                let pixel_offset = (screen_y * width + screen_x) * 4;
-                                image_data_buf[pixel_offset] = rgb[0];
-                                image_data_buf[pixel_offset + 1] = rgb[1];
-                                image_data_buf[pixel_offset + 2] = rgb[2];
-                                image_data_buf[pixel_offset + 3] = 255;
-                            }
-                        }
-                    }
-                }
-            }
+            // Use shared composite rendering logic from core
+            emu86_core::video::composite::render_composite_2bpp(pixel_data, &mut image_data_buf);
         } else {
             let fg_rgb = TextModePalette::get_color(fg_color);
             let bg_rgb = TextModePalette::get_color(bg_color);

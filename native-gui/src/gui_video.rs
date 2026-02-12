@@ -199,40 +199,14 @@ impl PixelsVideoController {
     }
 
     /// Render graphics mode 640x200 to framebuffer.
-    /// In composite mode: groups each 4 horizontal 1bpp pixels into a nibble (0-15)
-    /// mapped to the standard 16-color CGA palette (160x200 effective resolution).
+    /// In composite mode: when in mode 0x04 (2bpp), renders each 2-bit pixel individually
+    /// using composite color palette (320x200 scaled 2x2 to 640x400).
     /// In RGB mode: standard per-pixel B&W rendering (640x200).
     fn render_graphics_640x200(&self, frame: &mut [u8]) {
         if let Some(pixel_data) = &self.graphics_data {
             if self.graphics_composite {
-                // Composite CGA: nibble-to-color, 160x200 scaled 4x2 to 640x400
-                let scale_x = 4;
-                let scale_y = 2;
-                for y in 0..200 {
-                    for byte_x in 0..80 {
-                        let byte_val = pixel_data[y * 80 + byte_x];
-                        let high_nibble = (byte_val >> 4) & 0x0F;
-                        let low_nibble = byte_val & 0x0F;
-
-                        let color_left = TextModePalette::get_color(high_nibble);
-                        let color_right = TextModePalette::get_color(low_nibble);
-
-                        for (i, rgb) in [(0usize, color_left), (1usize, color_right)] {
-                            let composite_x = byte_x * 2 + i;
-                            for dy in 0..scale_y {
-                                for dx in 0..scale_x {
-                                    let screen_x = composite_x * scale_x + dx;
-                                    let screen_y = y * scale_y + dy;
-                                    let offset = (screen_y * SCREEN_WIDTH + screen_x) * 4;
-                                    frame[offset] = rgb[0];
-                                    frame[offset + 1] = rgb[1];
-                                    frame[offset + 2] = rgb[2];
-                                    frame[offset + 3] = 0xFF;
-                                }
-                            }
-                        }
-                    }
-                }
+                // Use shared composite rendering logic from core
+                emu86_core::video::composite::render_composite_2bpp(pixel_data, frame);
             } else {
                 // RGB mode: per-pixel B&W, 640x200 scaled 1x2 to 640x400
                 let fg_rgb = TextModePalette::get_color(self.graphics_fg_color);

@@ -5,6 +5,7 @@ use crate::video::{
 };
 
 pub mod cga;
+pub mod composite;
 pub mod ega;
 pub mod text;
 
