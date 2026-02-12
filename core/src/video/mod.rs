@@ -172,6 +172,9 @@ pub struct Video {
     /// CGA composite mode: render 640x200 as composite artifact colors (160x200 16-color)
     /// Set when mode switches to 640x200 via port 0x3D8 (e.g., AGI games); cleared by INT 10h
     composite_mode: bool,
+    /// Flag to sync graphics buffer from raw B800 memory on next update
+    /// Set when transitioning from text → CGA graphics to preserve data (e.g., MS Flight Simulator)
+    needs_memory_sync: bool,
 }
 
 /// Initialize VGA DAC palette with EGA defaults
@@ -208,6 +211,7 @@ impl Video {
             ega_map_mask: 0x0F, // All 4 planes enabled
             ega_read_plane: 0,  // Read from plane 0
             composite_mode: false,
+            needs_memory_sync: false,
         }
     }
 
@@ -287,6 +291,9 @@ impl Video {
 
     /// Set video mode
     pub fn set_mode(&mut self, mode: u8) {
+        // Track previous mode type for sync decision
+        let was_text_mode = matches!(self.mode_type, VideoMode::Text { .. });
+
         self.mode = mode;
 
         // Determine mode type and allocate appropriate buffer
@@ -310,6 +317,13 @@ impl Video {
                 VideoMode::Text { cols: 80, rows: 25 }
             }
         };
+
+        // Set flag to sync from raw memory if transitioning from text to graphics
+        let is_now_cga_graphics = matches!(
+            self.mode_type,
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200
+        );
+        self.needs_memory_sync = was_text_mode && is_now_cga_graphics;
 
         // Clear buffers on mode change
         if matches!(self.mode_type, VideoMode::Text { .. }) {
@@ -369,6 +383,41 @@ impl Video {
     /// Get CGA composite mode flag
     pub fn is_composite_mode(&self) -> bool {
         self.composite_mode
+    }
+
+    /// Sync graphics buffer from raw B800 memory (for text→graphics transitions)
+    /// This is needed when programs write to B800 in text mode (e.g., as disk I/O buffer)
+    /// then switch to graphics mode expecting that data to be visible.
+    pub fn sync_from_raw_memory(&mut self, raw_memory: &[u8]) {
+        if !self.needs_memory_sync {
+            return;
+        }
+
+        match &self.mode_type {
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
+                if let Some(ref mut buffer) = self.cga_buffer {
+                    for (offset, &value) in raw_memory.iter().enumerate() {
+                        if value != 0 {
+                            // Only sync non-zero bytes to avoid clearing graphics
+                            buffer.write_byte(offset, value);
+                        }
+                    }
+                    log::debug!(
+                        "Synced CGA graphics buffer from raw B800 memory ({} bytes)",
+                        raw_memory.len()
+                    );
+                }
+            }
+            _ => {}
+        }
+
+        self.needs_memory_sync = false;
+        self.dirty = true;
+    }
+
+    /// Check if memory sync is needed
+    pub fn needs_memory_sync(&self) -> bool {
+        self.needs_memory_sync
     }
 
     /// Set active display page

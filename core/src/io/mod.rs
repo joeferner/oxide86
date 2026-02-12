@@ -176,10 +176,10 @@ impl IoDevice {
                             0x01 // 40x25 color text
                         }
                     };
-                    if mode == 0x06 && video.get_mode() != 0x06 {
-                        // Hires bit flipped while in another mode (e.g., AGI games set mode
+                    if mode == 0x06 && video.get_mode() == 0x04 {
+                        // Hires bit flipped while in mode 0x04 (e.g., AGI games set mode
                         // 0x04 via INT 10h then flip hires bit for NTSC composite artifact
-                        // colors). DON'T change the video mode - keep the current mode's
+                        // colors). DON'T change the video mode - keep mode 0x04's
                         // pixel format (2bpp) so programs continue writing correctly.
                         // Only the renderer changes to composite decoding.
                         video.set_composite_mode(true);

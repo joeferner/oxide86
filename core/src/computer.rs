@@ -960,25 +960,16 @@ impl<V: VideoController> Computer<V> {
             self.video_controller
                 .update_vga_dac_palette(self.video.get_vga_dac_palette());
 
-            // NOTE: We intentionally do NOT sync from raw memory here anymore.
-            //
-            // The previous implementation synced raw B800 memory to graphics buffer on mode change,
-            // which was needed for MS Flight Simulator (loads data in text mode, displays in graphics).
-            // However, this caused a critical bug: INT 10h text drawing writes to graphics buffer
-            // only (not raw memory), so the sync would OVERWRITE the graphics buffer and LOSE any
-            // text drawn via INT 10h before the first update_video() call.
-            //
-            // This caused random text disappearance:
-            // - Sometimes all text missing (sync happened after all text drawn)
-            // - Sometimes partial like "al CGA" instead of "Normal CGA" (sync happened mid-drawing)
-            // - Timing was random based on when update_video() was called relative to text drawing
-            //
-            // Fix: Don't sync. Direct memory writes (STOSB) go to both raw memory and graphics buffer
-            // via cga_writes drain, so graphics buffer is already correct. INT 10h writes go directly
-            // to graphics buffer and don't need syncing.
-            //
-            // For MS Flight Simulator's special case (text mode → graphics with pre-loaded data),
-            // we'll need a different solution that doesn't break normal programs.
+            // Sync graphics buffer from raw B800 memory if transitioning from text→graphics
+            // This handles programs like MS Flight Simulator that write data to B800 in text mode
+            // (e.g., using it as a disk I/O buffer) then switch to graphics expecting that data.
+            // The flag is set in Video::set_mode() ONLY for text→graphics transitions, and this
+            // sync happens exactly once before any INT 10h drawing can occur, preventing the
+            // overwrite bug that occurred when syncing happened after INT 10h text was drawn.
+            if self.video.needs_memory_sync() {
+                let raw_memory = self.memory.get_video_memory();
+                self.video.sync_from_raw_memory(raw_memory);
+            }
 
             // Sync BDA video state (may have been set via CGA hardware registers, not INT 10h)
             let cols = self.video.get_cols();
