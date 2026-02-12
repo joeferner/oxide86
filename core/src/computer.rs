@@ -960,22 +960,25 @@ impl<V: VideoController> Computer<V> {
             self.video_controller
                 .update_vga_dac_palette(self.video.get_vga_dac_palette());
 
-            // When switching to a graphics mode, sync the graphics buffer from raw video memory.
-            // Programs may write data to B800 while in text mode (e.g., using it as a disk I/O
-            // buffer). The text mode write_byte() drops writes beyond the text page boundary,
-            // but raw memory retains them. Syncing here ensures graphics mode sees the correct
-            // initial content (e.g., MS Flight Simulator loads cockpit data via disk reads in
-            // text mode, then switches to graphics mode expecting that data to be visible).
-            if matches!(
-                self.video.get_mode_type(),
-                crate::video::VideoMode::Graphics320x200 | crate::video::VideoMode::Graphics640x200
-            ) {
-                let raw: Vec<u8> = self.memory.get_video_memory().to_vec();
-                for (offset, value) in raw.into_iter().enumerate() {
-                    self.video.write_byte(offset, value);
-                }
-                log::debug!("Synced graphics buffer from raw video memory on mode change");
-            }
+            // NOTE: We intentionally do NOT sync from raw memory here anymore.
+            //
+            // The previous implementation synced raw B800 memory to graphics buffer on mode change,
+            // which was needed for MS Flight Simulator (loads data in text mode, displays in graphics).
+            // However, this caused a critical bug: INT 10h text drawing writes to graphics buffer
+            // only (not raw memory), so the sync would OVERWRITE the graphics buffer and LOSE any
+            // text drawn via INT 10h before the first update_video() call.
+            //
+            // This caused random text disappearance:
+            // - Sometimes all text missing (sync happened after all text drawn)
+            // - Sometimes partial like "al CGA" instead of "Normal CGA" (sync happened mid-drawing)
+            // - Timing was random based on when update_video() was called relative to text drawing
+            //
+            // Fix: Don't sync. Direct memory writes (STOSB) go to both raw memory and graphics buffer
+            // via cga_writes drain, so graphics buffer is already correct. INT 10h writes go directly
+            // to graphics buffer and don't need syncing.
+            //
+            // For MS Flight Simulator's special case (text mode → graphics with pre-loaded data),
+            // we'll need a different solution that doesn't break normal programs.
 
             // Sync BDA video state (may have been set via CGA hardware registers, not INT 10h)
             let cols = self.video.get_cols();
