@@ -326,8 +326,14 @@ impl Video {
             CgaPalette::new() // Palette 0 for text modes and EGA
         };
 
-        // Sync VGA DAC entries 0-3 from CGA palette (for 320x200 4-color mode)
-        self.update_vga_dac_from_cga_palette();
+        // Sync VGA DAC entries 0-3 from CGA palette (only for CGA 4-color modes)
+        // EGA mode 0x0D uses all 16 palette entries directly, not the CGA 4-color mapping
+        if matches!(
+            self.mode_type,
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200
+        ) {
+            self.update_vga_dac_from_cga_palette();
+        }
 
         self.dirty = true;
         self.mode_changed = true; // Flag that controller needs notification

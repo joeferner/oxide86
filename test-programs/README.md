@@ -59,7 +59,7 @@ Simple "Hello World" test program for verifying program loading functionality. U
 
 ## Video
 
-### cga_graphics.asm
+### mode_04h_cga_320x200x4.asm
 Comprehensive CGA graphics mode test program. Switches to mode 0x04 (320x200, 4 colors) and tests both text rendering and graphics drawing in graphics mode.
 
 **Expected Output:**
@@ -71,6 +71,33 @@ Comprehensive CGA graphics mode test program. Switches to mode 0x04 (320x200, 4 
 
 **Technical Details:**
 Demonstrates INT 10h AH=0Eh teletype output in graphics mode (draws 8x8 characters pixel-by-pixel using CP437 font), direct video memory writes at 0xB8000, pixel encoding (2 bits per pixel, 4 pixels per byte), CGA interlaced memory layout (even scan lines at 0x0000-0x1F3F, odd lines at 0x2000-0x3F3F), palette selection via port 0x3D9 (palette 1 with intensity: cyan, magenta, white), and proper cursor positioning in 40-column character grid (40 chars × 25 rows). Waits for keypress then returns to text mode.
+
+### mode_06h_cga_640x200x2.asm
+CGA graphics mode 0x06 test program. Switches to 640x200 monochrome mode (1 bit per pixel, 8 pixels per byte) and draws patterned boxes using direct video memory writes at 0xB800.
+
+**Expected Output:**
+- **Pixel rows 0-39:** Three patterned boxes at top (solid, dense checkerboard, alternating) at columns 0, 20, 40
+- **Pixel rows 48-63:** White text "CGA Graphics Mode 0x06 Test" (character row 6)
+- **Pixel rows 64-71:** White text "640x200, 2 Colors (1 bit/pixel)" (character row 8)
+- **Pixel rows 100-139:** Three patterned boxes at middle (alternating, sparse, sparse checkerboard) at columns 0, 20, 40
+- **Pixel rows 184-191:** White text "Test complete! Press any key..." at column 5 (character row 23)
+
+**Technical Details:**
+Demonstrates INT 10h AH=0Eh teletype output in 640x200 graphics mode, direct video memory writes, pixel encoding (1 bit per pixel, 8 pixels per byte), CGA interlaced memory layout, and 80-column character grid (80 chars × 25 rows). Waits for keypress then returns to text mode.
+
+### mode_0dh_ega_320x200x16.asm
+EGA graphics mode 0x0D test program. Switches to 320x200, 16-color mode using EGA planar memory at A000:0000. Displays all 16 EGA colors by programming the Sequencer Map Mask register (port 0x3C4/0x3C5) to select which bit planes receive writes.
+
+**Expected Output:**
+- **Pixel rows 0-39:** 8 colored boxes (colors 0-7): black, blue, green, cyan, red, magenta, brown, light gray — each 40 pixels wide spanning full screen width
+- **Pixel rows 40-47:** Color number labels "0  1  2  3  4  5  6  7" (character row 5)
+- **Pixel rows 56-63:** White text "EGA Mode 0x0D - 16 Colors" (character row 7)
+- **Pixel rows 72-79:** Light cyan text "320x200, 4 Bit Planes" (character row 9)
+- **Pixel rows 88-103:** Color name abbreviations for both rows (character rows 11, 13)
+- **Pixel rows 120-159:** 8 colored boxes (colors 8-15): dark gray, light blue, light green, light cyan, light red, light magenta, yellow, white
+
+**Technical Details:**
+Demonstrates all 16 EGA colors via the planar memory model (4 bit planes at A000:0000, 40 bytes per row). Each color is drawn by clearing all planes then setting the Map Mask to the color value (each bit enables one plane). Shows EGA linear addressing (offset = row × 40 + column, no interlacing), INT 10h AH=0Eh teletype in 40-column grid, and labeled color swatches. Waits for keypress then returns to text mode.
 
 ### color.bas
 QBasic program that demonstrates text mode color capabilities. Displays all 16 foreground colors (0-15) with black background, then shows standard background colors (0-7) with white foreground. Illustrates COLOR command usage and text mode color attribute handling.

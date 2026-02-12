@@ -616,6 +616,136 @@ impl Cpu {
                     }
                 }
             }
+            crate::video::VideoMode::Graphics320x200x16 => {
+                // EGA 320x200 16-color planar mode
+                let char_code = if matches!(mode, GraphicsDrawMode::XorInverted) {
+                    character & 0x7F
+                } else {
+                    character
+                };
+                let glyph = font.get_glyph_8(char_code);
+                let char_height = 8;
+                let char_width = 8;
+
+                let start_x = col * char_width;
+                let start_y = row * char_height;
+
+                for (py, &glyph_byte) in glyph.iter().enumerate() {
+                    let y = start_y + py;
+                    if y >= 200 {
+                        break;
+                    }
+
+                    let final_glyph_byte = if matches!(mode, GraphicsDrawMode::XorInverted) {
+                        !glyph_byte
+                    } else {
+                        glyph_byte
+                    };
+
+                    // For EGA, work byte-at-a-time per plane for efficiency
+                    // All 8 pixels of a glyph row fit in one EGA byte if char is byte-aligned
+                    let byte_offset = y * 40 + start_x / 8;
+                    let bit_shift = start_x % 8;
+
+                    if bit_shift == 0 {
+                        // Byte-aligned: fast path
+                        for plane in 0..4u8 {
+                            let plane_bit = (fg_color >> plane) & 1;
+                            video.set_ega_map_mask(1 << plane);
+                            let current = video.read_byte_ega_plane(plane, byte_offset);
+
+                            let new_val = match mode {
+                                GraphicsDrawMode::Opaque => {
+                                    // Foreground where glyph=1, background (0) where glyph=0
+                                    if plane_bit != 0 { final_glyph_byte } else { 0 }
+                                }
+                                GraphicsDrawMode::Transparent => {
+                                    // Only set foreground pixels, leave background untouched
+                                    if plane_bit != 0 {
+                                        current | final_glyph_byte
+                                    } else {
+                                        current & !final_glyph_byte
+                                    }
+                                }
+                                GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted => {
+                                    if plane_bit != 0 {
+                                        current ^ final_glyph_byte
+                                    } else {
+                                        current
+                                    }
+                                }
+                            };
+                            video.write_byte_ega(byte_offset, new_val);
+                        }
+                    } else {
+                        // Not byte-aligned: spans two EGA bytes
+                        let left_mask = final_glyph_byte >> bit_shift;
+                        let right_mask = final_glyph_byte << (8 - bit_shift);
+
+                        for plane in 0..4u8 {
+                            let plane_bit = (fg_color >> plane) & 1;
+                            video.set_ega_map_mask(1 << plane);
+
+                            // Left byte
+                            let cur_left = video.read_byte_ega_plane(plane, byte_offset);
+                            let new_left = match mode {
+                                GraphicsDrawMode::Opaque => {
+                                    if plane_bit != 0 {
+                                        (cur_left & !left_mask) | left_mask
+                                    } else {
+                                        cur_left & !left_mask
+                                    }
+                                }
+                                GraphicsDrawMode::Transparent => {
+                                    if plane_bit != 0 {
+                                        cur_left | left_mask
+                                    } else {
+                                        cur_left & !left_mask
+                                    }
+                                }
+                                GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted => {
+                                    if plane_bit != 0 {
+                                        cur_left ^ left_mask
+                                    } else {
+                                        cur_left
+                                    }
+                                }
+                            };
+                            video.write_byte_ega(byte_offset, new_left);
+
+                            // Right byte (if any pixels spill over)
+                            if right_mask != 0 && byte_offset + 1 < 8000 {
+                                let cur_right = video.read_byte_ega_plane(plane, byte_offset + 1);
+                                let new_right = match mode {
+                                    GraphicsDrawMode::Opaque => {
+                                        if plane_bit != 0 {
+                                            (cur_right & !right_mask) | right_mask
+                                        } else {
+                                            cur_right & !right_mask
+                                        }
+                                    }
+                                    GraphicsDrawMode::Transparent => {
+                                        if plane_bit != 0 {
+                                            cur_right | right_mask
+                                        } else {
+                                            cur_right & !right_mask
+                                        }
+                                    }
+                                    GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted => {
+                                        if plane_bit != 0 {
+                                            cur_right ^ right_mask
+                                        } else {
+                                            cur_right
+                                        }
+                                    }
+                                };
+                                video.write_byte_ega(byte_offset + 1, new_right);
+                            }
+                        }
+                    }
+                }
+                video.set_ega_map_mask(0x0F); // Restore all planes
+            }
             _ => {
                 // Other modes not supported yet
             }
