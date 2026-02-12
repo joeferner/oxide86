@@ -15,8 +15,8 @@ use crate::palette::TextModePalette;
 ///
 /// # Composite Color Mapping
 /// * 0 → Black (background)
-/// * 1 → Green (composite artifact color)
-/// * 2 → Magenta (composite artifact color)
+/// * 1 → Cyan (composite artifact color)
+/// * 2 → Light Magenta/Pink (composite artifact color)
 /// * 3 → White (foreground)
 pub fn render_composite_2bpp(pixel_data: &[u8], output: &mut [u8]) {
     const WIDTH: usize = 640;
@@ -31,11 +31,11 @@ pub fn render_composite_2bpp(pixel_data: &[u8], output: &mut [u8]) {
                 let shift = 6 - (pixel_idx * 2); // 6, 4, 2, 0
                 let pixel_val = (byte_val >> shift) & 0x03;
 
-                // Map 2-bit pixel value to composite color index
+                // Map 2-bit pixel value to composite color index (EGA palette)
                 let color_index = match pixel_val {
                     0 => 0,  // Background color (black)
-                    1 => 2,  // Green (typical composite artifact color)
-                    2 => 5,  // Magenta (typical composite artifact color)
+                    1 => 3,  // Cyan (CGA composite artifact color)
+                    2 => 13, // Light Magenta/Pink (CGA composite artifact color)
                     3 => 15, // White (foreground)
                     _ => 0,
                 };
@@ -90,9 +90,9 @@ mod tests {
         assert_eq!(output[2], white[2]);
         assert_eq!(output[3], 0xFF);
 
-        // Check second pixel (value 2 -> magenta = index 5)
+        // Check second pixel (value 2 -> light magenta/pink = index 13)
         // Second pixel starts at x=2 (scaled), so offset = 2*4
-        let magenta = TextModePalette::get_color(5);
+        let magenta = TextModePalette::get_color(13);
         let offset = 2 * 4;
         assert_eq!(output[offset], magenta[0]);
         assert_eq!(output[offset + 1], magenta[1]);
