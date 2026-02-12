@@ -87,8 +87,15 @@ pub trait VideoController {
 
     /// Update graphics display (640x200, 2 colors)
     /// pixel_data: linear pixel array (1 bit per pixel), fg_color: foreground color
-    fn update_graphics_640x200(&mut self, pixel_data: &[u8], fg_color: u8, bg_color: u8) {
-        let _ = (pixel_data, fg_color, bg_color);
+    /// composite: if true, render as CGA composite (160x200 16-color from nibble grouping)
+    fn update_graphics_640x200(
+        &mut self,
+        pixel_data: &[u8],
+        fg_color: u8,
+        bg_color: u8,
+        composite: bool,
+    ) {
+        let _ = (pixel_data, fg_color, bg_color, composite);
         log::warn!("Graphics mode 640x200 not implemented for this platform");
     }
 
@@ -162,6 +169,9 @@ pub struct Video {
     ega_map_mask: u8,
     /// EGA Graphics Controller Read Map Select (register 4): which plane to read (0-3)
     ega_read_plane: u8,
+    /// CGA composite mode: render 640x200 as composite artifact colors (160x200 16-color)
+    /// Set when mode switches to 640x200 via port 0x3D8 (e.g., AGI games); cleared by INT 10h
+    composite_mode: bool,
 }
 
 /// Initialize VGA DAC palette with EGA defaults
@@ -197,6 +207,7 @@ impl Video {
             vga_dac_palette: default_vga_palette(),
             ega_map_mask: 0x0F, // All 4 planes enabled
             ega_read_plane: 0,  // Read from plane 0
+            composite_mode: false,
         }
     }
 
@@ -250,6 +261,11 @@ impl Video {
     /// Check if display needs updating
     pub fn is_dirty(&self) -> bool {
         self.dirty
+    }
+
+    /// Mark display as needing update
+    pub fn set_dirty(&mut self) {
+        self.dirty = true;
     }
 
     /// Mark as clean after rendering
@@ -343,6 +359,16 @@ impl Video {
     /// Get current video mode
     pub fn get_mode(&self) -> u8 {
         self.mode
+    }
+
+    /// Set CGA composite mode flag
+    pub fn set_composite_mode(&mut self, composite: bool) {
+        self.composite_mode = composite;
+    }
+
+    /// Get CGA composite mode flag
+    pub fn is_composite_mode(&self) -> bool {
+        self.composite_mode
     }
 
     /// Set active display page

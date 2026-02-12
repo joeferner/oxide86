@@ -72,6 +72,18 @@ Comprehensive CGA graphics mode test program. Switches to mode 0x04 (320x200, 4 
 **Technical Details:**
 Demonstrates INT 10h AH=0Eh teletype output in graphics mode (draws 8x8 characters pixel-by-pixel using CP437 font), direct video memory writes at 0xB8000, pixel encoding (2 bits per pixel, 4 pixels per byte), CGA interlaced memory layout (even scan lines at 0x0000-0x1F3F, odd lines at 0x2000-0x3F3F), palette selection via port 0x3D9 (palette 1 with intensity: cyan, magenta, white), and proper cursor positioning in 40-column character grid (40 chars × 25 rows). Waits for keypress then returns to text mode.
 
+### mode_04h_composite.asm
+CGA composite mode test program. Starts in mode 0x04 (320x200, 4 colors), draws test patterns using 2bpp format, then enables composite mode by setting the hires bit (bit 4) in port 0x3D8. This creates a 640x200 composite artifact color mode as used by programs like Sierra AGI games (King's Quest I).
+
+**Expected Output:**
+- **Pixel rows 0-15:** 16 horizontal gradient bars, each showing a different nibble value (0x00 through 0xFF) rendered as composite colors
+- **Pixel rows 100-139:** 8 vertical color bars using mixed nibble patterns (0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF)
+- **Pixel rows 160-167:** Text "CGA Composite Mode Active!" (character row 20)
+- **Pixel rows 184-191:** Text "Press any key to exit..." (character row 23)
+
+**Technical Details:**
+Demonstrates CGA composite mode activation via port 0x3D8 (changing from 0x0A to 0x1A to enable hires bit), nibble-to-palette rendering (each byte interpreted as 2 nibbles, each nibble 0-15 maps to a color), effective resolution of 160x200 pixels scaled to 640x400 display, and NTSC composite artifact coloring simulation. The program stays in mode 0x04 internally (CPU continues using 2bpp pixel format) but the renderer interprets the data differently when composite mode is active. Demonstrates how Sierra games and similar software achieved more colors through composite artifacts. Waits for keypress then returns to text mode.
+
 ### mode_06h_cga_640x200x2.asm
 CGA graphics mode 0x06 test program. Switches to 640x200 monochrome mode (1 bit per pixel, 8 pixels per byte) and draws patterned boxes using direct video memory writes at 0xB800.
 

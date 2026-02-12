@@ -1009,21 +1009,30 @@ impl<V: VideoController> Computer<V> {
                 }
                 crate::video::VideoMode::Graphics320x200 => {
                     if let Some(buffer) = self.video.get_graphics_buffer() {
-                        let palette = self.video.get_palette();
-                        let colors = palette.get_colors();
-                        self.video_controller
-                            .update_graphics_320x200(buffer.get_pixels(), colors);
+                        if self.video.is_composite_mode() {
+                            // Composite CGA: render 320x200 2bpp data as composite
+                            // (nibble-to-color mapping, same byte layout)
+                            self.video_controller.update_graphics_640x200(
+                                buffer.get_pixels(),
+                                15,
+                                0,
+                                true,
+                            );
+                        } else {
+                            let palette = self.video.get_palette();
+                            let colors = palette.get_colors();
+                            self.video_controller
+                                .update_graphics_320x200(buffer.get_pixels(), colors);
+                        }
                     }
                 }
                 crate::video::VideoMode::Graphics640x200 => {
                     if let Some(buffer) = self.video.get_graphics_buffer() {
-                        // CGA mode 6 (640x200): true monochrome mode.
-                        // On real CGA hardware, the palette register has no effect in mode 6:
-                        // set pixels are always bright white (15), unset pixels always black (0).
                         self.video_controller.update_graphics_640x200(
                             buffer.get_pixels(),
                             15, // Foreground: always bright white
                             0,  // Background: always black
+                            self.video.is_composite_mode(),
                         );
                     }
                 }
@@ -1055,18 +1064,28 @@ impl<V: VideoController> Computer<V> {
             }
             crate::video::VideoMode::Graphics320x200 => {
                 if let Some(buffer) = self.video.get_graphics_buffer() {
-                    let palette = self.video.get_palette();
-                    let colors = palette.get_colors();
-                    self.video_controller
-                        .update_graphics_320x200(buffer.get_pixels(), colors);
+                    if self.video.is_composite_mode() {
+                        self.video_controller.update_graphics_640x200(
+                            buffer.get_pixels(),
+                            15,
+                            0,
+                            true,
+                        );
+                    } else {
+                        let palette = self.video.get_palette();
+                        let colors = palette.get_colors();
+                        self.video_controller
+                            .update_graphics_320x200(buffer.get_pixels(), colors);
+                    }
                 }
             }
             crate::video::VideoMode::Graphics640x200 => {
                 if let Some(buffer) = self.video.get_graphics_buffer() {
                     self.video_controller.update_graphics_640x200(
                         buffer.get_pixels(),
-                        15, // Foreground: always bright white in mode 6
-                        0,  // Background: always black
+                        15,
+                        0,
+                        self.video.is_composite_mode(),
                     );
                 }
             }

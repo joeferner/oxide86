@@ -176,13 +176,40 @@ impl IoDevice {
                             0x01 // 40x25 color text
                         }
                     };
-                    if mode != video.get_mode() {
+                    if mode == 0x06 && video.get_mode() != 0x06 {
+                        // Hires bit flipped while in another mode (e.g., AGI games set mode
+                        // 0x04 via INT 10h then flip hires bit for NTSC composite artifact
+                        // colors). DON'T change the video mode - keep the current mode's
+                        // pixel format (2bpp) so programs continue writing correctly.
+                        // Only the renderer changes to composite decoding.
+                        video.set_composite_mode(true);
+                        video.set_dirty();
                         log::info!(
-                            "CGA Mode Control 0x{:02X}: switching to video mode 0x{:02X}",
+                            "CGA Mode Control 0x{:02X}: enabling composite mode (keeping mode 0x{:02X})",
                             value,
-                            mode
+                            video.get_mode()
                         );
-                        video.set_mode(mode);
+                    } else {
+                        // Non-composite mode change or disable composite
+                        let was_composite = video.is_composite_mode();
+                        video.set_composite_mode(false);
+                        if mode != video.get_mode() {
+                            log::info!(
+                                "CGA Mode Control 0x{:02X}: switching to video mode 0x{:02X}",
+                                value,
+                                mode,
+                            );
+                            video.set_mode(mode);
+                        } else if was_composite {
+                            // Composite mode was disabled but video mode didn't change
+                            // Still need to trigger re-render
+                            video.set_dirty();
+                            log::info!(
+                                "CGA Mode Control 0x{:02X}: disabling composite mode (keeping mode 0x{:02X})",
+                                value,
+                                video.get_mode()
+                            );
+                        }
                     }
                 }
             }

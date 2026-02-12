@@ -1,8 +1,6 @@
 # TODO
 
-- [ ] kings quest 1 - look water, text should scroll (see logs Scroll up lines)
 - [ ] Support EGA
-  - add logging to ega writes
   - kq1-cga is black and white, text is squished to the left
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)

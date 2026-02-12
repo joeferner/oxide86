@@ -64,6 +64,8 @@ impl Cpu {
         // Support text modes (0x00-0x03, 0x07), CGA graphics (0x04-0x06), EGA graphics (0x0D)
         match mode {
             0x00..=0x07 | 0x0D => {
+                // INT 10h mode set = RGB rendering; composite only via port 0x3D8
+                video.set_composite_mode(false);
                 video.set_mode(mode);
                 // Reset cursor to top-left (only relevant for text modes)
                 video.set_cursor(0, 0);

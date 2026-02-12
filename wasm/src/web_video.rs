@@ -229,53 +229,75 @@ impl WebVideo {
         Ok(())
     }
 
-    /// Render graphics mode 640x200 (2-color) using ImageData API
+    /// Render graphics mode 640x200 to canvas.
+    /// In composite mode: nibble-to-color (160x200 16-color).
+    /// In RGB mode: per-pixel B&W (640x200).
     fn render_graphics_640x200(
         &mut self,
         pixel_data: &[u8],
         fg_color: u8,
         bg_color: u8,
+        composite: bool,
     ) -> Result<(), JsValue> {
-        // Resize canvas for graphics mode
-        self.canvas.set_width(640); // 640 pixels (no horizontal scaling)
-        self.canvas.set_height(400); // 200 * 2 (scaled vertically)
+        self.canvas.set_width(640);
+        self.canvas.set_height(400);
 
-        let fg_rgb = TextModePalette::get_color(fg_color);
-        let bg_rgb = TextModePalette::get_color(bg_color);
+        let width = 640usize;
+        let scaled_height = 400usize;
+        let mut image_data_buf = vec![0u8; width * scaled_height * 4];
 
-        let width = 640;
-        let height = 200;
-        let scale = 2; // 2x vertical scaling only
+        if composite {
+            let scale_x = 4usize;
+            let scale_y = 2usize;
+            for y in 0..200 {
+                for byte_x in 0..80 {
+                    let byte_val = pixel_data[y * 80 + byte_x];
+                    let high_nibble = (byte_val >> 4) & 0x0F;
+                    let low_nibble = byte_val & 0x0F;
 
-        let scaled_height = height * scale;
-        let mut image_data_buf = vec![0u8; width * scaled_height * 4]; // RGBA
+                    let color_left = TextModePalette::get_color(high_nibble);
+                    let color_right = TextModePalette::get_color(low_nibble);
 
-        for y in 0..height {
-            for x in 0..width {
-                // Extract pixel (1 bit per pixel, 8 pixels per byte)
-                let byte_offset = y * 80 + x / 8;
-                let pixel_in_byte = x % 8;
-                let byte_val = pixel_data[byte_offset];
-                let bit_mask = 0x80 >> pixel_in_byte;
-                let is_set = (byte_val & bit_mask) != 0;
-
-                let rgb = if is_set { fg_rgb } else { bg_rgb };
-
-                // Draw scaled pixel (1x width, 2x height for 640x400)
-                for dy in 0..scale {
-                    let screen_x = x;
-                    let screen_y = y * scale + dy;
-                    let pixel_offset = (screen_y * width + screen_x) * 4;
-
-                    image_data_buf[pixel_offset] = rgb[0]; // R
-                    image_data_buf[pixel_offset + 1] = rgb[1]; // G
-                    image_data_buf[pixel_offset + 2] = rgb[2]; // B
-                    image_data_buf[pixel_offset + 3] = 255; // A
+                    for (i, rgb) in [(0usize, color_left), (1usize, color_right)] {
+                        let composite_x = byte_x * 2 + i;
+                        for dy in 0..scale_y {
+                            for dx in 0..scale_x {
+                                let screen_x = composite_x * scale_x + dx;
+                                let screen_y = y * scale_y + dy;
+                                let pixel_offset = (screen_y * width + screen_x) * 4;
+                                image_data_buf[pixel_offset] = rgb[0];
+                                image_data_buf[pixel_offset + 1] = rgb[1];
+                                image_data_buf[pixel_offset + 2] = rgb[2];
+                                image_data_buf[pixel_offset + 3] = 255;
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            let fg_rgb = TextModePalette::get_color(fg_color);
+            let bg_rgb = TextModePalette::get_color(bg_color);
+            for y in 0..200 {
+                for x in 0..640 {
+                    let byte_val = pixel_data[y * 80 + x / 8];
+                    let bit_mask = 0x80 >> (x % 8);
+                    let rgb = if (byte_val & bit_mask) != 0 {
+                        fg_rgb
+                    } else {
+                        bg_rgb
+                    };
+                    for dy in 0..2 {
+                        let screen_y = y * 2 + dy;
+                        let pixel_offset = (screen_y * width + x) * 4;
+                        image_data_buf[pixel_offset] = rgb[0];
+                        image_data_buf[pixel_offset + 1] = rgb[1];
+                        image_data_buf[pixel_offset + 2] = rgb[2];
+                        image_data_buf[pixel_offset + 3] = 255;
+                    }
                 }
             }
         }
 
-        // Create ImageData and render to canvas
         let image_data = ImageData::new_with_u8_clamped_array_and_sh(
             Clamped(&image_data_buf),
             width as u32,
@@ -415,8 +437,14 @@ impl VideoController for WebVideo {
         }
     }
 
-    fn update_graphics_640x200(&mut self, pixel_data: &[u8], fg_color: u8, bg_color: u8) {
-        if let Err(e) = self.render_graphics_640x200(pixel_data, fg_color, bg_color) {
+    fn update_graphics_640x200(
+        &mut self,
+        pixel_data: &[u8],
+        fg_color: u8,
+        bg_color: u8,
+        composite: bool,
+    ) {
+        if let Err(e) = self.render_graphics_640x200(pixel_data, fg_color, bg_color, composite) {
             log::error!("Failed to render 640x200 graphics: {:?}", e);
         }
     }

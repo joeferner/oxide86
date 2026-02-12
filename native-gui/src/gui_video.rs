@@ -44,6 +44,8 @@ pub struct PixelsVideoController {
     graphics_palette: Option<[u8; 4]>,
     /// VGA DAC palette (256 RGB triplets, 6-bit per component 0-63)
     vga_dac_palette: [[u8; 3]; 256],
+    /// CGA composite rendering mode for 640x200
+    graphics_composite: bool,
 }
 
 #[allow(dead_code)]
@@ -67,6 +69,7 @@ impl PixelsVideoController {
             graphics_bg_color: 0,  // Black
             graphics_palette: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
+            graphics_composite: false,
         }
     }
 
@@ -195,36 +198,62 @@ impl PixelsVideoController {
         }
     }
 
-    /// Render graphics mode 640x200 (2-color) to framebuffer
+    /// Render graphics mode 640x200 to framebuffer.
+    /// In composite mode: groups each 4 horizontal 1bpp pixels into a nibble (0-15)
+    /// mapped to the standard 16-color CGA palette (160x200 effective resolution).
+    /// In RGB mode: standard per-pixel B&W rendering (640x200).
     fn render_graphics_640x200(&self, frame: &mut [u8]) {
         if let Some(pixel_data) = &self.graphics_data {
-            // Use fixed EGA colors for CGA mode 6 (like wasm does), not VGA DAC.
-            // update_vga_dac_from_cga_palette() overwrites DAC[0] with the CGA background
-            // color, so get_palette_color(0) would return white instead of black.
-            let fg_rgb = TextModePalette::get_color(self.graphics_fg_color);
-            let bg_rgb = TextModePalette::get_color(self.graphics_bg_color);
-            let scale = 2; // 640x200 -> 1280x400 (but we'll use 640x400 with 1x horizontal scale)
+            if self.graphics_composite {
+                // Composite CGA: nibble-to-color, 160x200 scaled 4x2 to 640x400
+                let scale_x = 4;
+                let scale_y = 2;
+                for y in 0..200 {
+                    for byte_x in 0..80 {
+                        let byte_val = pixel_data[y * 80 + byte_x];
+                        let high_nibble = (byte_val >> 4) & 0x0F;
+                        let low_nibble = byte_val & 0x0F;
 
-            for y in 0..200 {
-                for x in 0..640 {
-                    let byte_offset = y * 80 + x / 8;
-                    let pixel_in_byte = x % 8;
-                    let byte_val = pixel_data[byte_offset];
-                    let bit_mask = 0x80 >> pixel_in_byte;
-                    let is_set = (byte_val & bit_mask) != 0;
+                        let color_left = TextModePalette::get_color(high_nibble);
+                        let color_right = TextModePalette::get_color(low_nibble);
 
-                    let rgb = if is_set { fg_rgb } else { bg_rgb };
-
-                    // Draw scaled pixel (1x width, 2x height for 640x400)
-                    for dy in 0..scale {
-                        let screen_x = x;
-                        let screen_y = y * scale + dy;
-                        let offset = (screen_y * SCREEN_WIDTH + screen_x) * 4;
-
-                        frame[offset] = rgb[0]; // R
-                        frame[offset + 1] = rgb[1]; // G
-                        frame[offset + 2] = rgb[2]; // B
-                        frame[offset + 3] = 0xFF; // A (opaque)
+                        for (i, rgb) in [(0usize, color_left), (1usize, color_right)] {
+                            let composite_x = byte_x * 2 + i;
+                            for dy in 0..scale_y {
+                                for dx in 0..scale_x {
+                                    let screen_x = composite_x * scale_x + dx;
+                                    let screen_y = y * scale_y + dy;
+                                    let offset = (screen_y * SCREEN_WIDTH + screen_x) * 4;
+                                    frame[offset] = rgb[0];
+                                    frame[offset + 1] = rgb[1];
+                                    frame[offset + 2] = rgb[2];
+                                    frame[offset + 3] = 0xFF;
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // RGB mode: per-pixel B&W, 640x200 scaled 1x2 to 640x400
+                let fg_rgb = TextModePalette::get_color(self.graphics_fg_color);
+                let bg_rgb = TextModePalette::get_color(self.graphics_bg_color);
+                for y in 0..200 {
+                    for x in 0..640 {
+                        let byte_val = pixel_data[y * 80 + x / 8];
+                        let bit_mask = 0x80 >> (x % 8);
+                        let rgb = if (byte_val & bit_mask) != 0 {
+                            fg_rgb
+                        } else {
+                            bg_rgb
+                        };
+                        for dy in 0..2 {
+                            let screen_y = y * 2 + dy;
+                            let offset = (screen_y * SCREEN_WIDTH + x) * 4;
+                            frame[offset] = rgb[0];
+                            frame[offset + 1] = rgb[1];
+                            frame[offset + 2] = rgb[2];
+                            frame[offset + 3] = 0xFF;
+                        }
                     }
                 }
             }
@@ -272,7 +301,11 @@ impl PixelsVideoController {
         // Check if we're in graphics mode
         match self.current_mode {
             VideoMode::Graphics320x200 => {
-                self.render_graphics_320x200(&mut buffer);
+                if self.graphics_composite {
+                    self.render_graphics_640x200(&mut buffer);
+                } else {
+                    self.render_graphics_320x200(&mut buffer);
+                }
                 return buffer;
             }
             VideoMode::Graphics640x200 => {
@@ -318,13 +351,15 @@ impl PixelsVideoController {
         // Check if we're in graphics mode
         match self.current_mode {
             VideoMode::Graphics320x200 => {
-                // Render graphics mode
-                self.render_graphics_320x200(frame);
+                if self.graphics_composite {
+                    self.render_graphics_640x200(frame);
+                } else {
+                    self.render_graphics_320x200(frame);
+                }
                 self.has_pending_updates = false;
                 return;
             }
             VideoMode::Graphics640x200 => {
-                // Render graphics mode
                 self.render_graphics_640x200(frame);
                 self.has_pending_updates = false;
                 return;
@@ -411,6 +446,7 @@ impl Default for PixelsVideoController {
             graphics_bg_color: 0,  // Black
             graphics_palette: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
+            graphics_composite: false,
         }
     }
 }
@@ -460,20 +496,23 @@ impl VideoController for PixelsVideoController {
         // Store pixel data and CGA palette (EGA color indices)
         self.graphics_data = Some(pixel_data.to_vec());
         self.graphics_palette = Some(cga_palette);
+        self.graphics_composite = false; // Disable composite mode for normal 320x200
 
         // Mark for update
         self.has_pending_updates = true;
     }
 
-    fn update_graphics_640x200(&mut self, pixel_data: &[u8], fg_color: u8, bg_color: u8) {
-        // Store pixel data
+    fn update_graphics_640x200(
+        &mut self,
+        pixel_data: &[u8],
+        fg_color: u8,
+        bg_color: u8,
+        composite: bool,
+    ) {
         self.graphics_data = Some(pixel_data.to_vec());
-
-        // Store foreground and background colors
         self.graphics_fg_color = fg_color;
         self.graphics_bg_color = bg_color;
-
-        // Mark for update
+        self.graphics_composite = composite;
         self.has_pending_updates = true;
     }
 
