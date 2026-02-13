@@ -1929,7 +1929,7 @@ impl Cpu {
         let reloc_count = u16::from_le_bytes([program_data[6], program_data[7]]);
         let header_paragraphs = u16::from_le_bytes([program_data[8], program_data[9]]);
         let min_paragraphs = u16::from_le_bytes([program_data[10], program_data[11]]);
-        let _max_paragraphs = u16::from_le_bytes([program_data[12], program_data[13]]);
+        let max_paragraphs = u16::from_le_bytes([program_data[12], program_data[13]]);
         let init_ss = u16::from_le_bytes([program_data[14], program_data[15]]);
         let init_sp = u16::from_le_bytes([program_data[16], program_data[17]]);
         let _checksum = u16::from_le_bytes([program_data[18], program_data[19]]);
@@ -1953,19 +1953,53 @@ impl Cpu {
         );
 
         // Allocate memory: PSP (16 paragraphs) + load module + min extra
+        // Real DOS behavior: when max_paragraphs is large (0xFFFF), allocate ALL available memory
+        // so the program owns everything from its PSP to the top of conventional memory.
+        // LZEXE and other compressed EXEs rely on this to pre-compute compressed data addresses.
         let load_paragraphs = load_module_size.div_ceil(16) as u16;
-        let total_paragraphs = 16 + load_paragraphs + min_paragraphs;
+        let min_total_paragraphs = 16u16
+            .saturating_add(load_paragraphs)
+            .saturating_add(min_paragraphs);
+        let desired_paragraphs = if max_paragraphs == 0xFFFF {
+            0xFFFF // request all available memory
+        } else {
+            16u16
+                .saturating_add(load_paragraphs)
+                .saturating_add(max_paragraphs)
+        };
 
-        let psp_segment = match io.memory_allocate(total_paragraphs) {
+        // Try to allocate desired amount; fall back to max available (but not less than minimum)
+        let psp_segment = match io.memory_allocate(desired_paragraphs) {
             Ok(seg) => seg,
-            Err((error_code, _)) => {
-                log::warn!(
-                    "INT 21h AH=4Bh: Failed to allocate memory - error {}",
-                    error_code
+            Err((_, max_available)) => {
+                // Fall back to max available, but ensure it's at least the minimum required
+                if max_available < min_total_paragraphs {
+                    log::warn!(
+                        "INT 21h AH=4Bh: Not enough memory (need {} paragraphs, have {})",
+                        min_total_paragraphs,
+                        max_available
+                    );
+                    self.ax = DosError::InsufficientMemory as u16;
+                    self.set_flag(cpu_flag::CARRY, true);
+                    return;
+                }
+                log::debug!(
+                    "INT 21h AH=4Bh: Allocating max available {} paragraphs (wanted {})",
+                    max_available,
+                    desired_paragraphs
                 );
-                self.ax = error_code as u16;
-                self.set_flag(cpu_flag::CARRY, true);
-                return;
+                match io.memory_allocate(max_available) {
+                    Ok(seg) => seg,
+                    Err((error_code, _)) => {
+                        log::warn!(
+                            "INT 21h AH=4Bh: Failed to allocate memory - error {}",
+                            error_code
+                        );
+                        self.ax = error_code as u16;
+                        self.set_flag(cpu_flag::CARRY, true);
+                        return;
+                    }
+                }
             }
         };
 

@@ -3,6 +3,10 @@
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)
   - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
+- [ ] wasm - remove step button
+- [ ] wasm - on refresh memory settings are not applied
+- [ ] wasm - on reset after Installed A20 handler number 1 I get "ERROR: VDISK memory allocator already installed. XMS Driver not installed"
+- [ ] wasm - on reset mouse device not found
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
