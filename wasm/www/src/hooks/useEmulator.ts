@@ -15,7 +15,6 @@ interface UseEmulatorReturn {
     performance: Performance;
     startExecution: () => void;
     stopExecution: () => void;
-    stepExecution: () => void;
     loadProgram: (data: Uint8Array, segment: number, offset: number) => void;
     reset: () => void;
     bootAndStart: () => void;
@@ -150,20 +149,6 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: 
         setStatus('Stopped');
     };
 
-    const stepExecution = (): void => {
-        if (!computer) {
-            return;
-        }
-
-        try {
-            const stillRunning = computer.step();
-            setStatus(stillRunning ? 'Stepped 1 instruction' : 'CPU halted');
-        } catch (e) {
-            setStatus(`Step error: ${e}`);
-            console.error(e);
-        }
-    };
-
     const bootAndStart = (): void => {
         if (!computer || isRunningRef.current) {
             return;
@@ -274,7 +259,6 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: 
         performance,
         startExecution,
         stopExecution,
-        stepExecution,
         loadProgram,
         reset,
         bootAndStart,

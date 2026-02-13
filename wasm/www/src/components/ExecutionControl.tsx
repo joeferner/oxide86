@@ -5,10 +5,9 @@ interface ExecutionControlProps {
     isRunning: boolean;
     onStart: () => void;
     onStop: () => void;
-    onStep: () => void;
 }
 
-export function ExecutionControl({ isRunning, onStart, onStop, onStep }: ExecutionControlProps): React.ReactElement {
+export function ExecutionControl({ isRunning, onStart, onStop }: ExecutionControlProps): React.ReactElement {
     return (
         <div className={styles.controlGroup}>
             <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>
@@ -20,9 +19,6 @@ export function ExecutionControl({ isRunning, onStart, onStop, onStep }: Executi
                 </Button>
                 <Button onClick={onStop} disabled={!isRunning} color="red" size="compact-sm">
                     Stop
-                </Button>
-                <Button onClick={onStep} color="blue" size="compact-sm">
-                    Step
                 </Button>
             </Group>
         </div>

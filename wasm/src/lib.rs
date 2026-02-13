@@ -431,14 +431,6 @@ impl Emu86Computer {
         Ok(())
     }
 
-    /// Execute one instruction and return whether CPU is still running.
-    #[wasm_bindgen]
-    pub fn step(&mut self) -> bool {
-        self.computer.step();
-        self.computer.update_video();
-        !self.computer.is_halted()
-    }
-
     /// Execute instructions for approximately the given number of milliseconds.
     ///
     /// # Arguments

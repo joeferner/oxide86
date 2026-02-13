@@ -33,7 +33,6 @@ function App(): React.ReactElement {
         performance,
         startExecution,
         stopExecution,
-        stepExecution,
         loadProgram,
         reset,
         bootAndStart,
@@ -150,7 +149,6 @@ function App(): React.ReactElement {
                             isRunning={isRunning}
                             onStart={mode === 'boot' ? bootAndStart : startExecution}
                             onStop={stopExecution}
-                            onStep={stepExecution}
                         />
 
                         <StatusDisplay status={status} />
