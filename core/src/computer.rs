@@ -2,7 +2,7 @@ use anyhow::Result;
 
 use crate::{
     Bios, Clock, CpuType, DriveNumber, MouseInput, NullVideoController, SerialDevice,
-    SpeakerOutput, Video, VideoController,
+    SpeakerOutput, Video, VideoCardType, VideoController,
     cpu::{Cpu, bios::KeyPress},
     io::IoDevice,
     keyboard::KeyboardInput,
@@ -68,9 +68,11 @@ impl<V: VideoController> Computer<V> {
             speaker,
             cpu_type,
             1024,
+            VideoCardType::default(),
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn new_with_memory(
         keyboard: Box<dyn KeyboardInput>,
         mouse: Box<dyn MouseInput>,
@@ -79,6 +81,7 @@ impl<V: VideoController> Computer<V> {
         speaker: Box<dyn SpeakerOutput>,
         cpu_type: CpuType,
         memory_kb: u32,
+        video_card_type: VideoCardType,
     ) -> Self {
         let bios = Bios::new(keyboard, mouse, clock);
 
@@ -118,7 +121,11 @@ impl<V: VideoController> Computer<V> {
             memory::BDA_START + memory::BDA_NUM_HARD_DRIVES
         );
 
-        log::info!("Emulating CPU type: {}", cpu_type);
+        log::info!(
+            "Emulating CPU type: {}, video card: {}",
+            cpu_type,
+            video_card_type
+        );
 
         Self {
             cpu: Cpu::new(),
@@ -126,7 +133,7 @@ impl<V: VideoController> Computer<V> {
             memory,
             bios,
             io_device: IoDevice::new(),
-            video: Video::new(),
+            video: Video::new_with_card_type(video_card_type),
             video_controller,
             speaker,
             cycle_count: 0,

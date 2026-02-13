@@ -806,6 +806,10 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
     let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
         .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.common.cpu_type))?;
 
+    // Parse video card type
+    let video_card_type = emu86_core::VideoCardType::parse(&cli.common.video_card)
+        .ok_or_else(|| anyhow::anyhow!("Invalid video card type: {}", cli.common.video_card))?;
+
     // Create computer with keyboard, mouse, video, and speaker
     let keyboard = Box::new(GuiKeyboard::new());
     let mouse = Box::new(gui_mouse);
@@ -821,6 +825,7 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
         speaker,
         cpu_type,
         cli.common.memory,
+        video_card_type,
     );
 
     // Force initial video render to show blank screen

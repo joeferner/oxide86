@@ -5,12 +5,14 @@ export interface EmulatorConfig {
   cpuType: string;
   memoryKb: number;
   clockMhz: number;
+  videoCard: string;
 }
 
 export const DEFAULT_CONFIG: EmulatorConfig = {
   cpuType: '8086',
   memoryKb: 640,
   clockMhz: 4.77,
+  videoCard: 'ega',
 };
 
 const CPU_OPTIONS = [
@@ -43,6 +45,12 @@ const CLOCK_OPTIONS = [
   { value: '100', label: '100 MHz (Pentium)' },
 ];
 
+const VIDEO_CARD_OPTIONS = [
+  { value: 'cga', label: 'CGA (text + 4-color graphics)' },
+  { value: 'ega', label: 'EGA (CGA + 16-color graphics)' },
+  { value: 'vga', label: 'VGA (EGA + VGA modes)' },
+];
+
 interface ConfigDialogProps {
   opened: boolean;
   onClose: () => void;
@@ -55,6 +63,7 @@ export function ConfigDialog({ opened, onClose, currentConfig, onApply, isRunnin
   const [cpuType, setCpuType] = useState(currentConfig.cpuType);
   const [memoryKb, setMemoryKb] = useState(String(currentConfig.memoryKb));
   const [clockMhz, setClockMhz] = useState(String(currentConfig.clockMhz));
+  const [videoCard, setVideoCard] = useState(currentConfig.videoCard);
 
   // Sync local state from currentConfig whenever the dialog opens
   useEffect(() => {
@@ -62,6 +71,7 @@ export function ConfigDialog({ opened, onClose, currentConfig, onApply, isRunnin
       setCpuType(currentConfig.cpuType);
       setMemoryKb(String(currentConfig.memoryKb));
       setClockMhz(String(currentConfig.clockMhz));
+      setVideoCard(currentConfig.videoCard);
     }
   }, [opened, currentConfig]);
 
@@ -70,6 +80,7 @@ export function ConfigDialog({ opened, onClose, currentConfig, onApply, isRunnin
       cpuType,
       memoryKb: parseInt(memoryKb, 10),
       clockMhz: parseFloat(clockMhz),
+      videoCard,
     });
     onClose();
   };
@@ -117,6 +128,15 @@ export function ConfigDialog({ opened, onClose, currentConfig, onApply, isRunnin
             data={CLOCK_OPTIONS}
             value={clockMhz}
             onChange={(v) => v && setClockMhz(v)}
+          />
+        </div>
+
+        <div>
+          <Text size="sm" fw={500} mb={4}>Video Card</Text>
+          <Select
+            data={VIDEO_CARD_OPTIONS}
+            value={videoCard}
+            onChange={(v) => v && setVideoCard(v)}
           />
         </div>
 

@@ -85,6 +85,74 @@ pub fn init() {
     log::info!("emu86 WASM module initialized");
 }
 
+/// Configuration for creating a new emulator instance.
+///
+/// Use this with `Emu86Computer.new_with_config()` to customize the emulator.
+#[wasm_bindgen]
+pub struct ComputerConfig {
+    /// CPU type: "8086", "286", "386", or "486" (default: "8086")
+    cpu_type: String,
+    /// Memory size in KB (default: 640)
+    memory_kb: u32,
+    /// Target clock speed in MHz; 0.0 = unlimited (default: 4.77)
+    clock_mhz: f64,
+    /// Video card type: "cga", "ega", or "vga" (default: "ega")
+    video_card: String,
+}
+
+#[wasm_bindgen]
+impl ComputerConfig {
+    #[wasm_bindgen(constructor)]
+    pub fn new() -> Self {
+        Self {
+            cpu_type: "8086".to_string(),
+            memory_kb: 640,
+            clock_mhz: 4.77,
+            video_card: "ega".to_string(),
+        }
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn cpu_type(&self) -> String {
+        self.cpu_type.clone()
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_cpu_type(&mut self, value: String) {
+        self.cpu_type = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn memory_kb(&self) -> u32 {
+        self.memory_kb
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_memory_kb(&mut self, value: u32) {
+        self.memory_kb = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn clock_mhz(&self) -> f64 {
+        self.clock_mhz
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_clock_mhz(&mut self, value: f64) {
+        self.clock_mhz = value;
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn video_card(&self) -> String {
+        self.video_card.clone()
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_video_card(&mut self, value: String) {
+        self.video_card = value;
+    }
+}
+
 /// WASM wrapper for the Computer emulator
 #[wasm_bindgen]
 pub struct Emu86Computer {
@@ -101,29 +169,29 @@ pub struct Emu86Computer {
 
 #[wasm_bindgen]
 impl Emu86Computer {
-    /// Create a new emulator instance with default settings (8086, 640KB, 4.77 MHz).
+    /// Create a new emulator instance with default settings (8086, 640KB, 4.77 MHz, EGA).
     ///
     /// # Arguments
     /// * `canvas_id` - The ID of the canvas element to render to
     #[wasm_bindgen(constructor)]
     pub fn new(canvas_id: &str) -> Result<Emu86Computer, JsValue> {
-        Self::new_with_config(canvas_id, "8086", 640, 4.77)
+        Self::new_with_config(canvas_id, ComputerConfig::new())
     }
 
     /// Create a new emulator instance with custom configuration.
     ///
     /// # Arguments
     /// * `canvas_id` - The ID of the canvas element to render to
-    /// * `cpu_type` - CPU type string: "8086", "286", "386", or "486"
-    /// * `memory_kb` - Amount of conventional memory in KB (e.g. 640)
-    /// * `clock_mhz` - Target clock speed in MHz (0.0 = unlimited)
+    /// * `config` - Configuration object (ComputerConfig)
     #[wasm_bindgen]
     pub fn new_with_config(
         canvas_id: &str,
-        cpu_type: &str,
-        memory_kb: u32,
-        clock_mhz: f64,
+        config: ComputerConfig,
     ) -> Result<Emu86Computer, JsValue> {
+        let cpu_type = config.cpu_type.as_str();
+        let memory_kb = config.memory_kb;
+        let clock_mhz = config.clock_mhz;
+        let video_card = config.video_card.as_str();
         let window: Window =
             web_sys::window().ok_or_else(|| JsValue::from_str("No window object"))?;
         let document = window
@@ -171,18 +239,21 @@ impl Emu86Computer {
             _ => emu86_core::CpuType::I8086,
         };
 
+        let resolved_video_card = emu86_core::VideoCardType::parse(video_card).unwrap_or_default();
+
         // Clamp memory: 256 KB minimum, 64 MB maximum (extended memory requires 286+)
         let memory_kb = memory_kb.clamp(256, 65536);
 
         log::info!(
-            "Initializing emulator: CPU={}, memory={}KB, clock={} MHz",
+            "Initializing emulator: CPU={}, memory={}KB, clock={} MHz, video={}",
             cpu_type,
             memory_kb,
             if clock_mhz == 0.0 {
                 "unlimited".to_string()
             } else {
                 format!("{}", clock_mhz)
-            }
+            },
+            video_card,
         );
 
         let clock = Box::new(clock::WasmClock);
@@ -194,6 +265,7 @@ impl Emu86Computer {
             speaker,
             resolved_cpu_type,
             memory_kb,
+            resolved_video_card,
         );
 
         // Force initial video render to show blank screen

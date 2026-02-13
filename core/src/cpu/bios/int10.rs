@@ -40,7 +40,7 @@ impl Cpu {
             0x12 => self.int10_alternate_function_select(),
             0x13 => self.int10_write_string(memory, video),
             0x15 => self.int10_return_physical_display_params(),
-            0x1A => self.int10_display_combination_code(memory),
+            0x1A => self.int10_display_combination_code(memory, video),
             0x1B => self.int10_functionality_state_info(memory, video),
             0xFA => self.int10_installation_checks(),
             0xFE => self.int10_get_video_buffer(memory),
@@ -60,6 +60,16 @@ impl Cpu {
     /// Output: None
     fn int10_set_video_mode(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
         let mode = (self.ax & 0xFF) as u8; // AL
+
+        // Check if the requested mode is supported by the video card type
+        if !video.supports_mode(mode) {
+            log::warn!(
+                "INT 10h AH=00h: Video mode 0x{:02X} not supported by {} card - ignoring",
+                mode,
+                video.card_type()
+            );
+            return;
+        }
 
         // Support text modes (0x00-0x03, 0x07), CGA graphics (0x04-0x06), EGA graphics (0x0D)
         match mode {
@@ -1859,7 +1869,7 @@ impl Cpu {
     ///   08h = VGA with color analog display
     ///   0Bh = MCGA with color digital display
     ///   0Ch = MCGA with monochrome analog display
-    fn int10_display_combination_code(&mut self, memory: &mut Memory) {
+    fn int10_display_combination_code(&mut self, memory: &mut Memory, video: &crate::video::Video) {
         let subfunction = (self.ax & 0xFF) as u8; // AL
 
         // Use BDA location to store display combination (not standard, but convenient)
@@ -1872,9 +1882,9 @@ impl Cpu {
                 let active_display = (code & 0xFF) as u8;
                 let alternate_display = (code >> 8) as u8;
 
-                // If not initialized, return default (VGA with color)
+                // If not initialized, return code based on video card type
                 let (active, alternate) = if code == 0 {
-                    (0x08, 0x00)
+                    (video.card_type().display_combination_code(), 0x00)
                 } else {
                     (active_display, alternate_display)
                 };

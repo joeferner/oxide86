@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, RefObject, useCallback } from 'react'
-import wasmInit, { Emu86Computer } from '../../pkg/emu86_wasm'
+import wasmInit, { ComputerConfig, Emu86Computer } from '../../pkg/emu86_wasm'
 import { EmulatorConfig, DEFAULT_CONFIG } from '../components/ConfigDialog'
 
 interface Performance {
@@ -33,12 +33,12 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: 
   const configRef = useRef<EmulatorConfig>(DEFAULT_CONFIG)
 
   const createComputer = useCallback((config: EmulatorConfig): Emu86Computer => {
-    const comp = Emu86Computer.new_with_config(
-      'display',
-      config.cpuType,
-      config.memoryKb,
-      config.clockMhz,
-    )
+    const cfg = new ComputerConfig()
+    cfg.cpu_type = config.cpuType
+    cfg.memory_kb = config.memoryKb
+    cfg.clock_mhz = config.clockMhz
+    cfg.video_card = config.videoCard
+    const comp = Emu86Computer.new_with_config('display', cfg)
     comp.attach_serial_mouse_com1()
     return comp
   }, [])

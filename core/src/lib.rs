@@ -21,6 +21,7 @@ pub use crate::video::{
     CursorPosition, NullVideoController, VIDEO_MEMORY_END, VIDEO_MEMORY_SIZE, VIDEO_MEMORY_START,
     Video, VideoController, VideoMode, colors,
 };
+pub use crate::video_card_type::VideoCardType;
 pub use computer::Computer;
 pub use font::Cp437Font;
 pub use palette::TextModePalette;
@@ -45,6 +46,7 @@ pub mod serial_port;
 pub mod speaker;
 pub mod utils;
 pub mod video;
+pub mod video_card_type;
 
 /// Drive numbering:
 /// - 0x00 = Floppy A:

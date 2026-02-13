@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] Add configuration option to native-gui, native-cli, and wasm for max screen type, CGA or EGA
+- [ ] WASM - save computer configuration to local storage
 - [ ] WASM - support creating new disks
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)
@@ -8,6 +8,7 @@
 - [ ] WASM - add feature to save ram or video ram
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
 - [ ] create better onboarding experience for gui and wasm
+- [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] Test EGA Applications
   - [ ] Commander Keen
 - [ ] Support 386

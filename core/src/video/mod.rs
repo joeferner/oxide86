@@ -3,6 +3,7 @@ use crate::video::{
     ega::EgaBuffer,
     text::TextBuffer,
 };
+use crate::video_card_type::VideoCardType;
 
 pub mod cga;
 pub mod composite;
@@ -176,6 +177,8 @@ pub struct Video {
     /// Flag to sync graphics buffer from raw B800 memory on next update
     /// Set when transitioning from text → CGA graphics to preserve data (e.g., MS Flight Simulator)
     needs_memory_sync: bool,
+    /// Video card type - limits which video modes are available
+    card_type: VideoCardType,
 }
 
 /// Initialize VGA DAC palette with EGA defaults
@@ -193,6 +196,10 @@ fn default_vga_palette() -> [[u8; 3]; 256] {
 
 impl Video {
     pub fn new() -> Self {
+        Self::new_with_card_type(VideoCardType::default())
+    }
+
+    pub fn new_with_card_type(card_type: VideoCardType) -> Self {
         Self {
             cursor: CursorPosition::default(),
             text_buffer: TextBuffer::default(),
@@ -213,7 +220,18 @@ impl Video {
             ega_read_plane: 0,  // Read from plane 0
             composite_mode: false,
             needs_memory_sync: false,
+            card_type,
         }
+    }
+
+    /// Get the video card type
+    pub fn card_type(&self) -> VideoCardType {
+        self.card_type
+    }
+
+    /// Check if the given video mode is supported by the current video card type
+    pub fn supports_mode(&self, mode: u8) -> bool {
+        self.card_type.supports_mode(mode)
     }
 
     /// Read a single byte from video memory

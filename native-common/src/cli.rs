@@ -51,7 +51,7 @@ pub struct CommonCli {
     pub int_log: bool,
 
     /// CPU type to emulate (8086, 286, 386, 486)
-    #[arg(long = "cpu", default_value = "8086")]
+    #[arg(long = "cpu", default_value = "286")]
     pub cpu_type: String,
 
     /// CPU clock speed in MHz (default: 4.77 for original 8086)
@@ -62,4 +62,8 @@ pub struct CommonCli {
     /// extended memory = memory - 1024 KB on 286+ CPUs)
     #[arg(long, default_value = "1024", value_name = "KB")]
     pub memory: u32,
+
+    /// Video card type to emulate (cga, ega, vga)
+    #[arg(long = "video-card", default_value = "ega")]
+    pub video_card: String,
 }

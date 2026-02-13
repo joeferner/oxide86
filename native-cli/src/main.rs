@@ -65,6 +65,10 @@ fn main() -> Result<()> {
     let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
         .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.common.cpu_type))?;
 
+    // Parse video card type
+    let video_card_type = emu86_core::VideoCardType::parse(&cli.common.video_card)
+        .ok_or_else(|| anyhow::anyhow!("Invalid video card type: {}", cli.common.video_card))?;
+
     // Create computer with keyboard, mouse, video, and speaker
     let keyboard = Box::new(TerminalKeyboard::new());
     let terminal_mouse = TerminalMouse::new();
@@ -85,6 +89,7 @@ fn main() -> Result<()> {
         speaker,
         cpu_type,
         cli.common.memory,
+        video_card_type,
     );
 
     // Load disks and program/boot
