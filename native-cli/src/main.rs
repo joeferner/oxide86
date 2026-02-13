@@ -32,10 +32,6 @@ mod command_mode;
 struct Cli {
     #[command(flatten)]
     common: CommonCli,
-
-    /// CPU clock speed in MHz (default: 4.77 for original 8086)
-    #[arg(long, default_value = "4.77")]
-    speed: f64,
 }
 
 fn main() -> Result<()> {
@@ -114,8 +110,8 @@ fn main() -> Result<()> {
 
     // Run the program with optional speed throttling
     let quit_from_command_mode = {
-        let clock_hz = (cli.speed * 1_000_000.0) as u64;
-        log::info!("Running at {:.2} MHz ({} Hz)", cli.speed, clock_hz);
+        let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
+        log::info!("Running at {:.2} MHz ({} Hz)", cli.common.speed, clock_hz);
         run(&mut computer, Some(clock_hz))
     };
 

@@ -53,4 +53,8 @@ pub struct CommonCli {
     /// CPU type to emulate (8086, 286, 386, 486)
     #[arg(long = "cpu", default_value = "8086")]
     pub cpu_type: String,
+
+    /// CPU clock speed in MHz (default: 4.77 for original 8086)
+    #[arg(long, default_value = "4.77")]
+    pub speed: f64,
 }

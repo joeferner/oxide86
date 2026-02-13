@@ -635,12 +635,12 @@ fn run(cli: Cli) -> Result<()> {
         halted: false,
     };
 
-    // Speed throttling state (4.77 MHz = original 8086 speed)
-    const CLOCK_HZ: u64 = 4_770_000;
-    const NANOS_PER_CYCLE: u64 = 1_000_000_000 / CLOCK_HZ;
+    // Speed throttling state
+    let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
+    let nanos_per_cycle = 1_000_000_000u64 / clock_hz;
     let throttle_start = Instant::now();
 
-    log::info!("Running at 4.77 MHz");
+    log::info!("Running at {:.2} MHz ({} Hz)", cli.common.speed, clock_hz);
 
     // Update menu states
     app_state
@@ -759,7 +759,7 @@ fn run(cli: Cli) -> Result<()> {
                             &mut pixels,
                             app_state.is_paused,
                             throttle_start,
-                            NANOS_PER_CYCLE,
+                            nanos_per_cycle,
                         );
 
                         // Handle halt: show notification
