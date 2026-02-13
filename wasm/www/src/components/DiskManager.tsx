@@ -157,25 +157,35 @@ export function DiskManager({
         }
     };
 
-    // Upload file to disk
-    const uploadFile = async (file: File | null): Promise<void> => {
-        if (!computer || !file) {
+    // Upload files to disk
+    const uploadFiles = async (selectedFiles: File[]): Promise<void> => {
+        if (!computer || selectedFiles.length === 0) {
             return;
         }
 
         setLoading(true);
-        try {
-            const arrayBuffer = await file.arrayBuffer();
-            const data = new Uint8Array(arrayBuffer);
-            const targetPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-            computer.write_file_to_disk(driveNumber, targetPath, data);
-            onStatusUpdate(`Uploaded ${file.name} to ${getDriveLetter(driveNumber)}:${targetPath}`);
-            browseDisk(driveNumber, currentPath); // Refresh listing
-        } catch (e) {
-            onStatusUpdate(`Error uploading file: ${e}`);
-        } finally {
-            setLoading(false);
+        let uploaded = 0;
+        const errors: string[] = [];
+
+        for (const file of selectedFiles) {
+            try {
+                const arrayBuffer = await file.arrayBuffer();
+                const data = new Uint8Array(arrayBuffer);
+                const targetPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+                computer.write_file_to_disk(driveNumber, targetPath, data);
+                uploaded++;
+            } catch (e) {
+                errors.push(`${file.name}: ${e}`);
+            }
         }
+
+        if (errors.length > 0) {
+            onStatusUpdate(`Uploaded ${uploaded}/${selectedFiles.length} files. Errors: ${errors.join(', ')}`);
+        } else {
+            onStatusUpdate(`Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''} to ${getDriveLetter(driveNumber)}:${currentPath}`);
+        }
+        browseDisk(driveNumber, currentPath);
+        setLoading(false);
     };
 
     // Show delete confirmation dialog
@@ -304,10 +314,11 @@ export function DiskManager({
                 <Stack gap="md">
                     <Group justify="flex-end">
                         <FileButton
-                            onChange={(file) => {
-                                void uploadFile(file);
+                            onChange={(files) => {
+                                void uploadFiles(files);
                             }}
                             accept="*/*"
+                            multiple
                         >
                             {(props) => (
                                 <Button {...props} size="sm" disabled={loading} color="blue">
