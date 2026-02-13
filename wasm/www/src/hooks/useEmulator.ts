@@ -1,5 +1,6 @@
-import { useState, useEffect, useRef, RefObject } from 'react'
+import { useState, useEffect, useRef, RefObject, useCallback } from 'react'
 import wasmInit, { Emu86Computer } from '../../pkg/emu86_wasm'
+import { EmulatorConfig, DEFAULT_CONFIG } from '../components/ConfigDialog'
 
 interface Performance {
   target: number;
@@ -18,6 +19,7 @@ interface UseEmulatorReturn {
   loadProgram: (data: Uint8Array, segment: number, offset: number) => void;
   reset: () => void;
   bootAndStart: () => void;
+  applyConfig: (config: EmulatorConfig) => void;
 }
 
 export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: number): UseEmulatorReturn {
@@ -26,47 +28,47 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: 
   const [isRunning, setIsRunning] = useState(false)
   const [performance, setPerformance] = useState<Performance>({ target: 0, actual: 0 })
   const animationFrameRef = useRef<number | null>(null)
-  const initializedRef = useRef(false)
+  const wasmInitializedRef = useRef(false)
   const isRunningRef = useRef(false)
+  const configRef = useRef<EmulatorConfig>(DEFAULT_CONFIG)
+
+  const createComputer = useCallback((config: EmulatorConfig): Emu86Computer => {
+    const comp = Emu86Computer.new_with_config(
+      'display',
+      config.cpuType,
+      config.memoryKb,
+      config.clockMhz,
+    )
+    comp.attach_serial_mouse_com1()
+    return comp
+  }, [])
 
   useEffect(() => {
-    // Prevent double initialization (React StrictMode runs effects twice in dev)
-    if (initializedRef.current) {
-      return
-    }
-
     let mounted = true
 
     const initEmulator = async () => {
       // Wait for canvas to be available
       if (!canvasRef?.current) {
-        // Retry after a short delay
         if (mounted) {
           setTimeout(initEmulator, 100)
         }
         return
       }
 
-      // Double-check we haven't already initialized
-      if (initializedRef.current) {
-        return
-      }
-
       try {
-        initializedRef.current = true
+        // Initialize WASM module only once
+        if (!wasmInitializedRef.current) {
+          await wasmInit()
+          wasmInitializedRef.current = true
+        }
 
-        // Initialize WASM module
-        await wasmInit()
-
-        const comp = new Emu86Computer('display')
-        comp.attach_serial_mouse_com1()
+        const comp = createComputer(configRef.current)
 
         if (mounted) {
           setComputer(comp)
           setStatus('Emulator initialized. Serial mouse attached to COM1. Load disk images to begin.')
         }
       } catch (e) {
-        initializedRef.current = false
         if (mounted) {
           setStatus(`Initialization error: ${e}`)
           console.error(e)
@@ -81,10 +83,8 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: 
       if (animationFrameRef.current) {
         cancelAnimationFrame(animationFrameRef.current)
       }
-      // Reset flag on cleanup so remount can reinitialize
-      initializedRef.current = false
     }
-  }, [canvasRef])
+  }, [canvasRef, createComputer])
 
   const updatePerformance = () => {
     if (computer) {
@@ -223,6 +223,27 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: 
     }
   }
 
+  const applyConfig = useCallback((config: EmulatorConfig) => {
+    // Stop execution before recreating
+    isRunningRef.current = false
+    setIsRunning(false)
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+    }
+
+    configRef.current = config
+
+    try {
+      const comp = createComputer(config)
+      setComputer(comp)
+      setStatus(`Configuration applied: ${config.cpuType}, ${config.memoryKb}KB, ${config.clockMhz} MHz`)
+    } catch (e) {
+      setStatus(`Configuration error: ${e}`)
+      console.error(e)
+    }
+  }, [createComputer])
+
   return {
     computer,
     status,
@@ -235,5 +256,6 @@ export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: 
     loadProgram,
     reset,
     bootAndStart,
+    applyConfig,
   }
 }

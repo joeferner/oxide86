@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] Add configuration dialog in wasm for amount of memory system has, cpu type, cpu clock speed
+- [ ] Add configuration option to native-gui, native-cli, and wasm for max screen type, CGA or EGA
 - [ ] WASM - support creating new disks
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)

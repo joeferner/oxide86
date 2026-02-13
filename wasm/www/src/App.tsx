@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from 'react'
-import { Container, Title, Group, Paper, Stack, SegmentedControl } from '@mantine/core'
+import { Container, Title, Group, Paper, Stack, SegmentedControl, Button } from '@mantine/core'
 import { useEmulator } from './hooks/useEmulator'
 import { usePointerLock } from './hooks/usePointerLock'
 import { EmulatorCanvas } from './components/EmulatorCanvas'
@@ -12,12 +12,15 @@ import { StatusDisplay } from './components/StatusDisplay'
 import { RunningIndicator } from './components/RunningIndicator'
 import { PerformanceDisplay } from './components/PerformanceDisplay'
 import { DiskManager } from './components/DiskManager'
+import { ConfigDialog, EmulatorConfig, DEFAULT_CONFIG } from './components/ConfigDialog'
 
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const { isLocked } = usePointerLock(canvasRef)
   const [mode, setMode] = useState<'boot' | 'program'>('boot')
   const [diskManagerOpened, setDiskManagerOpened] = useState(false)
+  const [configOpened, setConfigOpened] = useState(false)
+  const [currentConfig, setCurrentConfig] = useState<EmulatorConfig>(DEFAULT_CONFIG)
   const [selectedDrive, setSelectedDrive] = useState<number>(0x80)
   const [bootDrive, setBootDrive] = useState<number>(0x80) // Default to C:
 
@@ -33,6 +36,7 @@ function App() {
     loadProgram,
     reset,
     bootAndStart,
+    applyConfig,
   } = useEmulator(canvasRef, bootDrive)
 
   const handleStatusUpdate = useCallback((message: string) => {
@@ -63,9 +67,19 @@ function App() {
     setDiskManagerOpened(true)
   }, [])
 
+  const handleApplyConfig = useCallback((config: EmulatorConfig) => {
+    setCurrentConfig(config)
+    applyConfig(config)
+  }, [applyConfig])
+
   return (
     <Container size="xl" p="md">
-      <Title order={1} ta="center" mb="md">emu86 - Intel 8086 Emulator</Title>
+      <Group justify="space-between" mb="md">
+        <Title order={1}>emu86 - Intel 8086 Emulator</Title>
+        <Button variant="default" leftSection="⚙" onClick={() => setConfigOpened(true)}>
+          System Configuration
+        </Button>
+      </Group>
 
       <InfoBox isPointerLocked={isLocked} />
 
@@ -133,6 +147,14 @@ function App() {
         onClose={() => setDiskManagerOpened(false)}
         onStatusUpdate={handleStatusUpdate}
         driveNumber={selectedDrive}
+      />
+
+      <ConfigDialog
+        opened={configOpened}
+        onClose={() => setConfigOpened(false)}
+        currentConfig={currentConfig}
+        onApply={handleApplyConfig}
+        isRunning={isRunning}
       />
     </Container>
   )

@@ -95,16 +95,35 @@ pub struct Emu86Computer {
     perf_last_cycle_count: u64,
     perf_current_mhz: f64,
     perf_update_interval_ms: f64,
+    // Configuration
+    target_mhz: f64,
 }
 
 #[wasm_bindgen]
 impl Emu86Computer {
-    /// Create a new emulator instance.
+    /// Create a new emulator instance with default settings (8086, 640KB, 4.77 MHz).
     ///
     /// # Arguments
     /// * `canvas_id` - The ID of the canvas element to render to
     #[wasm_bindgen(constructor)]
     pub fn new(canvas_id: &str) -> Result<Emu86Computer, JsValue> {
+        Self::new_with_config(canvas_id, "8086", 640, 4.77)
+    }
+
+    /// Create a new emulator instance with custom configuration.
+    ///
+    /// # Arguments
+    /// * `canvas_id` - The ID of the canvas element to render to
+    /// * `cpu_type` - CPU type string: "8086", "286", "386", or "486"
+    /// * `memory_kb` - Amount of conventional memory in KB (e.g. 640)
+    /// * `clock_mhz` - Target clock speed in MHz (0.0 = unlimited)
+    #[wasm_bindgen]
+    pub fn new_with_config(
+        canvas_id: &str,
+        cpu_type: &str,
+        memory_kb: u32,
+        clock_mhz: f64,
+    ) -> Result<Emu86Computer, JsValue> {
         let window: Window =
             web_sys::window().ok_or_else(|| JsValue::from_str("No window object"))?;
         let document = window
@@ -145,18 +164,36 @@ impl Emu86Computer {
             }
         };
 
-        // Use default CPU type (8086) for WASM
-        // TODO: Add option to configure CPU type via JavaScript API
-        let cpu_type = emu86_core::CpuType::default();
+        let resolved_cpu_type = match cpu_type {
+            "286" => emu86_core::CpuType::I80286,
+            "386" => emu86_core::CpuType::I80386,
+            "486" => emu86_core::CpuType::I80486,
+            _ => emu86_core::CpuType::I8086,
+        };
+
+        // Clamp memory: 256 KB minimum, 64 MB maximum (extended memory requires 286+)
+        let memory_kb = memory_kb.clamp(256, 65536);
+
+        log::info!(
+            "Initializing emulator: CPU={}, memory={}KB, clock={} MHz",
+            cpu_type,
+            memory_kb,
+            if clock_mhz == 0.0 {
+                "unlimited".to_string()
+            } else {
+                format!("{}", clock_mhz)
+            }
+        );
 
         let clock = Box::new(clock::WasmClock);
-        let mut computer = Computer::new(
+        let mut computer = Computer::new_with_memory(
             keyboard_wrapper,
             mouse_wrapper,
             clock,
             video,
             speaker,
-            cpu_type,
+            resolved_cpu_type,
+            memory_kb,
         );
 
         // Force initial video render to show blank screen
@@ -169,6 +206,7 @@ impl Emu86Computer {
             perf_last_cycle_count: 0,
             perf_current_mhz: 0.0,
             perf_update_interval_ms: 200.0,
+            target_mhz: clock_mhz,
         })
     }
 
@@ -395,8 +433,8 @@ impl Emu86Computer {
         // Update performance metrics
         self.update_performance(current_time_ms);
 
-        // 8086 at 4.77 MHz: approximately 4770 cycles per ms
-        let cycles = (ms * 4770.0) as u64;
+        // target_mhz * 1000 = cycles per ms
+        let cycles = (ms * self.target_mhz * 1000.0) as u64;
         let mut remaining = cycles;
 
         while remaining > 0 {
@@ -425,10 +463,10 @@ impl Emu86Computer {
         log::info!("Computer reset");
     }
 
-    /// Get the target clock rate in MHz (always 4.77 for 8086).
+    /// Get the target clock rate in MHz.
     #[wasm_bindgen]
     pub fn get_target_mhz(&self) -> f64 {
-        4.77
+        self.target_mhz
     }
 
     /// Get the actual measured clock rate in MHz.

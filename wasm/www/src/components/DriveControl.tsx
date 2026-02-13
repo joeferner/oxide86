@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Group, Button, FileButton, Text, ActionIcon, Tooltip } from '@mantine/core'
 import { Emu86Computer } from '../../pkg/emu86_wasm'
 import styles from './ControlGroup.module.scss'
@@ -22,6 +22,25 @@ export function DriveControl({ computer, onStatusUpdate, onManageDrive }: DriveC
   const [floppyAFile, setFloppyAFile] = useState<File | null>(null)
   const [floppyBFile, setFloppyBFile] = useState<File | null>(null)
   const [hddFile, setHddFile] = useState<File | null>(null)
+
+  // Re-mount previously loaded drives whenever the computer instance is replaced
+  useEffect(() => {
+    if (!computer) return
+    const remount = async () => {
+      if (floppyAFile) {
+        try { computer.load_floppy(0, await loadFile(floppyAFile)) } catch { setFloppyAFile(null) }
+      }
+      if (floppyBFile) {
+        try { computer.load_floppy(1, await loadFile(floppyBFile)) } catch { setFloppyBFile(null) }
+      }
+      if (hddFile) {
+        try { computer.add_hard_drive(await loadFile(hddFile)) } catch { setHddFile(null) }
+      }
+    }
+    remount()
+  // Only re-run when the computer instance itself changes, not when file state changes
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [computer])
 
   const handleDownloadDrive = async (driveType: 'floppy' | 'hdd', driveNumber: number) => {
     if (!computer) return
