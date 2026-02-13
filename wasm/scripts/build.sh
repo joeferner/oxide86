@@ -9,5 +9,8 @@ echo "Building emu86 WASM module..."
 # Build WASM with wasm-pack
 wasm-pack build --target web --out-dir www/pkg
 
+cd "${SCRIPT_DIR}/../www"
+npm run pre-commit
+
 echo ""
 echo "WASM Build complete!"

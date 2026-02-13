@@ -12,6 +12,13 @@ export default defineConfig({
       clientPort: 3000,
     },
   },
+  css: {
+    preprocessorOptions: {
+      scss: {
+        api: 'modern-compiler',
+      },
+    },
+  },
   build: {
     outDir: 'dist',
     assetsDir: 'assets',

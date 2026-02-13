@@ -72,6 +72,9 @@ pub struct Computer<V: VideoController = NullVideoController> {
 }
 
 impl<V: VideoController> Computer<V> {
+    // Need to keep VideoController as a generic because native-gui uses functions only available
+    // to it's implementation directly.
+
     pub fn new(
         keyboard: Box<dyn KeyboardInput>,
         mouse: Box<dyn MouseInput>,
