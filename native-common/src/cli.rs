@@ -57,4 +57,9 @@ pub struct CommonCli {
     /// CPU clock speed in MHz (default: 4.77 for original 8086)
     #[arg(long, default_value = "4.77")]
     pub speed: f64,
+
+    /// Memory size in KB (default: 1024; conventional memory capped at 640 KB,
+    /// extended memory = memory - 1024 KB on 286+ CPUs)
+    #[arg(long, default_value = "1024", value_name = "KB")]
+    pub memory: u32,
 }

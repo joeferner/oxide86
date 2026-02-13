@@ -60,11 +60,34 @@ impl<V: VideoController> Computer<V> {
         speaker: Box<dyn SpeakerOutput>,
         cpu_type: CpuType,
     ) -> Self {
+        Self::new_with_memory(
+            keyboard,
+            mouse,
+            clock,
+            video_controller,
+            speaker,
+            cpu_type,
+            1024,
+        )
+    }
+
+    pub fn new_with_memory(
+        keyboard: Box<dyn KeyboardInput>,
+        mouse: Box<dyn MouseInput>,
+        clock: Box<dyn Clock>,
+        video_controller: V,
+        speaker: Box<dyn SpeakerOutput>,
+        cpu_type: CpuType,
+        memory_kb: u32,
+    ) -> Self {
         let bios = Bios::new(keyboard, mouse, clock);
 
-        let mut memory = Memory::new();
+        let mut memory = memory::Memory::new_with_size(memory_kb);
         memory.initialize_ivt();
         memory.initialize_bda();
+        // Override BDA memory size with the configured value
+        let conventional_kb = memory.conventional_memory_kb();
+        memory.write_u16(memory::BDA_START + memory::BDA_MEMORY_SIZE, conventional_kb);
         memory.initialize_fonts();
 
         // Initialize BDA timer counter from host system time

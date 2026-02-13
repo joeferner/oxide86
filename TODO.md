@@ -1,6 +1,5 @@
 # TODO
 
-- [ ] add options to native-gui and native-cli command line options to set amount of memory
 - [ ] Add configuration dialog in wasm for amount of memory system has, cpu type, cpu clock speed
 - [ ] WASM - support creating new disks
 - [ ] check-it 2

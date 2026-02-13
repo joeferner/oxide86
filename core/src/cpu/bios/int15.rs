@@ -16,7 +16,13 @@ impl Cpu {
             0x10 => self.int15_top_view_multi_dos(),
             0x41 => self.int15_wait_external_event(),
             0x86 => self.int15_wait(memory),
-            0x88 => self.int15_get_extended_memory(cpu_type),
+            0x88 => {
+                // Cap reported extended memory by both what the CPU supports and what is installed
+                let cpu_max = cpu_type.max_extended_memory_kb();
+                let installed = memory.extended_memory_kb();
+                let extended_kb = cpu_max.min(installed);
+                self.int15_get_extended_memory(cpu_type, extended_kb);
+            }
             0xC0 => self.int15_get_system_config(memory),
             0xC1 => self.int15_get_ebda_segment(),
             _ => {
@@ -108,8 +114,7 @@ impl Cpu {
     ///
     /// Note: 8086 can only address 1MB, so this returns 0 for an 8086 system.
     /// 286+ systems return the amount of extended memory available.
-    fn int15_get_extended_memory(&mut self, cpu_type: CpuType) {
-        let extended_memory_kb = cpu_type.extended_memory_kb();
+    fn int15_get_extended_memory(&mut self, cpu_type: CpuType, extended_memory_kb: u16) {
         self.ax = extended_memory_kb;
         self.set_flag(cpu_flag::CARRY, false);
         log::info!(

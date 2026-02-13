@@ -84,24 +84,47 @@ pub struct Memory {
     /// A20 gate state (true = enabled, addresses can go above 1MB)
     /// When false, bit 20 is masked off (addresses wrap at 1MB like 8086)
     a20_enabled: bool,
+    /// Total memory size in KB (conventional + extended)
+    memory_kb: u32,
 }
 
 impl Memory {
     pub fn new() -> Self {
+        Self::new_with_size(1024)
+    }
+
+    /// Create memory with a specific size in KB.
+    /// Conventional memory is min(memory_kb, 640) KB.
+    /// Extended memory is max(0, memory_kb - 1024) KB (requires 286+ CPU to be useful).
+    /// Physical allocation is at least 1 MB to cover the full 8086 address space.
+    pub fn new_with_size(memory_kb: u32) -> Self {
+        let physical_size = (memory_kb as usize * 1024).max(MEMORY_SIZE);
         Self {
-            data: vec![0; MEMORY_SIZE],
+            data: vec![0; physical_size],
             cga_writes: Vec::new(),
             ega_writes: Vec::new(),
             a20_enabled: true, // Enabled by default (AT-class behavior)
+            memory_kb,
         }
+    }
+
+    /// Conventional memory in KB (up to 640 KB, reported via INT 12h / BDA)
+    pub fn conventional_memory_kb(&self) -> u16 {
+        self.memory_kb.min(640) as u16
+    }
+
+    /// Extended memory in KB above 1 MB (reported via INT 15h AH=88h on 286+)
+    pub fn extended_memory_kb(&self) -> u16 {
+        self.memory_kb.saturating_sub(1024).min(u16::MAX as u32) as u16
     }
 
     // Load binary data at a specific address
     pub fn load_at(&mut self, address: usize, data: &[u8]) -> Result<()> {
-        if address + data.len() > MEMORY_SIZE {
+        if address + data.len() > self.data.len() {
             return Err(anyhow!(
-                "Data exceeds memory bounds: {address:#x} + {:#x} > {MEMORY_SIZE:#x}",
-                data.len()
+                "Data exceeds memory bounds: {address:#x} + {:#x} > {:#x}",
+                data.len(),
+                self.data.len()
             ));
         }
 
@@ -113,8 +136,7 @@ impl Memory {
     pub fn load_bios(&mut self, bios_data: &[u8]) -> Result<()> {
         let bios_size = bios_data.len();
 
-        // BIOS is loaded at the top of memory
-        // For a 64KB BIOS: 0x100000 - 0x10000 = 0xF0000
+        // BIOS is loaded at the top of the first megabyte (0xF0000 for 64KB BIOS)
         let bios_start = MEMORY_SIZE - bios_size;
 
         self.load_at(bios_start, bios_data)
@@ -129,12 +151,6 @@ impl Memory {
     /// When A20 is disabled, bit 20 is masked off (wraps at 1MB like 8086)
     fn apply_a20_gate(&self, address: usize) -> usize {
         if self.a20_enabled {
-            // A20 enabled: use full address, but clamp to available memory
-            if address >= MEMORY_SIZE {
-                // Access beyond 1MB with A20 enabled - return 0
-                // (we don't have extended memory implemented)
-                return MEMORY_SIZE; // Will be caught by bounds check
-            }
             address
         } else {
             // A20 disabled: mask off bit 20 (wrap at 1MB)
@@ -144,7 +160,7 @@ impl Memory {
 
     pub fn read_u8(&self, address: usize) -> u8 {
         let addr = self.apply_a20_gate(address);
-        if addr >= MEMORY_SIZE {
+        if addr >= self.data.len() {
             return 0xFF; // Reading beyond memory returns 0xFF
         }
         self.data[addr]
@@ -152,7 +168,7 @@ impl Memory {
 
     pub fn write_u8(&mut self, address: usize, value: u8) {
         let addr = self.apply_a20_gate(address);
-        if addr >= MEMORY_SIZE {
+        if addr >= self.data.len() {
             // Writing beyond memory is silently ignored
             return;
         }

@@ -813,7 +813,15 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
     let speaker = create_speaker();
 
     let clock = Box::new(NativeClock);
-    let mut computer = Computer::new(keyboard, mouse, clock, video, speaker, cpu_type);
+    let mut computer = Computer::new_with_memory(
+        keyboard,
+        mouse,
+        clock,
+        video,
+        speaker,
+        cpu_type,
+        cli.common.memory,
+    );
 
     // Force initial video render to show blank screen
     computer.force_video_redraw();

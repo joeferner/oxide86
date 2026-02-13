@@ -34,10 +34,10 @@ impl CpuType {
         }
     }
 
-    /// Get the extended memory size in KB for this CPU type
+    /// Get the max extended memory size in KB for this CPU type
     /// Extended memory is memory above 1 MB (0x100000)
     /// Only available on 286+ CPUs
-    pub fn extended_memory_kb(&self) -> u16 {
+    pub fn max_extended_memory_kb(&self) -> u16 {
         match self {
             Self::I8086 => 0,      // 8086 has no extended memory
             Self::I80286 => 15360, // 286: 16 MB total - 1 MB = 15 MB = 15360 KB

@@ -77,7 +77,15 @@ fn main() -> Result<()> {
     let video = TerminalVideo::new();
 
     let clock = Box::new(NativeClock);
-    let mut computer = Computer::new(keyboard, mouse, clock, video, speaker, cpu_type);
+    let mut computer = Computer::new_with_memory(
+        keyboard,
+        mouse,
+        clock,
+        video,
+        speaker,
+        cpu_type,
+        cli.common.memory,
+    );
 
     // Load disks and program/boot
     load_disks(
