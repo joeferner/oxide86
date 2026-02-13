@@ -182,7 +182,9 @@ export function DiskManager({
         if (errors.length > 0) {
             onStatusUpdate(`Uploaded ${uploaded}/${selectedFiles.length} files. Errors: ${errors.join(', ')}`);
         } else {
-            onStatusUpdate(`Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''} to ${getDriveLetter(driveNumber)}:${currentPath}`);
+            onStatusUpdate(
+                `Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''} to ${getDriveLetter(driveNumber)}:${currentPath}`
+            );
         }
         browseDisk(driveNumber, currentPath);
         setLoading(false);

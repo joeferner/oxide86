@@ -1,15 +1,11 @@
 use anyhow::Result;
-use clap::{ArgGroup, Parser};
+use clap::{ArgGroup, Args};
 use emu86_core::{DiskGeometry, create_formatted_disk};
 use std::fs;
 
-#[derive(Parser)]
-#[command(
-    name = "emu86-mkdisk",
-    about = "Create blank FAT-formatted disk images for emu86"
-)]
+#[derive(Args)]
 #[command(group(ArgGroup::new("disk_type").required(true)))]
-struct Args {
+pub struct FormatArgs {
     /// Output file path
     output: String,
 
@@ -38,10 +34,7 @@ struct Args {
     label: Option<String>,
 }
 
-fn main() -> Result<()> {
-    env_logger::init();
-    let args = Args::parse();
-
+pub fn run(args: FormatArgs) -> Result<()> {
     let geometry = if args.floppy_1440 {
         DiskGeometry::FLOPPY_1440K
     } else if args.floppy_720 {
