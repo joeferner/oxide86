@@ -22,6 +22,12 @@ pub struct IoDevice {
     keyboard_scan_code: u8,
     /// ASCII code corresponding to the last scan code (for BIOS INT 09h handler)
     keyboard_ascii_code: u8,
+    /// Keyboard controller status register (port 64h)
+    keyboard_status: u8,
+    /// Keyboard controller command (last command sent to port 64h)
+    keyboard_command: u8,
+    /// Keyboard controller output port (controls A20 line via bit 1)
+    keyboard_output_port: u8,
     /// Counter for CGA status register (port 3DAh) reads.
     /// Used to simulate toggling retrace states so programs don't spin forever.
     cga_status_counter: u32,
@@ -47,6 +53,9 @@ impl IoDevice {
             cga_mode_control: CgaModeControl::new(),
             keyboard_scan_code: 0x00,
             keyboard_ascii_code: 0x00,
+            keyboard_status: 0x14, // Bit 2: system flag, bit 4: command/data (ready for commands)
+            keyboard_command: 0x00,
+            keyboard_output_port: 0x02, // Bit 1: A20 enabled by default
             cga_status_counter: 0,
             ega_sequencer_index: 0,
             ega_sequencer_regs,
@@ -64,8 +73,31 @@ impl IoDevice {
             // PIT command port (write-only, return 0xFF on read)
             0x43 => 0xFF,
 
-            // Keyboard controller data port - return last scan code
-            0x60 => self.keyboard_scan_code,
+            // Keyboard controller data port
+            0x60 => {
+                // If last command was 0xD0 (read output port), return output port
+                if self.keyboard_command == 0xD0 {
+                    self.keyboard_command = 0x00; // Clear command after read
+                    self.keyboard_output_port
+                } else {
+                    // Otherwise return last scan code
+                    self.keyboard_scan_code
+                }
+            }
+
+            // Keyboard controller status port
+            0x64 => self.keyboard_status,
+
+            // PS/2 System Control Port (port 0x92) - Fast A20 gate
+            0x92 => {
+                // Bit 0: Fast reset (write-only, read as 0)
+                // Bit 1: Fast A20 gate (1 = enabled)
+                if self.keyboard_output_port & 0x02 != 0 {
+                    0x02 // A20 enabled
+                } else {
+                    0x00 // A20 disabled
+                }
+            }
 
             // System control port with Timer 2 output
             0x61 => {
@@ -145,11 +177,99 @@ impl IoDevice {
             // PIT command port
             0x43 => self.pit.write_command(value),
 
+            // Keyboard controller data port
+            0x60 => {
+                // If last command was 0xD1 (write output port), update output port
+                if self.keyboard_command == 0xD1 {
+                    self.keyboard_output_port = value;
+                    self.keyboard_command = 0x00; // Clear command after write
+                    log::debug!(
+                        "Keyboard controller: output port = 0x{:02X}, A20 = {}",
+                        value,
+                        if value & 0x02 != 0 {
+                            "enabled"
+                        } else {
+                            "disabled"
+                        }
+                    );
+                }
+                // Otherwise, this would be keyboard input data (not used in emulator)
+            }
+
+            // Keyboard controller command port
+            0x64 => {
+                self.keyboard_command = value;
+                match value {
+                    0xAA => {
+                        // Self-test - always succeed
+                        log::debug!("Keyboard controller: self-test command");
+                        // Test result (0x55 = success) will be available at port 0x60
+                        self.keyboard_scan_code = 0x55;
+                    }
+                    0xAB => {
+                        // Interface test - always succeed
+                        log::debug!("Keyboard controller: interface test command");
+                        // Test result (0x00 = success) will be available at port 0x60
+                        self.keyboard_scan_code = 0x00;
+                    }
+                    0xAD => {
+                        // Disable keyboard - acknowledge but don't actually disable
+                        log::debug!("Keyboard controller: disable keyboard");
+                    }
+                    0xAE => {
+                        // Enable keyboard - acknowledge
+                        log::debug!("Keyboard controller: enable keyboard");
+                    }
+                    0xD0 => {
+                        // Read output port - next read from 0x60 will return output port
+                        log::debug!("Keyboard controller: read output port command");
+                    }
+                    0xD1 => {
+                        // Write output port - next write to 0x60 will update output port
+                        log::debug!("Keyboard controller: write output port command");
+                    }
+                    0xDD => {
+                        // Enable A20 line
+                        self.keyboard_output_port |= 0x02;
+                        log::debug!("Keyboard controller: A20 enabled (via 0xDD)");
+                    }
+                    0xDF => {
+                        // Disable A20 line
+                        self.keyboard_output_port &= !0x02;
+                        log::debug!("Keyboard controller: A20 disabled (via 0xDF)");
+                    }
+                    0xFF => {
+                        // Reset keyboard controller
+                        log::debug!("Keyboard controller: reset");
+                        self.keyboard_status = 0x14;
+                        self.keyboard_command = 0x00;
+                        // Reset result (0xAA = success) will be available at port 0x60
+                        self.keyboard_scan_code = 0xAA;
+                    }
+                    _ => {
+                        log::warn!("Unimplemented keyboard controller command: 0x{:02X}", value);
+                    }
+                }
+            }
+
             // System control port
             0x61 => {
                 self.system_control_port.write(value);
                 // Update PIT Channel 2 gate from bit 0
                 self.pit.set_gate(2, (value & 0x01) != 0);
+            }
+
+            // PS/2 System Control Port (port 0x92) - Fast A20 gate
+            0x92 => {
+                // Bit 0: Fast reset (0 = reset system, ignored in emulator)
+                // Bit 1: Fast A20 gate (1 = enabled, 0 = disabled)
+                if value & 0x02 != 0 {
+                    self.keyboard_output_port |= 0x02;
+                    log::debug!("Fast A20 gate: enabled (via port 0x92)");
+                } else {
+                    self.keyboard_output_port &= !0x02;
+                    log::debug!("Fast A20 gate: disabled (via port 0x92)");
+                }
             }
 
             // CGA Mode Control Register
@@ -305,5 +425,10 @@ impl IoDevice {
     /// Get the keyboard ASCII code (for BIOS INT 09h handler)
     pub fn get_keyboard_ascii_code(&self) -> u8 {
         self.keyboard_ascii_code
+    }
+
+    /// Check if A20 line is enabled (bit 1 of keyboard controller output port)
+    pub fn is_a20_enabled(&self) -> bool {
+        (self.keyboard_output_port & 0x02) != 0
     }
 }

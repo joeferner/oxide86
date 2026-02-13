@@ -81,6 +81,9 @@ pub struct Memory {
     data: Vec<u8>,
     cga_writes: Vec<(usize, u8)>,
     ega_writes: Vec<(usize, u8)>,
+    /// A20 gate state (true = enabled, addresses can go above 1MB)
+    /// When false, bit 20 is masked off (addresses wrap at 1MB like 8086)
+    a20_enabled: bool,
 }
 
 impl Memory {
@@ -89,6 +92,7 @@ impl Memory {
             data: vec![0; MEMORY_SIZE],
             cga_writes: Vec::new(),
             ega_writes: Vec::new(),
+            a20_enabled: true, // Enabled by default (AT-class behavior)
         }
     }
 
@@ -116,13 +120,42 @@ impl Memory {
         self.load_at(bios_start, bios_data)
     }
 
+    /// Set A20 gate state (controlled by keyboard controller)
+    pub fn set_a20_enabled(&mut self, enabled: bool) {
+        self.a20_enabled = enabled;
+    }
+
+    /// Apply A20 gate logic to an address
+    /// When A20 is disabled, bit 20 is masked off (wraps at 1MB like 8086)
+    fn apply_a20_gate(&self, address: usize) -> usize {
+        if self.a20_enabled {
+            // A20 enabled: use full address, but clamp to available memory
+            if address >= MEMORY_SIZE {
+                // Access beyond 1MB with A20 enabled - return 0
+                // (we don't have extended memory implemented)
+                return MEMORY_SIZE; // Will be caught by bounds check
+            }
+            address
+        } else {
+            // A20 disabled: mask off bit 20 (wrap at 1MB)
+            address & 0xFFFFF // Keep only lower 20 bits (0-1MB range)
+        }
+    }
+
     pub fn read_u8(&self, address: usize) -> u8 {
-        let addr = address % MEMORY_SIZE;
+        let addr = self.apply_a20_gate(address);
+        if addr >= MEMORY_SIZE {
+            return 0xFF; // Reading beyond memory returns 0xFF
+        }
         self.data[addr]
     }
 
     pub fn write_u8(&mut self, address: usize, value: u8) {
-        let addr = address % MEMORY_SIZE;
+        let addr = self.apply_a20_gate(address);
+        if addr >= MEMORY_SIZE {
+            // Writing beyond memory is silently ignored
+            return;
+        }
 
         // Log writes to Interrupt Vector Table (IVT)
         if (IVT_START..=IVT_END).contains(&addr) {

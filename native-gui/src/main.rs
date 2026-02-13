@@ -82,6 +82,10 @@ struct Cli {
     /// Enable interrupt logging (logs INT calls to emu86.log)
     #[arg(long = "int-log")]
     int_log: bool,
+
+    /// CPU type to emulate (8086, 286, 386, 486)
+    #[arg(long = "cpu", default_value = "8086")]
+    cpu_type: String,
 }
 
 fn main() {
@@ -904,6 +908,10 @@ fn run(cli: Cli) -> Result<()> {
 }
 
 fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVideoController>> {
+    // Parse CPU type
+    let cpu_type = emu86_core::CpuType::parse(&cli.cpu_type)
+        .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.cpu_type))?;
+
     // Create computer with keyboard, mouse, video, and speaker
     let keyboard = Box::new(GuiKeyboard::new());
     let mouse = Box::new(gui_mouse);
@@ -922,7 +930,7 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
         }
     };
 
-    let mut computer = Computer::new(keyboard, mouse, video, speaker);
+    let mut computer = Computer::new(keyboard, mouse, video, speaker, cpu_type);
 
     // Force initial video render to show blank screen
     computer.force_video_redraw();

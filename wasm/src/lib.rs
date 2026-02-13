@@ -144,7 +144,11 @@ impl Emu86Computer {
             }
         };
 
-        let mut computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker);
+        // Use default CPU type (8086) for WASM
+        // TODO: Add option to configure CPU type via JavaScript API
+        let cpu_type = emu86_core::CpuType::default();
+
+        let mut computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker, cpu_type);
 
         // Force initial video render to show blank screen
         computer.force_video_redraw();

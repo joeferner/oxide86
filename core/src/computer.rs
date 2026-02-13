@@ -1,8 +1,8 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, DriveNumber, MouseInput, NullVideoController, SerialDevice, SpeakerOutput, Video,
-    VideoController,
+    Bios, CpuType, DriveNumber, MouseInput, NullVideoController, SerialDevice, SpeakerOutput,
+    Video, VideoController,
     cpu::{Cpu, bios::KeyPress},
     io::IoDevice,
     keyboard::KeyboardInput,
@@ -19,6 +19,7 @@ struct LoadedProgram {
 
 pub struct Computer<V: VideoController = NullVideoController> {
     cpu: Cpu,
+    cpu_type: CpuType,
     memory: Memory,
     bios: Bios,
     io_device: IoDevice,
@@ -56,6 +57,7 @@ impl<V: VideoController> Computer<V> {
         mouse: Box<dyn MouseInput>,
         video_controller: V,
         speaker: Box<dyn SpeakerOutput>,
+        cpu_type: CpuType,
     ) -> Self {
         let bios = Bios::new(keyboard, mouse);
 
@@ -92,8 +94,11 @@ impl<V: VideoController> Computer<V> {
             memory::BDA_START + memory::BDA_NUM_HARD_DRIVES
         );
 
+        log::info!("Emulating CPU type: {}", cpu_type);
+
         Self {
             cpu: Cpu::new(),
+            cpu_type,
             memory,
             bios,
             io_device: IoDevice::new(),
@@ -446,6 +451,7 @@ impl<V: VideoController> Computer<V> {
                 &mut self.memory,
                 &mut self.bios,
                 &mut self.video,
+                self.cpu_type,
             );
         }
 
@@ -758,6 +764,7 @@ impl<V: VideoController> Computer<V> {
                 &mut self.memory,
                 &mut self.bios,
                 &mut self.video,
+                self.cpu_type,
             );
 
             // Check if handler started an IRQ chain (e.g., INT 0x08 chains to INT 0x1C)
@@ -871,6 +878,7 @@ impl<V: VideoController> Computer<V> {
                     &mut self.memory,
                     &mut self.bios,
                     &mut self.video,
+                    self.cpu_type,
                 );
                 // Set cycle count for INT instruction (51 cycles)
                 // Only set if the interrupt handler didn't already set a custom cycle count
@@ -883,8 +891,13 @@ impl<V: VideoController> Computer<V> {
                 // INT 3 - advance IP and execute INT 3
                 log::info!("INT 0x03 (breakpoint)");
                 self.cpu.ip = self.cpu.ip.wrapping_add(1);
-                self.cpu
-                    .execute_int_with_io(3, &mut self.memory, &mut self.bios, &mut self.video);
+                self.cpu.execute_int_with_io(
+                    3,
+                    &mut self.memory,
+                    &mut self.bios,
+                    &mut self.video,
+                    self.cpu_type,
+                );
                 // Set cycle count for INT 3 instruction (52 cycles)
                 self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT3;
             }
@@ -905,11 +918,17 @@ impl<V: VideoController> Computer<V> {
                         &mut self.memory,
                         &mut self.bios,
                         &mut self.video,
+                        self.cpu_type,
                     );
                     self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT;
                 }
             }
         }
+
+        // Sync A20 gate state from keyboard controller to memory
+        // This must happen after instruction execution in case OUT instructions changed A20
+        let a20_enabled = self.io_device.is_a20_enabled();
+        self.memory.set_a20_enabled(a20_enabled);
 
         // Process any video memory writes that occurred during instruction execution
         for (offset, value) in self.memory.drain_video_writes() {
@@ -1109,6 +1128,11 @@ impl<V: VideoController> Computer<V> {
         // Return total cycles: (cycles_per_tick * number of ticks) + remaining cycles
         // For simplicity, we track a separate total
         self.total_cycles
+    }
+
+    /// Get the CPU type being emulated
+    pub fn cpu_type(&self) -> CpuType {
+        self.cpu_type
     }
 
     /// Get a reference to the BIOS (for disk saving on exit, etc.)

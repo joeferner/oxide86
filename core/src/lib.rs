@@ -1,6 +1,7 @@
 use std::fmt::{Debug, Display};
 
 pub use crate::cpu::bios::{Bios, DosDevice, DriveParams, KeyPress, SharedBiosState};
+pub use crate::cpu_type::CpuType;
 pub use crate::decoder::{DecodedInstruction, decode_instruction, decode_instruction_with_regs};
 pub use crate::disk::{
     BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, MemoryDiskBackend,
@@ -29,6 +30,7 @@ pub use palette::TextModePalette;
 
 pub mod computer;
 pub mod cpu;
+pub mod cpu_type;
 pub mod decoder;
 pub mod disk;
 #[cfg(not(target_arch = "wasm32"))]

@@ -300,6 +300,7 @@ impl Cpu {
         memory: &mut Memory,
         io: &mut crate::cpu::bios::Bios,
         video: &mut crate::video::Video,
+        cpu_type: crate::CpuType,
     ) {
         // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
         // let DOS handle it instead of intercepting
@@ -329,7 +330,7 @@ impl Cpu {
         }
 
         if is_bios_handler {
-            self.handle_bios_interrupt_impl(int_num, memory, io, video);
+            self.handle_bios_interrupt_impl(int_num, memory, io, video, cpu_type);
         } else {
             // Not handled, do normal INT
             // Push flags, CS, and IP

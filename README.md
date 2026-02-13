@@ -41,6 +41,8 @@ mcopy -i mouse.img -s * ::
 - Games
   - :white_check_mark: Zork 1
   - :white_check_mark: Alley Cat
+  - :white_check_mark: Kings Quest 1
+  - :white_check_mark: Flight Simulator 1
 
 # History
 

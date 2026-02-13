@@ -58,6 +58,7 @@ Default levels when `RUST_LOG` is not set:
 | `core/src/keyboard.rs` | KeyboardInput trait for platform-specific keyboard handling |
 | `core/src/speaker.rs` | SpeakerOutput trait for platform-specific PC speaker emulation |
 | `core/src/rodio_speaker.rs` | RodioSpeaker (native audio using Rodio library) |
+| `core/src/io/mod.rs` | I/O port handling (PIT, keyboard controller, CGA, EGA ports) |
 | `core/src/lib.rs` | Computer struct, boot process |
 | `native/src/terminal_keyboard.rs` | TerminalKeyboard implementing KeyboardInput trait |
 | `wasm/src/web_keyboard.rs` | WebKeyboard implementing KeyboardInput for browser |
@@ -193,6 +194,38 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 3. Return boxed implementation from platform initialization
 4. Provide fallback to `NullSpeaker` on initialization failure
 
+### Keyboard Controller / A20 Line
+
+**Hardware Overview:**
+- Keyboard controller is an Intel 8042 microcontroller on AT-class PCs
+- Controls keyboard communication and system functions including A20 line
+- Port 0x60: Data port (keyboard scan codes, command data)
+- Port 0x64: Command/status port
+
+**A20 Line:**
+- Address line 20 (bit 20) controls access to memory above 1 MB
+- Disabled (A20=0): Addresses wrap at 1 MB (8086/8088 compatibility mode)
+- Enabled (A20=1): Full address space accessible (AT-class and later)
+- Controlled via keyboard controller output port bit 1
+- Most boot loaders and operating systems enable A20 during initialization
+
+**Implementation (`core/src/io/mod.rs`):**
+- Status register (port 0x64): Always returns 0x14 (ready for commands, system flag set)
+- Output port: 8-bit register, bit 1 controls A20 gate (enabled by default)
+- Supported commands via port 0x64:
+  - `0xD0`: Read output port (next read from 0x60 returns output port value)
+  - `0xD1`: Write output port (next write to 0x60 updates output port)
+  - `0xDD`: Enable A20 line (set bit 1 of output port)
+  - `0xDF`: Disable A20 line (clear bit 1 of output port)
+
+**Memory Integration (`core/src/memory.rs`):**
+- Memory subsystem tracks A20 state via `a20_enabled` flag
+- `apply_a20_gate()` implements address translation:
+  - A20 enabled: Full 20-bit addressing (addresses >= 1MB return 0xFF/ignored)
+  - A20 disabled: Bit 20 masked off (wraps at 1MB like 8086/8088)
+- `Computer::step()` syncs A20 state from IoDevice to Memory after each instruction
+- This allows boot loaders to test A20 functionality by writing to 0x000000 and 0x100000
+
 ## BIOS/DOS Interrupts
 
 ### Implemented Interrupts
@@ -264,6 +297,7 @@ cargo run -p emu86-native-cli -- --boot --hdd drive_c.img --hdd drive_d.img
 **CLI Options:**
 - `<program>` - Path to program binary (required unless --boot)
 - `--boot` - Boot from disk instead of loading program
+- `--cpu <type>` - CPU type to emulate: 8086, 286, 386, 486 (default: 8086)
 - `--segment <hex>` - Starting segment (default: 0x0000)
 - `--offset <hex>` - Starting offset (default: 0x0100 for .COM files)
 - `--floppy-a <path>` - Floppy A: image
@@ -292,6 +326,16 @@ computer.boot(0x00); // Boot from drive A:
 1. Read sector 0 to 0x7C00
 2. Verify 0x55AA signature at bytes 510-511
 3. Set CS:IP=0:7C00, DL=drive, SS:SP=0:7C00
+
+**CPU Types:**
+The `--cpu` option controls which CPU type is emulated:
+- `8086` (default): Original 8086, 1 MB addressable, no extended memory
+- `286`: 80286 with 16 MB addressable, 15 MB extended memory
+- `386`: 80386 with 32-bit support, 64 MB extended memory (max for INT 15h AH=88h)
+- `486`: 80486 with 32-bit support, 64 MB extended memory (max for INT 15h AH=88h)
+
+Currently, the CPU type primarily affects INT 15h AH=88h (Get Extended Memory Size).
+Future work may add support for protected mode and 32-bit instructions on 286+/386+.
 
 ## Development
 

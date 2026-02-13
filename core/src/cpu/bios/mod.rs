@@ -870,8 +870,9 @@ impl Cpu {
         memory: &mut Memory,
         io: &mut Bios,
         video: &mut crate::video::Video,
+        cpu_type: crate::CpuType,
     ) {
-        self.handle_bios_interrupt_impl(int_num, memory, io, video);
+        self.handle_bios_interrupt_impl(int_num, memory, io, video, cpu_type);
     }
 
     /// Internal implementation of BIOS interrupt handling
@@ -881,6 +882,7 @@ impl Cpu {
         memory: &mut Memory,
         io: &mut Bios,
         video: &mut crate::video::Video,
+        cpu_type: crate::CpuType,
     ) {
         match int_num {
             0x08 => self.handle_int08(memory, io, video),
@@ -890,7 +892,7 @@ impl Cpu {
             0x12 => self.handle_int12(memory),
             0x13 => self.handle_int13(memory, io),
             0x14 => self.handle_int14(memory, io),
-            0x15 => self.handle_int15(memory, io),
+            0x15 => self.handle_int15(memory, io, cpu_type),
             0x16 => self.handle_int16(memory, io),
             0x17 => self.handle_int17(memory, io),
             0x1A => self.handle_int1a(memory, io),

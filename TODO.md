@@ -1,21 +1,16 @@
 # TODO
 
+- [ ] Move command line parsing and CPU creating into core to remove duplicate code between native-cli and native-gui
+- [ ] Add configuration dialog in wasm for amount of memory system has, cpu type, cpu clock speed
+- [ ] create better onboarding experience for gui and wasm
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)
   - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
-- [ ] Boot error cannot control A20 line
-- [ ] Test CGA Applications
-  - [x] Alley Cat
-  - [X] Flight Simulator 1.0
-  - [ ] Kings Quest 1
 - [ ] WASM - support creating new disks
 - [ ] WASM - add feature to save ram or video ram
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
-- [ ] implement real cga status register (see docs/cga-status-register.md)
-- [ ] Support 286 (command line switch to choose)
 - [ ] Test EGA Applications
   - [ ] Commander Keen
-  - [ ] Kings Quest 1
 - [ ] Support 386
 - [ ] Support 486
 - [ ] Test VGA Applications

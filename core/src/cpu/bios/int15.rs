@@ -1,16 +1,22 @@
 use crate::{
+    CpuType,
     cpu::{Cpu, cpu_flag},
     memory::Memory,
 };
 
 impl Cpu {
-    pub(super) fn handle_int15(&mut self, memory: &mut Memory, _io: &mut super::Bios) {
+    pub(super) fn handle_int15(
+        &mut self,
+        memory: &mut Memory,
+        _io: &mut super::Bios,
+        cpu_type: CpuType,
+    ) {
         let function = (self.ax >> 8) as u8; // Get AH
         match function {
             0x10 => self.int15_top_view_multi_dos(),
             0x41 => self.int15_wait_external_event(),
             0x86 => self.int15_wait(memory),
-            0x88 => self.int15_get_extended_memory(),
+            0x88 => self.int15_get_extended_memory(cpu_type),
             0xC0 => self.int15_get_system_config(memory),
             0xC1 => self.int15_get_ebda_segment(),
             _ => {
@@ -100,14 +106,16 @@ impl Cpu {
     ///   AX = number of contiguous 1KB blocks of memory above 1MB
     ///   CF = 0 if successful, 1 if error
     ///
-    /// Note: 8086 can only address 1MB, so this returns 0 for an 8086 system
-    fn int15_get_extended_memory(&mut self) {
-        // 8086 systems don't have extended memory (that's a 286+ feature)
-        // Return 0 KB of extended memory
-        self.ax = 0;
+    /// Note: 8086 can only address 1MB, so this returns 0 for an 8086 system.
+    /// 286+ systems return the amount of extended memory available.
+    fn int15_get_extended_memory(&mut self, cpu_type: CpuType) {
+        let extended_memory_kb = cpu_type.extended_memory_kb();
+        self.ax = extended_memory_kb;
         self.set_flag(cpu_flag::CARRY, false);
         log::info!(
-            "INT 15h AH=88h: Returning extended memory size = 0 KB (8086 has no extended memory)"
+            "INT 15h AH=88h: Returning extended memory size = {} KB ({} CPU)",
+            extended_memory_kb,
+            cpu_type.name()
         );
     }
 
