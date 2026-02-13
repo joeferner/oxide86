@@ -47,3 +47,26 @@ export const VIDEO_CARD_OPTIONS = [
     { value: 'ega', label: 'EGA (CGA + 16-color graphics)' },
     { value: 'vga', label: 'VGA (EGA + VGA modes)' },
 ];
+
+const CONFIG_STORAGE_KEY = 'emu86_config';
+
+export function loadConfig(): EmulatorConfig {
+    try {
+        const stored = localStorage.getItem(CONFIG_STORAGE_KEY);
+        if (stored) {
+            const parsed = JSON.parse(stored) as Partial<EmulatorConfig>;
+            return { ...DEFAULT_CONFIG, ...parsed };
+        }
+    } catch {
+        // ignore
+    }
+    return DEFAULT_CONFIG;
+}
+
+export function saveConfig(config: EmulatorConfig): void {
+    try {
+        localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(config));
+    } catch {
+        // ignore
+    }
+}

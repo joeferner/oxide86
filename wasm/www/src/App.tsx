@@ -13,7 +13,7 @@ import { RunningIndicator } from './components/RunningIndicator';
 import { PerformanceDisplay } from './components/PerformanceDisplay';
 import { DiskManager } from './components/DiskManager';
 import { ConfigDialog } from './components/ConfigDialog';
-import { DEFAULT_CONFIG, EmulatorConfig } from './components/ConfigDialog.consts';
+import { loadConfig, saveConfig, EmulatorConfig } from './components/ConfigDialog.consts';
 
 function App(): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -21,7 +21,7 @@ function App(): React.ReactElement {
     const [mode, setMode] = useState<'boot' | 'program'>('boot');
     const [diskManagerOpened, setDiskManagerOpened] = useState(false);
     const [configOpened, setConfigOpened] = useState(false);
-    const [currentConfig, setCurrentConfig] = useState<EmulatorConfig>(DEFAULT_CONFIG);
+    const [currentConfig, setCurrentConfig] = useState<EmulatorConfig>(loadConfig);
     const [selectedDrive, setSelectedDrive] = useState<number>(0x80);
     const [bootDrive, setBootDrive] = useState<number>(0x80); // Default to C:
 
@@ -77,6 +77,7 @@ function App(): React.ReactElement {
     const handleApplyConfig = useCallback(
         (config: EmulatorConfig) => {
             setCurrentConfig(config);
+            saveConfig(config);
             applyConfig(config);
         },
         [applyConfig]
