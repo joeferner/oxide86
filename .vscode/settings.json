@@ -12,6 +12,7 @@
         "dasd",
         "dbcs",
         "Deque",
+        "disktools",
         "ebda",
         "egui",
         "fatfs",

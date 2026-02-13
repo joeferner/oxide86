@@ -37,7 +37,7 @@ function App(): React.ReactElement {
         reset,
         bootAndStart,
         applyConfig,
-    } = useEmulator(canvasRef, bootDrive);
+    } = useEmulator(canvasRef, bootDrive, currentConfig);
 
     const handleStatusUpdate = useCallback(
         (message: string) => {
