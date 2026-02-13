@@ -5,11 +5,13 @@ mod menu;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
-    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, MEMORY_SIZE, NullSpeaker,
-    PartitionedDisk, RodioSpeaker, VIDEO_MEMORY_END, VIDEO_MEMORY_SIZE, VIDEO_MEMORY_START,
-    parse_mbr,
+    BackedDisk, Computer, DriveNumber, FileDiskBackend, MEMORY_SIZE, VIDEO_MEMORY_END,
+    VIDEO_MEMORY_SIZE, VIDEO_MEMORY_START,
+};
+use emu86_native_common::{
+    CommonCli, apply_logging_flags, attach_serial_device, create_speaker, load_disks,
+    load_program_or_boot,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -31,61 +33,8 @@ const TITLE: &str = "emu86 - 8086 Emulator";
 #[command(name = "emu86-gui")]
 #[command(about = "Intel 8086 CPU Emulator (GUI)", long_about = None)]
 struct Cli {
-    /// Path to the program binary to load and execute (not used with --boot)
-    #[arg(required_unless_present = "boot")]
-    program: Option<String>,
-
-    /// Boot from disk image instead of loading a program
-    #[arg(long, required_unless_present = "program")]
-    boot: bool,
-
-    /// Boot drive number (0x00 for floppy A:, 0x01 for floppy B:, 0x80 for hard disk C:)
-    #[arg(long, default_value = "0x00")]
-    boot_drive: String,
-
-    /// Starting segment address (default: 0x0000)
-    #[arg(long, default_value = "0x0000")]
-    segment: String,
-
-    /// Starting offset address (default: 0x0100, like .COM files)
-    #[arg(long, default_value = "0x0100")]
-    offset: String,
-
-    /// Path to disk image file for floppy A:
-    #[arg(long = "floppy-a")]
-    floppy_a: Option<String>,
-
-    /// Path to disk image file for floppy B:
-    #[arg(long = "floppy-b")]
-    floppy_b: Option<String>,
-
-    /// Path to hard disk image file(s) - can be specified multiple times for C:, D:, etc.
-    #[arg(long = "hdd", action = clap::ArgAction::Append)]
-    hard_disks: Vec<String>,
-
-    /// Device to attach to COM1 (e.g., "mouse")
-    #[arg(long = "com1", value_name = "DEVICE")]
-    com1_device: Option<String>,
-
-    /// Device to attach to COM2 (e.g., "mouse")
-    #[arg(long = "com2", value_name = "DEVICE")]
-    com2_device: Option<String>,
-
-    /// Run at maximum speed (no throttling)
-    #[arg(long)]
-    turbo: bool,
-
-    /// Enable execution logging (logs each instruction to emu86.log)
-    #[arg(long = "exec-log")]
-    exec_log: bool,
-
-    /// Enable interrupt logging (logs INT calls to emu86.log)
-    #[arg(long = "int-log")]
-    int_log: bool,
-
-    /// CPU type to emulate (8086, 286, 386, 486)
-    #[arg(long = "cpu", default_value = "8086")]
-    cpu_type: String,
+    #[command(flatten)]
+    common: CommonCli,
 }
 
 fn main() {
@@ -166,39 +115,18 @@ fn setup_egui(
     (egui_ctx, egui_state, egui_renderer)
 }
 
-fn attach_serial_devices(
+fn attach_serial_devices_from_cli(
     computer: &mut Computer<PixelsVideoController>,
     cli: &Cli,
     gui_mouse: &GuiMouse,
 ) {
-    if let Some(device) = &cli.com1_device {
-        match device.as_str() {
-            "mouse" => {
-                use emu86_core::SerialMouse;
-                let mouse_clone =
-                    Box::new(gui_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
-                computer.set_com1_device(Box::new(SerialMouse::new(mouse_clone)));
-                log::info!("Serial mouse attached to COM1");
-            }
-            _ => {
-                eprintln!("Warning: Unknown device '{}' for COM1", device);
-            }
-        }
+    if let Some(device) = &cli.common.com1_device {
+        let mouse_clone = Box::new(gui_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+        attach_serial_device(computer, 1, device, mouse_clone);
     }
-
-    if let Some(device) = &cli.com2_device {
-        match device.as_str() {
-            "mouse" => {
-                use emu86_core::SerialMouse;
-                let mouse_clone =
-                    Box::new(gui_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
-                computer.set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
-                log::info!("Serial mouse attached to COM2");
-            }
-            _ => {
-                eprintln!("Warning: Unknown device '{}' for COM2", device);
-            }
-        }
+    if let Some(device) = &cli.common.com2_device {
+        let mouse_clone = Box::new(gui_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+        attach_serial_device(computer, 2, device, mouse_clone);
     }
 }
 
@@ -706,18 +634,11 @@ fn run(cli: Cli) -> Result<()> {
     // Initialize computer
     let mut computer = create_computer(&cli, gui_mouse.clone_shared())?;
 
-    // Enable logging flags from CLI
-    if cli.exec_log {
-        computer.set_exec_logging(true);
-        log::info!("Execution logging enabled");
-    }
-    if cli.int_log {
-        computer.set_log_interrupts(true);
-        log::info!("Interrupt logging enabled");
-    }
+    // Apply logging flags
+    apply_logging_flags(&mut computer, cli.common.exec_log, cli.common.int_log);
 
     // Attach serial devices if specified
-    attach_serial_devices(&mut computer, &cli, &gui_mouse);
+    attach_serial_devices_from_cli(&mut computer, &cli, &gui_mouse);
 
     // Initialize egui
     let (egui_ctx, mut egui_state, mut egui_renderer) = setup_egui(window, &pixels);
@@ -725,11 +646,11 @@ fn run(cli: Cli) -> Result<()> {
     // Create application state
     let mut app_state = AppState {
         menu: AppMenu::new(),
-        floppy_a_present: cli.floppy_a.is_some(),
-        floppy_b_present: cli.floppy_b.is_some(),
+        floppy_a_present: cli.common.floppy_a.is_some(),
+        floppy_b_present: cli.common.floppy_b.is_some(),
         is_paused: false,
-        interrupt_logging_enabled: cli.int_log,
-        turbo_mode: cli.turbo,
+        interrupt_logging_enabled: cli.common.int_log,
+        turbo_mode: cli.common.turbo,
         show_performance_overlay: false,
         perf_tracker: PerformanceTracker::new(),
         notification: None,
@@ -741,7 +662,7 @@ fn run(cli: Cli) -> Result<()> {
     const NANOS_PER_CYCLE: u64 = 1_000_000_000 / CLOCK_HZ;
     let throttle_start = Instant::now();
 
-    if cli.turbo {
+    if cli.common.turbo {
         log::info!("Running in turbo mode (no speed limit)");
     } else {
         log::info!("Running at 4.77 MHz");
@@ -909,147 +830,29 @@ fn run(cli: Cli) -> Result<()> {
 
 fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVideoController>> {
     // Parse CPU type
-    let cpu_type = emu86_core::CpuType::parse(&cli.cpu_type)
-        .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.cpu_type))?;
+    let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
+        .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.common.cpu_type))?;
 
     // Create computer with keyboard, mouse, video, and speaker
     let keyboard = Box::new(GuiKeyboard::new());
     let mouse = Box::new(gui_mouse);
     let video = PixelsVideoController::new();
-
-    // Try to create speaker with fallback
-    let speaker: Box<dyn emu86_core::SpeakerOutput> = match RodioSpeaker::new() {
-        Ok(rodio_speaker) => {
-            log::info!("PC speaker enabled (Rodio)");
-            Box::new(rodio_speaker)
-        }
-        Err(e) => {
-            log::warn!("PC speaker unavailable: {}", e);
-            log::info!("Using NullSpeaker (no audio)");
-            Box::new(NullSpeaker)
-        }
-    };
+    let speaker = create_speaker();
 
     let mut computer = Computer::new(keyboard, mouse, video, speaker, cpu_type);
 
     // Force initial video render to show blank screen
     computer.force_video_redraw();
 
-    // Load floppy A:
-    if let Some(path) = &cli.floppy_a {
-        let backend = FileDiskBackend::open(path, false)?;
-        let disk = BackedDisk::new(backend)
-            .with_context(|| format!("Failed to create disk from: {}", path))?;
-        computer
-            .bios_mut()
-            .insert_floppy(DriveNumber::floppy_a(), Box::new(disk))
-            .map_err(|e| anyhow::anyhow!("Failed to insert floppy A:: {}", e))?;
-        log::info!("Opened floppy A: from {}", path);
-    }
+    // Load disks and program/boot
+    load_disks(
+        &mut computer,
+        &cli.common.floppy_a,
+        &cli.common.floppy_b,
+        &cli.common.hard_disks,
+    )?;
+    load_program_or_boot(&mut computer, &cli.common)?;
 
-    // Load floppy B:
-    if let Some(path) = &cli.floppy_b {
-        let backend = FileDiskBackend::open(path, false)?;
-        let disk = BackedDisk::new(backend)
-            .with_context(|| format!("Failed to create disk from: {}", path))?;
-        computer
-            .bios_mut()
-            .insert_floppy(DriveNumber::floppy_b(), Box::new(disk))
-            .map_err(|e| anyhow::anyhow!("Failed to insert floppy B:: {}", e))?;
-        log::info!("Opened floppy B: from {}", path);
-    }
-
-    // Load hard drives (C:, D:, etc.)
-    for path in cli.hard_disks.iter() {
-        let backend = FileDiskBackend::open(path, false)?;
-        let disk = BackedDisk::new(backend)
-            .with_context(|| format!("Failed to create disk from: {}", path))?;
-
-        // Check if disk has MBR and partitions
-        let sector_0 = disk.read_sector_lba(0).ok();
-        let has_partitions = sector_0
-            .as_ref()
-            .and_then(parse_mbr)
-            .and_then(|parts| parts[0]);
-
-        let drive_num = if let Some(partition) = has_partitions {
-            log::info!(
-                "Detected MBR on {}: partition 1 at sector {}, {} sectors",
-                path,
-                partition.start_sector,
-                partition.sector_count
-            );
-            // Open the file again for raw disk access
-            let raw_backend = FileDiskBackend::open(path, false)?;
-            let raw_disk = BackedDisk::new(raw_backend)
-                .with_context(|| format!("Failed to create raw disk from: {}", path))?;
-
-            let partitioned =
-                PartitionedDisk::new(disk, partition.start_sector, partition.sector_count);
-            computer
-                .bios_mut()
-                .add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk))
-        } else {
-            log::info!("No MBR detected on {}, using raw disk", path);
-            computer.bios_mut().add_hard_drive(Box::new(disk))
-        };
-
-        log::info!(
-            "Opened hard drive {}: ({}) from {}",
-            drive_num.to_letter(),
-            drive_num,
-            path
-        );
-    }
-
-    // Update BDA hard drive count after adding all drives
-    if !cli.hard_disks.is_empty() {
-        computer.update_bda_hard_drive_count();
-    }
-
-    // If no drives specified and booting, error out
-    if cli.floppy_a.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() && cli.boot {
-        return Err(anyhow::anyhow!(
-            "No disk images specified. Use --floppy-a, --floppy-b, or --hdd to specify disk images."
-        ));
-    }
-
-    if cli.boot {
-        // Boot from disk
-        let boot_drive = parse_hex_or_dec(&cli.boot_drive)?;
-        if boot_drive > 0xFF {
-            return Err(anyhow::anyhow!(
-                "Boot drive must be 0x00-0xFF, got 0x{:04X}",
-                boot_drive
-            ));
-        }
-        let boot_drive = DriveNumber::from_standard(boot_drive as u8);
-
-        log::info!("Booting from drive {}...", boot_drive);
-        computer
-            .boot(boot_drive)
-            .context("Failed to boot from disk")?;
-
-        log::info!("Boot sector loaded at 0x0000:0x7C00");
-    } else if let Some(program_path) = &cli.program {
-        // Load program from file
-        let program_data = std::fs::read(program_path)
-            .with_context(|| format!("Failed to read program file: {}", program_path))?;
-
-        let segment = parse_hex_or_dec(&cli.segment)?;
-        let offset = parse_hex_or_dec(&cli.offset)?;
-
-        computer
-            .load_program(&program_data, segment, offset)
-            .context("Failed to load program")?;
-
-        log::info!(
-            "Loaded {} bytes at {:04X}:{:04X}",
-            program_data.len(),
-            segment,
-            offset
-        );
-    }
     log::info!("Starting execution...");
 
     Ok(computer)

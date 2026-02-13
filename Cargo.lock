@@ -1049,7 +1049,18 @@ dependencies = [
  "clap",
  "crossterm",
  "emu86-core",
+ "emu86-native-common",
  "env_logger",
+ "log",
+]
+
+[[package]]
+name = "emu86-native-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "emu86-core",
  "log",
 ]
 
@@ -1064,6 +1075,7 @@ dependencies = [
  "egui-wgpu",
  "egui-winit",
  "emu86-core",
+ "emu86-native-common",
  "env_logger",
  "image",
  "log",

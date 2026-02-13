@@ -1,14 +1,17 @@
 # TODO
 
-- [ ] Move command line parsing and CPU creating into core to remove duplicate code between native-cli and native-gui
+- [ ] create a clock trait and move native only time function to native-common and move wasm time functions to wasm
+- [ ] move native only code to native-common (rodio, FileDiskBackend)
+- [ ] remove turbo option
+- [ ] Add options to native-gui and native-cli command line options to set cpu clock speed
 - [ ] Add configuration dialog in wasm for amount of memory system has, cpu type, cpu clock speed
-- [ ] create better onboarding experience for gui and wasm
+- [ ] WASM - support creating new disks
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)
   - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
-- [ ] WASM - support creating new disks
 - [ ] WASM - add feature to save ram or video ram
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
+- [ ] create better onboarding experience for gui and wasm
 - [ ] Test EGA Applications
   - [ ] Commander Keen
 - [ ] Support 386

@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 winit = "0.29"
 pixels = "0.15"
+emu86-native-common = { path = "../native-common" }
 emu86-core = { path = "../core", features = ["audio-rodio"] }
 anyhow = { workspace = true }
 env_logger = "0.11"

@@ -1,0 +1,13 @@
+[package]
+name = "emu86-native-common"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+clap = { workspace = true }
+emu86-core = { path = "../core", features = ["audio-rodio"] }
+anyhow = { workspace = true }
+log = { workspace = true }
+
+[lints]
+workspace = true
