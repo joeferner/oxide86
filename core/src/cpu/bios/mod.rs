@@ -140,6 +140,9 @@ pub struct SharedBiosState {
     pub next_device_handle: u16,
     /// Last disk operation status (for INT 13h AH=01h)
     pub last_disk_status: u8,
+    /// Current DTA (Disk Transfer Area) physical address, set by INT 21h AH=1Ah
+    /// Default is 0 (unset); DOS programs must set it before calling FindFirst/FindNext
+    pub current_dta: usize,
 }
 
 impl SharedBiosState {
@@ -151,6 +154,7 @@ impl SharedBiosState {
             device_handles: HashMap::new(),
             next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
             last_disk_status: 0x00, // Success
+            current_dta: 0,
         }
     }
 

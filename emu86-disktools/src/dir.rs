@@ -6,6 +6,7 @@ use crate::disk::{normalise_disk_path, open_disk};
 #[derive(Args)]
 pub struct DirArgs {
     /// Path to disk image file
+    #[arg(short = 'i', long = "image")]
     disk: String,
 
     /// Directory path to list (default: root). Use forward or backslashes.

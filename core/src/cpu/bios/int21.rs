@@ -53,6 +53,7 @@ impl Cpu {
             0x0C => self.int21_flush_and_input(io, video),
             0x0E => self.int21_select_disk(io),
             0x19 => self.int21_get_current_drive(io),
+            0x1A => self.int21_set_dta(io),
             0x25 => self.int21_set_interrupt_vector(memory),
             0x2A => self.int21_get_date(io),
             0x2B => self.int21_set_date(),
@@ -61,6 +62,7 @@ impl Cpu {
             0x30 => self.int21_get_dos_version(),
             0x31 => self.int21_terminate_stay_resident(memory, io),
             0x32 => self.int21_get_dpb(memory, io),
+            0x2F => self.int21_get_dta(io),
             0x35 => self.int21_get_interrupt_vector(memory),
             0x36 => self.int21_get_disk_free_space(io),
             0x37 => self.int21_switch_char(),
@@ -835,7 +837,7 @@ impl Cpu {
     /// Input:
     ///   DS:DX = pointer to null-terminated file pattern (may include wildcards)
     ///   CX = file attributes to match
-    ///   ES:BX = pointer to DTA (Disk Transfer Area, 43 bytes)
+    ///   (DTA address must be set via AH=1Ah before calling)
     /// Output:
     ///   CF clear if success: DTA filled with file information
     ///   CF set if error: AX = error code
@@ -845,8 +847,8 @@ impl Cpu {
 
         match io.find_first(&pattern, attributes) {
             Ok((search_id, find_data)) => {
-                // Write search ID to a hidden location (we'll use offset 0 of DTA for this)
-                let dta_addr = Self::physical_address(self.es, self.bx);
+                // Write results to the DTA set by INT 21h AH=1Ah
+                let dta_addr = io.shared.current_dta;
 
                 // DOS DTA format for find first/next:
                 // Offset 0-20: Reserved for DOS (we'll store search_id here)
@@ -873,12 +875,13 @@ impl Cpu {
 
     /// INT 21h, AH=4Fh - Find Next Matching File
     /// Input:
-    ///   ES:BX = pointer to DTA (must contain data from previous find first/next)
+    ///   (none - uses DTA set by AH=1Ah, which contains search_id from previous FindFirst)
     /// Output:
     ///   CF clear if success: DTA filled with file information
     ///   CF set if error: AX = error code
     fn int21_find_next(&mut self, memory: &mut Memory, io: &mut super::Bios) {
-        let dta_addr = Self::physical_address(self.es, self.bx);
+        // Use the DTA set by INT 21h AH=1Ah
+        let dta_addr = io.shared.current_dta;
 
         // Read search_id from DTA
         let mut search_id: usize = 0;
@@ -942,6 +945,29 @@ impl Cpu {
             num_drives
         );
         self.ax = (self.ax & 0xFF00) | (num_drives as u16);
+    }
+
+    /// INT 21h, AH=1Ah - Set DTA (Disk Transfer Area) Address
+    /// Input:
+    ///   DS:DX = pointer to DTA buffer
+    fn int21_set_dta(&mut self, io: &mut super::Bios) {
+        let dta_addr = Self::physical_address(self.ds, self.dx);
+        io.shared.current_dta = dta_addr;
+        log::debug!("INT 21h AH=1Ah: Set DTA to {:05X}", dta_addr);
+    }
+
+    /// INT 21h, AH=2Fh - Get DTA Address
+    /// Output:
+    ///   ES:BX = pointer to current DTA buffer
+    fn int21_get_dta(&mut self, io: &mut super::Bios) {
+        let dta_addr = io.shared.current_dta;
+        // Return as ES:BX (segment:offset)
+        // Convert flat address back to segment:offset (use paragraph-aligned segment)
+        let seg = (dta_addr >> 4) as u16;
+        let off = (dta_addr & 0xF) as u16;
+        self.es = seg;
+        self.bx = off;
+        log::debug!("INT 21h AH=2Fh: Get DTA -> {:04X}:{:04X}", seg, off);
     }
 
     /// INT 21h, AH=2Ah - Get System Date
@@ -1824,6 +1850,9 @@ impl Cpu {
                 let parent_psp = io.get_psp();
                 io.set_psp(psp_segment);
 
+                // Set default DTA to PSP+0x80 (DOS standard default)
+                io.shared.current_dta = Self::physical_address(psp_segment, 0x80);
+
                 // For COM files: CS=DS=ES=SS=PSP, IP=0100h, SP=FFFEh
                 self.cs = psp_segment;
                 self.ds = psp_segment;
@@ -1993,6 +2022,9 @@ impl Cpu {
                 // Load and execute
                 let parent_psp = io.get_psp();
                 io.set_psp(psp_segment);
+
+                // Set default DTA to PSP+0x80 (DOS standard default)
+                io.shared.current_dta = Self::physical_address(psp_segment, 0x80);
 
                 // Set up registers for EXE
                 self.cs = load_segment.wrapping_add(init_cs);

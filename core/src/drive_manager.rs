@@ -725,8 +725,10 @@ impl DriveManager {
             file.seek(SeekFrom::Start(position))
                 .map_err(|_| DosError::InvalidFunction)?;
 
-            // Write data
-            file.write(data).map_err(|_| DosError::InvalidFunction)?
+            // Write data (write_all ensures all bytes are written, not just up to buffer size)
+            file.write_all(data)
+                .map_err(|_| DosError::InvalidFunction)?;
+            data.len()
         };
 
         // Update position

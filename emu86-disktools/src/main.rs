@@ -19,11 +19,13 @@ enum Command {
     Format(format::FormatArgs),
     /// List files and directories on a disk image
     Dir(dir::DirArgs),
-    /// Copy files to or from a disk image.
+    /// Copy files to or from a disk image (last argument is destination).
     ///
     /// Prefix paths with '::' to refer to disk paths, e.g.:
-    ///   copy disk.img file.txt ::file.txt   (host -> disk)
-    ///   copy disk.img ::file.txt file.txt   (disk -> host)
+    ///   copy -i disk.img file.txt         ::file.txt   (host -> disk)
+    ///   copy -i disk.img a.txt b.txt      ::dir/       (multiple host -> disk dir)
+    ///   copy -i disk.img ::file.txt       ./output/    (disk -> host)
+    ///   copy -i disk.img ::a.txt ::b.txt  ./output/    (multiple disk -> host dir)
     Copy(copy::CopyArgs),
 }
 

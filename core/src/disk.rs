@@ -664,7 +664,7 @@ impl DiskBackend for MemoryDiskBackend {
 ///
 /// Returns the complete disk image as a `Vec<u8>`.
 pub fn create_formatted_disk(geometry: DiskGeometry, label: Option<&str>) -> Result<Vec<u8>> {
-    let opts = build_format_opts(label);
+    let opts = build_format_opts(&geometry, label);
 
     if geometry.is_floppy() {
         let data = vec![0u8; geometry.total_size];
@@ -696,8 +696,58 @@ pub fn create_formatted_disk(geometry: DiskGeometry, label: Option<&str>) -> Res
     }
 }
 
-fn build_format_opts(label: Option<&str>) -> fatfs::FormatVolumeOptions {
+fn build_format_opts(geometry: &DiskGeometry, label: Option<&str>) -> fatfs::FormatVolumeOptions {
     let mut opts = fatfs::FormatVolumeOptions::new();
+
+    // Set geometry-specific BPB fields so DOS recognizes the disk correctly.
+    // fatfs's defaults produce non-standard values (wrong media byte, sectors/cluster, root entries)
+    // that confuse DOS (e.g. it stops listing directory entries after ~8 files).
+    opts = opts
+        .heads(geometry.heads)
+        .sectors_per_track(geometry.sectors_per_track);
+
+    match geometry.total_size {
+        1_474_560 => {
+            // 1.44MB 3.5" HD: media=0xF0, 1 sector/cluster, 224 root entries
+            opts = opts
+                .media(0xF0)
+                .bytes_per_cluster(512)
+                .max_root_dir_entries(224)
+                .fat_type(fatfs::FatType::Fat12)
+                .drive_num(0);
+        }
+        737_280 => {
+            // 720KB 3.5" DD: media=0xF9, 2 sectors/cluster, 112 root entries
+            opts = opts
+                .media(0xF9)
+                .bytes_per_cluster(1024)
+                .max_root_dir_entries(112)
+                .fat_type(fatfs::FatType::Fat12)
+                .drive_num(0);
+        }
+        368_640 => {
+            // 360KB 5.25" DD: media=0xFD, 2 sectors/cluster, 112 root entries
+            opts = opts
+                .media(0xFD)
+                .bytes_per_cluster(1024)
+                .max_root_dir_entries(112)
+                .fat_type(fatfs::FatType::Fat12)
+                .drive_num(0);
+        }
+        163_840 => {
+            // 160KB 5.25" SS/SD: media=0xFE, 1 sector/cluster, 64 root entries
+            opts = opts
+                .media(0xFE)
+                .bytes_per_cluster(512)
+                .max_root_dir_entries(64)
+                .fat_type(fatfs::FatType::Fat12)
+                .drive_num(0);
+        }
+        _ => {
+            // Hard drive: let fatfs choose FAT16/FAT32 based on size
+        }
+    }
+
     if let Some(l) = label {
         let mut lb = [b' '; 11];
         let bytes = l.as_bytes();
