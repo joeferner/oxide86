@@ -1039,6 +1039,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "emu86-mkdisk"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "emu86-core",
+ "env_logger",
+ "log",
+]
+
+[[package]]
 name = "emu86-native-cli"
 version = "0.1.0"
 dependencies = [

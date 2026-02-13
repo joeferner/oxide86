@@ -11,8 +11,11 @@ import {
     ActionIcon,
     Tooltip,
     Text,
+    Select,
+    TextInput,
 } from '@mantine/core';
 import { Emu86Computer } from '../../pkg/emu86_wasm';
+import { create_floppy_image, create_hdd_image } from '../../pkg/emu86_wasm';
 
 interface FileEntry {
     name: string;
@@ -48,6 +51,28 @@ export function DiskManager({
     const [files, setFiles] = useState<FileEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
+    const [createDiskOpened, setCreateDiskOpened] = useState(false);
+    const [selectedSize, setSelectedSize] = useState<string | null>(null);
+    const [diskLabel, setDiskLabel] = useState('');
+
+    const isFloppy = driveNumber < 0x80;
+
+    const floppySizeOptions = [
+        { value: '1440', label: '1.44 MB (3.5" HD)' },
+        { value: '720', label: '720 KB (3.5" DD)' },
+        { value: '360', label: '360 KB (5.25" DD)' },
+        { value: '160', label: '160 KB (5.25" SS)' },
+    ];
+
+    const hddSizeOptions = [
+        { value: '10', label: '10 MB' },
+        { value: '20', label: '20 MB' },
+        { value: '32', label: '32 MB' },
+        { value: '64', label: '64 MB' },
+        { value: '128', label: '128 MB' },
+    ];
+
+    const sizeOptions = isFloppy ? floppySizeOptions : hddSizeOptions;
 
     // Get drive letter from drive number
     const getDriveLetter = useCallback((drive: number): string => {
@@ -192,6 +217,45 @@ export function DiskManager({
         }
     };
 
+    // Create a new blank formatted disk
+    const createNewDisk = (): void => {
+        if (!selectedSize || !computer) {
+            return;
+        }
+
+        setLoading(true);
+        try {
+            const label = diskLabel.trim() || undefined;
+            const size = parseInt(selectedSize);
+
+            if (isFloppy) {
+                const data = new Uint8Array(create_floppy_image(size, label));
+                computer.load_floppy(driveNumber, data);
+                onStatusUpdate(`Created ${selectedSize}KB floppy on ${getDriveLetter(driveNumber)}:`);
+                setCurrentPath('/');
+                browseDisk(driveNumber, '/');
+            } else {
+                const data = new Uint8Array(create_hdd_image(size, label));
+                const blob = new Blob([data], { type: 'application/octet-stream' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `drive_${getDriveLetter(driveNumber)}_new.img`;
+                a.click();
+                URL.revokeObjectURL(url);
+                onStatusUpdate(`Created and downloaded ${selectedSize}MB HDD image`);
+            }
+
+            setCreateDiskOpened(false);
+            setSelectedSize(null);
+            setDiskLabel('');
+        } catch (e) {
+            onStatusUpdate(`Error creating disk: ${e}`);
+        } finally {
+            setLoading(false);
+        }
+    };
+
     // Format file size
     const formatSize = (bytes: number): string => {
         if (bytes < 1024) {
@@ -251,6 +315,16 @@ export function DiskManager({
                                 </Button>
                             )}
                         </FileButton>
+                        <Button
+                            onClick={() => {
+                                setCreateDiskOpened(true);
+                            }}
+                            size="sm"
+                            disabled={loading}
+                            color="green"
+                        >
+                            Create New Disk
+                        </Button>
                         <Button
                             onClick={() => {
                                 browseDisk(driveNumber, currentPath);
@@ -377,6 +451,55 @@ export function DiskManager({
                         </Button>
                         <Button color="red" onClick={confirmDelete}>
                             Delete
+                        </Button>
+                    </Group>
+                </Stack>
+            </Modal>
+
+            <Modal
+                opened={createDiskOpened}
+                onClose={() => {
+                    setCreateDiskOpened(false);
+                    setSelectedSize(null);
+                    setDiskLabel('');
+                }}
+                title={isFloppy ? 'Create New Floppy Disk' : 'Create New Hard Drive Image'}
+                size="sm"
+            >
+                <Stack gap="md">
+                    <Select
+                        label="Disk Size"
+                        placeholder="Select size"
+                        data={sizeOptions}
+                        value={selectedSize}
+                        onChange={setSelectedSize}
+                    />
+                    <TextInput
+                        label="Volume Label (optional, max 11 chars)"
+                        maxLength={11}
+                        value={diskLabel}
+                        onChange={(e) => {
+                            setDiskLabel(e.currentTarget.value.toUpperCase());
+                        }}
+                    />
+                    {!isFloppy && (
+                        <Text size="sm" c="dimmed">
+                            The HDD image will be downloaded. Load it via Drive Control to use it.
+                        </Text>
+                    )}
+                    <Group justify="flex-end">
+                        <Button
+                            variant="default"
+                            onClick={() => {
+                                setCreateDiskOpened(false);
+                                setSelectedSize(null);
+                                setDiskLabel('');
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button color="green" disabled={!selectedSize || loading} onClick={createNewDisk}>
+                            {isFloppy ? 'Create & Load' : 'Create & Download'}
                         </Button>
                     </Group>
                 </Stack>

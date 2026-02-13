@@ -6,7 +6,7 @@ pub use crate::cpu_type::CpuType;
 pub use crate::decoder::{DecodedInstruction, decode_instruction, decode_instruction_with_regs};
 pub use crate::disk::{
     BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, MemoryDiskBackend,
-    PartitionedDisk, SECTOR_SIZE, parse_mbr,
+    PartitionedDisk, SECTOR_SIZE, create_formatted_disk, parse_mbr,
 };
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 pub use crate::io::Pit;

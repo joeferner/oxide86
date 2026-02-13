@@ -6,8 +6,8 @@
 
 use emu86_core::{
     BackedDisk, Computer, DiskController, DiskGeometry, DriveNumber, KeyPress, KeyboardInput,
-    MemoryDiskBackend, MouseInput, MouseState, NullSpeaker, PartitionedDisk, cpu::bios::FileAccess,
-    parse_mbr,
+    MemoryDiskBackend, MouseInput, MouseState, NullSpeaker, PartitionedDisk, SECTOR_SIZE,
+    cpu::bios::FileAccess, create_formatted_disk, parse_mbr,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -925,4 +925,44 @@ impl Emu86Computer {
         log::info!("Deleted directory {}", dos_path);
         Ok(())
     }
+}
+
+/// Create a blank FAT-formatted floppy disk image.
+///
+/// # Arguments
+/// * `size_kb` - Floppy size in KB: 1440, 720, 360, or 160
+/// * `label` - Optional volume label (up to 11 characters)
+///
+/// Returns the disk image as a Uint8Array.
+#[wasm_bindgen]
+pub fn create_floppy_image(size_kb: u32, label: Option<String>) -> Result<Vec<u8>, JsValue> {
+    let geometry = match size_kb {
+        1440 => DiskGeometry::FLOPPY_1440K,
+        720 => DiskGeometry::FLOPPY_720K,
+        360 => DiskGeometry::FLOPPY_360K,
+        160 => DiskGeometry::FLOPPY_160K,
+        _ => {
+            return Err(JsValue::from_str(
+                "Unsupported floppy size (use 1440, 720, 360, or 160)",
+            ));
+        }
+    };
+    create_formatted_disk(geometry, label.as_deref()).map_err(|e| JsValue::from_str(&e.to_string()))
+}
+
+/// Create a blank FAT-formatted hard drive image with an MBR partition table.
+///
+/// # Arguments
+/// * `size_mb` - Drive size in MB (minimum 2)
+/// * `label` - Optional volume label (up to 11 characters)
+///
+/// Returns the disk image as a Uint8Array.
+#[wasm_bindgen]
+pub fn create_hdd_image(size_mb: u32, label: Option<String>) -> Result<Vec<u8>, JsValue> {
+    if size_mb < 2 {
+        return Err(JsValue::from_str("HDD size must be at least 2MB"));
+    }
+    let total_sectors = (size_mb as usize * 1024 * 1024) / SECTOR_SIZE;
+    let geometry = DiskGeometry::hard_drive(total_sectors);
+    create_formatted_disk(geometry, label.as_deref()).map_err(|e| JsValue::from_str(&e.to_string()))
 }

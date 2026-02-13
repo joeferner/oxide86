@@ -1,5 +1,6 @@
 use anyhow::{Result, anyhow};
 use std::cell::RefCell;
+use std::io::Cursor;
 use std::rc::Rc;
 
 /// Standard sector size for floppy disks (512 bytes)
@@ -654,6 +655,78 @@ impl DiskBackend for MemoryDiskBackend {
     fn size(&self) -> u64 {
         self.data.borrow().len() as u64
     }
+}
+
+/// Create a blank FAT-formatted disk image.
+///
+/// For floppy geometries, formats the entire disk. For hard drive geometries, writes an MBR
+/// with a single FAT partition starting at sector 63, then formats the partition.
+///
+/// Returns the complete disk image as a `Vec<u8>`.
+pub fn create_formatted_disk(geometry: DiskGeometry, label: Option<&str>) -> Result<Vec<u8>> {
+    let opts = build_format_opts(label);
+
+    if geometry.is_floppy() {
+        let data = vec![0u8; geometry.total_size];
+        let mut cursor = Cursor::new(data);
+        fatfs::format_volume(&mut cursor, opts).map_err(|e| anyhow!("Format failed: {}", e))?;
+        Ok(cursor.into_inner())
+    } else {
+        const PARTITION_START: usize = 63;
+        let total_sectors = geometry.total_sectors();
+        let partition_sectors = total_sectors - PARTITION_START;
+        let mut disk_data = vec![0u8; geometry.total_size];
+
+        write_mbr_partition(
+            &mut disk_data,
+            PARTITION_START as u32,
+            partition_sectors as u32,
+        );
+
+        let partition_size = partition_sectors * SECTOR_SIZE;
+        let partition_data = vec![0u8; partition_size];
+        let mut cursor = Cursor::new(partition_data);
+        fatfs::format_volume(&mut cursor, opts)
+            .map_err(|e| anyhow!("Partition format failed: {}", e))?;
+        let formatted = cursor.into_inner();
+        let offset = PARTITION_START * SECTOR_SIZE;
+        disk_data[offset..offset + partition_size].copy_from_slice(&formatted);
+
+        Ok(disk_data)
+    }
+}
+
+fn build_format_opts(label: Option<&str>) -> fatfs::FormatVolumeOptions {
+    let mut opts = fatfs::FormatVolumeOptions::new();
+    if let Some(l) = label {
+        let mut lb = [b' '; 11];
+        let bytes = l.as_bytes();
+        let len = bytes.len().min(11);
+        lb[..len].copy_from_slice(&bytes[..len]);
+        opts = opts.volume_label(lb);
+    }
+    opts
+}
+
+fn write_mbr_partition(disk: &mut [u8], start_sector: u32, sector_count: u32) {
+    const PART_OFFSET: usize = 446;
+    disk[PART_OFFSET] = 0x80; // Bootable
+    disk[PART_OFFSET + 1] = 0xFE; // CHS start (LBA mode)
+    disk[PART_OFFSET + 2] = 0xFF;
+    disk[PART_OFFSET + 3] = 0xFF;
+    // FAT16 for < 32MB, FAT32 otherwise
+    disk[PART_OFFSET + 4] = if (sector_count as u64 * SECTOR_SIZE as u64) < 32 * 1024 * 1024 {
+        0x06
+    } else {
+        0x0B
+    };
+    disk[PART_OFFSET + 5] = 0xFE; // CHS end (LBA mode)
+    disk[PART_OFFSET + 6] = 0xFF;
+    disk[PART_OFFSET + 7] = 0xFF;
+    disk[PART_OFFSET + 8..PART_OFFSET + 12].copy_from_slice(&start_sector.to_le_bytes());
+    disk[PART_OFFSET + 12..PART_OFFSET + 16].copy_from_slice(&sector_count.to_le_bytes());
+    disk[510] = 0x55;
+    disk[511] = 0xAA;
 }
 
 /// Blanket implementation for boxed trait objects

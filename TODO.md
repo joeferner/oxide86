@@ -1,6 +1,5 @@
 # TODO
 
-- [ ] Support creating new formatted disks
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)
   - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
