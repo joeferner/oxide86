@@ -85,25 +85,19 @@ impl Cpu {
     ///   DH = seconds (BCD format, 0-59)
     ///   DL = daylight saving time flag (0 = standard time, 1 = daylight time)
     fn int1a_read_rtc_time(&mut self, io: &super::Bios) {
-        match io.get_rtc_time() {
-            Some(time) => {
-                // Convert decimal values to BCD format
-                let hours_bcd = Self::decimal_to_bcd(time.hours);
-                let minutes_bcd = Self::decimal_to_bcd(time.minutes);
-                let seconds_bcd = Self::decimal_to_bcd(time.seconds);
+        let time = io.get_local_time();
 
-                // Set output registers
-                self.cx = ((hours_bcd as u16) << 8) | (minutes_bcd as u16); // CH = hours, CL = minutes
-                self.dx = ((seconds_bcd as u16) << 8) | (time.dst_flag as u16); // DH = seconds, DL = DST flag
+        // Convert decimal values to BCD format
+        let hours_bcd = Self::decimal_to_bcd(time.hours);
+        let minutes_bcd = Self::decimal_to_bcd(time.minutes);
+        let seconds_bcd = Self::decimal_to_bcd(time.seconds);
 
-                // Clear CF to indicate success
-                self.set_flag(cpu_flag::CARRY, false);
-            }
-            None => {
-                // RTC not available - set CF to indicate failure
-                self.set_flag(cpu_flag::CARRY, true);
-            }
-        }
+        // Set output registers
+        self.cx = ((hours_bcd as u16) << 8) | (minutes_bcd as u16); // CH = hours, CL = minutes
+        self.dx = (seconds_bcd as u16) << 8; // DH = seconds, DL = DST flag (0 = standard time)
+
+        // Clear CF to indicate success
+        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// INT 1Ah, AH=04h - Read Real Time Clock Date
@@ -117,26 +111,20 @@ impl Cpu {
     ///   DH = month (BCD format, 1-12)
     ///   DL = day (BCD format, 1-31)
     fn int1a_read_rtc_date(&mut self, io: &super::Bios) {
-        match io.get_rtc_date() {
-            Some(date) => {
-                // Convert decimal values to BCD format
-                let century_bcd = Self::decimal_to_bcd(date.century);
-                let year_bcd = Self::decimal_to_bcd(date.year);
-                let month_bcd = Self::decimal_to_bcd(date.month);
-                let day_bcd = Self::decimal_to_bcd(date.day);
+        let date = io.get_local_date();
 
-                // Set output registers
-                self.cx = ((century_bcd as u16) << 8) | (year_bcd as u16); // CH = century, CL = year
-                self.dx = ((month_bcd as u16) << 8) | (day_bcd as u16); // DH = month, DL = day
+        // Convert decimal values to BCD format
+        let century_bcd = Self::decimal_to_bcd(date.century);
+        let year_bcd = Self::decimal_to_bcd(date.year);
+        let month_bcd = Self::decimal_to_bcd(date.month);
+        let day_bcd = Self::decimal_to_bcd(date.day);
 
-                // Clear CF to indicate success
-                self.set_flag(cpu_flag::CARRY, false);
-            }
-            None => {
-                // RTC not available - set CF to indicate failure
-                self.set_flag(cpu_flag::CARRY, true);
-            }
-        }
+        // Set output registers
+        self.cx = ((century_bcd as u16) << 8) | (year_bcd as u16); // CH = century, CL = year
+        self.dx = ((month_bcd as u16) << 8) | (day_bcd as u16); // DH = month, DL = day
+
+        // Clear CF to indicate success
+        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// Convert a decimal value (0-99) to BCD format

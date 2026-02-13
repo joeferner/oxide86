@@ -10,7 +10,7 @@ use emu86_core::{
     VIDEO_MEMORY_SIZE, VIDEO_MEMORY_START,
 };
 use emu86_native_common::{
-    CommonCli, apply_logging_flags, attach_serial_device, create_speaker, load_disks,
+    CommonCli, NativeClock, apply_logging_flags, attach_serial_device, create_speaker, load_disks,
     load_program_or_boot,
 };
 use gui_keyboard::GuiKeyboard;
@@ -839,7 +839,8 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
     let video = PixelsVideoController::new();
     let speaker = create_speaker();
 
-    let mut computer = Computer::new(keyboard, mouse, video, speaker, cpu_type);
+    let clock = Box::new(NativeClock);
+    let mut computer = Computer::new(keyboard, mouse, clock, video, speaker, cpu_type);
 
     // Force initial video render to show blank screen
     computer.force_video_redraw();

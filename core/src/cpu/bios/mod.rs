@@ -27,11 +27,11 @@ mod int35_3f;
 
 use super::Cpu;
 use crate::{
-    DiskController, DriveManager, DriveNumber, KeyboardInput, MemoryAllocator, MouseInput,
-    MouseState, SerialParams, SerialPortController, SerialStatus,
+    Clock, DiskController, DriveManager, DriveNumber, KeyboardInput, LocalDate, LocalTime,
+    MemoryAllocator, MouseInput, MouseState, SerialParams, SerialPortController, SerialStatus,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
     memory::Memory,
-    peripheral, time,
+    peripheral,
 };
 pub use int17::PrinterStatus;
 pub use int21::FileAccess;
@@ -58,32 +58,6 @@ pub struct KeyPress {
     pub scan_code: u8,
     /// ASCII character code
     pub ascii_code: u8,
-}
-
-/// RTC (Real Time Clock) time data returned by INT 1Ah, AH=02h
-#[derive(Debug, Clone, Copy)]
-pub struct RtcTime {
-    /// Hours (0-23, decimal not BCD)
-    pub hours: u8,
-    /// Minutes (0-59, decimal not BCD)
-    pub minutes: u8,
-    /// Seconds (0-59, decimal not BCD)
-    pub seconds: u8,
-    /// Daylight saving time flag (0 = standard time, 1 = daylight time)
-    pub dst_flag: u8,
-}
-
-/// RTC (Real Time Clock) date data returned by INT 1Ah, AH=04h
-#[derive(Debug, Clone, Copy)]
-pub struct RtcDate {
-    /// Century (19 or 20, decimal not BCD)
-    pub century: u8,
-    /// Year within century (0-99, decimal not BCD)
-    pub year: u8,
-    /// Month (1-12, decimal not BCD)
-    pub month: u8,
-    /// Day of month (1-31, decimal not BCD)
-    pub day: u8,
 }
 
 /// File seek methods for INT 21h, AH=42h
@@ -226,6 +200,8 @@ pub struct Bios {
     pub keyboard: Box<dyn KeyboardInput>,
     /// Mouse input handler (platform-independent via trait object)
     pub mouse: Box<dyn MouseInput>,
+    /// Clock for time/date operations (platform-specific via trait object)
+    pub clock: Box<dyn Clock>,
     /// Serial port controllers (COM1 and COM2)
     pub serial_ports: [SerialPortController; 2],
     /// Pending keyboard scan code (set by fire_keyboard_irq(), read by INT 09h handler)
@@ -237,12 +213,17 @@ pub struct Bios {
 }
 
 impl Bios {
-    /// Create a new Bios with the provided keyboard and mouse input handlers
-    pub fn new(keyboard: Box<dyn KeyboardInput>, mouse: Box<dyn MouseInput>) -> Self {
+    /// Create a new Bios with the provided keyboard, mouse, and clock handlers
+    pub fn new(
+        keyboard: Box<dyn KeyboardInput>,
+        mouse: Box<dyn MouseInput>,
+        clock: Box<dyn Clock>,
+    ) -> Self {
         Self {
             shared: SharedBiosState::new(),
             keyboard,
             mouse,
+            clock,
             serial_ports: [SerialPortController::new(0), SerialPortController::new(1)],
             pending_scan_code: 0,
             pending_ascii_code: 0,
@@ -825,15 +806,29 @@ impl Bios {
 
     // Time and RTC
     pub fn get_system_ticks(&self) -> u32 {
-        time::get_system_ticks()
+        let time = self.clock.get_local_time();
+
+        // Calculate total milliseconds since midnight
+        let seconds_since_midnight =
+            (time.hours as u32 * 3600) + (time.minutes as u32 * 60) + (time.seconds as u32);
+        let millis_since_midnight =
+            (seconds_since_midnight as u64 * 1000) + (time.milliseconds as u64);
+
+        // Convert to BIOS ticks using exact timer frequency
+        // Timer frequency: 1193182 / 65536 = 18.2065 Hz (NOT 18.2!)
+        // Formula: ticks = milliseconds * 1193182 / 65536 / 1000
+        let ticks = (millis_since_midnight * 1193182 / 65536 / 1000) as u32;
+
+        // Ensure we don't exceed the maximum tick count for a day
+        ticks.min(0x001800B0)
     }
 
-    pub fn get_rtc_time(&self) -> Option<RtcTime> {
-        time::get_rtc_time()
+    pub fn get_local_time(&self) -> LocalTime {
+        self.clock.get_local_time()
     }
 
-    pub fn get_rtc_date(&self) -> Option<RtcDate> {
-        time::get_rtc_date()
+    pub fn get_local_date(&self) -> LocalDate {
+        self.clock.get_local_date()
     }
 
     // Mouse input

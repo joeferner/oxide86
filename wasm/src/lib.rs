@@ -14,6 +14,7 @@ use std::rc::Rc;
 use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, Window};
 
+mod clock;
 mod web_keyboard;
 mod web_mouse;
 mod web_speaker;
@@ -148,7 +149,15 @@ impl Emu86Computer {
         // TODO: Add option to configure CPU type via JavaScript API
         let cpu_type = emu86_core::CpuType::default();
 
-        let mut computer = Computer::new(keyboard_wrapper, mouse_wrapper, video, speaker, cpu_type);
+        let clock = Box::new(clock::WasmClock);
+        let mut computer = Computer::new(
+            keyboard_wrapper,
+            mouse_wrapper,
+            clock,
+            video,
+            speaker,
+            cpu_type,
+        );
 
         // Force initial video render to show blank screen
         computer.force_video_redraw();

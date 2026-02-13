@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Display};
 
+pub use crate::clock::{Clock, LocalDate, LocalTime};
 pub use crate::cpu::bios::{Bios, DosDevice, DriveParams, KeyPress, SharedBiosState};
 pub use crate::cpu_type::CpuType;
 pub use crate::decoder::{DecodedInstruction, decode_instruction, decode_instruction_with_regs};
@@ -28,6 +29,7 @@ pub use computer::Computer;
 pub use font::Cp437Font;
 pub use palette::TextModePalette;
 
+pub mod clock;
 pub mod computer;
 pub mod cpu;
 pub mod cpu_type;
@@ -49,7 +51,6 @@ pub mod rodio_speaker;
 pub mod serial_mouse;
 pub mod serial_port;
 pub mod speaker;
-pub mod time;
 pub mod utils;
 pub mod video;
 

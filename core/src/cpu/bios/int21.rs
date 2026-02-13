@@ -951,43 +951,35 @@ impl Cpu {
     ///   DL = day (1-31)
     ///   AL = day of week (0=Sunday, 1=Monday, ..., 6=Saturday)
     fn int21_get_date(&mut self, io: &super::Bios) {
-        // Get RTC date from BIOS
-        if let Some(date) = io.get_rtc_date() {
-            let year = (date.century as u16) * 100 + (date.year as u16);
-            self.cx = year; // CX = year
-            self.dx = ((date.month as u16) << 8) | (date.day as u16); // DH=month, DL=day
+        let date = io.get_local_date();
+        let year = (date.century as u16) * 100 + (date.year as u16);
+        self.cx = year; // CX = year
+        self.dx = ((date.month as u16) << 8) | (date.day as u16); // DH=month, DL=day
 
-            // Calculate day of week (Zeller's congruence)
-            let mut m = date.month as i32;
-            let mut y = year as i32;
-            let d = date.day as i32;
+        // Calculate day of week (Zeller's congruence)
+        let mut m = date.month as i32;
+        let mut y = year as i32;
+        let d = date.day as i32;
 
-            // January and February are treated as months 13 and 14 of the previous year
-            if m < 3 {
-                m += 12;
-                y -= 1;
-            }
-
-            let day_of_week = (d + (13 * (m + 1)) / 5 + y + y / 4 - y / 100 + y / 400) % 7;
-            // Adjust: Zeller gives 0=Saturday, we need 0=Sunday
-            let day_of_week = ((day_of_week + 6) % 7) as u8;
-
-            self.ax = (self.ax & 0xFF00) | (day_of_week as u16); // AL = day of week
-
-            log::debug!(
-                "INT 21h AH=2Ah: Get date - {}-{:02}-{:02} (day of week: {})",
-                year,
-                date.month,
-                date.day,
-                day_of_week
-            );
-        } else {
-            // If RTC not available, return default date
-            self.cx = 1980; // Year 1980 (DOS epoch)
-            self.dx = 0x0101; // January 1
-            self.ax = (self.ax & 0xFF00) | 2; // Tuesday
-            log::warn!("INT 21h AH=2Ah: RTC not available, returning 1980-01-01");
+        // January and February are treated as months 13 and 14 of the previous year
+        if m < 3 {
+            m += 12;
+            y -= 1;
         }
+
+        let day_of_week = (d + (13 * (m + 1)) / 5 + y + y / 4 - y / 100 + y / 400) % 7;
+        // Adjust: Zeller gives 0=Saturday, we need 0=Sunday
+        let day_of_week = ((day_of_week + 6) % 7) as u8;
+
+        self.ax = (self.ax & 0xFF00) | (day_of_week as u16); // AL = day of week
+
+        log::debug!(
+            "INT 21h AH=2Ah: Get date - {}-{:02}-{:02} (day of week: {})",
+            year,
+            date.month,
+            date.day,
+            day_of_week
+        );
     }
 
     /// INT 21h, AH=2Bh - Set System Date
@@ -1023,7 +1015,7 @@ impl Cpu {
         );
 
         // Note: We don't actually set the system date in the emulator
-        // because get_rtc_date() always reads the host system clock.
+        // because get_local_date() always reads the host system clock.
         // Return success anyway since programs expect it.
         self.ax &= 0xFF00; // AL = 0x00 (success)
     }
@@ -1106,7 +1098,7 @@ impl Cpu {
         );
 
         // Note: We don't actually set the system time in the emulator
-        // because get_rtc_time() always reads the host system clock.
+        // because get_local_time() always reads the host system clock.
         // Return success anyway since programs expect it.
         self.ax &= 0xFF00; // AL = 0x00 (success)
     }

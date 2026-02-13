@@ -5,7 +5,7 @@ use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::Computer;
 use emu86_native_common::{
-    CommonCli, apply_logging_flags, attach_serial_device, create_speaker, load_disks,
+    CommonCli, NativeClock, apply_logging_flags, attach_serial_device, create_speaker, load_disks,
     load_program_or_boot,
 };
 use std::fs::File;
@@ -80,7 +80,8 @@ fn main() -> Result<()> {
     // Video init switches to alternate screen - must come after speaker init
     let video = TerminalVideo::new();
 
-    let mut computer = Computer::new(keyboard, mouse, video, speaker, cpu_type);
+    let clock = Box::new(NativeClock);
+    let mut computer = Computer::new(keyboard, mouse, clock, video, speaker, cpu_type);
 
     // Load disks and program/boot
     load_disks(

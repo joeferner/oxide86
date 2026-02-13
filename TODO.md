@@ -1,6 +1,5 @@
 # TODO
 
-- [ ] create a clock trait and move native only time function to native-common and move wasm time functions to wasm
 - [ ] move native only code to native-common (rodio, FileDiskBackend)
 - [ ] remove turbo option
 - [ ] Add options to native-gui and native-cli command line options to set cpu clock speed

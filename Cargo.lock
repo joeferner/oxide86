@@ -1031,10 +1031,8 @@ name = "emu86-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "chrono",
  "criterion",
  "fatfs",
- "js-sys",
  "log",
  "rodio",
  "strum",
@@ -1059,6 +1057,7 @@ name = "emu86-native-common"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "chrono",
  "clap",
  "emu86-core",
  "log",
