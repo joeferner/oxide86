@@ -8,16 +8,12 @@ pub use crate::disk::{
     BackedDisk, DiskBackend, DiskController, DiskGeometry, DiskImage, MemoryDiskBackend,
     PartitionedDisk, SECTOR_SIZE, parse_mbr,
 };
-#[cfg(not(target_arch = "wasm32"))]
-pub use crate::disk_backend::FileDiskBackend;
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 pub use crate::io::Pit;
 pub use crate::keyboard::KeyboardInput;
 pub use crate::memory::{MEMORY_SIZE, Memory};
 pub use crate::memory_allocator::MemoryAllocator;
 pub use crate::mouse::{MouseInput, MouseState, NullMouse};
-#[cfg(feature = "audio-rodio")]
-pub use crate::rodio_speaker::RodioSpeaker;
 pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
 pub use crate::speaker::{NullSpeaker, SpeakerOutput};
@@ -35,8 +31,6 @@ pub mod cpu;
 pub mod cpu_type;
 pub mod decoder;
 pub mod disk;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod disk_backend;
 pub mod drive_manager;
 pub mod font;
 pub mod io;
@@ -46,8 +40,6 @@ pub mod memory_allocator;
 pub mod mouse;
 pub mod palette;
 pub mod peripheral;
-#[cfg(feature = "audio-rodio")]
-pub mod rodio_speaker;
 pub mod serial_mouse;
 pub mod serial_port;
 pub mod speaker;

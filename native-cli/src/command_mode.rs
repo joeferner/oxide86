@@ -3,7 +3,8 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
 use crossterm::terminal::ClearType;
 use crossterm::{cursor, execute, terminal};
-use emu86_core::{BackedDisk, Computer, DriveNumber, FileDiskBackend};
+use emu86_core::{BackedDisk, Computer, DriveNumber};
+use emu86_native_common::FileDiskBackend;
 use std::io::{self, Stdout, Write, stdout};
 
 /// Read a line of input in raw terminal mode with basic editing support

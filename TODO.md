@@ -1,8 +1,6 @@
 # TODO
 
-- [ ] move native only code to native-common (rodio, FileDiskBackend)
-- [ ] remove turbo option
-- [ ] Add options to native-gui and native-cli command line options to set cpu clock speed
+- [ ] add options to native-gui and native-cli command line options to set cpu clock speed
 - [ ] Add configuration dialog in wasm for amount of memory system has, cpu type, cpu clock speed
 - [ ] WASM - support creating new disks
 - [ ] check-it 2

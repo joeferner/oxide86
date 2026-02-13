@@ -14,7 +14,6 @@ pub enum MenuAction {
     ToggleExecutionLogging,
     ToggleInterruptLogging,
     TogglePause,
-    ToggleTurbo,
     TogglePerformanceOverlay,
 }
 
@@ -31,7 +30,6 @@ impl MenuAction {
             | MenuAction::ToggleExecutionLogging
             | MenuAction::ToggleInterruptLogging
             | MenuAction::TogglePause
-            | MenuAction::ToggleTurbo
             | MenuAction::TogglePerformanceOverlay => {
                 unreachable!("drive_number() called on non-floppy action")
             }
@@ -50,7 +48,6 @@ impl MenuAction {
             MenuAction::ToggleExecutionLogging
                 | MenuAction::ToggleInterruptLogging
                 | MenuAction::TogglePause
-                | MenuAction::ToggleTurbo
                 | MenuAction::TogglePerformanceOverlay
                 | MenuAction::Reset
                 | MenuAction::SaveScreenshot
@@ -67,7 +64,6 @@ pub struct AppMenu {
     exec_logging_enabled: bool,
     interrupt_logging_enabled: bool,
     is_paused: bool,
-    turbo_mode: bool,
     show_performance_overlay: bool,
 }
 
@@ -80,7 +76,6 @@ impl AppMenu {
             exec_logging_enabled: false,
             interrupt_logging_enabled: false,
             is_paused: false,
-            turbo_mode: false,
             show_performance_overlay: false,
         }
     }
@@ -97,13 +92,11 @@ impl AppMenu {
         exec_logging: bool,
         interrupt_logging: bool,
         paused: bool,
-        turbo: bool,
         show_overlay: bool,
     ) {
         self.exec_logging_enabled = exec_logging;
         self.interrupt_logging_enabled = interrupt_logging;
         self.is_paused = paused;
-        self.turbo_mode = turbo;
         self.show_performance_overlay = show_overlay;
     }
 
@@ -219,13 +212,6 @@ impl AppMenu {
                     }
 
                     ui.separator();
-
-                    // Turbo mode with checkbox
-                    let mut b = self.turbo_mode;
-                    if ui.checkbox(&mut b, "Turbo Mode").clicked() {
-                        action = Some(MenuAction::ToggleTurbo);
-                        ui.close_menu();
-                    }
 
                     // Performance overlay with checkbox
                     let mut b = self.show_performance_overlay;

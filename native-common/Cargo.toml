@@ -6,7 +6,8 @@ edition = "2024"
 [dependencies]
 clap = { workspace = true }
 chrono = "0.4"
-emu86-core = { path = "../core", features = ["audio-rodio"] }
+emu86-core = { path = "../core" }
+rodio = "0.21"
 anyhow = { workspace = true }
 log = { workspace = true }
 

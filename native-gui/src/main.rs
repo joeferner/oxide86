@@ -6,12 +6,12 @@ mod menu;
 use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::{
-    BackedDisk, Computer, DriveNumber, FileDiskBackend, MEMORY_SIZE, VIDEO_MEMORY_END,
-    VIDEO_MEMORY_SIZE, VIDEO_MEMORY_START,
+    BackedDisk, Computer, DriveNumber, MEMORY_SIZE, VIDEO_MEMORY_END, VIDEO_MEMORY_SIZE,
+    VIDEO_MEMORY_START,
 };
 use emu86_native_common::{
-    CommonCli, NativeClock, apply_logging_flags, attach_serial_device, create_speaker, load_disks,
-    load_program_or_boot,
+    CommonCli, FileDiskBackend, NativeClock, apply_logging_flags, attach_serial_device,
+    create_speaker, load_disks, load_program_or_boot,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -290,7 +290,6 @@ fn step_emulator(
     computer: &mut Computer<PixelsVideoController>,
     pixels: &mut Pixels,
     is_paused: bool,
-    turbo_mode: bool,
     throttle_start: Instant,
     nanos_per_cycle: u64,
 ) -> bool {
@@ -298,39 +297,26 @@ fn step_emulator(
 
     // Skip execution if paused
     if !is_paused {
-        if turbo_mode {
-            // Turbo mode: execute a large batch per frame
-            const BATCH_SIZE: u32 = 50000;
-            for _ in 0..BATCH_SIZE {
-                if computer.is_halted() {
-                    log::info!("Computer halted");
-                    halted = true;
-                    break;
-                }
-                computer.step();
-            }
-        } else {
-            // Throttled mode: execute cycles to catch up to real time
-            // Calculate target cycles based on elapsed wall time
-            let elapsed_nanos = throttle_start.elapsed().as_nanos() as u64;
-            let target_cycles = elapsed_nanos / nanos_per_cycle;
-            let current_cycles = computer.get_cycle_count();
+        // Throttled mode: execute cycles to catch up to real time
+        // Calculate target cycles based on elapsed wall time
+        let elapsed_nanos = throttle_start.elapsed().as_nanos() as u64;
+        let target_cycles = elapsed_nanos / nanos_per_cycle;
+        let current_cycles = computer.get_cycle_count();
 
-            // Execute until we catch up, but cap per frame to stay responsive
-            const MAX_CYCLES_PER_FRAME: u64 = 100_000;
-            let cycles_to_run =
-                (target_cycles.saturating_sub(current_cycles)).min(MAX_CYCLES_PER_FRAME);
+        // Execute until we catch up, but cap per frame to stay responsive
+        const MAX_CYCLES_PER_FRAME: u64 = 100_000;
+        let cycles_to_run =
+            (target_cycles.saturating_sub(current_cycles)).min(MAX_CYCLES_PER_FRAME);
 
-            // Each step is ~10 cycles
-            let steps_to_run = cycles_to_run / 10;
-            for _ in 0..steps_to_run {
-                if computer.is_halted() {
-                    log::info!("Computer halted");
-                    halted = true;
-                    break;
-                }
-                computer.step();
+        // Each step is ~10 cycles
+        let steps_to_run = cycles_to_run / 10;
+        for _ in 0..steps_to_run {
+            if computer.is_halted() {
+                log::info!("Computer halted");
+                halted = true;
+                break;
             }
+            computer.step();
         }
     }
 
@@ -425,7 +411,6 @@ struct AppState {
     floppy_b_present: bool,
     is_paused: bool,
     interrupt_logging_enabled: bool,
-    turbo_mode: bool,
     show_performance_overlay: bool,
     perf_tracker: PerformanceTracker,
     notification: Option<Notification>,
@@ -445,7 +430,6 @@ fn process_egui_frame(
         computer.exec_logging_enabled,
         app_state.interrupt_logging_enabled,
         app_state.is_paused,
-        app_state.turbo_mode,
         app_state.show_performance_overlay,
     );
 
@@ -481,7 +465,7 @@ fn process_egui_frame(
 
         // Render performance overlay outside exclusive mode check so it's always visible
         if app_state.show_performance_overlay {
-            render_performance_overlay(ctx, app_state.turbo_mode, app_state.perf_tracker.get_mhz());
+            render_performance_overlay(ctx, app_state.perf_tracker.get_mhz());
         }
 
         // Render notification if present and not expired (unless halted)
@@ -498,7 +482,7 @@ fn process_egui_frame(
     full_output
 }
 
-fn render_performance_overlay(ctx: &egui::Context, turbo_mode: bool, actual_mhz: f64) {
+fn render_performance_overlay(ctx: &egui::Context, actual_mhz: f64) {
     egui::Window::new("Performance")
         .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-10.0, 10.0))
         .title_bar(false)
@@ -507,12 +491,7 @@ fn render_performance_overlay(ctx: &egui::Context, turbo_mode: bool, actual_mhz:
         .collapsible(false)
         .show(ctx, |ui| {
             ui.vertical(|ui| {
-                let target_text = if turbo_mode {
-                    "Target: Unlimited".to_string()
-                } else {
-                    "Target: 4.77 MHz".to_string()
-                };
-                ui.label(target_text);
+                ui.label("Target: 4.77 MHz");
                 ui.label(format!("Actual: {:.2} MHz", actual_mhz));
             });
         });
@@ -650,7 +629,6 @@ fn run(cli: Cli) -> Result<()> {
         floppy_b_present: cli.common.floppy_b.is_some(),
         is_paused: false,
         interrupt_logging_enabled: cli.common.int_log,
-        turbo_mode: cli.common.turbo,
         show_performance_overlay: false,
         perf_tracker: PerformanceTracker::new(),
         notification: None,
@@ -662,11 +640,7 @@ fn run(cli: Cli) -> Result<()> {
     const NANOS_PER_CYCLE: u64 = 1_000_000_000 / CLOCK_HZ;
     let throttle_start = Instant::now();
 
-    if cli.common.turbo {
-        log::info!("Running in turbo mode (no speed limit)");
-    } else {
-        log::info!("Running at 4.77 MHz");
-    }
+    log::info!("Running at 4.77 MHz");
 
     // Update menu states
     app_state
@@ -784,7 +758,6 @@ fn run(cli: Cli) -> Result<()> {
                             &mut computer,
                             &mut pixels,
                             app_state.is_paused,
-                            app_state.turbo_mode,
                             throttle_start,
                             NANOS_PER_CYCLE,
                         );
@@ -1233,17 +1206,6 @@ fn handle_debug_action(
                     "paused"
                 } else {
                     "resumed"
-                }
-            );
-        }
-        MenuAction::ToggleTurbo => {
-            app_state.turbo_mode = !app_state.turbo_mode;
-            log::info!(
-                "Turbo mode {}",
-                if app_state.turbo_mode {
-                    "enabled"
-                } else {
-                    "disabled"
                 }
             );
         }

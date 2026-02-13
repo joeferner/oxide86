@@ -1034,7 +1034,6 @@ dependencies = [
  "criterion",
  "fatfs",
  "log",
- "rodio",
  "strum",
  "strum_macros",
 ]
@@ -1061,6 +1060,7 @@ dependencies = [
  "clap",
  "emu86-core",
  "log",
+ "rodio",
 ]
 
 [[package]]

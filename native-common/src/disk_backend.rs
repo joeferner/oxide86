@@ -1,20 +1,15 @@
-use crate::DiskBackend;
 use anyhow::{Context, Result};
-
-#[cfg(not(target_arch = "wasm32"))]
+use emu86_core::DiskBackend;
 use std::fs::File;
-#[cfg(not(target_arch = "wasm32"))]
 use std::io::{Read, Seek, SeekFrom, Write};
 
 /// File-backed disk storage for native platform.
 /// Reads and writes go directly to the disk image file.
-#[cfg(not(target_arch = "wasm32"))]
 pub struct FileDiskBackend {
     file: File,
     size: u64,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl FileDiskBackend {
     /// Open a disk image file for read/write access
     pub fn open(path: &str, read_only: bool) -> Result<Self> {
@@ -35,7 +30,6 @@ impl FileDiskBackend {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 impl DiskBackend for FileDiskBackend {
     fn read_at(&mut self, offset: u64, buf: &mut [u8]) -> Result<usize> {
         self.file.seek(SeekFrom::Start(offset))?;

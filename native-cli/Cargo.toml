@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 emu86-native-common = { path = "../native-common" }
-emu86-core = { path = "../core", features = ["audio-rodio"] }
+emu86-core = { path = "../core" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 env_logger = "0.11"

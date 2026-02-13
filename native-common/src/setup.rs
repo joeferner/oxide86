@@ -1,11 +1,11 @@
 use anyhow::{Context, Result};
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
-    BackedDisk, Computer, DiskController, DriveNumber, FileDiskBackend, MouseInput, NullSpeaker,
-    PartitionedDisk, RodioSpeaker, SerialMouse, SpeakerOutput, VideoController, parse_mbr,
+    BackedDisk, Computer, DiskController, DriveNumber, MouseInput, NullSpeaker, PartitionedDisk,
+    SerialMouse, SpeakerOutput, VideoController, parse_mbr,
 };
 
-use crate::CommonCli;
+use crate::{CommonCli, FileDiskBackend, RodioSpeaker};
 
 /// Create a speaker with Rodio, falling back to NullSpeaker if unavailable.
 pub fn create_speaker() -> Box<dyn SpeakerOutput> {

@@ -42,10 +42,6 @@ pub struct CommonCli {
     #[arg(long = "com2", value_name = "DEVICE")]
     pub com2_device: Option<String>,
 
-    /// Run at maximum speed (no throttling)
-    #[arg(long)]
-    pub turbo: bool,
-
     /// Enable execution logging (logs each instruction to emu86.log)
     #[arg(long = "exec-log")]
     pub exec_log: bool,

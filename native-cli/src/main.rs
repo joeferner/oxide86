@@ -113,10 +113,7 @@ fn main() -> Result<()> {
     execute!(std::io::stdout(), EnableMouseCapture).context("Failed to enable mouse capture")?;
 
     // Run the program with optional speed throttling
-    let quit_from_command_mode = if cli.common.turbo {
-        log::info!("Running in turbo mode (no speed limit)");
-        run(&mut computer, None)
-    } else {
+    let quit_from_command_mode = {
         let clock_hz = (cli.speed * 1_000_000.0) as u64;
         log::info!("Running at {:.2} MHz ({} Hz)", cli.speed, clock_hz);
         run(&mut computer, Some(clock_hz))
