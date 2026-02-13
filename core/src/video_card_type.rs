@@ -43,9 +43,9 @@ impl VideoCardType {
     /// Returns the active display code (BL value)
     pub fn display_combination_code(&self) -> u8 {
         match self {
-            Self::CGA => 0x04, // CGA with color display
-            Self::EGA => 0x08, // EGA with color display
-            Self::VGA => 0x0B, // VGA with analog color display
+            Self::CGA => 0x02, // CGA with color display
+            Self::EGA => 0x04, // EGA with color display
+            Self::VGA => 0x08, // VGA with color analog display
         }
     }
 }
