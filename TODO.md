@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] Add front end build to pre-commit script, add prettier and eslint
 - [ ] WASM - save computer configuration to local storage
 - [ ] WASM - support creating new disks
 - [ ] check-it 2

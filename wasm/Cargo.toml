@@ -32,6 +32,7 @@ log = "0.4"
 serde = { version = "1.0", features = ["derive"] }
 serde-wasm-bindgen = "0.6"
 serde_json = "1.0"
+tsify = { version = "0.5", features = ["js"] }
 
 [lints]
 workspace = true

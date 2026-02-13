@@ -87,70 +87,25 @@ pub fn init() {
 
 /// Configuration for creating a new emulator instance.
 ///
-/// Use this with `Emu86Computer.new_with_config()` to customize the emulator.
-#[wasm_bindgen]
+/// Pass a plain JS object: `{ canvas_id, cpu_type?, memory_kb?, clock_mhz?, video_card? }`.
+/// Only `canvas_id` is required; all other fields fall back to defaults.
+#[derive(serde::Deserialize, tsify::Tsify, Default)]
+#[tsify(from_wasm_abi)]
 pub struct ComputerConfig {
+    /// ID of the canvas element to render to (required)
+    pub canvas_id: String,
     /// CPU type: "8086", "286", "386", or "486" (default: "8086")
-    cpu_type: String,
+    #[serde(default)]
+    pub cpu_type: Option<String>,
     /// Memory size in KB (default: 640)
-    memory_kb: u32,
+    #[serde(default)]
+    pub memory_kb: Option<u32>,
     /// Target clock speed in MHz; 0.0 = unlimited (default: 4.77)
-    clock_mhz: f64,
+    #[serde(default)]
+    pub clock_mhz: Option<f64>,
     /// Video card type: "cga", "ega", or "vga" (default: "ega")
-    video_card: String,
-}
-
-#[wasm_bindgen]
-impl ComputerConfig {
-    #[wasm_bindgen(constructor)]
-    pub fn new() -> Self {
-        Self {
-            cpu_type: "8086".to_string(),
-            memory_kb: 640,
-            clock_mhz: 4.77,
-            video_card: "ega".to_string(),
-        }
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn cpu_type(&self) -> String {
-        self.cpu_type.clone()
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_cpu_type(&mut self, value: String) {
-        self.cpu_type = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn memory_kb(&self) -> u32 {
-        self.memory_kb
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_memory_kb(&mut self, value: u32) {
-        self.memory_kb = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn clock_mhz(&self) -> f64 {
-        self.clock_mhz
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_clock_mhz(&mut self, value: f64) {
-        self.clock_mhz = value;
-    }
-
-    #[wasm_bindgen(getter)]
-    pub fn video_card(&self) -> String {
-        self.video_card.clone()
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_video_card(&mut self, value: String) {
-        self.video_card = value;
-    }
+    #[serde(default)]
+    pub video_card: Option<String>,
 }
 
 /// WASM wrapper for the Computer emulator
@@ -169,29 +124,19 @@ pub struct Emu86Computer {
 
 #[wasm_bindgen]
 impl Emu86Computer {
-    /// Create a new emulator instance with default settings (8086, 640KB, 4.77 MHz, EGA).
-    ///
-    /// # Arguments
-    /// * `canvas_id` - The ID of the canvas element to render to
-    #[wasm_bindgen(constructor)]
-    pub fn new(canvas_id: &str) -> Result<Emu86Computer, JsValue> {
-        Self::new_with_config(canvas_id, ComputerConfig::new())
-    }
-
     /// Create a new emulator instance with custom configuration.
     ///
     /// # Arguments
-    /// * `canvas_id` - The ID of the canvas element to render to
-    /// * `config` - Configuration object (ComputerConfig)
-    #[wasm_bindgen]
-    pub fn new_with_config(
-        canvas_id: &str,
-        config: ComputerConfig,
-    ) -> Result<Emu86Computer, JsValue> {
-        let cpu_type = config.cpu_type.as_str();
-        let memory_kb = config.memory_kb;
-        let clock_mhz = config.clock_mhz;
-        let video_card = config.video_card.as_str();
+    /// * `config` - Configuration object with canvas_id and optional settings
+    #[wasm_bindgen(constructor)]
+    pub fn new(config: ComputerConfig) -> Result<Emu86Computer, JsValue> {
+        let canvas_id = config.canvas_id.as_str();
+        let cpu_type_str = config.cpu_type.unwrap_or_else(|| "8086".to_string());
+        let cpu_type = cpu_type_str.as_str();
+        let memory_kb = config.memory_kb.unwrap_or(640);
+        let clock_mhz = config.clock_mhz.unwrap_or(4.77);
+        let video_card_str = config.video_card.unwrap_or_else(|| "ega".to_string());
+        let video_card = video_card_str.as_str();
         let window: Window =
             web_sys::window().ok_or_else(|| JsValue::from_str("No window object"))?;
         let document = window
@@ -257,15 +202,17 @@ impl Emu86Computer {
         );
 
         let clock = Box::new(clock::WasmClock);
-        let mut computer = Computer::new_with_memory(
+        let mut computer = Computer::new(
             keyboard_wrapper,
             mouse_wrapper,
             clock,
             video,
             speaker,
-            resolved_cpu_type,
-            memory_kb,
-            resolved_video_card,
+            emu86_core::ComputerConfig {
+                cpu_type: resolved_cpu_type,
+                memory_kb,
+                video_card_type: resolved_video_card,
+            },
         );
 
         // Force initial video render to show blank screen

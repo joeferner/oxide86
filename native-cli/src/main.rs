@@ -81,15 +81,17 @@ fn main() -> Result<()> {
     let video = TerminalVideo::new();
 
     let clock = Box::new(NativeClock);
-    let mut computer = Computer::new_with_memory(
+    let mut computer = Computer::new(
         keyboard,
         mouse,
         clock,
         video,
         speaker,
-        cpu_type,
-        cli.common.memory,
-        video_card_type,
+        emu86_core::ComputerConfig {
+            cpu_type,
+            memory_kb: cli.common.memory,
+            video_card_type,
+        },
     );
 
     // Load disks and program/boot

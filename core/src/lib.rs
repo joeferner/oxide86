@@ -22,7 +22,7 @@ pub use crate::video::{
     Video, VideoController, VideoMode, colors,
 };
 pub use crate::video_card_type::VideoCardType;
-pub use computer::Computer;
+pub use computer::{Computer, ComputerConfig};
 pub use font::Cp437Font;
 pub use palette::TextModePalette;
 

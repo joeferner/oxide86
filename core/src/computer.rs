@@ -17,6 +17,26 @@ struct LoadedProgram {
     offset: u16,
 }
 
+/// Configuration for creating a new [`Computer`] instance.
+pub struct ComputerConfig {
+    /// CPU type to emulate (default: I8086)
+    pub cpu_type: CpuType,
+    /// Memory size in KB (default: 1024)
+    pub memory_kb: u32,
+    /// Video card type (default: VideoCardType::default())
+    pub video_card_type: VideoCardType,
+}
+
+impl Default for ComputerConfig {
+    fn default() -> Self {
+        Self {
+            cpu_type: CpuType::I8086,
+            memory_kb: 1024,
+            video_card_type: VideoCardType::default(),
+        }
+    }
+}
+
 pub struct Computer<V: VideoController = NullVideoController> {
     cpu: Cpu,
     cpu_type: CpuType,
@@ -58,31 +78,12 @@ impl<V: VideoController> Computer<V> {
         clock: Box<dyn Clock>,
         video_controller: V,
         speaker: Box<dyn SpeakerOutput>,
-        cpu_type: CpuType,
+        config: ComputerConfig,
     ) -> Self {
-        Self::new_with_memory(
-            keyboard,
-            mouse,
-            clock,
-            video_controller,
-            speaker,
-            cpu_type,
-            1024,
-            VideoCardType::default(),
-        )
-    }
+        let cpu_type = config.cpu_type;
+        let memory_kb = config.memory_kb;
+        let video_card_type = config.video_card_type;
 
-    #[allow(clippy::too_many_arguments)]
-    pub fn new_with_memory(
-        keyboard: Box<dyn KeyboardInput>,
-        mouse: Box<dyn MouseInput>,
-        clock: Box<dyn Clock>,
-        video_controller: V,
-        speaker: Box<dyn SpeakerOutput>,
-        cpu_type: CpuType,
-        memory_kb: u32,
-        video_card_type: VideoCardType,
-    ) -> Self {
         let bios = Bios::new(keyboard, mouse, clock);
 
         let mut memory = memory::Memory::new_with_size(memory_kb);
