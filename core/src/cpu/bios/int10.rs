@@ -1379,7 +1379,7 @@ impl Cpu {
                 // Returns: BH = color/mono mode, BL = memory size, CH = feature bits, CL = switch setting
                 self.bx = 0x0003; // BH=0 (color mode), BL=3 (256KB video memory)
                 self.cx = 0x0000; // CH=0, CL=0
-                log::warn!("INT 10h/AH=12h/BL=10h: Get EGA info");
+                log::debug!("INT 10h/AH=12h/BL=10h: Get EGA info");
             }
             0x30 => {
                 // Select vertical resolution

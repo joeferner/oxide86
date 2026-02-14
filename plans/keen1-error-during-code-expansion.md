@@ -80,12 +80,6 @@ Most recent log shows:
 - Normal keyboard input polling (INT 16h) reached
 - No "Error during code expansion!"
 
-## Remaining Issues
-
-INT 10h AH=12h BL=10h (Get EGA Info) - warned as unimplemented (3 times at startup).
-Commander Keen calls this to detect EGA. Should return:
-- BL=0x10 (EGA installed), BH=0 (color mode), CX=EGA feature bits
-
 ## Next Steps
 
 1. Add write-trace in memory.rs write_u8():
