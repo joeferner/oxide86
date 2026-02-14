@@ -13,6 +13,7 @@ impl Cpu {
     ) {
         let function = (self.ax >> 8) as u8; // Get AH
         match function {
+            0x24 => self.int15_a20_gate(memory),
             0x10 => self.int15_top_view_multi_dos(),
             0x41 => self.int15_wait_external_event(),
             0x86 => self.int15_wait(memory),
@@ -29,6 +30,61 @@ impl Cpu {
             _ => {
                 log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 15h AH=24h - A20 Gate Control (AT-class BIOS)
+    ///
+    /// Input:
+    ///   AL = function:
+    ///     00h = Disable A20
+    ///     01h = Enable A20
+    ///     02h = Query A20 status
+    ///     03h = Query A20 support
+    ///
+    /// Output (AL=00/01):
+    ///   AH = 0, CF = 0 on success
+    ///
+    /// Output (AL=02):
+    ///   AH = 0, BL = 0 (disabled) or 1 (enabled), CF = 0
+    ///
+    /// Output (AL=03):
+    ///   AH = 0, BX = 0xFFFF (loops supported), CF = 0
+    fn int15_a20_gate(&mut self, memory: &mut Memory) {
+        let sub_function = (self.ax & 0xFF) as u8;
+        match sub_function {
+            0x00 => {
+                memory.set_a20_enabled(false);
+                self.ax &= 0x00FF; // AH = 0
+                self.set_flag(cpu_flag::CARRY, false);
+                log::debug!("INT 15h AH=24h AL=00: A20 disabled");
+            }
+            0x01 => {
+                memory.set_a20_enabled(true);
+                self.ax &= 0x00FF; // AH = 0
+                self.set_flag(cpu_flag::CARRY, false);
+                log::debug!("INT 15h AH=24h AL=01: A20 enabled");
+            }
+            0x02 => {
+                let enabled = memory.is_a20_enabled();
+                self.ax &= 0x00FF; // AH = 0
+                self.bx = (self.bx & 0xFF00) | u16::from(enabled); // BL = status
+                self.set_flag(cpu_flag::CARRY, false);
+                log::debug!("INT 15h AH=24h AL=02: A20 status = {}", enabled);
+            }
+            0x03 => {
+                self.ax &= 0x00FF; // AH = 0
+                self.bx = 0xFFFF; // max loops
+                self.set_flag(cpu_flag::CARRY, false);
+                log::debug!("INT 15h AH=24h AL=03: A20 support query");
+            }
+            _ => {
+                log::warn!(
+                    "INT 15h AH=24h: unknown sub-function AL=0x{:02X}",
+                    sub_function
+                );
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }

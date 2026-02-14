@@ -147,6 +147,11 @@ impl Memory {
         self.a20_enabled = enabled;
     }
 
+    /// Get A20 gate state
+    pub fn is_a20_enabled(&self) -> bool {
+        self.a20_enabled
+    }
+
     /// Apply A20 gate logic to an address
     /// When A20 is disabled, bit 20 is masked off (wraps at 1MB like 8086)
     fn apply_a20_gate(&self, address: usize) -> usize {
