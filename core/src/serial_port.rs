@@ -92,6 +92,11 @@ pub trait SerialDevice {
     /// Called when a byte is written to the serial port
     /// Allows device to respond to commands
     fn on_write(&mut self, byte: u8);
+
+    /// Called when the serial port is reset (e.g., CPU reset).
+    /// Device should return to uninitialized state so it won't send data
+    /// until the driver re-initializes it. Default: no-op.
+    fn on_port_reset(&mut self) {}
 }
 
 /// 16450 UART Serial Port Controller
@@ -407,7 +412,9 @@ impl SerialPortController {
         }
     }
 
-    /// Reset the serial port to initial state
+    /// Reset the serial port to initial state, keeping any attached device.
+    /// Notifies the device via on_port_reset() so it returns to uninitialized
+    /// state and won't send data until the driver re-initializes it.
     pub fn reset(&mut self) {
         self.rx_buffer.clear();
         self.tx_buffer.clear();
@@ -420,6 +427,9 @@ impl SerialPortController {
         self.divisor_latch = 96;
         self.params = SerialParams::default();
         self.pending_interrupt = false;
+        if let Some(ref mut device) = self.device {
+            device.on_port_reset();
+        }
     }
 
     /// Get the base I/O port address

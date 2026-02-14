@@ -255,8 +255,10 @@ impl Bios {
         // Reset handle counter
         self.shared.next_device_handle = 3;
 
-        // Reset serial ports
-        self.serial_ports = [SerialPortController::new(0), SerialPortController::new(1)];
+        // Reset serial port UART state but keep attached devices (e.g. serial mouse)
+        for port in &mut self.serial_ports {
+            port.reset();
+        }
     }
 
     /// Insert a floppy disk into a slot (0 = A:, 1 = B:)

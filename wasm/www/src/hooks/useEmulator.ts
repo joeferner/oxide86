@@ -21,7 +21,11 @@ interface UseEmulatorReturn {
     applyConfig: (config: EmulatorConfig) => void;
 }
 
-export function useEmulator(canvasRef: RefObject<HTMLCanvasElement>, bootDrive: number, initialConfig: EmulatorConfig = DEFAULT_CONFIG): UseEmulatorReturn {
+export function useEmulator(
+    canvasRef: RefObject<HTMLCanvasElement>,
+    bootDrive: number,
+    initialConfig: EmulatorConfig = DEFAULT_CONFIG
+): UseEmulatorReturn {
     const [computer, setComputer] = useState<Emu86Computer | null>(null);
     const [status, setStatus] = useState('Initializing...');
     const [isRunning, setIsRunning] = useState(false);

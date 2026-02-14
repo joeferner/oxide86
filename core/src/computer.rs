@@ -297,6 +297,10 @@ impl<V: VideoController> Computer<V> {
         self.cpu.reset();
         self.cpu.clear_halt(); // Ensure CPU is not halted after reset
 
+        // Clear conventional memory so stale data from the previous boot
+        // (e.g. HIMEM.SYS/VDISK signatures, mouse driver state) does not persist
+        self.memory.clear_conventional_memory();
+
         // Reset memory (BDA and IVT)
         self.memory.initialize_ivt();
         self.memory.initialize_bda();

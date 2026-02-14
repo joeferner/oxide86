@@ -118,6 +118,17 @@ impl SerialDevice for SerialMouse {
     fn on_write(&mut self, _byte: u8) {
         // Microsoft Serial Mouse doesn't respond to commands
     }
+
+    fn on_port_reset(&mut self) {
+        // Clear initialized flag so update() won't send packets until the
+        // driver re-initializes the port (DTR toggle + correct baud/format).
+        // This prevents stale motion packets from polluting the RX buffer
+        // during the next DOS boot and blocking the 'M' identification byte.
+        self.initialized = false;
+        self.accumulated_x = 0;
+        self.accumulated_y = 0;
+        self.last_buttons = 0;
+    }
 }
 
 /// Encode button state into a single byte

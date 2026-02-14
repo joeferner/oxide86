@@ -237,6 +237,32 @@ impl Memory {
         self.write_u16(address + 2, (value >> 16) as u16);
     }
 
+    /// Clear RAM to zero on reset.
+    /// Zeroes conventional memory (0-640 KB) and extended memory (above 1 MB),
+    /// skipping the ROM/UMA region (0xA0000-0xFFFFF) which is re-initialised
+    /// by initialize_ivt / initialize_bda / initialize_fonts.
+    /// This prevents stale VDISK/HIMEM.SYS signatures or driver state from a
+    /// previous boot from affecting the new boot.
+    pub fn clear_conventional_memory(&mut self) {
+        const CONVENTIONAL_END: usize = 0xA0000; // 640 KB
+        const EXTENDED_START: usize = 0x100000; // 1 MB - extended memory starts here
+
+        let len = self.data.len();
+
+        // Clear conventional memory (0x00000 - 0x9FFFF)
+        let conv_end = CONVENTIONAL_END.min(len);
+        for byte in &mut self.data[0..conv_end] {
+            *byte = 0;
+        }
+
+        // Clear extended memory (above 1 MB) - HIMEM.SYS/VDISK signatures live here
+        if len > EXTENDED_START {
+            for byte in &mut self.data[EXTENDED_START..len] {
+                *byte = 0;
+            }
+        }
+    }
+
     /// Initialize the Interrupt Vector Table (IVT)
     /// Sets up interrupt handlers for BIOS and DOS-like services
     pub fn initialize_ivt(&mut self) {
