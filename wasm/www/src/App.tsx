@@ -102,6 +102,7 @@ function App(): React.ReactElement {
             setCurrentConfig(config);
             saveConfig(config);
             applyConfig(config);
+            setHasBooted(false);
         },
         [applyConfig]
     );
