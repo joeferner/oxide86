@@ -42,8 +42,9 @@ export function useEmulator(
             memory_kb: config.memoryKb,
             clock_mhz: config.clockMhz,
             video_card: config.videoCard,
+            com1_device: config.com1Device,
+            com2_device: config.com2Device,
         });
-        comp.attach_serial_mouse_com1();
         return comp;
     }, []);
 
@@ -70,7 +71,7 @@ export function useEmulator(
 
                 if (mounted) {
                     setComputer(comp);
-                    setStatus('Emulator initialized. Serial mouse attached to COM1. Load disk images to begin.');
+                    setStatus('Emulator initialized. Load disk images to begin.');
                 }
             } catch (e) {
                 if (mounted) {

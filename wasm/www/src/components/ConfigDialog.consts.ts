@@ -3,6 +3,8 @@ export interface EmulatorConfig {
     memoryKb: number;
     clockMhz: number;
     videoCard: string;
+    com1Device: string;
+    com2Device: string;
 }
 
 export const DEFAULT_CONFIG: EmulatorConfig = {
@@ -10,6 +12,8 @@ export const DEFAULT_CONFIG: EmulatorConfig = {
     memoryKb: 640,
     clockMhz: 4.77,
     videoCard: 'ega',
+    com1Device: 'mouse',
+    com2Device: 'null',
 };
 
 export const CPU_OPTIONS = [
@@ -46,6 +50,11 @@ export const VIDEO_CARD_OPTIONS = [
     { value: 'cga', label: 'CGA (text + 4-color graphics)' },
     { value: 'ega', label: 'EGA (CGA + 16-color graphics)' },
     { value: 'vga', label: 'VGA (EGA + VGA modes)' },
+];
+
+export const COM_PORT_OPTIONS = [
+    { value: 'null', label: 'None' },
+    { value: 'mouse', label: 'Serial Mouse' },
 ];
 
 const CONFIG_STORAGE_KEY = 'emu86_config';

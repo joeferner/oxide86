@@ -44,7 +44,12 @@ export function ExecutionControl({
                 <Button onClick={onAction} color={actionColor} size="compact-sm" leftSection={actionIcon}>
                     {actionLabel}
                 </Button>
-                <Button onClick={onReset} color="red" size="compact-sm" leftSection={<i className="bi bi-arrow-clockwise"></i>}>
+                <Button
+                    onClick={onReset}
+                    color="red"
+                    size="compact-sm"
+                    leftSection={<i className="bi bi-arrow-clockwise"></i>}
+                >
                     Reset
                 </Button>
             </Group>

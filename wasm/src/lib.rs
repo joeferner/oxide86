@@ -87,7 +87,7 @@ pub fn init() {
 
 /// Configuration for creating a new emulator instance.
 ///
-/// Pass a plain JS object: `{ canvas_id, cpu_type?, memory_kb?, clock_mhz?, video_card? }`.
+/// Pass a plain JS object: `{ canvas_id, cpu_type?, memory_kb?, clock_mhz?, video_card?, com1_device?, com2_device? }`.
 /// Only `canvas_id` is required; all other fields fall back to defaults.
 #[derive(serde::Deserialize, tsify::Tsify, Default)]
 #[tsify(from_wasm_abi)]
@@ -106,6 +106,12 @@ pub struct ComputerConfig {
     /// Video card type: "cga", "ega", or "vga" (default: "ega")
     #[serde(default)]
     pub video_card: Option<String>,
+    /// COM1 device: "mouse" or "null" (default: "mouse")
+    #[serde(default)]
+    pub com1_device: Option<String>,
+    /// COM2 device: "mouse" or "null" (default: "null")
+    #[serde(default)]
+    pub com2_device: Option<String>,
 }
 
 /// WASM wrapper for the Computer emulator
@@ -214,6 +220,28 @@ impl Emu86Computer {
                 video_card_type: resolved_video_card,
             },
         );
+
+        // Configure COM ports based on configuration
+        let com1_device_str = config.com1_device.unwrap_or_else(|| "mouse".to_string());
+        let com2_device_str = config.com2_device.unwrap_or_else(|| "null".to_string());
+
+        // Attach devices to COM1
+        if com1_device_str == "mouse" {
+            use emu86_core::SerialMouse;
+            let mouse_clone =
+                Box::new(SharedMouse(mouse.clone())) as Box<dyn emu86_core::MouseInput>;
+            computer.set_com1_device(Box::new(SerialMouse::new(mouse_clone)));
+            log::info!("Serial mouse attached to COM1");
+        }
+
+        // Attach devices to COM2
+        if com2_device_str == "mouse" {
+            use emu86_core::SerialMouse;
+            let mouse_clone =
+                Box::new(SharedMouse(mouse.clone())) as Box<dyn emu86_core::MouseInput>;
+            computer.set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
+            log::info!("Serial mouse attached to COM2");
+        }
 
         // Force initial video render to show blank screen
         computer.force_video_redraw();

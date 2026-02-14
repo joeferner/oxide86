@@ -3,6 +3,7 @@
 - [ ] check-it 2
   - black screen on exit (docs/teletype-attribute-preservation.md)
   - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
+- [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md)
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
 - [ ] WASM Test Pause/Resume when running a .com program that exits
 - [ ] wasm - system configuration, COM ports, mouse on by default

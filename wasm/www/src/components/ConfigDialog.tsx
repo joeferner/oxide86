@@ -1,6 +1,13 @@
 import { useState } from 'react';
-import { Modal, Stack, Select, Button, Group, Text, Alert } from '@mantine/core';
-import { CLOCK_OPTIONS, CPU_OPTIONS, EmulatorConfig, MEMORY_OPTIONS, VIDEO_CARD_OPTIONS } from './ConfigDialog.consts';
+import { Modal, Stack, Select, Button, Group, Text, Alert, Grid } from '@mantine/core';
+import {
+    CLOCK_OPTIONS,
+    COM_PORT_OPTIONS,
+    CPU_OPTIONS,
+    EmulatorConfig,
+    MEMORY_OPTIONS,
+    VIDEO_CARD_OPTIONS,
+} from './ConfigDialog.consts';
 
 interface ConfigDialogProps {
     opened: boolean;
@@ -20,6 +27,8 @@ function ConfigForm({
     const [memoryKb, setMemoryKb] = useState(String(currentConfig.memoryKb));
     const [clockMhz, setClockMhz] = useState(String(currentConfig.clockMhz));
     const [videoCard, setVideoCard] = useState(currentConfig.videoCard);
+    const [com1Device, setCom1Device] = useState(currentConfig.com1Device);
+    const [com2Device, setCom2Device] = useState(currentConfig.com2Device);
 
     const handleApply = (): void => {
         onApply({
@@ -27,6 +36,8 @@ function ConfigForm({
             memoryKb: parseInt(memoryKb, 10),
             clockMhz: parseFloat(clockMhz),
             videoCard,
+            com1Device,
+            com2Device,
         });
         onClose();
     };
@@ -41,70 +52,114 @@ function ConfigForm({
                 </Alert>
             )}
 
-            <div>
-                <Text size="sm" fw={500} mb={4}>
-                    CPU Type
-                </Text>
-                <Select
-                    data={CPU_OPTIONS}
-                    value={cpuType}
-                    onChange={(v) => {
-                        if (v) {
-                            setCpuType(v);
-                        }
-                    }}
-                />
-            </div>
+            <Grid gutter="md">
+                <Grid.Col span={6}>
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>
+                            CPU Type
+                        </Text>
+                        <Select
+                            data={CPU_OPTIONS}
+                            value={cpuType}
+                            onChange={(v) => {
+                                if (v) {
+                                    setCpuType(v);
+                                }
+                            }}
+                        />
+                    </div>
+                </Grid.Col>
 
-            <div>
-                <Text size="sm" fw={500} mb={4}>
-                    Memory
-                </Text>
-                <Select
-                    data={MEMORY_OPTIONS}
-                    value={memoryKb}
-                    onChange={(v) => {
-                        if (v) {
-                            setMemoryKb(v);
-                        }
-                    }}
-                />
-                {needsExtendedRam && cpuType === '8086' && (
-                    <Text size="xs" c="red" mt={2}>
-                        Extended memory requires 286 or later CPU
-                    </Text>
-                )}
-            </div>
+                <Grid.Col span={6}>
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>
+                            Video Card
+                        </Text>
+                        <Select
+                            data={VIDEO_CARD_OPTIONS}
+                            value={videoCard}
+                            onChange={(v) => {
+                                if (v) {
+                                    setVideoCard(v);
+                                }
+                            }}
+                        />
+                    </div>
+                </Grid.Col>
 
-            <div>
-                <Text size="sm" fw={500} mb={4}>
-                    Clock Speed
-                </Text>
-                <Select
-                    data={CLOCK_OPTIONS}
-                    value={clockMhz}
-                    onChange={(v) => {
-                        if (v) {
-                            setClockMhz(v);
-                        }
-                    }}
-                />
-            </div>
+                <Grid.Col span={6}>
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>
+                            Memory
+                        </Text>
+                        <Select
+                            data={MEMORY_OPTIONS}
+                            value={memoryKb}
+                            onChange={(v) => {
+                                if (v) {
+                                    setMemoryKb(v);
+                                }
+                            }}
+                        />
+                        {needsExtendedRam && cpuType === '8086' && (
+                            <Text size="xs" c="red" mt={2}>
+                                Extended memory requires 286 or later CPU
+                            </Text>
+                        )}
+                    </div>
+                </Grid.Col>
 
-            <div>
-                <Text size="sm" fw={500} mb={4}>
-                    Video Card
-                </Text>
-                <Select
-                    data={VIDEO_CARD_OPTIONS}
-                    value={videoCard}
-                    onChange={(v) => {
-                        if (v) {
-                            setVideoCard(v);
-                        }
-                    }}
-                />
-            </div>
+                <Grid.Col span={6}>
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>
+                            COM1 Device
+                        </Text>
+                        <Select
+                            data={COM_PORT_OPTIONS}
+                            value={com1Device}
+                            onChange={(v) => {
+                                if (v) {
+                                    setCom1Device(v);
+                                }
+                            }}
+                        />
+                    </div>
+                </Grid.Col>
+
+                <Grid.Col span={6}>
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>
+                            Clock Speed
+                        </Text>
+                        <Select
+                            data={CLOCK_OPTIONS}
+                            value={clockMhz}
+                            onChange={(v) => {
+                                if (v) {
+                                    setClockMhz(v);
+                                }
+                            }}
+                        />
+                    </div>
+                </Grid.Col>
+
+                <Grid.Col span={6}>
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>
+                            COM2 Device
+                        </Text>
+                        <Select
+                            data={COM_PORT_OPTIONS}
+                            value={com2Device}
+                            onChange={(v) => {
+                                if (v) {
+                                    setCom2Device(v);
+                                }
+                            }}
+                        />
+                    </div>
+                </Grid.Col>
+            </Grid>
 
             <Group justify="flex-end" gap="xs">
                 <Button variant="default" onClick={onClose}>
@@ -124,7 +179,7 @@ export function ConfigDialog({
     isRunning,
 }: ConfigDialogProps): React.ReactElement {
     return (
-        <Modal opened={opened} onClose={onClose} title="System Configuration" size="sm">
+        <Modal opened={opened} onClose={onClose} title="System Configuration" size="lg">
             <ConfigForm
                 key={String(opened)}
                 onClose={onClose}
