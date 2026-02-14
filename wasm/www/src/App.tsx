@@ -24,6 +24,7 @@ function App(): React.ReactElement {
     const [currentConfig, setCurrentConfig] = useState<EmulatorConfig>(loadConfig);
     const [selectedDrive, setSelectedDrive] = useState<number>(0x80);
     const [bootDrive, setBootDrive] = useState<number>(0x80); // Default to C:
+    const [hasBooted, setHasBooted] = useState(false);
 
     const {
         computer,
@@ -53,6 +54,29 @@ function App(): React.ReactElement {
     const handleBootC = useCallback(() => {
         setBootDrive(0x80);
     }, []);
+
+    const handleAction = useCallback(() => {
+        if (!hasBooted) {
+            // First boot/start
+            if (mode === 'boot') {
+                bootAndStart();
+            } else {
+                startExecution();
+            }
+            setHasBooted(true);
+        } else if (isRunning) {
+            // Pause
+            stopExecution();
+        } else {
+            // Resume
+            startExecution();
+        }
+    }, [hasBooted, mode, isRunning, bootAndStart, startExecution, stopExecution]);
+
+    const handleReset = useCallback(() => {
+        reset();
+        setHasBooted(false);
+    }, [reset]);
 
     const handleLoadProgram = useCallback(
         async (file: File, segment: number, offset: number) => {
@@ -130,25 +154,21 @@ function App(): React.ReactElement {
                         />
 
                         {mode === 'boot' ? (
-                            <BootControl
-                                onBootA={handleBootA}
-                                onBootC={handleBootC}
-                                onReset={reset}
-                                bootDrive={bootDrive}
-                            />
+                            <BootControl onBootA={handleBootA} onBootC={handleBootC} bootDrive={bootDrive} />
                         ) : (
                             <ProgramControl
                                 onLoadProgram={(file, segment, offset) => {
                                     void handleLoadProgram(file, segment, offset);
                                 }}
-                                onReset={reset}
                             />
                         )}
 
                         <ExecutionControl
+                            mode={mode}
                             isRunning={isRunning}
-                            onStart={mode === 'boot' ? bootAndStart : startExecution}
-                            onStop={stopExecution}
+                            hasBooted={hasBooted}
+                            onAction={handleAction}
+                            onReset={handleReset}
                         />
 
                         <StatusDisplay status={status} />

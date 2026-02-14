@@ -3,10 +3,9 @@ import { useState } from 'react';
 
 interface ProgramControlProps {
     onLoadProgram: (file: File, segment: number, offset: number) => void;
-    onReset: () => void;
 }
 
-export function ProgramControl({ onLoadProgram, onReset }: ProgramControlProps): React.ReactElement {
+export function ProgramControl({ onLoadProgram }: ProgramControlProps): React.ReactElement {
     const [file, setFile] = useState<File | null>(null);
     const [segment, setSegment] = useState('0x0000');
     const [offset, setOffset] = useState('0x0100');
@@ -81,9 +80,6 @@ export function ProgramControl({ onLoadProgram, onReset }: ProgramControlProps):
             <Group gap="xs" mt="xs">
                 <Button onClick={handleLoad} disabled={!file} color="green" size="compact-sm" style={{ flex: 1 }}>
                     Load Program
-                </Button>
-                <Button onClick={onReset} color="red" size="compact-sm" style={{ flex: 1 }}>
-                    Reset
                 </Button>
             </Group>
         </Stack>

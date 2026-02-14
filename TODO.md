@@ -4,7 +4,7 @@
   - black screen on exit (docs/teletype-attribute-preservation.md)
   - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
-- [ ] wasm stopping and starting doesn't work, once the computer is stopped it can't be started again, can we just remove this functionality and require a reset. Remove all related unused functions. Move the reset button from boot control to execution control
+- [ ] WASM Test Pause/Resume when running a .com program that exits
 - [ ] wasm - system configuration, COM ports, mouse on by default
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA

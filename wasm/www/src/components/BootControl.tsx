@@ -4,11 +4,10 @@ import styles from './ControlGroup.module.scss';
 interface BootControlProps {
     onBootA: () => void;
     onBootC: () => void;
-    onReset: () => void;
     bootDrive: number;
 }
 
-export function BootControl({ onBootA, onBootC, onReset, bootDrive }: BootControlProps): React.ReactElement {
+export function BootControl({ onBootA, onBootC, bootDrive }: BootControlProps): React.ReactElement {
     return (
         <div className={styles.controlGroup}>
             <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>
@@ -32,9 +31,6 @@ export function BootControl({ onBootA, onBootC, onReset, bootDrive }: BootContro
                     variant={bootDrive === 0x80 ? 'filled' : 'light'}
                 >
                     Boot from C:
-                </Button>
-                <Button onClick={onReset} color="red" size="compact-sm">
-                    Reset
                 </Button>
             </Group>
         </div>
