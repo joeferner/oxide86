@@ -1,14 +1,8 @@
 # Commander Keen 1 - "Error during code expansion!" Investigation
 
-## Status: PARTIALLY RESOLVED
+## Error
 
-The game works when run via `--boot --floppy-a examples/keen1.img`. The error was
-observed in a previous session and does not appear in the current log.
-
-## Original Error
-
-When running Commander Keen 1, the game displays "Error during code expansion!" then
-continues running (falling back to phase 2).
+When running Commander Keen 1, the game displays "Error during code expansion!".
 
 ## LZEXE 0.91 Compression Analysis
 
@@ -81,9 +75,6 @@ buffer -> state machine reads zeros -> infinite loop -> watchdog -> error.
 
 ## Current Status
 
-Game works correctly when booted from disk image:
-  cargo run -p emu86-native-gui -- --boot --floppy-a examples/keen1.img
-
 Most recent log shows:
 - INT 2Fh hook at 0x0E28:1076 running correctly
 - Normal keyboard input polling (INT 16h) reached
@@ -95,12 +86,11 @@ INT 10h AH=12h BL=10h (Get EGA Info) - warned as unimplemented (3 times at start
 Commander Keen calls this to detect EGA. Should return:
 - BL=0x10 (EGA installed), BH=0 (color mode), CX=EGA feature bits
 
-## Next Steps (If Error Returns)
+## Next Steps
 
-1. Confirm running from --boot --floppy-a keen1.img (not --program keen1.exe)
-2. Add write-trace in memory.rs write_u8():
+1. Add write-trace in memory.rs write_u8():
      if addr >= 0x8CAD0 && addr < 0x8CAF0 {
          log::debug!("KEEN: Write {:05X} = {:02X}", addr, value);
      }
-3. Enable exec logging before LZEXE runs to trace full decompression
-4. Implement INT 10h AH=12h BL=10h (Get EGA info)
+2. Enable exec logging before LZEXE runs to trace full decompression
+3. Implement INT 10h AH=12h BL=10h (Get EGA info)

@@ -6,7 +6,6 @@
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md)
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
 - [ ] WASM Test Pause/Resume when running a .com program that exits
-- [ ] wasm - system configuration, COM ports, mouse on by default
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] Test EGA Applications

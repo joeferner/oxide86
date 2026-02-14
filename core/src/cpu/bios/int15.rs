@@ -25,6 +25,7 @@ impl Cpu {
             }
             0xC0 => self.int15_get_system_config(memory),
             0xC1 => self.int15_get_ebda_segment(),
+            0xD8 => self.int15_eisa_not_supported(),
             _ => {
                 log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
@@ -169,6 +170,19 @@ impl Cpu {
         self.es = table_segment;
         self.bx = table_offset;
         self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 15h AH=D8h - EISA System Functions (not supported)
+    ///
+    /// Output:
+    ///   AH = 0x86 (function not supported)
+    ///   CF = 1
+    ///
+    /// Note: EISA functions are only available on EISA-bus machines.
+    /// ISA/AT systems return function not supported.
+    fn int15_eisa_not_supported(&mut self) {
+        self.ax = (self.ax & 0x00FF) | 0x8600; // AH = 0x86
+        self.set_flag(cpu_flag::CARRY, true);
     }
 
     /// INT 15h AH=C1h - Get Extended BIOS Data Area (EBDA) Segment Address
