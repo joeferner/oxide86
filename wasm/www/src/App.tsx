@@ -1,4 +1,4 @@
-import React, { useCallback, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Container, Title, Group, Paper, Stack, SegmentedControl, Button } from '@mantine/core';
 import { useEmulator } from './hooks/useEmulator';
 import { usePointerLock } from './hooks/usePointerLock';
@@ -77,6 +77,15 @@ function App(): React.ReactElement {
         reset();
         setHasBooted(false);
     }, [reset]);
+
+    useEffect(() => {
+        if (!hasBooted) return;
+        const handler = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [hasBooted]);
 
     const handleLoadProgram = useCallback(
         async (file: File, segment: number, offset: number) => {

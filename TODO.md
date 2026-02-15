@@ -4,8 +4,10 @@
   - black screen on exit (docs/teletype-attribute-preservation.md)
   - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md)
+- [ ] Create a plan to add Joystick/gamepad support, include cli and wasm configuration on where the joystick is plugged in, include adding a test program to test joystick support
 - [ ] native - mount directories into dos filesystem (see plans/host-directory-mount.md)
 - [ ] WASM Test Pause/Resume when running a .com program that exits
+- [ ] WASM when creating a disk from scratch, update the UI to replace "choose file" with some message about new disk. After ejecting the disk allow selecting a new file again.
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] Test EGA Applications
