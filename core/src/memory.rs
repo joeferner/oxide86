@@ -168,6 +168,10 @@ impl Memory {
         if addr >= self.data.len() {
             return 0xFF; // Reading beyond memory returns 0xFF
         }
+        // DIAGNOSTIC: trace reads from file load area and beyond (0x70000-0x9A000)
+        if (0x70000..0x9A000).contains(&addr) {
+            log::debug!("KEEN READ {:05X} = {:02X}", addr, self.data[addr]);
+        }
         self.data[addr]
     }
 
@@ -202,6 +206,12 @@ impl Memory {
         }
 
         self.data[addr] = value;
+
+        // DIAGNOSTIC: Log writes to KEEN state table region
+        if (0x7F000..0x83000).contains(&addr) {
+            log::debug!("KEEN WRITE {:05X} = {:02X}", addr, value);
+            std::fs::write("ram.bin", &self.data).unwrap();
+        }
 
         // Check if write is in CGA video memory range
         if (VIDEO_MEMORY_START..=VIDEO_MEMORY_END).contains(&addr) {

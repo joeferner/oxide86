@@ -107,14 +107,17 @@ impl Cpu {
         // For 8086, we only support 8-bit cylinders (compatibility mode)
         let cylinder_8bit = cylinder_low;
 
-        if self.log_interrupts_enabled {
-            log::info!(
-                "INT 13h AH=02h: Read {} sectors from drive {}, C/H/S={}/{}/{}",
+        // Always log floppy reads at debug level for diagnostics
+        if drive.is_floppy() || self.log_interrupts_enabled {
+            log::debug!(
+                "INT 13h AH=02h: Floppy read {} sectors C/H/S={}/{}/{} -> {:04X}:{:04X} (phys {:05X})",
                 count,
-                drive,
                 cylinder_8bit,
                 head,
-                sector
+                sector,
+                self.es,
+                self.bx,
+                Self::physical_address(self.es, self.bx)
             );
         }
 
