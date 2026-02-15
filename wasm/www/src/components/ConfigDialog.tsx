@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Modal, Stack, Select, Button, Group, Text, Alert, Grid } from '@mantine/core';
+import { Modal, Stack, Select, Button, Group, Text, Alert, Grid, Checkbox } from '@mantine/core';
 import {
     CLOCK_OPTIONS,
     COM_PORT_OPTIONS,
@@ -29,6 +29,8 @@ function ConfigForm({
     const [videoCard, setVideoCard] = useState(currentConfig.videoCard);
     const [com1Device, setCom1Device] = useState(currentConfig.com1Device);
     const [com2Device, setCom2Device] = useState(currentConfig.com2Device);
+    const [joystickA, setJoystickA] = useState(currentConfig.joystickA);
+    const [joystickB, setJoystickB] = useState(currentConfig.joystickB);
 
     const handleApply = (): void => {
         onApply({
@@ -38,6 +40,8 @@ function ConfigForm({
             videoCard,
             com1Device,
             com2Device,
+            joystickA,
+            joystickB,
         });
         onClose();
     };
@@ -157,6 +161,30 @@ function ConfigForm({
                                 }
                             }}
                         />
+                    </div>
+                </Grid.Col>
+
+                <Grid.Col span={6}>
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>
+                            Joystick
+                        </Text>
+                        <Stack gap="xs">
+                            <Checkbox
+                                label="Joystick A (gamepad 1)"
+                                checked={joystickA}
+                                onChange={(e) => {
+                                    setJoystickA(e.currentTarget.checked);
+                                }}
+                            />
+                            <Checkbox
+                                label="Joystick B (gamepad 2)"
+                                checked={joystickB}
+                                onChange={(e) => {
+                                    setJoystickB(e.currentTarget.checked);
+                                }}
+                            />
+                        </Stack>
                     </div>
                 </Grid.Col>
             </Grid>

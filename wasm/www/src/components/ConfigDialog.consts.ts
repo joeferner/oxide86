@@ -5,6 +5,8 @@ export interface EmulatorConfig {
     videoCard: string;
     com1Device: string;
     com2Device: string;
+    joystickA: boolean;
+    joystickB: boolean;
 }
 
 export const DEFAULT_CONFIG: EmulatorConfig = {
@@ -14,6 +16,8 @@ export const DEFAULT_CONFIG: EmulatorConfig = {
     videoCard: 'ega',
     com1Device: 'mouse',
     com2Device: 'null',
+    joystickA: false,
+    joystickB: false,
 };
 
 export const CPU_OPTIONS = [

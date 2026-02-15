@@ -34,6 +34,47 @@ export function useEmulator(
     const wasmInitializedRef = useRef(false);
     const isRunningRef = useRef(false);
     const configRef = useRef<EmulatorConfig>(initialConfig);
+    // Tracks which gamepad index is assigned to which joystick slot (0=A, 1=B)
+    const gamepadSlotsRef = useRef<Map<number, number>>(new Map());
+    // Ref to current computer for use in event handlers (avoids stale closure)
+    const computerRef = useRef<Emu86Computer | null>(null);
+
+    // Poll connected gamepads and push state to emulator
+    const pollGamepads = (comp: Emu86Computer): void => {
+        const config = configRef.current;
+        if (!config.joystickA && !config.joystickB) {
+            return;
+        }
+        const gamepads = navigator.getGamepads();
+        for (const [gpIndex, slot] of gamepadSlotsRef.current) {
+            const gp = gamepads[gpIndex];
+            if (gp) {
+                const x = gp.axes.length > 0 ? (gp.axes[0] + 1) / 2 : 0.5;
+                const y = gp.axes.length > 1 ? (gp.axes[1] + 1) / 2 : 0.5;
+                try {
+                    comp.handle_gamepad_axis(slot, 0, x);
+                    comp.handle_gamepad_axis(slot, 1, y);
+                    comp.handle_gamepad_button(slot, 0, gp.buttons[0]?.pressed ?? false);
+                    comp.handle_gamepad_button(slot, 1, gp.buttons[1]?.pressed ?? false);
+                } catch (_e) {
+                    // ignore
+                }
+            }
+        }
+    };
+
+    // Assign a connected gamepad to the first available enabled slot
+    const assignGamepad = (gamepadIndex: number): void => {
+        const config = configRef.current;
+        const assigned = new Set(gamepadSlotsRef.current.values());
+        if (config.joystickA && !assigned.has(0)) {
+            gamepadSlotsRef.current.set(gamepadIndex, 0);
+            computerRef.current?.gamepad_connected(0, true);
+        } else if (config.joystickB && !assigned.has(1)) {
+            gamepadSlotsRef.current.set(gamepadIndex, 1);
+            computerRef.current?.gamepad_connected(1, true);
+        }
+    };
 
     const createComputer = useCallback((config: EmulatorConfig): Emu86Computer => {
         const comp = new Emu86Computer({
@@ -91,6 +132,38 @@ export function useEmulator(
         };
     }, [canvasRef, createComputer]);
 
+    // Keep computerRef in sync with computer state for use in event handlers
+    useEffect(() => {
+        computerRef.current = computer;
+    }, [computer]);
+
+    // Handle gamepad connect/disconnect events and scan already-connected gamepads
+    useEffect(() => {
+        const handleConnected = (e: GamepadEvent): void => {
+            assignGamepad(e.gamepad.index);
+        };
+        const handleDisconnected = (e: GamepadEvent): void => {
+            const slot = gamepadSlotsRef.current.get(e.gamepad.index);
+            if (slot !== undefined) {
+                computerRef.current?.gamepad_connected(slot, false);
+                gamepadSlotsRef.current.delete(e.gamepad.index);
+            }
+        };
+        window.addEventListener('gamepadconnected', handleConnected);
+        window.addEventListener('gamepaddisconnected', handleDisconnected);
+        // Scan gamepads already connected before this effect ran
+        const gamepads = navigator.getGamepads();
+        for (const gp of gamepads) {
+            if (gp && !gamepadSlotsRef.current.has(gp.index)) {
+                assignGamepad(gp.index);
+            }
+        }
+        return () => {
+            window.removeEventListener('gamepadconnected', handleConnected);
+            window.removeEventListener('gamepaddisconnected', handleDisconnected);
+        };
+    }, [computer]); // computer changes whenever config changes (applyConfig recreates it)
+
     const updatePerformance = (): void => {
         if (computer) {
             try {
@@ -118,6 +191,7 @@ export function useEmulator(
             }
 
             try {
+                pollGamepads(computer);
                 const stillRunning = computer.run_for_ms(16, window.performance.now());
                 updatePerformance();
 
@@ -175,6 +249,7 @@ export function useEmulator(
                 }
 
                 try {
+                    pollGamepads(computer);
                     const stillRunning = computer.run_for_ms(16, window.performance.now());
                     updatePerformance();
 
@@ -242,6 +317,8 @@ export function useEmulator(
                 animationFrameRef.current = null;
             }
 
+            // Clear gamepad assignments; they'll be re-assigned via the gamepad effect
+            gamepadSlotsRef.current.clear();
             configRef.current = config;
 
             try {
