@@ -80,12 +80,16 @@ function App(): React.ReactElement {
     }, [reset]);
 
     useEffect(() => {
-        if (!hasBooted) return;
+        if (!hasBooted) {
+            return;
+        }
         const handler = (e: BeforeUnloadEvent) => {
             e.preventDefault();
         };
         window.addEventListener('beforeunload', handler);
-        return () => window.removeEventListener('beforeunload', handler);
+        return () => {
+            window.removeEventListener('beforeunload', handler);
+        };
     }, [hasBooted]);
 
     const handleLoadProgram = useCallback(
