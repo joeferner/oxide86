@@ -10,6 +10,7 @@ pub use crate::disk::{
 };
 pub use crate::drive_manager::{DiskAdapter, DriveManager};
 pub use crate::io::Pit;
+pub use crate::joystick::{JoystickInput, JoystickState, NullJoystick};
 pub use crate::keyboard::KeyboardInput;
 pub use crate::memory::{MEMORY_SIZE, Memory};
 pub use crate::memory_allocator::MemoryAllocator;
@@ -35,6 +36,7 @@ pub mod disk;
 pub mod drive_manager;
 pub mod font;
 pub mod io;
+pub mod joystick;
 pub mod keyboard;
 pub mod memory;
 pub mod memory_allocator;

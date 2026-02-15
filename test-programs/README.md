@@ -47,6 +47,32 @@ Assembly program that directly controls the PC speaker using the Intel 8253/8254
 ### simple_beep.asm
 Simplified version of beep.asm that produces a 1000 Hz tone for approximately 1 second. Tests basic PC speaker functionality through PIT Channel 2 configuration and port 0x61 control.
 
+## Joystick
+
+### joystick/joystick_test.asm
+Tests the IBM Game Control Adapter (port 0x201) by reading and displaying joystick axis timer states and button states in real-time. Demonstrates reading port 0x201, axis timer interpretation (RC one-shot timing), and button state decoding (inverted logic: 0=pressed, 1=released).
+
+**Running with gamepad support:**
+```bash
+# Enable joystick A slot (requires connected gamepad)
+cargo run -p emu86-native-gui -- --joystick-a test-programs/joystick/joystick_test.com
+
+# Enable both joystick slots
+cargo run -p emu86-native-gui -- --joystick-a --joystick-b test-programs/joystick/joystick_test.com
+```
+
+**Expected Output:**
+- **Port value**: Raw hex byte from port 0x201 (e.g., 0xF0 with no gamepad)
+- **Axis Timers**: For each joystick (A/B) and axis (X/Y), shows "Running" or "TimedOut"
+  - Without gamepad: All show "TimedOut" (bits 0-3 = 0)
+  - With gamepad: Timers reflect analog stick positions
+- **Buttons**: For each joystick (A/B) and button (1/2), shows "Pressed" or "Released"
+  - Without gamepad: All show "Released" (bits 4-7 = 1)
+  - With gamepad: Button states change when pressing South (Button 1) or East (Button 2)
+
+**Technical Details:**
+Demonstrates IBM Game Control Adapter protocol: writing to port 0x201 fires RC timer one-shots for all four axes, then reading port 0x201 returns 8-bit status with axis timers (bits 0-3: 1=running, 0=timed out) and button states (bits 4-7: 0=pressed, 1=released). Gamepad mapping uses gilrs library on native platforms: first connected gamepad → Joystick A, second → Joystick B. Buttons: South (A/Cross) → Button 1, East (B/Circle) → Button 2. Requires `--joystick-a` and/or `--joystick-b` flags to enable gilrs gamepad detection. Press any key to exit. See [joystick/README.md](joystick/README.md) for full details.
+
 ## Keyboard
 
 ### waitkey.asm

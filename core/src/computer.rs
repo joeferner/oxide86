@@ -5,6 +5,7 @@ use crate::{
     SpeakerOutput, Video, VideoCardType, VideoController,
     cpu::{Cpu, bios::KeyPress},
     io::IoDevice,
+    joystick::JoystickInput,
     keyboard::KeyboardInput,
     memory::{self, Memory},
     video::text::TextBuffer,
@@ -78,6 +79,7 @@ impl<V: VideoController> Computer<V> {
     pub fn new(
         keyboard: Box<dyn KeyboardInput>,
         mouse: Box<dyn MouseInput>,
+        joystick: Box<dyn JoystickInput>,
         clock: Box<dyn Clock>,
         video_controller: V,
         speaker: Box<dyn SpeakerOutput>,
@@ -136,7 +138,7 @@ impl<V: VideoController> Computer<V> {
             cpu_type,
             memory,
             bios,
-            io_device: IoDevice::new(),
+            io_device: IoDevice::new(joystick),
             video: Video::new_with_card_type(video_card_type),
             video_controller,
             speaker,
@@ -318,8 +320,8 @@ impl<V: VideoController> Computer<V> {
         self.video_controller
             .update_vga_dac_palette(self.video.get_vga_dac_palette());
 
-        // Reset IO devices
-        self.io_device = IoDevice::new();
+        // Reset IO devices (preserves joystick connection)
+        self.io_device.reset();
 
         // Clear pending interrupts
         self.pending_keyboard_irqs.clear();
@@ -1267,6 +1269,9 @@ impl<V: VideoController> Computer<V> {
 
         // Update PIT counters
         self.io_device.update_pit(cycles);
+
+        // Update joystick cycle counter (for axis timing)
+        self.io_device.update_cycles(self.total_cycles);
 
         // Update speaker periodically (every ~100 cycles) to reduce overhead
         // This is ~47,700 times per second at 4.77 MHz, plenty for audio

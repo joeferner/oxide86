@@ -5,9 +5,9 @@
 //! and exposes a JavaScript API for controlling the emulator from web applications.
 
 use emu86_core::{
-    BackedDisk, Computer, DiskController, DiskGeometry, DriveNumber, KeyPress, KeyboardInput,
-    MemoryDiskBackend, MouseInput, MouseState, NullSpeaker, PartitionedDisk, SECTOR_SIZE,
-    cpu::bios::FileAccess, create_formatted_disk, parse_mbr,
+    BackedDisk, Computer, DiskController, DiskGeometry, DriveNumber, JoystickInput, KeyPress,
+    KeyboardInput, MemoryDiskBackend, MouseInput, MouseState, NullSpeaker, PartitionedDisk,
+    SECTOR_SIZE, cpu::bios::FileAccess, create_formatted_disk, parse_mbr,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -15,11 +15,13 @@ use wasm_bindgen::prelude::*;
 use web_sys::{HtmlCanvasElement, Window};
 
 mod clock;
+mod web_joystick;
 mod web_keyboard;
 mod web_mouse;
 mod web_speaker;
 mod web_video;
 
+use web_joystick::WebJoystick;
 use web_keyboard::WebKeyboard;
 use web_mouse::WebMouse;
 use web_speaker::WebSpeaker;
@@ -73,6 +75,24 @@ impl MouseInput for SharedMouse {
     }
 }
 
+/// Wrapper around WebJoystick that shares ownership via Rc<RefCell<>>
+/// This allows both the Computer and Emu86Computer to access the joystick
+struct SharedJoystick(Rc<RefCell<WebJoystick>>);
+
+impl JoystickInput for SharedJoystick {
+    fn get_axis(&self, joystick: u8, axis: u8) -> f32 {
+        self.0.borrow().get_axis(joystick, axis)
+    }
+
+    fn get_button(&self, joystick: u8, button: u8) -> bool {
+        self.0.borrow().get_button(joystick, button)
+    }
+
+    fn is_connected(&self, joystick: u8) -> bool {
+        self.0.borrow().is_connected(joystick)
+    }
+}
+
 /// Initialize WASM module (call this first from JavaScript)
 #[wasm_bindgen(start)]
 pub fn init() {
@@ -119,6 +139,7 @@ pub struct ComputerConfig {
 pub struct Emu86Computer {
     computer: Computer<WebVideo>,
     mouse: Rc<RefCell<WebMouse>>,
+    joystick: Rc<RefCell<WebJoystick>>,
     // Performance tracking
     perf_last_update_time: f64,
     perf_last_cycle_count: u64,
@@ -158,13 +179,15 @@ impl Emu86Computer {
         let canvas_width = canvas.width() as f64;
         let canvas_height = canvas.height() as f64;
 
-        // Create keyboard and mouse
+        // Create keyboard, mouse, and joystick
         let keyboard = Rc::new(RefCell::new(WebKeyboard::new()?));
         let mouse = Rc::new(RefCell::new(WebMouse::new(canvas_width, canvas_height)?));
+        let joystick = Rc::new(RefCell::new(WebJoystick::new()));
 
         // Create wrappers for the Computer
         let keyboard_wrapper = Box::new(SharedKeyboard(keyboard));
         let mouse_wrapper = Box::new(SharedMouse(mouse.clone()));
+        let joystick_wrapper = Box::new(SharedJoystick(joystick.clone()));
 
         let video = WebVideo::new(canvas)?;
 
@@ -211,6 +234,7 @@ impl Emu86Computer {
         let mut computer = Computer::new(
             keyboard_wrapper,
             mouse_wrapper,
+            joystick_wrapper,
             clock,
             video,
             speaker,
@@ -249,6 +273,7 @@ impl Emu86Computer {
         Ok(Self {
             computer,
             mouse,
+            joystick,
             perf_last_update_time: 0.0,
             perf_last_cycle_count: 0,
             perf_current_mhz: 0.0,
@@ -944,6 +969,59 @@ impl Emu86Computer {
 
         log::info!("Deleted directory {}", dos_path);
         Ok(())
+    }
+
+    /// Update joystick axis value (called from JavaScript gamepad polling)
+    ///
+    /// # Arguments
+    /// * `joystick` - Joystick slot (0 = A, 1 = B)
+    /// * `axis` - Axis number (0 = X, 1 = Y)
+    /// * `value` - Normalized value 0.0-1.0 (center = 0.5)
+    ///
+    /// JavaScript should normalize gamepad axes from -1..1 to 0..1:
+    /// ```javascript
+    /// const x = (gamepad.axes[0] + 1) / 2;
+    /// computer.handle_gamepad_axis(0, 0, x);
+    /// ```
+    pub fn handle_gamepad_axis(&mut self, joystick: u8, axis: u8, value: f32) {
+        self.joystick
+            .borrow_mut()
+            .handle_gamepad_axis(joystick, axis, value);
+    }
+
+    /// Update joystick button state (called from JavaScript gamepad polling)
+    ///
+    /// # Arguments
+    /// * `joystick` - Joystick slot (0 = A, 1 = B)
+    /// * `button` - Button number (0 = button 1, 1 = button 2)
+    /// * `pressed` - true if button is pressed, false if released
+    ///
+    /// JavaScript example:
+    /// ```javascript
+    /// computer.handle_gamepad_button(0, 0, gamepad.buttons[0].pressed);
+    /// ```
+    pub fn handle_gamepad_button(&mut self, joystick: u8, button: u8, pressed: bool) {
+        self.joystick
+            .borrow_mut()
+            .handle_gamepad_button(joystick, button, pressed);
+    }
+
+    /// Set joystick connection state (called from JavaScript)
+    ///
+    /// # Arguments
+    /// * `joystick` - Joystick slot (0 = A, 1 = B)
+    /// * `connected` - true if gamepad is connected, false if disconnected
+    ///
+    /// JavaScript should call this when gamepads connect/disconnect:
+    /// ```javascript
+    /// window.addEventListener('gamepadconnected', (e) => {
+    ///     computer.gamepad_connected(e.gamepad.index, true);
+    /// });
+    /// ```
+    pub fn gamepad_connected(&mut self, joystick: u8, connected: bool) {
+        self.joystick
+            .borrow_mut()
+            .gamepad_connected(joystick, connected);
     }
 }
 

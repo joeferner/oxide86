@@ -1,9 +1,12 @@
 mod cga_ports;
+mod joystick_port;
 mod pit;
 mod system_control_port;
 
+use crate::joystick::JoystickInput;
 use crate::video::Video;
 use cga_ports::CgaModeControl;
+use joystick_port::JoystickPort;
 pub use pit::Pit;
 use std::collections::HashMap;
 pub use system_control_port::SystemControlPort;
@@ -16,6 +19,10 @@ pub struct IoDevice {
     system_control_port: SystemControlPort,
     /// Programmable Interval Timer (ports 40h-43h)
     pit: Pit,
+    /// Joystick Port (port 201h)
+    joystick: JoystickPort,
+    /// Current cycle count (for joystick timing)
+    current_cycle: u64,
     /// CGA Mode Control Register (port 3D8h)
     cga_mode_control: CgaModeControl,
     /// Keyboard controller data port (port 60h) - stores last scan code
@@ -42,7 +49,7 @@ pub struct IoDevice {
 }
 
 impl IoDevice {
-    pub fn new() -> Self {
+    pub fn new(joystick: Box<dyn JoystickInput>) -> Self {
         let mut ega_sequencer_regs = [0u8; 8];
         ega_sequencer_regs[2] = 0x0F; // Map Mask: all 4 planes enabled by default
 
@@ -50,6 +57,8 @@ impl IoDevice {
             last_write: HashMap::new(),
             system_control_port: SystemControlPort::new(),
             pit: Pit::new(),
+            joystick: JoystickPort::new(joystick),
+            current_cycle: 0,
             cga_mode_control: CgaModeControl::new(),
             keyboard_scan_code: 0x00,
             keyboard_ascii_code: 0x00,
@@ -156,6 +165,9 @@ impl IoDevice {
                     0xFF
                 }
             }
+
+            // Joystick port
+            0x201 => self.joystick.read(self.current_cycle),
 
             // All other ports return 0xFF (floating high)
             _ => self.last_write.get(&port).copied().unwrap_or(0xFF),
@@ -376,6 +388,11 @@ impl IoDevice {
                 }
             }
 
+            // Joystick port - fire one-shots
+            0x201 => {
+                self.joystick.fire(self.current_cycle);
+            }
+
             _ => {}
         }
 
@@ -430,5 +447,33 @@ impl IoDevice {
     /// Check if A20 line is enabled (bit 1 of keyboard controller output port)
     pub fn is_a20_enabled(&self) -> bool {
         (self.keyboard_output_port & 0x02) != 0
+    }
+
+    /// Update the current cycle count (for joystick timing)
+    /// Called from Computer::increment_cycles()
+    pub fn update_cycles(&mut self, total_cycles: u64) {
+        self.current_cycle = total_cycles;
+    }
+
+    /// Reset I/O device state while preserving joystick connection
+    /// Called during computer reset to clear temporary state
+    pub fn reset(&mut self) {
+        self.last_write.clear();
+        self.system_control_port = SystemControlPort::new();
+        self.pit = Pit::new();
+        // Keep joystick - it's "hardware" that persists across resets
+        self.current_cycle = 0;
+        self.cga_mode_control = CgaModeControl::new();
+        self.keyboard_scan_code = 0x00;
+        self.keyboard_ascii_code = 0x00;
+        self.keyboard_status = 0x14;
+        self.keyboard_command = 0x00;
+        self.keyboard_output_port = 0x02; // A20 enabled by default
+        self.cga_status_counter = 0;
+        self.ega_sequencer_index = 0;
+        self.ega_sequencer_regs = [0u8; 8];
+        self.ega_sequencer_regs[2] = 0x0F; // Map Mask default
+        self.ega_graphics_index = 0;
+        self.ega_graphics_regs = [0u8; 16];
     }
 }

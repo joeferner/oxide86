@@ -5,13 +5,14 @@ mod menu;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use emu86_core::NullJoystick;
 use emu86_core::{
     BackedDisk, Computer, DriveNumber, MEMORY_SIZE, VIDEO_MEMORY_END, VIDEO_MEMORY_SIZE,
     VIDEO_MEMORY_START,
 };
 use emu86_native_common::{
-    CommonCli, FileDiskBackend, NativeClock, apply_logging_flags, attach_serial_device,
-    create_speaker, load_disks, load_program_or_boot,
+    CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
+    apply_logging_flags, attach_serial_device, create_speaker, load_disks, load_program_or_boot,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -610,8 +611,8 @@ fn run(cli: Cli) -> Result<()> {
         window.inner_size().height as f64,
     );
 
-    // Initialize computer
-    let mut computer = create_computer(&cli, gui_mouse.clone_shared())?;
+    // Initialize computer and optional joystick
+    let (mut computer, mut gilrs_joystick) = create_computer(&cli, gui_mouse.clone_shared())?;
 
     // Apply logging flags
     apply_logging_flags(&mut computer, cli.common.exec_log, cli.common.int_log);
@@ -754,6 +755,11 @@ fn run(cli: Cli) -> Result<()> {
                         }
                     }
                     WindowEvent::RedrawRequested => {
+                        // Poll joystick for gamepad events if enabled
+                        if let Some(ref mut js) = gilrs_joystick {
+                            js.poll();
+                        }
+
                         let halted = step_emulator(
                             &mut computer,
                             &mut pixels,
@@ -801,7 +807,10 @@ fn run(cli: Cli) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Event loop error: {}", e))
 }
 
-fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVideoController>> {
+fn create_computer(
+    cli: &Cli,
+    gui_mouse: GuiMouse,
+) -> Result<(Computer<PixelsVideoController>, Option<GilrsJoystick>)> {
     // Parse CPU type
     let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
         .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.common.cpu_type))?;
@@ -810,9 +819,21 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
     let video_card_type = emu86_core::VideoCardType::parse(&cli.common.video_card)
         .ok_or_else(|| anyhow::anyhow!("Invalid video card type: {}", cli.common.video_card))?;
 
-    // Create computer with keyboard, mouse, video, and speaker
+    // Create computer with keyboard, mouse, joystick, video, and speaker
     let keyboard = Box::new(GuiKeyboard::new());
     let mouse = Box::new(gui_mouse);
+
+    // Create joystick - only initialize gilrs if joystick flags are set
+    let (joystick, gilrs_joystick): (Box<dyn emu86_core::JoystickInput>, Option<GilrsJoystick>) =
+        if cli.common.joystick_a || cli.common.joystick_b {
+            log::info!("Initializing gamepad support (gilrs)");
+            let gilrs = GilrsJoystick::new();
+            let input = Box::new(GilrsJoystickInput::new(gilrs.clone_state()));
+            (input, Some(gilrs))
+        } else {
+            (Box::new(NullJoystick), None)
+        };
+
     let video = PixelsVideoController::new();
     let speaker = create_speaker();
 
@@ -820,6 +841,7 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
     let mut computer = Computer::new(
         keyboard,
         mouse,
+        joystick,
         clock,
         video,
         speaker,
@@ -844,7 +866,7 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<Computer<PixelsVide
 
     log::info!("Starting execution...");
 
-    Ok(computer)
+    Ok((computer, gilrs_joystick))
 }
 
 fn show_insert_dialog(

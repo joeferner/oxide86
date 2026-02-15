@@ -3,10 +3,10 @@ use clap::Parser;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture};
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
-use emu86_core::Computer;
+use emu86_core::{Computer, NullJoystick};
 use emu86_native_common::{
-    CommonCli, NativeClock, apply_logging_flags, attach_serial_device, create_speaker, load_disks,
-    load_program_or_boot,
+    CommonCli, GilrsJoystick, GilrsJoystickInput, NativeClock, apply_logging_flags,
+    attach_serial_device, create_speaker, load_disks, load_program_or_boot,
 };
 use std::fs::File;
 use std::panic;
@@ -69,10 +69,23 @@ fn main() -> Result<()> {
     let video_card_type = emu86_core::VideoCardType::parse(&cli.common.video_card)
         .ok_or_else(|| anyhow::anyhow!("Invalid video card type: {}", cli.common.video_card))?;
 
-    // Create computer with keyboard, mouse, video, and speaker
+    // Create computer with keyboard, mouse, joystick, video, and speaker
     let keyboard = Box::new(TerminalKeyboard::new());
     let terminal_mouse = TerminalMouse::new();
     let mouse = Box::new(terminal_mouse.clone_shared());
+
+    // Create joystick - only initialize gilrs if joystick flags are set
+    let (joystick, mut gilrs_joystick): (
+        Box<dyn emu86_core::JoystickInput>,
+        Option<GilrsJoystick>,
+    ) = if cli.common.joystick_a || cli.common.joystick_b {
+        log::info!("Initializing gamepad support (gilrs)");
+        let gilrs = GilrsJoystick::new();
+        let input = Box::new(GilrsJoystickInput::new(gilrs.clone_state()));
+        (input, Some(gilrs))
+    } else {
+        (Box::new(NullJoystick), None)
+    };
 
     // Initialize speaker BEFORE video so ALSA messages appear before alternate screen
     let speaker = create_speaker();
@@ -84,6 +97,7 @@ fn main() -> Result<()> {
     let mut computer = Computer::new(
         keyboard,
         mouse,
+        joystick,
         clock,
         video,
         speaker,
@@ -127,7 +141,7 @@ fn main() -> Result<()> {
     let quit_from_command_mode = {
         let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
         log::info!("Running at {:.2} MHz ({} Hz)", cli.common.speed, clock_hz);
-        run(&mut computer, Some(clock_hz))
+        run(&mut computer, gilrs_joystick.as_mut(), Some(clock_hz))
     };
 
     // Disable mouse capture before exiting
@@ -154,10 +168,14 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-/// Run the emulator with F12 command mode support and mouse input
+/// Run the emulator with F12 command mode support, mouse input, and joystick polling
 /// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
 /// Returns true if user quit from command mode, false if computer halted naturally
-fn run<V>(computer: &mut Computer<V>, clock_hz: Option<u64>) -> bool
+fn run<V>(
+    computer: &mut Computer<V>,
+    mut joystick: Option<&mut GilrsJoystick>,
+    clock_hz: Option<u64>,
+) -> bool
 where
     V: emu86_core::VideoController,
 {
@@ -183,6 +201,11 @@ where
         // Update video once per batch instead of after every instruction
         // This dramatically reduces terminal I/O overhead
         computer.update_video();
+
+        // Poll for joystick events (gamepad input) if enabled
+        if let Some(ref mut js) = joystick {
+            js.poll();
+        }
 
         // Poll for events (keyboard and mouse) without blocking
         // Process all available events to keep input responsive

@@ -83,7 +83,7 @@ function App(): React.ReactElement {
         if (!hasBooted) {
             return;
         }
-        const handler = (e: BeforeUnloadEvent) => {
+        const handler = (e: BeforeUnloadEvent): void => {
             e.preventDefault();
         };
         window.addEventListener('beforeunload', handler);
