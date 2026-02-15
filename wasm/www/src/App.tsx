@@ -25,6 +25,7 @@ function App(): React.ReactElement {
     const [selectedDrive, setSelectedDrive] = useState<number>(0x80);
     const [bootDrive, setBootDrive] = useState<number>(0x80); // Default to C:
     const [hasBooted, setHasBooted] = useState(false);
+    const [floppyLabels, setFloppyLabels] = useState<[string | null, string | null]>([null, null]);
 
     const {
         computer,
@@ -106,6 +107,22 @@ function App(): React.ReactElement {
         setDiskManagerOpened(true);
     }, []);
 
+    const handleFloppyCreated = useCallback((slot: number, label: string) => {
+        setFloppyLabels((prev) => {
+            const next: [string | null, string | null] = [prev[0], prev[1]];
+            next[slot] = label;
+            return next;
+        });
+    }, []);
+
+    const handleFloppyEjected = useCallback((slot: number) => {
+        setFloppyLabels((prev) => {
+            const next: [string | null, string | null] = [prev[0], prev[1]];
+            next[slot] = null;
+            return next;
+        });
+    }, []);
+
     const handleApplyConfig = useCallback(
         (config: EmulatorConfig) => {
             setCurrentConfig(config);
@@ -148,6 +165,9 @@ function App(): React.ReactElement {
                             computer={computer}
                             onStatusUpdate={handleStatusUpdate}
                             onManageDrive={handleManageDrive}
+                            floppyALabel={floppyLabels[0]}
+                            floppyBLabel={floppyLabels[1]}
+                            onFloppyEjected={handleFloppyEjected}
                         />
 
                         <SegmentedControl
@@ -194,6 +214,7 @@ function App(): React.ReactElement {
                 }}
                 onStatusUpdate={handleStatusUpdate}
                 driveNumber={selectedDrive}
+                onFloppyCreated={handleFloppyCreated}
             />
 
             <ConfigDialog

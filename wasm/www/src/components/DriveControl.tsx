@@ -7,6 +7,9 @@ interface DriveControlProps {
     computer: Emu86Computer | null;
     onStatusUpdate: (message: string) => void;
     onManageDrive: (driveNumber: number) => void;
+    floppyALabel?: string | null;
+    floppyBLabel?: string | null;
+    onFloppyEjected?: (slot: number) => void;
 }
 
 async function loadFile(file: File): Promise<Uint8Array> {
@@ -24,6 +27,9 @@ export function DriveControl({
     computer,
     onStatusUpdate,
     onManageDrive,
+    floppyALabel,
+    floppyBLabel,
+    onFloppyEjected,
 }: DriveControlProps): React.ReactElement | null {
     const [floppyAFile, setFloppyAFile] = useState<File | null>(null);
     const [floppyBFile, setFloppyBFile] = useState<File | null>(null);
@@ -119,6 +125,7 @@ export function DriveControl({
         try {
             computer?.eject_floppy(0);
             setFloppyAFile(null);
+            onFloppyEjected?.(0);
             onStatusUpdate('Floppy A ejected');
         } catch (e) {
             onStatusUpdate(`Error ejecting floppy A: ${e}`);
@@ -148,6 +155,7 @@ export function DriveControl({
         try {
             computer?.eject_floppy(1);
             setFloppyBFile(null);
+            onFloppyEjected?.(1);
             onStatusUpdate('Floppy B ejected');
         } catch (e) {
             onStatusUpdate(`Error ejecting floppy B: ${e}`);
@@ -184,21 +192,32 @@ export function DriveControl({
                     Floppy Drive A:
                 </Text>
                 <Group gap="xs">
-                    <FileButton
-                        key={floppyAFile?.name ?? 'empty-a'}
-                        onChange={(v) => {
-                            void handleFloppyAChange(v);
-                        }}
-                        accept=".img,.ima,.dsk"
-                    >
-                        {(props) => (
-                            <Button {...props} size="compact-sm" variant="default">
-                                {floppyAFile ? floppyAFile.name : 'Choose File'}
-                            </Button>
-                        )}
-                    </FileButton>
+                    {floppyAFile === null && floppyALabel ? (
+                        <Button size="compact-sm" variant="filled" color="teal" disabled>
+                            {floppyALabel}
+                        </Button>
+                    ) : (
+                        <FileButton
+                            key={floppyAFile?.name ?? 'empty-a'}
+                            onChange={(v) => {
+                                void handleFloppyAChange(v);
+                            }}
+                            accept=".img,.ima,.dsk"
+                        >
+                            {(props) => (
+                                <Button {...props} size="compact-sm" variant="default">
+                                    {floppyAFile ? floppyAFile.name : 'Choose File'}
+                                </Button>
+                            )}
+                        </FileButton>
+                    )}
                     <Tooltip label="Eject A:">
-                        <ActionIcon onClick={handleEjectFloppyA} size="md" color="red">
+                        <ActionIcon
+                            onClick={handleEjectFloppyA}
+                            size="md"
+                            color="red"
+                            disabled={floppyAFile === null && !floppyALabel}
+                        >
                             <i className="bi bi-eject"></i>
                         </ActionIcon>
                     </Tooltip>
@@ -232,21 +251,32 @@ export function DriveControl({
                     Floppy Drive B:
                 </Text>
                 <Group gap="xs">
-                    <FileButton
-                        key={floppyBFile?.name ?? 'empty-b'}
-                        onChange={(v) => {
-                            void handleFloppyBChange(v);
-                        }}
-                        accept=".img,.ima,.dsk"
-                    >
-                        {(props) => (
-                            <Button {...props} size="compact-sm" variant="default">
-                                {floppyBFile ? floppyBFile.name : 'Choose File'}
-                            </Button>
-                        )}
-                    </FileButton>
+                    {floppyBFile === null && floppyBLabel ? (
+                        <Button size="compact-sm" variant="filled" color="teal" disabled>
+                            {floppyBLabel}
+                        </Button>
+                    ) : (
+                        <FileButton
+                            key={floppyBFile?.name ?? 'empty-b'}
+                            onChange={(v) => {
+                                void handleFloppyBChange(v);
+                            }}
+                            accept=".img,.ima,.dsk"
+                        >
+                            {(props) => (
+                                <Button {...props} size="compact-sm" variant="default">
+                                    {floppyBFile ? floppyBFile.name : 'Choose File'}
+                                </Button>
+                            )}
+                        </FileButton>
+                    )}
                     <Tooltip label="Eject B:">
-                        <ActionIcon onClick={handleEjectFloppyB} size="md" color="red">
+                        <ActionIcon
+                            onClick={handleEjectFloppyB}
+                            size="md"
+                            color="red"
+                            disabled={floppyBFile === null && !floppyBLabel}
+                        >
                             <i className="bi bi-eject"></i>
                         </ActionIcon>
                     </Tooltip>

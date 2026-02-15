@@ -32,6 +32,7 @@ interface DiskManagerProps {
     onClose: () => void;
     onStatusUpdate: (message: string) => void;
     driveNumber: number;
+    onFloppyCreated?: (slot: number, label: string) => void;
 }
 
 interface DeleteConfirmation {
@@ -46,6 +47,7 @@ export function DiskManager({
     onClose,
     onStatusUpdate,
     driveNumber,
+    onFloppyCreated,
 }: DiskManagerProps): React.ReactElement {
     const [currentPath, setCurrentPath] = useState<string>('/');
     const [files, setFiles] = useState<FileEntry[]>([]);
@@ -244,6 +246,7 @@ export function DiskManager({
                 const data = new Uint8Array(create_floppy_image(size, label));
                 computer.load_floppy(driveNumber, data);
                 onStatusUpdate(`Created ${selectedSize}KB floppy on ${getDriveLetter(driveNumber)}:`);
+                onFloppyCreated?.(driveNumber, label ?? `New Disk (${selectedSize}KB)`);
                 setCurrentPath('/');
                 browseDisk(driveNumber, '/');
             } else {
