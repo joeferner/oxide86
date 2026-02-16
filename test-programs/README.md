@@ -79,6 +79,53 @@ Tests INT 16h AH=00h blocking keyboard input behavior. Waits for keypresses and 
 ### hello_program.asm
 Simple "Hello World" test program for verifying program loading functionality. Uses INT 21h AH=09h to display a message and INT 21h AH=4Ch to exit. Minimal .COM file structure starting at CS:0100h.
 
+## Opcode Test
+
+### opcode-test/opctest.asm
+Systematic test suite for validating CPU instruction implementation. Tests 10 common opcodes with multiple test cases each, reporting results to COM1 serial logger.
+
+**Running with serial logger:**
+```bash
+# Native CLI
+cargo run -p emu86-native-cli -- test-programs/opcode-test/opctest.com --com1-device logger
+
+# Native GUI
+cargo run -p emu86-native-gui -- test-programs/opcode-test/opctest.com --com1-device logger
+```
+
+**Expected Output:**
+```
+[COM1] === emu86 Opcode Test Suite ===
+[COM1] MOV: PASS
+[COM1] ADD: PASS
+[COM1] SUB: PASS
+[COM1] AND: PASS
+[COM1] OR: PASS
+[COM1] XOR: PASS
+[COM1] SHL: PASS
+[COM1] INC: PASS
+[COM1] CMP: PASS
+[COM1] PUSH/POP: PASS
+[COM1]
+[COM1] --- Summary ---
+[COM1] 10 passed, 0 failed
+```
+
+**Tested Instructions:**
+- **MOV**: Basic register-to-register data movement, immediate values
+- **ADD**: Addition with and without carry flag, overflow detection
+- **SUB**: Subtraction with and without borrow, underflow detection
+- **AND**: Bitwise AND operations, masking patterns
+- **OR**: Bitwise OR operations, bit setting patterns
+- **XOR**: Bitwise XOR operations, self-zeroing, bit flipping
+- **SHL**: Shift left operations, carry flag propagation
+- **INC**: Increment operations, wrap-around behavior
+- **CMP**: Comparison operations, flag setting (ZF, CF, SF)
+- **PUSH/POP**: Stack operations, LIFO verification, SP tracking
+
+**Technical Details:**
+Each test includes multiple assertions checking both result values and CPU flags. Failed tests print specific error messages (e.g., "result or carry incorrect"). The framework is designed to be easily extended with additional instruction tests. Future additions could include: DEC, MUL, DIV, ROL, ROR, RCL, RCR, SHR, SAR, NOT, NEG, TEST, string operations (MOVS, CMPS, SCAS, LODS, STOS with REP), segment operations (LES, LDS), and BCD arithmetic (DAA, DAS, AAA, AAS, AAM, AAD).
+
 ## Serial
 
 ### serial/serial_logger_test.asm

@@ -351,7 +351,7 @@ impl<'a> InstructionDecoder<'a> {
                 if disp >= 0 {
                     ea.push_str(&format!("+0x{:02x}", disp));
                 } else {
-                    ea.push_str(&format!("-0x{:02x}", -disp));
+                    ea.push_str(&format!("-0x{:02x}", -(disp as i16)));
                 }
             }
             0b10 => {
