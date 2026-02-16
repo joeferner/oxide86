@@ -6,11 +6,11 @@
 
 use anyhow::{Context, Result, anyhow};
 use emu86_core::{
-    BackedDisk, DiskController, DiskGeometry, MemoryDiskBackend, SECTOR_SIZE,
+    BackedDisk, DiskController, DiskGeometry, MemoryDiskBackend, SECTOR_SIZE, create_formatted_disk,
 };
 use std::collections::HashSet;
 use std::fs;
-use std::io::{Cursor, Read as _, Write as _};
+use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 
@@ -62,15 +62,8 @@ impl HostDirectoryDisk {
             geometry.total_size / 1024 / 1024
         );
 
-        // 3. Create and format blank FAT image (without MBR - direct FAT formatting)
-        let disk_data = vec![0u8; geometry.total_size];
-        let mut cursor = Cursor::new(disk_data);
-        let format_opts = fatfs::FormatVolumeOptions::new()
-            .volume_label(*b"HOST_DIR   ");
-        fatfs::format_volume(&mut cursor, format_opts)
-            .map_err(|e| anyhow!("Failed to format volume: {}", e))?;
-
-        let disk_data = cursor.into_inner();
+        // 3. Create and format FAT image with MBR (hard drives need partition table for DOS)
+        let disk_data = create_formatted_disk(geometry, Some("HOST_DIR"))?;
         let backend = MemoryDiskBackend::new(disk_data);
         let mut disk = BackedDisk::new(backend)?;
 
@@ -99,12 +92,18 @@ impl HostDirectoryDisk {
             self.host_path.display()
         );
 
-        // Extract all files from the FAT image using fatfs
-        let backend = self.fat_image.backend().clone();
-        let mut adapter = MemoryDiskAdapter::new(backend);
+        // Extract all files from the FAT partition using fatfs
+        const PARTITION_START: usize = 63;
+        const SECTOR_SIZE: usize = 512;
+        let partition_offset = PARTITION_START * SECTOR_SIZE;
 
-        let fs = fatfs::FileSystem::new(&mut adapter, fatfs::FsOptions::new())
-            .context("Failed to mount FAT filesystem for sync")?;
+        let backend = self.fat_image.backend().clone();
+        let disk_data = backend.get_data();
+        let partition_data = &disk_data[partition_offset..];
+        let mut cursor: std::io::Cursor<Vec<u8>> = std::io::Cursor::new(partition_data.to_vec());
+
+        let fs = fatfs::FileSystem::new(&mut cursor, fatfs::FsOptions::new())
+            .context("Failed to mount FAT partition for sync")?;
 
         sync_directory(&fs.root_dir(), &self.host_path, "")?;
 
@@ -250,12 +249,21 @@ fn populate_fat_image(
 ) -> Result<usize> {
     let mut file_count = 0;
 
-    // Create a fatfs adapter
-    let backend = disk.backend().clone();
-    let mut adapter = MemoryDiskAdapter::new(backend);
+    // For hard drives, FAT partition starts at sector 63 (after MBR)
+    const PARTITION_START: usize = 63;
+    const SECTOR_SIZE: usize = 512;
+    let partition_offset = PARTITION_START * SECTOR_SIZE;
 
-    let fs = fatfs::FileSystem::new(&mut adapter, fatfs::FsOptions::new())
-        .context("Failed to mount FAT filesystem")?;
+    // Get full disk data
+    let backend = disk.backend().clone();
+    let disk_data = backend.get_data();
+
+    // Create a cursor view of just the partition
+    let partition_data = &disk_data[partition_offset..];
+    let mut cursor: std::io::Cursor<Vec<u8>> = std::io::Cursor::new(partition_data.to_vec());
+
+    let fs = fatfs::FileSystem::new(&mut cursor, fatfs::FsOptions::new())
+        .context("Failed to mount FAT partition")?;
 
     let root = fs.root_dir();
 
@@ -296,9 +304,14 @@ fn populate_fat_image(
     drop(root);
     drop(fs);
 
-    // Copy the updated data back to the disk
-    let updated_data = adapter.into_inner();
-    *disk = BackedDisk::new(updated_data)?;
+    // Copy the updated partition data back into the full disk (preserving MBR)
+    let updated_partition = cursor.into_inner();
+    let mut full_disk_data = disk_data.clone();
+    let end_offset = partition_offset + updated_partition.len();
+    full_disk_data[partition_offset..end_offset].copy_from_slice(&updated_partition);
+
+    let new_backend = MemoryDiskBackend::new(full_disk_data);
+    *disk = BackedDisk::new(new_backend)?;
 
     Ok(file_count)
 }
@@ -353,76 +366,4 @@ where
     }
 
     Ok(())
-}
-
-/// Adapter for MemoryDiskBackend to work with fatfs.
-/// Similar to DiskAdapter in core, but for MemoryDiskBackend specifically.
-struct MemoryDiskAdapter {
-    backend: MemoryDiskBackend,
-    position: u64,
-}
-
-impl MemoryDiskAdapter {
-    fn new(backend: MemoryDiskBackend) -> Self {
-        Self {
-            backend,
-            position: 0,
-        }
-    }
-
-    fn into_inner(self) -> MemoryDiskBackend {
-        self.backend
-    }
-}
-
-impl std::io::Read for MemoryDiskAdapter {
-    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-        use emu86_core::DiskBackend;
-        let bytes_read = self
-            .backend
-            .read_at(self.position, buf)
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
-        self.position += bytes_read as u64;
-        Ok(bytes_read)
-    }
-}
-
-impl std::io::Write for MemoryDiskAdapter {
-    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-        use emu86_core::DiskBackend;
-        let bytes_written = self
-            .backend
-            .write_at(self.position, buf)
-            .map_err(|e| std::io::Error::other(e.to_string()))?;
-        self.position += bytes_written as u64;
-        Ok(bytes_written)
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        use emu86_core::DiskBackend;
-        self.backend
-            .flush()
-            .map_err(|e| std::io::Error::other(e.to_string()))
-    }
-}
-
-impl std::io::Seek for MemoryDiskAdapter {
-    fn seek(&mut self, pos: std::io::SeekFrom) -> std::io::Result<u64> {
-        let size = self.backend.size();
-        let new_pos = match pos {
-            std::io::SeekFrom::Start(offset) => offset as i64,
-            std::io::SeekFrom::End(offset) => size as i64 + offset,
-            std::io::SeekFrom::Current(offset) => self.position as i64 + offset,
-        };
-
-        if new_pos < 0 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidInput,
-                "Seek before start of disk",
-            ));
-        }
-
-        self.position = new_pos as u64;
-        Ok(self.position)
-    }
 }
