@@ -50,6 +50,19 @@ start:
     call test_lodsb
     call test_stosb
     call test_movsb
+    call test_cmpsb
+    call test_scasb
+
+    ; Extended arithmetic
+    call test_adc_sbb
+    call test_imul
+    call test_idiv
+
+    ; Extended rotate
+    call test_rcl_rcr
+
+    ; Loop instructions
+    call test_loopz_loopnz
 
     ; Print summary
     call print_summary
@@ -679,6 +692,407 @@ test_movsb:
     ret
 
 ;=============================================================================
+; Test: CMPSB (compare string byte)
+;=============================================================================
+test_cmpsb:
+    mov si, test_cmpsb_name
+    call print_test_name
+
+    ; Test 1: Single byte comparison - equal
+    mov si, cmp_string1  ; 'ABCD'
+    mov di, cmp_string1  ; 'ABCD'
+    cld
+    cmpsb                ; Compare first bytes ('A' vs 'A')
+    jne .fail            ; Should be equal (ZF=1)
+
+    ; Test 2: Single byte comparison - not equal
+    mov si, cmp_string1  ; Points to 'B' now (after previous cmpsb)
+    mov di, cmp_string2 + 2  ; Points to 'X'
+    cmpsb                ; Compare 'B' vs 'X'
+    je .fail             ; Should NOT be equal (ZF=0)
+
+    ; Test 3: REPE - compare equal strings
+    mov si, cmp_string1
+    mov di, cmp_string1  ; Same string
+    mov cx, 4
+    cld
+    repe cmpsb
+    jne .fail            ; Should complete with ZF=1 (all equal)
+    cmp cx, 0            ; Should exhaust counter
+    jne .fail
+
+    ; Test 4: REPE - stop at difference
+    mov si, cmp_string1  ; 'ABCD'
+    mov di, cmp_string2  ; 'ABXY'
+    mov cx, 4
+    cld
+    repe cmpsb
+    je .fail             ; Should stop with ZF=0 (found difference)
+    ; After comparing 'A'='A' (cx=3), 'B'='B' (cx=2), 'C'!='X' (cx=1, stop)
+    ; CX should be 1 (decremented before comparison that failed)
+    cmp cx, 1
+    jl .fail             ; CX should be >= 1
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_cmpsb_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: SCASB (scan string byte)
+;=============================================================================
+test_scasb:
+    mov si, test_scasb_name
+    call print_test_name
+
+    ; Find 'T' in test_string
+    mov di, test_string
+    mov al, 'T'
+    mov cx, 10
+    cld
+    repne scasb
+    jne .fail            ; Should find it
+    ; DI should point one past the 'T'
+    dec di
+    mov al, [di]
+    cmp al, 'T'
+    jne .fail
+
+    ; Find null terminator
+    mov di, test_string
+    mov al, 0
+    mov cx, 10
+    cld
+    repne scasb
+    jne .fail            ; Should find it
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_scasb_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: ADC/SBB (add/subtract with carry)
+;=============================================================================
+test_adc_sbb:
+    mov si, test_adc_sbb_name
+    call print_test_name
+
+    ; Test ADC: Add 32-bit numbers
+    ; Add 0x00010001 + 0x00020002 = 0x00030003
+    clc                  ; Clear carry
+    mov ax, 0x0001       ; Low word of first number
+    mov dx, 0x0001       ; High word of first number
+    mov bx, 0x0002       ; Low word of second number
+    mov cx, 0x0002       ; High word of second number
+
+    add ax, bx           ; Add low words
+    adc dx, cx           ; Add high words with carry
+
+    cmp ax, 0x0003       ; Check low word
+    jne .fail
+    cmp dx, 0x0003       ; Check high word
+    jne .fail
+
+    ; Test ADC with carry propagation
+    ; Add 0x0001FFFF + 0x00000001 = 0x00020000
+    clc
+    mov ax, 0xFFFF       ; Low word
+    mov dx, 0x0001       ; High word
+    add ax, 0x0001       ; Add 1 to low word (will set carry)
+    adc dx, 0x0000       ; Add carry to high word
+
+    cmp ax, 0x0000       ; Low word should be 0
+    jne .fail
+    cmp dx, 0x0002       ; High word should be 2
+    jne .fail
+
+    ; Test SBB: Subtract 32-bit numbers
+    ; Subtract 0x00030003 - 0x00020002 = 0x00010001
+    clc
+    mov ax, 0x0003       ; Low word of first number
+    mov dx, 0x0003       ; High word of first number
+    mov bx, 0x0002       ; Low word to subtract
+    mov cx, 0x0002       ; High word to subtract
+
+    sub ax, bx           ; Subtract low words
+    sbb dx, cx           ; Subtract high words with borrow
+
+    cmp ax, 0x0001
+    jne .fail
+    cmp dx, 0x0001
+    jne .fail
+
+    ; Test SBB with borrow propagation
+    ; Subtract 0x00020000 - 0x00000001 = 0x0001FFFF
+    clc
+    mov ax, 0x0000       ; Low word
+    mov dx, 0x0002       ; High word
+    sub ax, 0x0001       ; Subtract 1 (will set carry/borrow)
+    sbb dx, 0x0000       ; Subtract borrow from high word
+
+    cmp ax, 0xFFFF       ; Low word should be 0xFFFF
+    jne .fail
+    cmp dx, 0x0001       ; High word should be 1
+    jne .fail
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_adc_sbb_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: IMUL (signed multiply)
+;=============================================================================
+test_imul:
+    mov si, test_imul_name
+    call print_test_name
+
+    ; Test 8-bit signed multiply: 5 * 6 = 30
+    mov al, 5
+    mov bl, 6
+    imul bl
+    cmp ax, 30
+    jne .fail
+
+    ; Test 8-bit signed multiply with negative: -5 * 6 = -30
+    mov al, -5           ; 0xFB
+    mov bl, 6
+    imul bl
+    cmp ax, -30          ; 0xFFE2
+    jne .fail
+
+    ; Test 8-bit signed multiply: -5 * -6 = 30
+    mov al, -5
+    mov bl, -6
+    imul bl
+    cmp ax, 30
+    jne .fail
+
+    ; Test 16-bit signed multiply: 100 * 200 = 20000
+    mov ax, 100
+    mov cx, 200
+    imul cx
+    cmp dx, 0            ; High word should be 0
+    jne .fail
+    cmp ax, 20000        ; Low word
+    jne .fail
+
+    ; Test 16-bit signed multiply with negative: -100 * 200 = -20000
+    mov ax, -100
+    mov cx, 200
+    imul cx
+    ; Result is -20000 = 0xFFFFB1E0 in 32-bit
+    cmp dx, 0xFFFF       ; High word (sign extended)
+    jne .fail
+    cmp ax, 20000        ; Low word magnitude (note: -20000 & 0xFFFF = 0xB1E0)
+    jg .fail             ; ax should be negative representation
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_imul_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: IDIV (signed divide)
+;=============================================================================
+test_idiv:
+    mov si, test_idiv_name
+    call print_test_name
+
+    ; Test 8-bit signed divide: 30 / 7 = 4 remainder 2
+    mov ax, 30
+    mov bl, 7
+    idiv bl
+    cmp al, 4            ; Quotient
+    jne .fail
+    cmp ah, 2            ; Remainder
+    jne .fail
+
+    ; Test 8-bit signed divide with negative dividend: -30 / 7 = -4 remainder -2
+    mov ax, -30          ; 0xFFE2
+    mov bl, 7
+    idiv bl
+    cmp al, -4           ; Quotient should be negative
+    jne .fail
+    cmp ah, -2           ; Remainder should be negative
+    jne .fail
+
+    ; Test 8-bit signed divide with negative divisor: 30 / -7 = -4 remainder 2
+    mov ax, 30
+    mov bl, -7
+    idiv bl
+    cmp al, -4           ; Quotient should be negative
+    jne .fail
+    cmp ah, 2            ; Remainder sign follows dividend
+    jne .fail
+
+    ; Test 16-bit signed divide: 100 / 3 = 33 remainder 1
+    mov dx, 0
+    mov ax, 100
+    mov cx, 3
+    idiv cx
+    cmp ax, 33           ; Quotient
+    jne .fail
+    cmp dx, 1            ; Remainder
+    jne .fail
+
+    ; Test 16-bit signed divide with negative: -100 / 3 = -33 remainder -1
+    mov ax, -100
+    cwd                  ; Sign extend AX to DX:AX
+    mov cx, 3
+    idiv cx
+    cmp ax, -33          ; Quotient
+    jne .fail
+    cmp dx, -1           ; Remainder
+    jne .fail
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_idiv_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: RCL/RCR (rotate through carry)
+;=============================================================================
+test_rcl_rcr:
+    mov si, test_rcl_rcr_name
+    call print_test_name
+
+    ; Test RCL (rotate carry left)
+    clc                  ; Clear carry
+    mov ax, 0x0001
+    rcl ax, 1            ; Rotate left, CF goes into bit 0
+    jc .fail             ; Carry should be clear (bit 15 was 0)
+    cmp ax, 0x0002       ; Result should be 2
+    jne .fail
+
+    ; Test RCL with carry set
+    stc                  ; Set carry
+    mov ax, 0x0000
+    rcl ax, 1            ; Rotate left, CF (1) goes into bit 0
+    jc .fail             ; Carry should be clear (bit 15 was 0)
+    cmp ax, 0x0001       ; Result should be 1 (carry rotated in)
+    jne .fail
+
+    ; Test RCL with bit 15 set
+    clc
+    mov ax, 0x8000
+    rcl ax, 1            ; Bit 15 goes to carry, CF goes to bit 0
+    jnc .fail            ; Carry should be set (bit 15 was 1)
+    cmp ax, 0x0000       ; Result should be 0
+    jne .fail
+
+    ; Test RCR (rotate carry right)
+    clc
+    mov ax, 0x0002
+    rcr ax, 1            ; Rotate right, CF goes into bit 15
+    jc .fail             ; Carry should be clear (bit 0 was 0)
+    cmp ax, 0x0001       ; Result should be 1
+    jne .fail
+
+    ; Test RCR with carry set
+    stc                  ; Set carry
+    mov ax, 0x0000
+    rcr ax, 1            ; Rotate right, CF (1) goes into bit 15
+    jc .fail             ; Carry should be clear (bit 0 was 0)
+    cmp ax, 0x8000       ; Result should be 0x8000 (carry rotated in)
+    jne .fail
+
+    ; Test RCR with bit 0 set
+    clc
+    mov ax, 0x0001
+    rcr ax, 1            ; Bit 0 goes to carry, CF goes to bit 15
+    jnc .fail            ; Carry should be set (bit 0 was 1)
+    cmp ax, 0x0000       ; Result should be 0
+    jne .fail
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_rcl_rcr_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: LOOPZ/LOOPNZ (loop with zero flag)
+;=============================================================================
+test_loopz_loopnz:
+    mov si, test_loopz_loopnz_name
+    call print_test_name
+
+    ; Test 1: LOOPZ - loop while ZF=1
+    mov cx, 3
+    mov bx, 0
+.loopz_test:
+    inc bx
+    cmp ax, ax           ; Set ZF=1 (always equal)
+    loopz .loopz_test    ; Continue while ZF=1 and CX!=0
+    ; Should complete all 3 iterations
+    cmp bx, 3
+    jne .fail
+    cmp cx, 0
+    jne .fail
+
+    ; Test 2: LOOPZ - early exit when ZF=0
+    mov cx, 5
+    mov bx, 0
+.loopz_exit:
+    inc bx
+    cmp bx, 2            ; Sets ZF=1 only when bx=2
+    loopz .loopz_exit    ; Continue while ZF=1
+    ; bx=1: cmp 1,2 -> ZF=0, loop exits, cx=4
+    cmp bx, 1
+    jne .fail
+    cmp cx, 4            ; Should exit after 1 iteration
+    jne .fail
+
+    ; Test 3: LOOPNZ - loop while ZF=0
+    mov cx, 3
+    mov bx, 0
+.loopnz_test:
+    inc bx
+    cmp ax, bx           ; Set ZF=0 (ax != bx, since ax is not bx)
+    loopnz .loopnz_test  ; Continue while ZF=0 and CX!=0
+    ; Should complete all 3 iterations
+    cmp bx, 3
+    jne .fail
+    cmp cx, 0
+    jne .fail
+
+    ; Test 4: LOOPNZ - early exit when ZF=1
+    mov cx, 5
+    mov bx, 0
+    mov ax, 2
+.loopnz_exit:
+    inc bx
+    cmp bx, ax           ; Sets ZF=1 when bx=2
+    loopnz .loopnz_exit  ; Continue while ZF=0
+    ; bx=1: cmp 1,2 -> ZF=0, loop continues, cx=4
+    ; bx=2: cmp 2,2 -> ZF=1, loop exits, cx=3
+    cmp bx, 2
+    jne .fail
+    cmp cx, 3            ; Should exit after 2 iterations
+    jne .fail
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_loopz_loopnz_failed
+    call print_fail
+    ret
+
+;=============================================================================
 ; Helper: Print test name
 ;=============================================================================
 print_test_name:
@@ -850,6 +1264,13 @@ test_push_pop_name: db 'PUSH/POP', 0
 test_lodsb_name: db 'LODSB', 0
 test_stosb_name: db 'STOSB', 0
 test_movsb_name: db 'MOVSB', 0
+test_cmpsb_name: db 'CMPSB', 0
+test_scasb_name: db 'SCASB', 0
+test_adc_sbb_name: db 'ADC/SBB', 0
+test_imul_name: db 'IMUL', 0
+test_idiv_name: db 'IDIV', 0
+test_rcl_rcr_name: db 'RCL/RCR', 0
+test_loopz_loopnz_name: db 'LOOPZ/LOOPNZ', 0
 
 msg_pass: db 'PASS', 13, 10, 0
 msg_fail: db 'FAIL - ', 0
@@ -876,12 +1297,21 @@ msg_push_pop_failed: db 'stack mismatch', 0
 msg_lodsb_failed: db 'load or pointer incorrect', 0
 msg_stosb_failed: db 'store or pointer incorrect', 0
 msg_movsb_failed: db 'move or pointer incorrect', 0
+msg_cmpsb_failed: db 'comparison or flags incorrect', 0
+msg_scasb_failed: db 'scan or pointer incorrect', 0
+msg_adc_sbb_failed: db 'carry/borrow propagation incorrect', 0
+msg_imul_failed: db 'signed multiply incorrect', 0
+msg_idiv_failed: db 'signed divide incorrect', 0
+msg_rcl_rcr_failed: db 'rotate through carry incorrect', 0
+msg_loopz_loopnz_failed: db 'loop with zero flag incorrect', 0
 
 msg_summary: db '--- Summary ---', 13, 10, 0
 msg_passed: db ' passed, ', 0
 msg_failed: db ' failed', 0
 
 test_string: db 'TEST', 0
+cmp_string1: db 'ABCD', 0
+cmp_string2: db 'ABXY', 0
 
 section .bss
 pass_count: resw 1

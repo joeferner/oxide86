@@ -81,16 +81,16 @@ Simple "Hello World" test program for verifying program loading functionality. U
 
 ## Opcode Test
 
-### opcode-test/opctest.asm
-Systematic test suite for validating CPU instruction implementation. Tests 10 common opcodes with multiple test cases each, reporting results to COM1 serial logger.
+### opcode-test/op8086.asm
+Comprehensive test suite for validating CPU instruction implementation. Tests 29 different instructions with multiple test cases each, reporting results to COM1 serial logger.
 
 **Running with serial logger:**
 ```bash
 # Native CLI
-cargo run -p emu86-native-cli -- test-programs/opcode-test/opctest.com --com1-device logger
+cargo run -p emu86-native-cli -- test-programs/opcode-test/op8086.com --com1-device logger
 
 # Native GUI
-cargo run -p emu86-native-gui -- test-programs/opcode-test/opctest.com --com1-device logger
+cargo run -p emu86-native-gui -- test-programs/opcode-test/op8086.com --com1-device logger
 ```
 
 **Expected Output:**
@@ -99,32 +99,87 @@ cargo run -p emu86-native-gui -- test-programs/opcode-test/opctest.com --com1-de
 [COM1] MOV: PASS
 [COM1] ADD: PASS
 [COM1] SUB: PASS
+[COM1] INC: PASS
+[COM1] DEC: PASS
+[COM1] NEG: PASS
+[COM1] CMP: PASS
 [COM1] AND: PASS
 [COM1] OR: PASS
 [COM1] XOR: PASS
+[COM1] NOT: PASS
+[COM1] TEST: PASS
 [COM1] SHL: PASS
-[COM1] INC: PASS
-[COM1] CMP: PASS
+[COM1] SHR: PASS
+[COM1] ROL: PASS
+[COM1] ROR: PASS
+[COM1] MUL: PASS
+[COM1] DIV: PASS
 [COM1] PUSH/POP: PASS
+[COM1] LODSB: PASS
+[COM1] STOSB: PASS
+[COM1] MOVSB: PASS
+[COM1] CMPSB: PASS
+[COM1] SCASB: PASS
+[COM1] ADC/SBB: PASS
+[COM1] IMUL: PASS
+[COM1] IDIV: PASS
+[COM1] RCL/RCR: PASS
+[COM1] LOOPZ/LOOPNZ: PASS
 [COM1]
 [COM1] --- Summary ---
-[COM1] 10 passed, 0 failed
+[COM1] 29 passed, 0 failed
 ```
 
 **Tested Instructions:**
-- **MOV**: Basic register-to-register data movement, immediate values
-- **ADD**: Addition with and without carry flag, overflow detection
-- **SUB**: Subtraction with and without borrow, underflow detection
+
+*Basic Arithmetic:*
+- **MOV**: Register-to-register data movement, immediate values
+- **ADD**: Addition with carry flag, overflow detection
+- **ADC**: Add with carry for multi-word arithmetic (32-bit addition)
+- **SUB**: Subtraction with borrow flag, underflow detection
+- **SBB**: Subtract with borrow for multi-word arithmetic (32-bit subtraction)
+- **INC**: Increment operations, wrap-around behavior
+- **DEC**: Decrement operations, wrap-around behavior
+- **NEG**: Two's complement negation
+- **CMP**: Comparison operations, flag setting (ZF, CF, SF)
+
+*Logical Operations:*
 - **AND**: Bitwise AND operations, masking patterns
 - **OR**: Bitwise OR operations, bit setting patterns
 - **XOR**: Bitwise XOR operations, self-zeroing, bit flipping
+- **NOT**: Bitwise NOT (one's complement)
+- **TEST**: Bitwise AND without storing result (flags only)
+
+*Shift/Rotate Operations:*
 - **SHL**: Shift left operations, carry flag propagation
-- **INC**: Increment operations, wrap-around behavior
-- **CMP**: Comparison operations, flag setting (ZF, CF, SF)
+- **SHR**: Shift right operations, carry flag propagation
+- **ROL**: Rotate left (bit wrap without carry)
+- **ROR**: Rotate right (bit wrap without carry)
+- **RCL**: Rotate through carry left (9-bit/17-bit rotation)
+- **RCR**: Rotate through carry right (9-bit/17-bit rotation)
+
+*Multiply/Divide:*
+- **MUL**: Unsigned multiply (8-bit and 16-bit)
+- **IMUL**: Signed multiply with negative numbers
+- **DIV**: Unsigned divide with quotient and remainder
+- **IDIV**: Signed divide with negative numbers
+
+*Stack Operations:*
 - **PUSH/POP**: Stack operations, LIFO verification, SP tracking
 
+*String Operations:*
+- **LODSB**: Load string byte (DS:SI → AL, increment/decrement SI)
+- **STOSB**: Store string byte (AL → ES:DI, increment/decrement DI)
+- **MOVSB**: Move string byte (DS:SI → ES:DI)
+- **CMPSB**: Compare string byte with REP prefixes
+- **SCASB**: Scan string byte (find character with REPNE)
+
+*Loop Instructions:*
+- **LOOPZ/LOOPE**: Loop while zero flag set
+- **LOOPNZ/LOOPNE**: Loop while zero flag clear
+
 **Technical Details:**
-Each test includes multiple assertions checking both result values and CPU flags. Failed tests print specific error messages (e.g., "result or carry incorrect"). The framework is designed to be easily extended with additional instruction tests. Future additions could include: DEC, MUL, DIV, ROL, ROR, RCL, RCR, SHR, SAR, NOT, NEG, TEST, string operations (MOVS, CMPS, SCAS, LODS, STOS with REP), segment operations (LES, LDS), and BCD arithmetic (DAA, DAS, AAA, AAS, AAM, AAD).
+Each test includes multiple assertions checking both result values and CPU flags. Tests validate edge cases like carry propagation in multi-word arithmetic, sign extension in signed operations, and proper flag behavior in conditional loops. Failed tests print specific error messages (e.g., "carry/borrow propagation incorrect", "signed multiply incorrect"). The test framework validates all critical 8086 instructions needed for real-world programs including MS-DOS applications and games.
 
 ## Serial
 
