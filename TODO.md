@@ -2,10 +2,12 @@
 
 - [ ] check-it 2 - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
-- [ ] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio
+- [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/keen1-error-during-code-expansion.md branch: keen1)
+- [ ] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] WASM add additional hard drive support, move B: into an Accordion with additional hard drives
+- [ ] Clean up handle_bios_interrupt_direct, pending_int15_4f, interrupt chaining, etc
 - [ ] Joystick
   - [X] Test Wasm
   - [ ] Test Native GUI
