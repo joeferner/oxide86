@@ -1,7 +1,6 @@
 use crate::{
-    DriveNumber,
+    Bus, DriveNumber,
     cpu::{Cpu, bios::disk_error::DiskError, cpu_flag},
-    memory::Memory,
 };
 
 impl Cpu {
@@ -11,7 +10,7 @@ impl Cpu {
     /// Note: AT-class BIOS enables interrupts (STI) during disk operations so that
     /// timer IRQs (INT 0x08) can still fire. This is important for programs that
     /// depend on the BDA timer counter advancing during disk benchmarks.
-    pub(super) fn handle_int13(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    pub(super) fn handle_int13(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Enable interrupts during disk operations (AT-class BIOS behavior)
         // This allows timer IRQs to fire even during extended disk operations
         self.set_flag(cpu_flag::INTERRUPT, true);
@@ -21,14 +20,14 @@ impl Cpu {
         match function {
             0x00 => self.int13_reset_disk(io),
             0x01 => self.int13_get_status(io),
-            0x02 => self.int13_read_sectors(memory, io),
-            0x03 => self.int13_write_sectors(memory, io),
+            0x02 => self.int13_read_sectors(bus, io),
+            0x03 => self.int13_write_sectors(bus, io),
             0x04 => self.int13_verify_sectors(io),
             0x05 => self.int13_format_track(io),
             0x08 => self.int13_get_drive_params(io),
             0x15 => self.int13_get_disk_type(io),
             0x16 => self.int13_detect_disk_change(io),
-            0x18 => self.int13_set_dasd_type(memory, io),
+            0x18 => self.int13_set_dasd_type(bus, io),
             _ => {
                 log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -95,7 +94,7 @@ impl Cpu {
     ///   AH = status (0 = success)
     ///   AL = number of sectors read
     ///   CF = clear if success, set if error
-    fn int13_read_sectors(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    fn int13_read_sectors(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let count = (self.ax & 0xFF) as u8; // AL
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
@@ -123,7 +122,7 @@ impl Cpu {
                 // Write data to ES:BX
                 let buffer_addr = Self::physical_address(self.es, self.bx);
                 for (i, &byte) in data.iter().enumerate() {
-                    memory.write_u8(buffer_addr + i, byte);
+                    bus.write_u8(buffer_addr + i, byte);
                 }
 
                 // Calculate actual sectors read
@@ -170,7 +169,7 @@ impl Cpu {
     ///   AH = status (0 = success)
     ///   AL = number of sectors written
     ///   CF = clear if success, set if error
-    fn int13_write_sectors(&mut self, memory: &Memory, io: &mut super::Bios) {
+    fn int13_write_sectors(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let count = (self.ax & 0xFF) as u8; // AL
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
@@ -187,7 +186,7 @@ impl Cpu {
         let data_len = count as usize * 512;
         let mut data = Vec::with_capacity(data_len);
         for i in 0..data_len {
-            data.push(memory.read_u8(buffer_addr + i));
+            data.push(bus.read_u8(buffer_addr + i));
         }
 
         match io.disk_write_sectors(drive, cylinder_8bit, head, sector, count, &data) {
@@ -425,7 +424,7 @@ impl Cpu {
     ///   CF = clear if successful, set on error
     ///   On success:
     ///     ES:DI = pointer to 11-byte Disk Base Table (DBT)
-    fn int13_set_dasd_type(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    fn int13_set_dasd_type(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
         let tracks_low = (self.cx >> 8) as u8; // CH
         let sectors_and_tracks_high = (self.cx & 0xFF) as u8; // CL
@@ -480,7 +479,7 @@ impl Cpu {
 
                 // Write DBT to memory
                 for (i, &byte) in dbt.iter().enumerate() {
-                    memory.write_u8(dbt_addr + i, byte);
+                    bus.write_u8(dbt_addr + i, byte);
                 }
 
                 // Return success with ES:DI pointing to DBT

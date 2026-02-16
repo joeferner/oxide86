@@ -1,6 +1,7 @@
+use crate::Bus;
+use crate::cpu::Cpu;
 use crate::cpu::cpu_flag;
 use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW};
-use crate::{cpu::Cpu, memory::Memory};
 
 /// Timer ticks at 18.2 Hz (PIT channel 0 frequency)
 /// Ticks per day = 24 * 60 * 60 * 18.2 = 1,573,040 (0x1800B0)
@@ -15,15 +16,15 @@ impl Cpu {
     /// Note: Like INT 0x13, we enable interrupts (STI) during time services so that
     /// timer IRQs (INT 0x08) can fire. This is important for programs that poll
     /// the system time in a tight loop waiting for it to change.
-    pub(super) fn handle_int1a(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    pub(super) fn handle_int1a(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Enable interrupts during time services (allows timer IRQs to fire)
         self.set_flag(cpu_flag::INTERRUPT, true);
 
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
-            0x00 => self.int1a_get_system_time(memory),
-            0x01 => self.int1a_set_system_time(memory),
+            0x00 => self.int1a_get_system_time(bus),
+            0x01 => self.int1a_set_system_time(bus),
             0x02 => self.int1a_read_rtc_time(io),
             0x04 => self.int1a_read_rtc_date(io),
             _ => {
@@ -38,16 +39,16 @@ impl Cpu {
     /// Output:
     ///   CX:DX = number of clock ticks since midnight (CX = high word, DX = low word)
     ///   AL = midnight flag (non-zero if midnight passed since last read, then flag is reset)
-    fn int1a_get_system_time(&mut self, memory: &mut Memory) {
+    fn int1a_get_system_time(&mut self, bus: &mut Bus) {
         // Read timer counter from BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
-        let low_word = memory.read_u16(counter_addr);
-        let high_word = memory.read_u16(counter_addr + 2);
+        let low_word = bus.read_u16(counter_addr);
+        let high_word = bus.read_u16(counter_addr + 2);
 
         // Read and clear midnight flag
         let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
-        let midnight_flag = memory.read_u8(overflow_addr);
-        memory.write_u8(overflow_addr, 0); // Clear the flag
+        let midnight_flag = bus.read_u8(overflow_addr);
+        bus.write_u8(overflow_addr, 0); // Clear the flag
 
         // Return values
         self.cx = high_word; // CX = high word of tick count
@@ -60,18 +61,18 @@ impl Cpu {
     /// Input:
     ///   CX:DX = number of clock ticks since midnight (CX = high word, DX = low word)
     /// Output: None
-    fn int1a_set_system_time(&mut self, memory: &mut Memory) {
+    fn int1a_set_system_time(&mut self, bus: &mut Bus) {
         let high_word = self.cx;
         let low_word = self.dx;
 
         // Write timer counter to BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
-        memory.write_u16(counter_addr, low_word); // Low word
-        memory.write_u16(counter_addr + 2, high_word); // High word
+        bus.write_u16(counter_addr, low_word); // Low word
+        bus.write_u16(counter_addr + 2, high_word); // High word
 
         // Clear midnight overflow flag when setting time
         let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
-        memory.write_u8(overflow_addr, 0);
+        bus.write_u8(overflow_addr, 0);
     }
 
     /// INT 1Ah, AH=02h - Read Real Time Clock Time

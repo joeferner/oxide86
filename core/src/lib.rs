@@ -1,5 +1,6 @@
 use std::fmt::{Debug, Display};
 
+pub use crate::bus::Bus;
 pub use crate::clock::{Clock, LocalDate, LocalTime};
 pub use crate::cpu::bios::{Bios, DosDevice, DriveParams, KeyPress, SharedBiosState};
 pub use crate::cpu_type::CpuType;
@@ -28,6 +29,7 @@ pub use computer::{Computer, ComputerConfig};
 pub use font::Cp437Font;
 pub use palette::TextModePalette;
 
+pub mod bus;
 pub mod clock;
 pub mod computer;
 pub mod cpu;

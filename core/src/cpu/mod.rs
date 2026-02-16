@@ -1,4 +1,4 @@
-use crate::{io::IoDevice, memory::Memory};
+use crate::{Bus, io::IoDevice};
 
 pub mod bios;
 mod instructions;
@@ -164,17 +164,17 @@ impl Cpu {
     }
 
     // Fetch a byte from memory at CS:IP and increment IP
-    pub(crate) fn fetch_byte(&mut self, memory: &Memory) -> u8 {
+    pub(crate) fn fetch_byte(&mut self, bus: &Bus) -> u8 {
         let addr = Self::physical_address(self.cs, self.ip);
-        let byte = memory.read_u8(addr);
+        let byte = bus.read_u8(addr);
         self.ip = self.ip.wrapping_add(1);
         byte
     }
 
     // Fetch a word (2 bytes, little-endian) from memory at CS:IP
-    pub(super) fn fetch_word(&mut self, memory: &Memory) -> u16 {
-        let low = self.fetch_byte(memory) as u16;
-        let high = self.fetch_byte(memory) as u16;
+    pub(super) fn fetch_word(&mut self, bus: &Bus) -> u16 {
+        let low = self.fetch_byte(bus) as u16;
+        let high = self.fetch_byte(bus) as u16;
         (high << 8) | low
     }
 
@@ -221,7 +221,7 @@ impl Cpu {
     /// * `return_cs` - Code segment to return to after chain completes
     /// * `return_ip` - Instruction pointer to return to after chain completes
     /// * `return_flags` - Flags to restore after chain completes
-    /// * `memory` - Memory for reading IVT and pushing stack frame
+    /// * `bus` - Bus for reading IVT and pushing stack frame
     pub(crate) fn begin_irq_chain(
         &mut self,
         from_int: u8,
@@ -229,7 +229,7 @@ impl Cpu {
         return_cs: u16,
         return_ip: u16,
         return_flags: u16,
-        memory: &mut Memory,
+        bus: &mut Bus,
     ) {
         // Save chain context
         self.irq_chain_context = Some(IrqChainContext {
@@ -241,9 +241,9 @@ impl Cpu {
         });
 
         // Push return frame for chained handler's IRET
-        self.push(return_flags, memory);
-        self.push(return_cs, memory);
-        self.push(return_ip, memory);
+        self.push(return_flags, bus);
+        self.push(return_cs, bus);
+        self.push(return_ip, bus);
 
         // Clear IF and TF flags (standard INT behavior)
         self.set_flag(cpu_flag::INTERRUPT, false);
@@ -251,8 +251,8 @@ impl Cpu {
 
         // Load interrupt vector from IVT
         let ivt_addr = (to_int as usize) * 4;
-        let offset = memory.read_u16(ivt_addr);
-        let segment = memory.read_u16(ivt_addr + 2);
+        let offset = bus.read_u16(ivt_addr);
+        let segment = bus.read_u16(ivt_addr + 2);
 
         // Transfer control to chained handler
         self.cs = segment;
@@ -276,7 +276,7 @@ impl Cpu {
     ///
     /// Validates stack state and clears chain context.
     /// Returns the chain context if one was active.
-    pub(crate) fn complete_irq_chain(&mut self, _memory: &Memory) -> Option<IrqChainContext> {
+    pub(crate) fn complete_irq_chain(&mut self) -> Option<IrqChainContext> {
         if let Some(context) = self.irq_chain_context.take() {
             // Validate that stack pointer matches expected value
             // IRET already popped IP, CS, FLAGS (6 bytes)
@@ -297,14 +297,13 @@ impl Cpu {
     pub fn execute_int_with_io(
         &mut self,
         int_num: u8,
-        memory: &mut Memory,
+        bus: &mut Bus,
         io: &mut crate::cpu::bios::Bios,
-        video: &mut crate::video::Video,
         cpu_type: crate::CpuType,
     ) {
         // If DOS has installed its own handler (IVT not pointing to BIOS ROM),
         // let DOS handle it instead of intercepting
-        let is_bios_handler = Self::is_bios_handler(memory, int_num);
+        let is_bios_handler = Self::is_bios_handler(bus, int_num);
 
         if self.log_interrupts_enabled
             && int_num != 0x10
@@ -330,20 +329,20 @@ impl Cpu {
         }
 
         if is_bios_handler {
-            self.handle_bios_interrupt_impl(int_num, memory, io, video, cpu_type);
+            self.handle_bios_interrupt_impl(int_num, bus, io, cpu_type);
         } else {
             // Not handled, do normal INT
             // Push flags, CS, and IP
-            self.push(self.flags, memory);
-            self.push(self.cs, memory);
-            self.push(self.ip, memory);
+            self.push(self.flags, bus);
+            self.push(self.cs, bus);
+            self.push(self.ip, bus);
             // Clear IF and TF
             self.set_flag(cpu_flag::INTERRUPT, false);
             self.set_flag(cpu_flag::TRAP, false);
             // Load interrupt vector from IVT
             let ivt_addr = (int_num as usize) * 4;
-            let offset = memory.read_u16(ivt_addr);
-            let segment = memory.read_u16(ivt_addr + 2);
+            let offset = bus.read_u16(ivt_addr);
+            let segment = bus.read_u16(ivt_addr + 2);
             self.ip = offset;
             self.cs = segment;
         }
@@ -353,32 +352,31 @@ impl Cpu {
     pub(crate) fn execute_with_io(
         &mut self,
         opcode: u8,
-        memory: &mut Memory,
+        bus: &mut Bus,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
-        video: &mut crate::video::Video,
     ) {
         match opcode {
             // ADD r/m to register
-            0x00..=0x03 => self.add_rm_reg(opcode, memory),
+            0x00..=0x03 => self.add_rm_reg(opcode, bus),
 
             // ADD immediate to AL/AX
-            0x04..=0x05 => self.add_imm_acc(opcode, memory),
+            0x04..=0x05 => self.add_imm_acc(opcode, bus),
 
             // PUSH ES (06)
-            0x06 => self.push_segreg(opcode, memory),
+            0x06 => self.push_segreg(opcode, bus),
 
             // POP ES (07)
-            0x07 => self.pop_segreg(opcode, memory),
+            0x07 => self.pop_segreg(opcode, bus),
 
             // OR r/m to register
-            0x08..=0x0B => self.or_rm_reg(opcode, memory),
+            0x08..=0x0B => self.or_rm_reg(opcode, bus),
 
             // OR immediate to AL/AX
-            0x0C..=0x0D => self.or_imm_acc(opcode, memory),
+            0x0C..=0x0D => self.or_imm_acc(opcode, bus),
 
             // PUSH CS (0E)
-            0x0E => self.push_segreg(opcode, memory),
+            0x0E => self.push_segreg(opcode, bus),
 
             // POP CS (0F) - 8086 only, repurposed as two-byte prefix on 80286+
             0x0F => {
@@ -387,44 +385,44 @@ impl Cpu {
                     self.cs,
                     self.ip.wrapping_sub(1)
                 );
-                self.pop_segreg(opcode, memory);
+                self.pop_segreg(opcode, bus);
             }
 
             // ADC r/m to register (10-13)
-            0x10..=0x13 => self.adc_rm_reg(opcode, memory),
+            0x10..=0x13 => self.adc_rm_reg(opcode, bus),
 
             // ADC immediate to AL/AX (14-15)
-            0x14..=0x15 => self.adc_imm_acc(opcode, memory),
+            0x14..=0x15 => self.adc_imm_acc(opcode, bus),
 
             // PUSH SS (16)
-            0x16 => self.push_segreg(opcode, memory),
+            0x16 => self.push_segreg(opcode, bus),
 
             // POP SS (17)
-            0x17 => self.pop_segreg(opcode, memory),
+            0x17 => self.pop_segreg(opcode, bus),
 
             // SBB r/m to register (18-1B)
-            0x18..=0x1B => self.sbb_rm_reg(opcode, memory),
+            0x18..=0x1B => self.sbb_rm_reg(opcode, bus),
 
             // SBB immediate to AL/AX (1C-1D)
-            0x1C..=0x1D => self.sbb_imm_acc(opcode, memory),
+            0x1C..=0x1D => self.sbb_imm_acc(opcode, bus),
 
             // PUSH DS (1E)
-            0x1E => self.push_segreg(opcode, memory),
+            0x1E => self.push_segreg(opcode, bus),
 
             // POP DS (1F)
-            0x1F => self.pop_segreg(opcode, memory),
+            0x1F => self.pop_segreg(opcode, bus),
 
             // AND r/m to register
-            0x20..=0x23 => self.and_rm_reg(opcode, memory),
+            0x20..=0x23 => self.and_rm_reg(opcode, bus),
 
             // AND immediate to AL/AX
-            0x24..=0x25 => self.and_imm_acc(opcode, memory),
+            0x24..=0x25 => self.and_imm_acc(opcode, bus),
 
             // ES: segment override prefix (26)
             0x26 => {
                 self.segment_override = Some(self.es);
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.segment_override = None;
             }
 
@@ -432,16 +430,16 @@ impl Cpu {
             0x27 => self.daa(),
 
             // SUB r/m to register
-            0x28..=0x2B => self.sub_rm_reg(opcode, memory),
+            0x28..=0x2B => self.sub_rm_reg(opcode, bus),
 
             // SUB immediate to AL/AX
-            0x2C..=0x2D => self.sub_imm_acc(opcode, memory),
+            0x2C..=0x2D => self.sub_imm_acc(opcode, bus),
 
             // CS: segment override prefix (2E)
             0x2E => {
                 self.segment_override = Some(self.cs);
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.segment_override = None;
             }
 
@@ -449,16 +447,16 @@ impl Cpu {
             0x2F => self.das(),
 
             // XOR r/m to register
-            0x30..=0x33 => self.xor_rm_reg(opcode, memory),
+            0x30..=0x33 => self.xor_rm_reg(opcode, bus),
 
             // XOR immediate to AL/AX
-            0x34..=0x35 => self.xor_imm_acc(opcode, memory),
+            0x34..=0x35 => self.xor_imm_acc(opcode, bus),
 
             // SS: segment override prefix (36)
             0x36 => {
                 self.segment_override = Some(self.ss);
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.segment_override = None;
             }
 
@@ -466,16 +464,16 @@ impl Cpu {
             0x37 => self.aaa(),
 
             // CMP r/m to register
-            0x38..=0x3B => self.cmp_rm_reg(opcode, memory),
+            0x38..=0x3B => self.cmp_rm_reg(opcode, bus),
 
             // CMP immediate to AL/AX
-            0x3C..=0x3D => self.cmp_imm_acc(opcode, memory),
+            0x3C..=0x3D => self.cmp_imm_acc(opcode, bus),
 
             // DS: segment override prefix (3E)
             0x3E => {
                 self.segment_override = Some(self.ds);
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.segment_override = None;
             }
 
@@ -489,92 +487,92 @@ impl Cpu {
             0x48..=0x4F => self.dec_reg16(opcode),
 
             // PUSH 16-bit register (50-57)
-            0x50..=0x57 => self.push_reg16(opcode, memory),
+            0x50..=0x57 => self.push_reg16(opcode, bus),
 
             // POP 16-bit register (58-5F)
-            0x58..=0x5F => self.pop_reg16(opcode, memory),
+            0x58..=0x5F => self.pop_reg16(opcode, bus),
 
             // PUSHA - Push All General Registers (60)
-            0x60 => self.pusha(memory),
+            0x60 => self.pusha(bus),
 
             // POPA - Pop All General Registers (61)
-            0x61 => self.popa(memory),
+            0x61 => self.popa(bus),
 
             // BOUND - Check Array Index Against Bounds (62)
             0x62 => {
-                if self.bound(memory) {
+                if self.bound(bus) {
                     // Index out of bounds - trigger INT 5
-                    self.push(self.flags, memory);
-                    self.push(self.cs, memory);
+                    self.push(self.flags, bus);
+                    self.push(self.cs, bus);
                     // IP points after BOUND instruction; we need to point at it
                     // The modrm byte and any displacement were already consumed by bound()
                     // so we save the current IP (which is past the instruction)
-                    self.push(self.ip, memory);
+                    self.push(self.ip, bus);
                     self.set_flag(cpu_flag::INTERRUPT, false);
                     self.set_flag(cpu_flag::TRAP, false);
                     // Load INT 5 vector
                     let ivt_addr = 5 * 4;
-                    self.ip = memory.read_u16(ivt_addr);
-                    self.cs = memory.read_u16(ivt_addr + 2);
+                    self.ip = bus.read_u16(ivt_addr);
+                    self.cs = bus.read_u16(ivt_addr + 2);
                 }
             }
 
             // FS: segment override prefix (64) - 80386+
             0x64 => {
                 self.segment_override = Some(self.fs);
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.segment_override = None;
             }
 
             // GS: segment override prefix (65) - 80386+
             0x65 => {
                 self.segment_override = Some(self.gs);
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.segment_override = None;
             }
 
             // PUSH immediate (68: imm16, 6A: imm8 sign-extended)
-            0x68 | 0x6A => self.push_imm(opcode, memory),
+            0x68 | 0x6A => self.push_imm(opcode, bus),
 
             // IMUL - Signed Multiply with Immediate (69: imm16)
-            0x69 => self.imul_imm16(memory),
+            0x69 => self.imul_imm16(bus),
 
             // INS - Input String from Port (6C-6D)
-            0x6C..=0x6D => self.ins(opcode, memory, io_device),
+            0x6C..=0x6D => self.ins(opcode, bus, io_device),
 
             // OUTS - Output String to Port (6E-6F)
-            0x6E..=0x6F => self.outs(opcode, memory, io_device, video),
+            0x6E..=0x6F => self.outs(opcode, bus, io_device),
 
             // Conditional jumps (70-7F)
-            0x70..=0x7F => self.jmp_conditional(opcode, memory),
+            0x70..=0x7F => self.jmp_conditional(opcode, bus),
 
             // Arithmetic/logical immediate to r/m (80: 8-bit, 81: 16-bit, 82: same as 80, 83: sign-extended 8-bit to 16-bit)
-            0x80 | 0x82 => self.arith_imm8_rm8(memory),
-            0x81 => self.arith_imm16_rm(memory),
-            0x83 => self.arith_imm8_rm(memory),
+            0x80 | 0x82 => self.arith_imm8_rm8(bus),
+            0x81 => self.arith_imm16_rm(bus),
+            0x83 => self.arith_imm8_rm(bus),
 
             // TEST r/m and register (84-85)
-            0x84..=0x85 => self.test_rm_reg(opcode, memory),
+            0x84..=0x85 => self.test_rm_reg(opcode, bus),
 
             // XCHG r/m and register (86-87)
-            0x86..=0x87 => self.xchg_rm_reg(opcode, memory),
+            0x86..=0x87 => self.xchg_rm_reg(opcode, bus),
 
             // MOV register to/from r/m (88-8B)
-            0x88..=0x8B => self.mov_reg_rm(opcode, memory),
+            0x88..=0x8B => self.mov_reg_rm(opcode, bus),
 
             // MOV segment register to r/m16 (8C)
-            0x8C => self.mov_segreg_to_rm(memory),
+            0x8C => self.mov_segreg_to_rm(bus),
 
             // LEA - Load Effective Address (8D)
-            0x8D => self.lea(memory),
+            0x8D => self.lea(bus),
 
             // MOV r/m16 to segment register (8E)
-            0x8E => self.mov_rm_to_segreg(memory),
+            0x8E => self.mov_rm_to_segreg(bus),
 
             // POP r/m16 (8F) - Group 1A
-            0x8F => self.pop_rm16(memory),
+            0x8F => self.pop_rm16(bus),
 
             // NOP / XCHG AX, reg (90-97)
             0x90..=0x97 => self.xchg_ax_reg(opcode),
@@ -586,13 +584,13 @@ impl Cpu {
             0x99 => self.cwd(),
 
             // CALL far (9A)
-            0x9A => self.call_far(memory),
+            0x9A => self.call_far(bus),
 
             // PUSHF - Push Flags (9C)
-            0x9C => self.pushf(memory),
+            0x9C => self.pushf(bus),
 
             // POPF - Pop Flags (9D)
-            0x9D => self.popf(memory),
+            0x9D => self.popf(bus),
 
             // SAHF - Store AH into Flags (9E)
             0x9E => self.sahf(),
@@ -601,110 +599,110 @@ impl Cpu {
             0x9F => self.lahf(),
 
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
-            0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory),
+            0xA0..=0xA3 => self.mov_acc_moffs(opcode, bus),
 
             // MOVS - Move String (A4-A5)
-            0xA4..=0xA5 => self.movs(opcode, memory),
+            0xA4..=0xA5 => self.movs(opcode, bus),
 
             // CMPS - Compare String (A6-A7)
-            0xA6..=0xA7 => self.cmps(opcode, memory),
+            0xA6..=0xA7 => self.cmps(opcode, bus),
 
             // TEST immediate to AL/AX (A8-A9)
-            0xA8..=0xA9 => self.test_imm_acc(opcode, memory),
+            0xA8..=0xA9 => self.test_imm_acc(opcode, bus),
 
             // STOS - Store String (AA-AB)
-            0xAA..=0xAB => self.stos(opcode, memory),
+            0xAA..=0xAB => self.stos(opcode, bus),
 
             // LODS - Load String (AC-AD)
-            0xAC..=0xAD => self.lods(opcode, memory),
+            0xAC..=0xAD => self.lods(opcode, bus),
 
             // SCAS - Scan String (AE-AF)
-            0xAE..=0xAF => self.scas(opcode, memory),
+            0xAE..=0xAF => self.scas(opcode, bus),
 
             // MOV immediate to register (B0-BF)
-            0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory),
+            0xB0..=0xBF => self.mov_imm_to_reg(opcode, bus),
 
             // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
-            0xC0..=0xC1 => self.shift_rotate_group(opcode, memory),
+            0xC0..=0xC1 => self.shift_rotate_group(opcode, bus),
 
             // RET with optional pop (C2: with imm16, C3: without)
-            0xC2..=0xC3 => self.ret(opcode, memory),
+            0xC2..=0xC3 => self.ret(opcode, bus),
 
             // LES - Load Pointer using ES (C4)
-            0xC4 => self.les(memory),
+            0xC4 => self.les(bus),
 
             // LDS - Load Pointer using DS (C5)
-            0xC5 => self.lds(memory),
+            0xC5 => self.lds(bus),
 
             // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
-            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, memory),
+            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, bus),
 
             // RET far (CA: with imm16, CB: without)
-            0xCA..=0xCB => self.retf(opcode, memory),
+            0xCA..=0xCB => self.retf(opcode, bus),
 
             // INT 3 - Breakpoint (CC)
-            0xCC => self.int3(memory),
+            0xCC => self.int3(bus),
 
             // INT - Software Interrupt (CD)
-            0xCD => self.int(memory),
+            0xCD => self.int(bus),
 
             // INTO - Interrupt on Overflow (CE)
-            0xCE => self.into(memory),
+            0xCE => self.into(bus),
 
             // IRET - Interrupt Return (CF)
-            0xCF => self.iret(memory),
+            0xCF => self.iret(bus),
 
             // Shift/Rotate Group 2 (D0: r/m8, 1; D1: r/m16, 1; D2: r/m8, CL; D3: r/m16, CL)
-            0xD0..=0xD3 => self.shift_rotate_group(opcode, memory),
+            0xD0..=0xD3 => self.shift_rotate_group(opcode, bus),
 
             // AAM - ASCII Adjust After Multiplication (D4)
-            0xD4 => self.aam(memory),
+            0xD4 => self.aam(bus),
 
             // AAD - ASCII Adjust Before Division (D5)
-            0xD5 => self.aad(memory),
+            0xD5 => self.aad(bus),
 
             // XLAT - Table Look-up Translation (D7)
-            0xD7 => self.xlat(memory),
+            0xD7 => self.xlat(bus),
 
             // ESC - Escape to coprocessor (D8-DF)
             // Passes instruction to 8087 FPU; NOP without coprocessor
-            0xD8..=0xDF => self.esc(memory),
+            0xD8..=0xDF => self.esc(bus),
 
             // LOOPNE/LOOPNZ (E0)
-            0xE0 => self.loopne(memory),
+            0xE0 => self.loopne(bus),
 
             // LOOPE/LOOPZ (E1)
-            0xE1 => self.loope(memory),
+            0xE1 => self.loope(bus),
 
             // LOOP (E2)
-            0xE2 => self.loop_inst(memory),
+            0xE2 => self.loop_inst(bus),
 
             // JCXZ (E3)
-            0xE3 => self.jcxz(memory),
+            0xE3 => self.jcxz(bus),
 
             // IN AL, imm8 (E4)
-            0xE4 => self.in_al_imm8(memory, bios, io_device),
+            0xE4 => self.in_al_imm8(bus, bios, io_device),
 
             // IN AX, imm8 (E5)
-            0xE5 => self.in_ax_imm8(memory, bios, io_device),
+            0xE5 => self.in_ax_imm8(bus, bios, io_device),
 
             // OUT imm8, AL (E6)
-            0xE6 => self.out_imm8_al(memory, bios, io_device, video),
+            0xE6 => self.out_imm8_al(bus, bios, io_device),
 
             // OUT imm8, AX (E7)
-            0xE7 => self.out_imm8_ax(memory, bios, io_device, video),
+            0xE7 => self.out_imm8_ax(bus, bios, io_device),
 
             // CALL near relative (E8)
-            0xE8 => self.call_near(memory),
+            0xE8 => self.call_near(bus),
 
             // JMP near relative (E9)
-            0xE9 => self.jmp_near(memory),
+            0xE9 => self.jmp_near(bus),
 
             // JMP far (EA)
-            0xEA => self.jmp_far(memory),
+            0xEA => self.jmp_far(bus),
 
             // JMP short relative (EB)
-            0xEB => self.jmp_short(memory),
+            0xEB => self.jmp_short(bus),
 
             // IN AL, DX (EC)
             0xEC => self.in_al_dx(bios, io_device),
@@ -713,31 +711,31 @@ impl Cpu {
             0xED => self.in_ax_dx(bios, io_device),
 
             // OUT DX, AL (EE)
-            0xEE => self.out_dx_al(bios, io_device, video),
+            0xEE => self.out_dx_al(bus, bios, io_device),
 
             // OUT DX, AX (EF)
-            0xEF => self.out_dx_ax(bios, io_device, video),
+            0xEF => self.out_dx_ax(bus, bios, io_device),
 
             // LOCK prefix (F0)
             // Asserts LOCK# signal for atomic memory operations; no-op in single-processor emulator
             0xF0 => {
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
             }
 
             // REPNE/REPNZ prefix (F2)
             0xF2 => {
                 self.repeat_prefix = Some(RepeatPrefix::Repne);
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.repeat_prefix = None;
             }
 
             // REP/REPE/REPZ prefix (F3)
             0xF3 => {
                 self.repeat_prefix = Some(RepeatPrefix::Rep);
-                let next_opcode = self.fetch_byte(memory);
-                self.execute_with_io(next_opcode, memory, bios, io_device, video);
+                let next_opcode = self.fetch_byte(bus);
+                self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.repeat_prefix = None;
             }
 
@@ -748,7 +746,7 @@ impl Cpu {
             0xF5 => self.cmc(),
 
             // NOT/NEG/MUL/DIV Group 3 (F6: 8-bit, F7: 16-bit)
-            0xF6..=0xF7 => self.unary_group3(opcode, memory),
+            0xF6..=0xF7 => self.unary_group3(opcode, bus),
 
             // CLC - Clear Carry Flag (F8)
             0xF8 => self.clc(),
@@ -769,16 +767,16 @@ impl Cpu {
             0xFD => self.std_flag(),
 
             // INC/DEC/CALL/JMP Group 4/5 (FE: 8-bit, FF: 16-bit)
-            0xFE => self.inc_dec_rm(opcode, memory),
+            0xFE => self.inc_dec_rm(opcode, bus),
             0xFF => {
                 // For FF, we need to check the reg field to determine operation
-                let modrm_peek = memory.read_u8(Self::physical_address(self.cs, self.ip));
+                let modrm_peek = bus.read_u8(Self::physical_address(self.cs, self.ip));
                 let reg_field = (modrm_peek >> 3) & 0x07;
                 match reg_field {
-                    0 | 1 => self.inc_dec_rm(opcode, memory), // INC/DEC
-                    2 | 3 => self.call_indirect(memory),      // CALL near/far
-                    4 | 5 => self.jmp_indirect(memory),       // JMP near/far
-                    6 => self.push_rm16(memory),              // PUSH r/m16
+                    0 | 1 => self.inc_dec_rm(opcode, bus), // INC/DEC
+                    2 | 3 => self.call_indirect(bus),      // CALL near/far
+                    4 | 5 => self.jmp_indirect(bus),       // JMP near/far
+                    6 => self.push_rm16(bus),              // PUSH r/m16
                     _ => panic!("Invalid FF operation: {}", reg_field),
                 }
             }
@@ -893,16 +891,16 @@ impl Cpu {
     }
 
     // Push 16-bit value onto stack
-    pub(super) fn push(&mut self, value: u16, memory: &mut Memory) {
+    pub(super) fn push(&mut self, value: u16, bus: &mut Bus) {
         self.sp = self.sp.wrapping_sub(2);
         let addr = Self::physical_address(self.ss, self.sp);
-        memory.write_u16(addr, value);
+        bus.write_u16(addr, value);
     }
 
     // Pop 16-bit value from stack
-    pub(super) fn pop(&mut self, memory: &Memory) -> u16 {
+    pub(super) fn pop(&mut self, bus: &Bus) -> u16 {
         let addr = Self::physical_address(self.ss, self.sp);
-        let value = memory.read_u16(addr);
+        let value = bus.read_u16(addr);
         self.sp = self.sp.wrapping_add(2);
         value
     }
@@ -911,7 +909,7 @@ impl Cpu {
     // Returns (mod, reg, r/m, effective_address, default_segment)
     // mod: 00=no disp (except r/m=110), 01=8-bit disp, 10=16-bit disp, 11=register
     // For mod=11, effective_address is unused
-    pub(super) fn decode_modrm(&mut self, modrm: u8, memory: &Memory) -> (u8, u8, u8, usize, u16) {
+    pub(super) fn decode_modrm(&mut self, modrm: u8, bus: &Bus) -> (u8, u8, u8, usize, u16) {
         let mode = modrm >> 6;
         let reg = (modrm >> 3) & 0x07;
         let rm = modrm & 0x07;
@@ -932,7 +930,7 @@ impl Cpu {
             0b110 => {
                 if mode == 0b00 {
                     // Special case: direct address (16-bit displacement, no base)
-                    let disp = self.fetch_word(memory);
+                    let disp = self.fetch_word(bus);
                     let seg = self.segment_override.unwrap_or(self.ds);
                     return (mode, reg, rm, Self::physical_address(seg, disp), seg);
                 } else {
@@ -948,12 +946,12 @@ impl Cpu {
             0b00 => base_addr, // No displacement
             0b01 => {
                 // 8-bit signed displacement
-                let disp = self.fetch_byte(memory) as i8;
+                let disp = self.fetch_byte(bus) as i8;
                 base_addr.wrapping_add(disp as i16 as u16)
             }
             0b10 => {
                 // 16-bit displacement
-                let disp = self.fetch_word(memory);
+                let disp = self.fetch_word(bus);
                 base_addr.wrapping_add(disp)
             }
             _ => unreachable!(),
@@ -966,60 +964,46 @@ impl Cpu {
     }
 
     // Read 8-bit value from register or memory based on mod field
-    pub(super) fn read_rm8(&self, mode: u8, rm: u8, addr: usize, memory: &Memory) -> u8 {
+    pub(super) fn read_rm8(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u8 {
         if mode == 0b11 {
             // Register mode
             self.get_reg8(rm)
         } else {
             // Memory mode
-            memory.read_u8(addr)
+            bus.read_u8(addr)
         }
     }
 
     // Read 16-bit value from register or memory based on mod field
-    pub(super) fn read_rm16(&self, mode: u8, rm: u8, addr: usize, memory: &Memory) -> u16 {
+    pub(super) fn read_rm16(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u16 {
         if mode == 0b11 {
             // Register mode
             self.get_reg16(rm)
         } else {
             // Memory mode
-            memory.read_u16(addr)
+            bus.read_u16(addr)
         }
     }
 
     // Write 8-bit value to register or memory based on mod field
-    pub(super) fn write_rm8(
-        &mut self,
-        mode: u8,
-        rm: u8,
-        addr: usize,
-        value: u8,
-        memory: &mut Memory,
-    ) {
+    pub(super) fn write_rm8(&mut self, mode: u8, rm: u8, addr: usize, value: u8, bus: &mut Bus) {
         if mode == 0b11 {
             // Register mode
             self.set_reg8(rm, value);
         } else {
             // Memory mode
-            memory.write_u8(addr, value);
+            bus.write_u8(addr, value);
         }
     }
 
     // Write 16-bit value to register or memory based on mod field
-    pub(super) fn write_rm16(
-        &mut self,
-        mode: u8,
-        rm: u8,
-        addr: usize,
-        value: u16,
-        memory: &mut Memory,
-    ) {
+    pub(super) fn write_rm16(&mut self, mode: u8, rm: u8, addr: usize, value: u16, bus: &mut Bus) {
         if mode == 0b11 {
             // Register mode
             self.set_reg16(rm, value);
         } else {
             // Memory mode
-            memory.write_u16(addr, value);
+            bus.write_u16(addr, value);
         }
     }
 

@@ -1,4 +1,4 @@
-use crate::{cpu::Cpu, memory::Memory};
+use crate::cpu::Cpu;
 
 /// Printer status bits (returned in AH)
 #[allow(dead_code)]
@@ -40,7 +40,7 @@ impl Cpu {
     /// INT 0x17 - Printer Services
     /// AH register contains the function number
     /// DX register contains the printer number (0=LPT1, 1=LPT2, 2=LPT3)
-    pub(super) fn handle_int17(&mut self, _memory: &mut Memory, io: &mut super::Bios) {
+    pub(super) fn handle_int17(&mut self, io: &mut super::Bios) {
         let function = (self.ax >> 8) as u8; // Get AH
         let printer = self.dx as u8; // DX contains printer number
 

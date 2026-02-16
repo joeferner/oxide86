@@ -1,5 +1,5 @@
 use super::super::{Cpu, cpu_flag, timing};
-use crate::memory::Memory;
+use crate::Bus;
 
 impl Cpu {
     /// Shift/Rotate Group 2 (opcodes 0xC0, 0xC1, 0xD0-0xD3)
@@ -9,14 +9,14 @@ impl Cpu {
     /// D1: Shift r/m16, 1
     /// D2: Shift r/m8, CL
     /// D3: Shift r/m16, CL
-    pub(in crate::cpu) fn shift_rotate_group(&mut self, opcode: u8, memory: &mut Memory) {
+    pub(in crate::cpu) fn shift_rotate_group(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
-        let modrm = self.fetch_byte(memory);
-        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory);
+        let modrm = self.fetch_byte(bus);
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         // Determine shift count
         let count = match opcode {
-            0xC0 | 0xC1 => self.fetch_byte(memory), // imm8
+            0xC0 | 0xC1 => self.fetch_byte(bus),    // imm8
             0xD0 | 0xD1 => 1,                       // shift by 1
             0xD2 | 0xD3 => self.get_reg8(1) & 0x1F, // CL (masked to 5 bits for 8086)
             _ => unreachable!(),
@@ -24,7 +24,7 @@ impl Cpu {
 
         if is_word {
             // 16-bit shift/rotate
-            let value = self.read_rm16(mode, rm, addr, memory);
+            let value = self.read_rm16(mode, rm, addr, bus);
             let result = match operation {
                 0 => self.rol_16(value, count),
                 1 => self.ror_16(value, count),
@@ -35,10 +35,10 @@ impl Cpu {
                 7 => self.sar_16(value, count),
                 _ => unreachable!(),
             };
-            self.write_rm16(mode, rm, addr, result, memory);
+            self.write_rm16(mode, rm, addr, result, bus);
         } else {
             // 8-bit shift/rotate
-            let value = self.read_rm8(mode, rm, addr, memory);
+            let value = self.read_rm8(mode, rm, addr, bus);
             let result = match operation {
                 0 => self.rol_8(value, count),
                 1 => self.ror_8(value, count),
@@ -49,7 +49,7 @@ impl Cpu {
                 7 => self.sar_8(value, count),
                 _ => unreachable!(),
             };
-            self.write_rm8(mode, rm, addr, result, memory);
+            self.write_rm8(mode, rm, addr, result, bus);
         }
 
         // Calculate cycle timing based on shift type and count

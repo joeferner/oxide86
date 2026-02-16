@@ -79,8 +79,6 @@ pub const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
 
 pub struct Memory {
     data: Vec<u8>,
-    cga_writes: Vec<(usize, u8)>,
-    ega_writes: Vec<(usize, u8)>,
     /// A20 gate state (true = enabled, addresses can go above 1MB)
     /// When false, bit 20 is masked off (addresses wrap at 1MB like 8086)
     a20_enabled: bool,
@@ -101,8 +99,6 @@ impl Memory {
         let physical_size = (memory_kb as usize * 1024).max(MEMORY_SIZE);
         Self {
             data: vec![0; physical_size],
-            cga_writes: Vec::new(),
-            ega_writes: Vec::new(),
             a20_enabled: true, // Enabled by default (AT-class behavior)
             memory_kb,
         }
@@ -202,18 +198,6 @@ impl Memory {
         }
 
         self.data[addr] = value;
-
-        // Check if write is in CGA video memory range
-        if (VIDEO_MEMORY_START..=VIDEO_MEMORY_END).contains(&addr) {
-            let offset = addr - VIDEO_MEMORY_START;
-            self.cga_writes.push((offset, value));
-        }
-
-        // Check if write is in EGA video memory range (A000:0000)
-        if (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&addr) {
-            let offset = addr - EGA_MEMORY_START;
-            self.ega_writes.push((offset, value));
-        }
     }
 
     // Read a 16-bit word (little-endian)
@@ -341,15 +325,6 @@ impl Memory {
     }
 
     /// Drain video memory writes collected during instruction execution
-    pub fn drain_video_writes(&mut self) -> std::vec::Drain<'_, (usize, u8)> {
-        self.cga_writes.drain(..)
-    }
-
-    /// Drain EGA memory writes collected during instruction execution (A000:0000)
-    pub fn drain_ega_writes(&mut self) -> std::vec::Drain<'_, (usize, u8)> {
-        self.ega_writes.drain(..)
-    }
-
     /// Get a slice of the raw video memory (B8000-BFFFF)
     pub fn get_video_memory(&self) -> &[u8] {
         let end = (VIDEO_MEMORY_END + 1).min(self.data.len());

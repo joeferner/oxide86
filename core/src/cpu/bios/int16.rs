@@ -1,8 +1,9 @@
+use crate::Bus;
+use crate::cpu::Cpu;
 use crate::cpu::cpu_flag;
 use crate::memory::{
     BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_KEYBOARD_FLAGS1, BDA_START,
 };
-use crate::{cpu::Cpu, memory::Memory};
 
 impl Cpu {
     /// INT 0x16 - Keyboard Services
@@ -12,7 +13,7 @@ impl Cpu {
     /// services so that keyboard IRQs (INT 0x09) and timer IRQs (INT 0x08) can fire.
     /// This is important for programs that poll keyboard status in tight loops with
     /// interrupts disabled, or block waiting for input via AH=00h.
-    pub(super) fn handle_int16(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    pub(super) fn handle_int16(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Enable interrupts during keyboard operations (AT-class BIOS behavior)
         // This allows keyboard and timer IRQs to fire even when programs poll with IF=0
         self.set_flag(cpu_flag::INTERRUPT, true);
@@ -20,12 +21,12 @@ impl Cpu {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
-            0x00 => self.int16_read_char(memory, io),
-            0x01 => self.int16_check_keystroke(memory, io),
-            0x02 => self.int16_get_shift_flags(memory),
-            0x10 => self.int16_read_char(memory, io), // Extended read (same as 00h)
-            0x11 => self.int16_check_keystroke(memory, io), // Extended check (same as 01h)
-            0x12 => self.int16_get_shift_flags(memory), // Extended shift flags (same as 02h)
+            0x00 => self.int16_read_char(bus, io),
+            0x01 => self.int16_check_keystroke(bus, io),
+            0x02 => self.int16_get_shift_flags(bus),
+            0x10 => self.int16_read_char(bus, io), // Extended read (same as 00h)
+            0x11 => self.int16_check_keystroke(bus, io), // Extended check (same as 01h)
+            0x12 => self.int16_get_shift_flags(bus), // Extended shift flags (same as 02h)
             0x55 => self.int16_word_tsr_check(),
             0x92 => self.int16_get_keyboard_capabilities(),
             0xA2 => self.int16_122_key_capability_check(),
@@ -41,19 +42,19 @@ impl Cpu {
     /// Output:
     ///   AH = BIOS scan code
     ///   AL = ASCII character
-    pub(crate) fn int16_read_char(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    pub(crate) fn int16_read_char(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Check if there's already a character in the keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-        let head = memory.read_u16(head_addr);
-        let tail = memory.read_u16(tail_addr);
+        let head = bus.read_u16(head_addr);
+        let tail = bus.read_u16(tail_addr);
 
         if head != tail {
             // Buffer has data - read from it
             let buffer_start = 0x001E; // Relative to BDA
             let char_addr = BDA_START + head as usize;
-            let scan_code = memory.read_u8(char_addr);
-            let ascii_code = memory.read_u8(char_addr + 1);
+            let scan_code = bus.read_u8(char_addr);
+            let ascii_code = bus.read_u8(char_addr + 1);
 
             log::debug!(
                 "INT 16h AH=00h: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
@@ -72,7 +73,7 @@ impl Cpu {
             } else {
                 head + 2
             };
-            memory.write_u16(head_addr, new_head);
+            bus.write_u16(head_addr, new_head);
 
             // Set return values
             self.ax = ((scan_code as u16) << 8) | (ascii_code as u16);
@@ -114,18 +115,18 @@ impl Cpu {
     ///   If keystroke available:
     ///     AH = BIOS scan code
     ///     AL = ASCII character
-    fn int16_check_keystroke(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    fn int16_check_keystroke(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Check keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-        let head = memory.read_u16(head_addr);
-        let tail = memory.read_u16(tail_addr);
+        let head = bus.read_u16(head_addr);
+        let tail = bus.read_u16(tail_addr);
 
         if head != tail {
             // Buffer has data - peek at it without removing
             let char_addr = BDA_START + head as usize;
-            let scan_code = memory.read_u8(char_addr);
-            let ascii_code = memory.read_u8(char_addr + 1);
+            let scan_code = bus.read_u8(char_addr);
+            let ascii_code = bus.read_u8(char_addr + 1);
 
             log::debug!(
                 "INT 16h AH=01h: Key available in buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
@@ -181,9 +182,9 @@ impl Cpu {
                 } else {
                     // Key is available and buffer has space - add it for later consumption
                     let char_addr = BDA_START + tail as usize;
-                    memory.write_u8(char_addr, key.scan_code);
-                    memory.write_u8(char_addr + 1, key.ascii_code);
-                    memory.write_u16(tail_addr, new_tail);
+                    bus.write_u8(char_addr, key.scan_code);
+                    bus.write_u8(char_addr + 1, key.ascii_code);
+                    bus.write_u16(tail_addr, new_tail);
 
                     // Return the key data
                     self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
@@ -211,9 +212,9 @@ impl Cpu {
     ///     Bit 5: Num Lock active
     ///     Bit 6: Caps Lock active
     ///     Bit 7: Insert mode active
-    fn int16_get_shift_flags(&mut self, memory: &Memory) {
+    fn int16_get_shift_flags(&mut self, bus: &mut Bus) {
         let flags_addr = BDA_START + BDA_KEYBOARD_FLAGS1;
-        let flags = memory.read_u8(flags_addr);
+        let flags = bus.read_u8(flags_addr);
 
         // Return flags in AL
         self.ax = (self.ax & 0xFF00) | (flags as u16);

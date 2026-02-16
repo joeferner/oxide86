@@ -1,18 +1,17 @@
+use crate::Bus;
 use crate::cpu::Cpu;
 use crate::io::IoDevice;
-use crate::memory::Memory;
-use crate::video::Video;
 
 impl Cpu {
     /// IN AL, imm8 (0xE4)
     /// Read byte from immediate 8-bit port address to AL
     pub(in crate::cpu) fn in_al_imm8(
         &mut self,
-        memory: &Memory,
+        bus: &mut Bus,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
-        let port = self.fetch_byte(memory) as u16;
+        let port = self.fetch_byte(bus) as u16;
         let value = match port {
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => bios.serial_io_read(0, port - 0x3F8),
@@ -29,11 +28,11 @@ impl Cpu {
     /// Read word from immediate 8-bit port address to AX
     pub(in crate::cpu) fn in_ax_imm8(
         &mut self,
-        memory: &Memory,
+        bus: &mut Bus,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
     ) {
-        let port = self.fetch_byte(memory) as u16;
+        let port = self.fetch_byte(bus) as u16;
         let value = match port {
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => {
@@ -57,12 +56,11 @@ impl Cpu {
     /// Write byte from AL to immediate 8-bit port address
     pub(in crate::cpu) fn out_imm8_al(
         &mut self,
-        memory: &Memory,
+        bus: &mut Bus,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
-        video: &mut Video,
     ) {
-        let port = self.fetch_byte(memory) as u16;
+        let port = self.fetch_byte(bus) as u16;
         let value = (self.ax & 0xFF) as u8;
         match port {
             // COM1 registers (0x3F8-0x3FF)
@@ -70,7 +68,7 @@ impl Cpu {
             // COM2 registers (0x2F8-0x2FF)
             0x2F8..=0x2FF => bios.serial_io_write(1, port - 0x2F8, value),
             // Other ports use existing io_device
-            _ => io_device.write_byte(port, value, video),
+            _ => io_device.write_byte(port, value, bus.video_mut()),
         }
     }
 
@@ -78,12 +76,11 @@ impl Cpu {
     /// Write word from AX to immediate 8-bit port address
     pub(in crate::cpu) fn out_imm8_ax(
         &mut self,
-        memory: &Memory,
+        bus: &mut Bus,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
-        video: &mut Video,
     ) {
-        let port = self.fetch_byte(memory) as u16;
+        let port = self.fetch_byte(bus) as u16;
         match port {
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => {
@@ -98,7 +95,7 @@ impl Cpu {
                 bios.serial_io_write(1, port - 0x2F8 + 1, bytes[1]);
             }
             // Other ports use existing io_device
-            _ => io_device.write_word(port, self.ax, video),
+            _ => io_device.write_word(port, self.ax, bus.video_mut()),
         }
     }
 
@@ -153,9 +150,9 @@ impl Cpu {
     /// Write byte from AL to port address in DX
     pub(in crate::cpu) fn out_dx_al(
         &mut self,
+        bus: &mut Bus,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
-        video: &mut Video,
     ) {
         let port = self.dx;
         let value = (self.ax & 0xFF) as u8;
@@ -165,7 +162,7 @@ impl Cpu {
             // COM2 registers (0x2F8-0x2FF)
             0x2F8..=0x2FF => bios.serial_io_write(1, port - 0x2F8, value),
             // Other ports use existing io_device
-            _ => io_device.write_byte(port, value, video),
+            _ => io_device.write_byte(port, value, bus.video_mut()),
         }
     }
 
@@ -173,9 +170,9 @@ impl Cpu {
     /// Write word from AX to port address in DX
     pub(in crate::cpu) fn out_dx_ax(
         &mut self,
+        bus: &mut Bus,
         bios: &mut crate::cpu::bios::Bios,
         io_device: &mut IoDevice,
-        video: &mut Video,
     ) {
         let port = self.dx;
         match port {
@@ -192,7 +189,7 @@ impl Cpu {
                 bios.serial_io_write(1, port - 0x2F8 + 1, bytes[1]);
             }
             // Other ports use existing io_device
-            _ => io_device.write_word(port, self.ax, video),
+            _ => io_device.write_word(port, self.ax, bus.video_mut()),
         }
     }
 }

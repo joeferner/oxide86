@@ -27,10 +27,9 @@ mod int35_3f;
 
 use super::Cpu;
 use crate::{
-    Clock, DiskController, DriveManager, DriveNumber, KeyboardInput, LocalDate, LocalTime,
+    Bus, Clock, DiskController, DriveManager, DriveNumber, KeyboardInput, LocalDate, LocalTime,
     MemoryAllocator, MouseInput, MouseState, SerialParams, SerialPortController, SerialStatus,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
-    memory::Memory,
     peripheral,
 };
 pub use int17::PrinterStatus;
@@ -862,9 +861,9 @@ impl Bios {
 impl Cpu {
     /// Check if an interrupt vector still points to the BIOS area (F000 segment)
     /// Returns true if the vector is in BIOS ROM area, false if DOS has installed its own handler
-    pub(crate) fn is_bios_handler(memory: &Memory, int_num: u8) -> bool {
+    pub(crate) fn is_bios_handler(bus: &mut Bus, int_num: u8) -> bool {
         let ivt_addr = (int_num as usize) * 4;
-        let segment = memory.read_u16(ivt_addr + 2);
+        let segment = bus.read_u16(ivt_addr + 2);
         segment == 0xF000 // BIOS handlers are in the F000 segment (ROM area)
     }
 
@@ -873,44 +872,42 @@ impl Cpu {
     pub(crate) fn handle_bios_interrupt_direct(
         &mut self,
         int_num: u8,
-        memory: &mut Memory,
+        bus: &mut Bus,
         io: &mut Bios,
-        video: &mut crate::video::Video,
         cpu_type: crate::CpuType,
     ) {
-        self.handle_bios_interrupt_impl(int_num, memory, io, video, cpu_type);
+        self.handle_bios_interrupt_impl(int_num, bus, io, cpu_type);
     }
 
     /// Internal implementation of BIOS interrupt handling
     pub(super) fn handle_bios_interrupt_impl(
         &mut self,
         int_num: u8,
-        memory: &mut Memory,
+        bus: &mut Bus,
         io: &mut Bios,
-        video: &mut crate::video::Video,
         cpu_type: crate::CpuType,
     ) {
         match int_num {
-            0x08 => self.handle_int08(memory, io, video),
-            0x09 => self.handle_int09(memory, io),
-            0x10 => self.handle_int10(memory, video),
-            0x11 => self.handle_int11(memory),
-            0x12 => self.handle_int12(memory),
-            0x13 => self.handle_int13(memory, io),
-            0x14 => self.handle_int14(memory, io),
-            0x15 => self.handle_int15(memory, io, cpu_type),
-            0x16 => self.handle_int16(memory, io),
-            0x17 => self.handle_int17(memory, io),
-            0x1A => self.handle_int1a(memory, io),
-            0x1C => self.handle_int1c(memory, io, video),
-            0x20 => self.handle_int20(memory, io),
-            0x21 => self.handle_int21(memory, io, video),
-            0x25 => self.handle_int25(memory, io),
+            0x08 => self.handle_int08(bus),
+            0x09 => self.handle_int09(bus, io),
+            0x10 => self.handle_int10(bus),
+            0x11 => self.handle_int11(bus),
+            0x12 => self.handle_int12(bus),
+            0x13 => self.handle_int13(bus, io),
+            0x14 => self.handle_int14(io),
+            0x15 => self.handle_int15(bus, cpu_type),
+            0x16 => self.handle_int16(bus, io),
+            0x17 => self.handle_int17(io),
+            0x1A => self.handle_int1a(bus, io),
+            0x1C => self.handle_int1c(bus, io),
+            0x20 => self.handle_int20(bus, io),
+            0x21 => self.handle_int21(bus, io),
+            0x25 => self.handle_int25(bus, io),
             0x28 => self.handle_int28(),
-            0x29 => self.handle_int29(video),
+            0x29 => self.handle_int29(bus),
             0x2A => self.handle_int2a(),
-            0x2F => self.handle_int2f(memory, io),
-            0x33 => self.handle_int33(memory, io),
+            0x2F => self.handle_int2f(),
+            0x33 => self.handle_int33(bus, io),
             0x35..=0x3F => self.handle_int35_3f(int_num),
             // Other BIOS interrupts can be added here
             _ => {

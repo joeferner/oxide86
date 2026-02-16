@@ -1,7 +1,6 @@
 use crate::{
-    DriveNumber,
+    Bus, DriveNumber,
     cpu::{Cpu, cpu_flag},
-    memory::Memory,
 };
 
 impl Cpu {
@@ -28,7 +27,7 @@ impl Cpu {
     ///
     /// Note: INT 25h/26h leave FLAGS on the stack. The caller must POP them.
     /// This is handled by the calling code, not the interrupt handler.
-    pub(super) fn handle_int25(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    pub(super) fn handle_int25(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let drive = DriveNumber::from_dos((self.ax & 0xFF) as u8); // AL = drive number
         let count = self.cx;
         let buffer_addr: usize;
@@ -43,12 +42,12 @@ impl Cpu {
             // DWORD starting sector (offset 0)
             // WORD sector count (offset 4)
             // DWORD buffer address (offset 6)
-            let start_low = memory.read_u16(param_addr) as u32;
-            let start_high = memory.read_u16(param_addr + 2) as u32;
+            let start_low = bus.read_u16(param_addr) as u32;
+            let start_high = bus.read_u16(param_addr + 2) as u32;
             start_sector = start_low | (start_high << 16);
-            sector_count = memory.read_u16(param_addr + 4);
-            let buf_offset = memory.read_u16(param_addr + 6);
-            let buf_segment = memory.read_u16(param_addr + 8);
+            sector_count = bus.read_u16(param_addr + 4);
+            let buf_offset = bus.read_u16(param_addr + 6);
+            let buf_segment = bus.read_u16(param_addr + 8);
             buffer_addr = Self::physical_address(buf_segment, buf_offset);
 
             log::debug!(
@@ -78,7 +77,7 @@ impl Cpu {
             Ok(data) => {
                 // Write data to buffer
                 for (i, &byte) in data.iter().enumerate() {
-                    memory.write_u8(buffer_addr + i, byte);
+                    bus.write_u8(buffer_addr + i, byte);
                 }
 
                 // Clear carry flag (success)

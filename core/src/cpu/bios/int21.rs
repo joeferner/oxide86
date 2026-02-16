@@ -1,13 +1,12 @@
 use strum_macros::{Display, FromRepr};
 
 use crate::{
-    DriveNumber,
+    Bus, DriveNumber,
     cpu::{
         Cpu,
         bios::{ExecParams, FindData, SeekMethod, dos_error::DosError},
         cpu_flag,
     },
-    memory::Memory,
 };
 
 /// File access modes for INT 21h, AH=3Dh
@@ -22,12 +21,7 @@ pub enum FileAccess {
 impl Cpu {
     /// INT 0x21 - DOS Services
     /// AH register contains the function number
-    pub(super) fn handle_int21(
-        &mut self,
-        memory: &mut Memory,
-        io: &mut super::Bios,
-        video: &mut crate::video::Video,
-    ) {
+    pub(super) fn handle_int21(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let function = (self.ax >> 8) as u8; // Get AH directly
 
         // Log all DOS calls at debug level for easier troubleshooting
@@ -43,51 +37,51 @@ impl Cpu {
         }
 
         match function {
-            0x01 => self.int21_read_char_with_echo(io, video),
-            0x02 => self.int21_write_char(video),
-            0x06 => self.int21_direct_console_io(io, video),
+            0x01 => self.int21_read_char_with_echo(bus, io),
+            0x02 => self.int21_write_char(bus),
+            0x06 => self.int21_direct_console_io(bus, io),
             0x07 => self.int21_direct_console_input(io),
             0x08 => self.int21_console_input_no_echo(io),
-            0x09 => self.int21_write_string(memory, video),
+            0x09 => self.int21_write_string(bus),
             0x0B => self.int21_check_input_status(io),
-            0x0C => self.int21_flush_and_input(io, video),
+            0x0C => self.int21_flush_and_input(bus, io),
             0x0E => self.int21_select_disk(io),
             0x19 => self.int21_get_current_drive(io),
             0x1A => self.int21_set_dta(io),
-            0x25 => self.int21_set_interrupt_vector(memory),
+            0x25 => self.int21_set_interrupt_vector(bus),
             0x2A => self.int21_get_date(io),
             0x2B => self.int21_set_date(),
-            0x2C => self.int21_get_time(memory),
-            0x2D => self.int21_set_time(memory),
+            0x2C => self.int21_get_time(bus),
+            0x2D => self.int21_set_time(),
             0x30 => self.int21_get_dos_version(),
-            0x31 => self.int21_terminate_stay_resident(memory, io),
-            0x32 => self.int21_get_dpb(memory, io),
+            0x31 => self.int21_terminate_stay_resident(bus, io),
+            0x32 => self.int21_get_dpb(bus, io),
             0x2F => self.int21_get_dta(io),
-            0x35 => self.int21_get_interrupt_vector(memory),
+            0x35 => self.int21_get_interrupt_vector(bus),
             0x36 => self.int21_get_disk_free_space(io),
             0x37 => self.int21_switch_char(),
-            0x39 => self.int21_create_dir(memory, io),
-            0x3A => self.int21_remove_dir(memory, io),
-            0x3B => self.int21_change_dir(memory, io),
-            0x3C => self.int21_create_file(memory, io),
-            0x3D => self.int21_open_file(memory, io),
+            0x39 => self.int21_create_dir(bus, io),
+            0x3A => self.int21_remove_dir(bus, io),
+            0x3B => self.int21_change_dir(bus, io),
+            0x3C => self.int21_create_file(bus, io),
+            0x3D => self.int21_open_file(bus, io),
             0x3E => self.int21_close_file(io),
-            0x3F => self.int21_read_file(memory, io),
-            0x40 => self.int21_write_file(memory, io, video),
-            0x41 => self.int21_delete_file(memory, io),
+            0x3F => self.int21_read_file(bus, io),
+            0x40 => self.int21_write_file(bus, io),
+            0x41 => self.int21_delete_file(bus, io),
             0x42 => self.int21_seek_file(io),
-            0x44 => self.int21_ioctl(memory, io),
+            0x44 => self.int21_ioctl(bus, io),
             0x45 => self.int21_duplicate_file(io),
-            0x47 => self.int21_get_current_dir(memory, io),
+            0x47 => self.int21_get_current_dir(bus, io),
             0x48 => self.int21_allocate_memory(io),
             0x49 => self.int21_free_memory(io),
             0x4A => self.int21_resize_memory(io),
-            0x4B => self.int21_exec(memory, io),
-            0x4C => self.int21_exit(memory, io),
-            0x4E => self.int21_find_first(memory, io),
-            0x4F => self.int21_find_next(memory, io),
+            0x4B => self.int21_exec(bus, io),
+            0x4C => self.int21_exit(bus, io),
+            0x4E => self.int21_find_first(bus, io),
+            0x4F => self.int21_find_next(bus, io),
             0x50 => self.int21_set_psp(io),
-            0x63 => self.int21_get_dbcs_lead_byte_table(memory),
+            0x63 => self.int21_get_dbcs_lead_byte_table(bus),
             _ => {
                 log::warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
             }
@@ -96,12 +90,12 @@ impl Cpu {
 
     /// INT 21h, AH=01h - Read Character from STDIN with Echo
     /// Returns: AL = character read
-    fn int21_read_char_with_echo(&mut self, io: &mut super::Bios, video: &mut crate::video::Video) {
+    fn int21_read_char_with_echo(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         if let Some(ch) = io.read_char() {
             // Echo the character via teletype output
             let saved_ax = self.ax;
             self.ax = (self.ax & 0xFF00) | (ch as u16);
-            self.int10_teletype_output(video);
+            self.int10_teletype_output(bus);
             // Store in AL (restore AH, keep AL as the character)
             self.ax = (saved_ax & 0xFF00) | (ch as u16);
         }
@@ -109,12 +103,12 @@ impl Cpu {
 
     /// INT 21h, AH=02h - Write Character to STDOUT
     /// Input: DL = character to write
-    fn int21_write_char(&mut self, video: &mut crate::video::Video) {
+    fn int21_write_char(&mut self, bus: &mut Bus) {
         let ch = self.get_reg8(2); // DL register
         // Use teletype output for proper screen handling
         let saved_ax = self.ax;
         self.ax = (self.ax & 0xFF00) | (ch as u16);
-        self.int10_teletype_output(video);
+        self.int10_teletype_output(bus);
         self.ax = saved_ax;
     }
 
@@ -123,7 +117,7 @@ impl Cpu {
     /// Output: If DL = 0xFF on entry:
     ///   ZF clear: AL = character read from input
     ///   ZF set: No character available (AL = 0)
-    fn int21_direct_console_io(&mut self, io: &mut super::Bios, video: &mut crate::video::Video) {
+    fn int21_direct_console_io(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let dl = (self.dx & 0xFF) as u8;
 
         if dl == 0xFF {
@@ -139,7 +133,7 @@ impl Cpu {
             // Output mode - write character
             let saved_ax = self.ax;
             self.ax = (self.ax & 0xFF00) | (dl as u16);
-            self.int10_teletype_output(video);
+            self.int10_teletype_output(bus);
             self.ax = saved_ax;
         }
     }
@@ -166,18 +160,18 @@ impl Cpu {
 
     /// INT 21h, AH=09h - Write String to STDOUT
     /// Input: DS:DX = pointer to '$'-terminated string
-    fn int21_write_string(&mut self, memory: &mut Memory, video: &mut crate::video::Video) {
+    fn int21_write_string(&mut self, bus: &mut Bus) {
         let mut addr = Self::physical_address(self.ds, self.dx);
         let saved_ax = self.ax;
 
         loop {
-            let ch = memory.read_u8(addr);
+            let ch = bus.read_u8(addr);
             if ch == b'$' {
                 break;
             }
             // Use teletype output for each character
             self.ax = (self.ax & 0xFF00) | (ch as u16);
-            self.int10_teletype_output(video);
+            self.int10_teletype_output(bus);
             addr += 1;
         }
 
@@ -200,15 +194,15 @@ impl Cpu {
     /// Input:
     ///   AL = keyboard function to invoke (01h, 06h, 07h, 08h, or 0Ah)
     /// Output: As per the specified function
-    fn int21_flush_and_input(&mut self, io: &mut super::Bios, video: &mut crate::video::Video) {
+    fn int21_flush_and_input(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Clear the keyboard buffer (consume any pending input)
         while io.check_char().is_some() {}
 
         // Now invoke the specified function
         let subfunc = (self.ax & 0xFF) as u8;
         match subfunc {
-            0x01 => self.int21_read_char_with_echo(io, video),
-            0x06 => self.int21_direct_console_io(io, video),
+            0x01 => self.int21_read_char_with_echo(bus, io),
+            0x06 => self.int21_direct_console_io(bus, io),
             0x07 => self.int21_direct_console_input(io),
             0x08 => self.int21_console_input_no_echo(io),
             _ => {
@@ -233,17 +227,16 @@ impl Cpu {
     ///   AL = interrupt number
     ///   DS:DX = new interrupt handler address
     /// Output: None
-    fn int21_set_interrupt_vector(&mut self, memory: &mut Memory) {
+    fn int21_set_interrupt_vector(&mut self, bus: &mut Bus) {
         let int_num = (self.ax & 0xFF) as u8; // AL
         let segment = self.ds;
         let offset = self.dx;
 
         // Read old vector for logging
         let ivt_addr = (int_num as usize) * 4;
-        let old_offset =
-            memory.read_u8(ivt_addr) as u16 | ((memory.read_u8(ivt_addr + 1) as u16) << 8);
+        let old_offset = bus.read_u8(ivt_addr) as u16 | ((bus.read_u8(ivt_addr + 1) as u16) << 8);
         let old_segment =
-            memory.read_u8(ivt_addr + 2) as u16 | ((memory.read_u8(ivt_addr + 3) as u16) << 8);
+            bus.read_u8(ivt_addr + 2) as u16 | ((bus.read_u8(ivt_addr + 3) as u16) << 8);
 
         log::debug!(
             "INT 21h AH=25h: Set INT 0x{:02X} vector from {:04X}:{:04X} to {:04X}:{:04X}",
@@ -258,12 +251,12 @@ impl Cpu {
         // Each entry is 4 bytes: offset (2 bytes) + segment (2 bytes)
 
         // Write offset (low word)
-        memory.write_u8(ivt_addr, (offset & 0xFF) as u8);
-        memory.write_u8(ivt_addr + 1, (offset >> 8) as u8);
+        bus.write_u8(ivt_addr, (offset & 0xFF) as u8);
+        bus.write_u8(ivt_addr + 1, (offset >> 8) as u8);
 
         // Write segment (high word)
-        memory.write_u8(ivt_addr + 2, (segment & 0xFF) as u8);
-        memory.write_u8(ivt_addr + 3, (segment >> 8) as u8);
+        bus.write_u8(ivt_addr + 2, (segment & 0xFF) as u8);
+        bus.write_u8(ivt_addr + 3, (segment >> 8) as u8);
     }
 
     /// INT 21h, AH=30h - Get DOS Version
@@ -288,7 +281,7 @@ impl Cpu {
     ///   AL = interrupt number
     /// Output:
     ///   ES:BX = current interrupt handler address
-    fn int21_get_interrupt_vector(&mut self, memory: &Memory) {
+    fn int21_get_interrupt_vector(&mut self, bus: &mut Bus) {
         let int_num = (self.ax & 0xFF) as u8; // AL
 
         // Interrupt vector table is at 0000:0000
@@ -296,13 +289,13 @@ impl Cpu {
         let ivt_addr = (int_num as usize) * 4;
 
         // Read offset (low word)
-        let offset_low = memory.read_u8(ivt_addr) as u16;
-        let offset_high = memory.read_u8(ivt_addr + 1) as u16;
+        let offset_low = bus.read_u8(ivt_addr) as u16;
+        let offset_high = bus.read_u8(ivt_addr + 1) as u16;
         let offset = (offset_high << 8) | offset_low;
 
         // Read segment (high word)
-        let segment_low = memory.read_u8(ivt_addr + 2) as u16;
-        let segment_high = memory.read_u8(ivt_addr + 3) as u16;
+        let segment_low = bus.read_u8(ivt_addr + 2) as u16;
+        let segment_high = bus.read_u8(ivt_addr + 3) as u16;
         let segment = (segment_high << 8) | segment_low;
 
         // Return in ES:BX
@@ -312,13 +305,13 @@ impl Cpu {
 
     /// INT 21h, AH=4Ch - Exit Program
     /// Input: AL = return code
-    fn int21_exit(&mut self, memory: &Memory, io: &mut super::Bios) {
+    fn int21_exit(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // INT 21h AH=4Ch - Terminate Program
         // Read the terminate address (INT 22h) from the PSP at offset 0x0A
         let psp_segment = io.get_psp();
         let terminate_offset_addr = Self::physical_address(psp_segment, 0x0A);
-        let terminate_ip = memory.read_u16(terminate_offset_addr);
-        let terminate_cs = memory.read_u16(terminate_offset_addr + 2);
+        let terminate_ip = bus.read_u16(terminate_offset_addr);
+        let terminate_cs = bus.read_u16(terminate_offset_addr + 2);
 
         log::info!(
             "INT 21h AH=4Ch: Terminating from PSP {:04X}, jumping to {:04X}:{:04X}",
@@ -329,7 +322,7 @@ impl Cpu {
 
         // Restore parent's PSP
         let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
-        let parent_psp = memory.read_u16(parent_psp_addr);
+        let parent_psp = bus.read_u16(parent_psp_addr);
         if parent_psp != 0 {
             io.set_psp(parent_psp);
         }
@@ -354,7 +347,7 @@ impl Cpu {
     /// This function terminates the current program but keeps it resident in memory.
     /// The specified number of paragraphs (DX) starting from the PSP are kept allocated.
     /// TSR programs use this to install themselves and return control to DOS.
-    fn int21_terminate_stay_resident(&mut self, memory: &Memory, io: &mut super::Bios) {
+    fn int21_terminate_stay_resident(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let exit_code = (self.ax & 0xFF) as u8;
         let paragraphs_to_keep = self.dx;
 
@@ -377,8 +370,8 @@ impl Cpu {
         // Read the terminate address (INT 22h) from the PSP at offset 0x0A
         let psp_segment = io.get_psp();
         let terminate_offset_addr = Self::physical_address(psp_segment, 0x0A);
-        let terminate_ip = memory.read_u16(terminate_offset_addr);
-        let terminate_cs = memory.read_u16(terminate_offset_addr + 2);
+        let terminate_ip = bus.read_u16(terminate_offset_addr);
+        let terminate_cs = bus.read_u16(terminate_offset_addr + 2);
 
         log::info!(
             "INT 21h AH=31h: Terminating from PSP {:04X}, jumping to {:04X}:{:04X}",
@@ -389,7 +382,7 @@ impl Cpu {
 
         // Restore parent's PSP
         let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
-        let parent_psp = memory.read_u16(parent_psp_addr);
+        let parent_psp = bus.read_u16(parent_psp_addr);
         if parent_psp != 0 {
             io.set_psp(parent_psp);
         }
@@ -412,8 +405,8 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = file handle
     ///   CF set if error: AX = error code
-    fn int21_create_file(&mut self, memory: &Memory, io: &mut super::Bios) {
-        let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
+    fn int21_create_file(&mut self, bus: &mut Bus, io: &mut super::Bios) {
+        let filename = self.read_null_terminated_string(bus, self.ds, self.dx);
         let attributes = (self.cx & 0xFF) as u8;
 
         match io.file_create(&filename, attributes) {
@@ -435,8 +428,8 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = file handle
     ///   CF set if error: AX = error code
-    fn int21_open_file(&mut self, memory: &Memory, io: &mut super::Bios) {
-        let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
+    fn int21_open_file(&mut self, bus: &mut Bus, io: &mut super::Bios) {
+        let filename = self.read_null_terminated_string(bus, self.ds, self.dx);
         let access_mode =
             FileAccess::from_repr((self.ax & 0xFF) as u8).unwrap_or(FileAccess::ReadOnly);
 
@@ -491,7 +484,7 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = number of bytes read
     ///   CF set if error: AX = error code
-    fn int21_read_file(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    fn int21_read_file(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let handle = self.bx;
         let max_bytes = self.cx;
 
@@ -511,7 +504,7 @@ impl Cpu {
                 // Write data to DS:DX
                 let buffer_addr = Self::physical_address(self.ds, self.dx);
                 for (i, &byte) in data.iter().enumerate() {
-                    memory.write_u8(buffer_addr + i, byte);
+                    bus.write_u8(buffer_addr + i, byte);
                 }
                 self.ax = data.len() as u16;
                 self.set_flag(cpu_flag::CARRY, false);
@@ -536,12 +529,7 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: AX = number of bytes written
     ///   CF set if error: AX = error code
-    fn int21_write_file(
-        &mut self,
-        memory: &mut Memory,
-        io: &mut super::Bios,
-        video: &mut crate::video::Video,
-    ) {
+    fn int21_write_file(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let handle = self.bx;
         let num_bytes = self.cx;
 
@@ -552,9 +540,9 @@ impl Cpu {
         if handle == 1 || handle == 2 {
             let saved_ax = self.ax;
             for i in 0..num_bytes {
-                let ch = memory.read_u8(buffer_addr + i as usize);
+                let ch = bus.read_u8(buffer_addr + i as usize);
                 self.ax = (self.ax & 0xFF00) | (ch as u16);
-                self.int10_teletype_output(video);
+                self.int10_teletype_output(bus);
             }
             self.ax = saved_ax;
             // Report all bytes written
@@ -566,7 +554,7 @@ impl Cpu {
         // For other handles, use file I/O
         let mut data = Vec::with_capacity(num_bytes as usize);
         for i in 0..num_bytes {
-            data.push(memory.read_u8(buffer_addr + i as usize));
+            data.push(bus.read_u8(buffer_addr + i as usize));
         }
 
         match io.file_write(handle, &data) {
@@ -587,8 +575,8 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_delete_file(&mut self, memory: &Memory, io: &mut super::Bios) {
-        let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
+    fn int21_delete_file(&mut self, bus: &mut Bus, io: &mut super::Bios) {
+        let filename = self.read_null_terminated_string(bus, self.ds, self.dx);
 
         log::debug!("INT 21h AH=41h: Deleting file '{}'", filename);
 
@@ -686,8 +674,8 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_create_dir(&mut self, memory: &Memory, io: &mut super::Bios) {
-        let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
+    fn int21_create_dir(&mut self, bus: &mut Bus, io: &mut super::Bios) {
+        let dirname = self.read_null_terminated_string(bus, self.ds, self.dx);
 
         match io.dir_create(&dirname) {
             Ok(()) => {
@@ -706,8 +694,8 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_remove_dir(&mut self, memory: &Memory, io: &mut super::Bios) {
-        let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
+    fn int21_remove_dir(&mut self, bus: &mut Bus, io: &mut super::Bios) {
+        let dirname = self.read_null_terminated_string(bus, self.ds, self.dx);
 
         match io.dir_remove(&dirname) {
             Ok(()) => {
@@ -726,8 +714,8 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_change_dir(&mut self, memory: &Memory, io: &mut super::Bios) {
-        let dirname = self.read_null_terminated_string(memory, self.ds, self.dx);
+    fn int21_change_dir(&mut self, bus: &mut Bus, io: &mut super::Bios) {
+        let dirname = self.read_null_terminated_string(bus, self.ds, self.dx);
 
         match io.dir_change(&dirname) {
             Ok(()) => {
@@ -806,7 +794,7 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: buffer filled with path (without drive or leading backslash)
     ///   CF set if error: AX = error code
-    fn int21_get_current_dir(&mut self, memory: &mut Memory, io: &super::Bios) {
+    fn int21_get_current_dir(&mut self, bus: &mut Bus, io: &super::Bios) {
         let drive = DriveNumber::from_dos_with_current((self.dx & 0xFF) as u8); // DL
         let drive = drive.unwrap_or(io.get_current_drive());
 
@@ -818,11 +806,11 @@ impl Cpu {
                     if i >= 63 {
                         break; // Leave room for null terminator
                     }
-                    memory.write_u8(buffer_addr + i, byte);
+                    bus.write_u8(buffer_addr + i, byte);
                 }
                 // Write null terminator
                 let len = path.len().min(63);
-                memory.write_u8(buffer_addr + len, 0);
+                bus.write_u8(buffer_addr + len, 0);
 
                 self.set_flag(cpu_flag::CARRY, false);
             }
@@ -841,8 +829,8 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: DTA filled with file information
     ///   CF set if error: AX = error code
-    fn int21_find_first(&mut self, memory: &mut Memory, io: &mut super::Bios) {
-        let pattern = self.read_null_terminated_string(memory, self.ds, self.dx);
+    fn int21_find_first(&mut self, bus: &mut Bus, io: &mut super::Bios) {
+        let pattern = self.read_null_terminated_string(bus, self.ds, self.dx);
         let attributes = (self.cx & 0xFF) as u8;
 
         match io.find_first(&pattern, attributes) {
@@ -860,10 +848,10 @@ impl Cpu {
 
                 // Store search_id in first 8 bytes (as u64)
                 for i in 0..8 {
-                    memory.write_u8(dta_addr + i, ((search_id >> (i * 8)) & 0xFF) as u8);
+                    bus.write_u8(dta_addr + i, ((search_id >> (i * 8)) & 0xFF) as u8);
                 }
 
-                self.write_find_data_to_dta(memory, dta_addr, &find_data);
+                self.write_find_data_to_dta(bus, dta_addr, &find_data);
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
@@ -879,19 +867,19 @@ impl Cpu {
     /// Output:
     ///   CF clear if success: DTA filled with file information
     ///   CF set if error: AX = error code
-    fn int21_find_next(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    fn int21_find_next(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Use the DTA set by INT 21h AH=1Ah
         let dta_addr = io.shared.current_dta;
 
         // Read search_id from DTA
         let mut search_id: usize = 0;
         for i in 0..8 {
-            search_id |= (memory.read_u8(dta_addr + i) as usize) << (i * 8);
+            search_id |= (bus.read_u8(dta_addr + i) as usize) << (i * 8);
         }
 
         match io.find_next(search_id) {
             Ok(find_data) => {
-                self.write_find_data_to_dta(memory, dta_addr, &find_data);
+                self.write_find_data_to_dta(bus, dta_addr, &find_data);
                 self.set_flag(cpu_flag::CARRY, false);
             }
             Err(error_code) => {
@@ -902,32 +890,32 @@ impl Cpu {
     }
 
     /// Helper function to write FindData to DTA
-    fn write_find_data_to_dta(&self, memory: &mut Memory, dta_addr: usize, find_data: &FindData) {
+    fn write_find_data_to_dta(&self, bus: &mut Bus, dta_addr: usize, find_data: &FindData) {
         // Offset 21: File attributes
-        memory.write_u8(dta_addr + 21, find_data.attributes);
+        bus.write_u8(dta_addr + 21, find_data.attributes);
 
         // Offset 22-23: File time (little-endian)
-        memory.write_u8(dta_addr + 22, (find_data.time & 0xFF) as u8);
-        memory.write_u8(dta_addr + 23, (find_data.time >> 8) as u8);
+        bus.write_u8(dta_addr + 22, (find_data.time & 0xFF) as u8);
+        bus.write_u8(dta_addr + 23, (find_data.time >> 8) as u8);
 
         // Offset 24-25: File date (little-endian)
-        memory.write_u8(dta_addr + 24, (find_data.date & 0xFF) as u8);
-        memory.write_u8(dta_addr + 25, (find_data.date >> 8) as u8);
+        bus.write_u8(dta_addr + 24, (find_data.date & 0xFF) as u8);
+        bus.write_u8(dta_addr + 25, (find_data.date >> 8) as u8);
 
         // Offset 26-29: File size (32-bit little-endian)
-        memory.write_u8(dta_addr + 26, (find_data.size & 0xFF) as u8);
-        memory.write_u8(dta_addr + 27, ((find_data.size >> 8) & 0xFF) as u8);
-        memory.write_u8(dta_addr + 28, ((find_data.size >> 16) & 0xFF) as u8);
-        memory.write_u8(dta_addr + 29, ((find_data.size >> 24) & 0xFF) as u8);
+        bus.write_u8(dta_addr + 26, (find_data.size & 0xFF) as u8);
+        bus.write_u8(dta_addr + 27, ((find_data.size >> 8) & 0xFF) as u8);
+        bus.write_u8(dta_addr + 28, ((find_data.size >> 16) & 0xFF) as u8);
+        bus.write_u8(dta_addr + 29, ((find_data.size >> 24) & 0xFF) as u8);
 
         // Offset 30-42: Filename (null-terminated, max 13 bytes)
         let filename_bytes = find_data.filename.as_bytes();
         for (i, &byte) in filename_bytes.iter().take(12).enumerate() {
-            memory.write_u8(dta_addr + 30 + i, byte);
+            bus.write_u8(dta_addr + 30 + i, byte);
         }
         // Null terminator
         let len = filename_bytes.len().min(12);
-        memory.write_u8(dta_addr + 30 + len, 0);
+        bus.write_u8(dta_addr + 30 + len, 0);
     }
 
     /// INT 21h, AH=0Eh - Select Default Disk
@@ -1056,12 +1044,12 @@ impl Cpu {
     /// Note: This reads from the BDA timer counter (updated by INT 08h at 18.2 Hz),
     /// not from the RTC. The timer counter is synced before this function is called
     /// to include pending timer ticks.
-    fn int21_get_time(&mut self, memory: &Memory) {
+    fn int21_get_time(&mut self, bus: &mut Bus) {
         use crate::memory::{BDA_START, BDA_TIMER_COUNTER};
 
         // Read timer counter from BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
-        let tick_count = memory.read_u32(counter_addr);
+        let tick_count = bus.read_u32(counter_addr);
 
         // Convert ticks to time
         // Timer frequency: 18.2065 Hz (exactly 1193182 / 65536)
@@ -1096,7 +1084,7 @@ impl Cpu {
     ///   DL = hundredths of seconds (0-99)
     /// Output:
     ///   AL = 0x00 if successful, 0xFF if invalid time
-    fn int21_set_time(&mut self, _memory: &mut Memory) {
+    fn int21_set_time(&mut self) {
         let hours = ((self.cx >> 8) & 0xFF) as u8;
         let minutes = (self.cx & 0xFF) as u8;
         let seconds = ((self.dx >> 8) & 0xFF) as u8;
@@ -1135,7 +1123,7 @@ impl Cpu {
     /// Output:
     ///   AL = 00h if drive valid, FFh if invalid
     ///   DS:BX = pointer to Drive Parameter Block (DPB)
-    fn int21_get_dpb(&mut self, memory: &mut Memory, io: &super::Bios) {
+    fn int21_get_dpb(&mut self, bus: &mut Bus, io: &super::Bios) {
         let drive = DriveNumber::from_dos_with_current((self.dx & 0xFF) as u8); // DL
         let drive = drive.unwrap_or(io.get_current_drive());
 
@@ -1152,49 +1140,49 @@ impl Cpu {
                 // Build a minimal DPB structure
                 // +0: Drive number (0=A, 1=B, 2=C, etc.)
                 let dos_drive = drive.to_dos_drive();
-                memory.write_u8(dpb_addr, dos_drive);
+                bus.write_u8(dpb_addr, dos_drive);
 
                 // +1: Unit number within driver
-                memory.write_u8(dpb_addr + 1, 0);
+                bus.write_u8(dpb_addr + 1, 0);
 
                 // +2: Bytes per sector (word)
-                memory.write_u16(dpb_addr + 2, 512);
+                bus.write_u16(dpb_addr + 2, 512);
 
                 // +4: Sectors per cluster - 1 (byte)
-                memory.write_u8(dpb_addr + 4, 3); // 4 sectors per cluster
+                bus.write_u8(dpb_addr + 4, 3); // 4 sectors per cluster
 
                 // +5: Cluster to sector shift (byte)
-                memory.write_u8(dpb_addr + 5, 2); // log2(4) = 2
+                bus.write_u8(dpb_addr + 5, 2); // log2(4) = 2
 
                 // +6: Reserved sectors (word)
-                memory.write_u16(dpb_addr + 6, 1); // Boot sector
+                bus.write_u16(dpb_addr + 6, 1); // Boot sector
 
                 // +8: Number of FATs (byte)
-                memory.write_u8(dpb_addr + 8, 2);
+                bus.write_u8(dpb_addr + 8, 2);
 
                 // +9: Root directory entries (word)
-                memory.write_u16(dpb_addr + 9, 512);
+                bus.write_u16(dpb_addr + 9, 512);
 
                 // +11: First data sector (word)
-                memory.write_u16(dpb_addr + 11, 33); // After boot, FATs, and root
+                bus.write_u16(dpb_addr + 11, 33); // After boot, FATs, and root
 
                 // +13: Highest cluster number + 1 (word)
                 if let Ok((_drive_type, total_sectors)) = io.disk_get_type(drive) {
                     let clusters = (total_sectors / 4) as u16;
-                    memory.write_u16(dpb_addr + 13, clusters);
+                    bus.write_u16(dpb_addr + 13, clusters);
                 } else {
-                    memory.write_u16(dpb_addr + 13, 1000); // Default
+                    bus.write_u16(dpb_addr + 13, 1000); // Default
                 }
 
                 // +15: Sectors per FAT (byte in DOS 2.x, word in DOS 3+)
-                memory.write_u16(dpb_addr + 15, 9); // Typical for small disk
+                bus.write_u16(dpb_addr + 15, 9); // Typical for small disk
 
                 // +17: First directory sector (word)
-                memory.write_u16(dpb_addr + 17, 19); // After boot and FATs
+                bus.write_u16(dpb_addr + 17, 19); // After boot and FATs
 
                 // +19: Device driver header (dword)
-                memory.write_u16(dpb_addr + 19, 0xFFFF);
-                memory.write_u16(dpb_addr + 21, 0xFFFF);
+                bus.write_u16(dpb_addr + 19, 0xFFFF);
+                bus.write_u16(dpb_addr + 21, 0xFFFF);
 
                 // +23: Media descriptor (byte)
                 let media_id = if drive.is_floppy() {
@@ -1202,14 +1190,14 @@ impl Cpu {
                 } else {
                     0xF8 // Hard disk
                 };
-                memory.write_u8(dpb_addr + 23, media_id);
+                bus.write_u8(dpb_addr + 23, media_id);
 
                 // +24: Access flag (byte) - 0 = accessed
-                memory.write_u8(dpb_addr + 24, 0);
+                bus.write_u8(dpb_addr + 24, 0);
 
                 // +25: Next DPB pointer (dword)
-                memory.write_u16(dpb_addr + 25, 0xFFFF);
-                memory.write_u16(dpb_addr + 27, 0xFFFF);
+                bus.write_u16(dpb_addr + 25, 0xFFFF);
+                bus.write_u16(dpb_addr + 27, 0xFFFF);
 
                 // Return pointer in DS:BX
                 let dpb_seg = (dpb_addr >> 4) as u16;
@@ -1259,7 +1247,7 @@ impl Cpu {
     ///   AL = subfunction
     ///   BX = file handle (for most subfunctions)
     /// Output: Varies by subfunction
-    fn int21_ioctl(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    fn int21_ioctl(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let subfunction = (self.ax & 0xFF) as u8; // AL
         let handle = self.bx;
 
@@ -1376,7 +1364,7 @@ impl Cpu {
                     (0x08, 0x42) => {
                         // Format and verify track
                         log::info!("  Format and verify track for DOS drive {}", drive);
-                        match self.int21_ioctl_format_track(memory, io, drive) {
+                        match self.int21_ioctl_format_track(bus, io, drive) {
                             Ok(()) => {
                                 self.set_flag(cpu_flag::CARRY, false);
                             }
@@ -1395,7 +1383,7 @@ impl Cpu {
                     (0x08, 0x60) => {
                         // Get device parameters
                         log::info!("  Get device parameters for DOS drive {}", drive);
-                        match self.int21_ioctl_get_device_params(memory, io, drive) {
+                        match self.int21_ioctl_get_device_params(bus, io, drive) {
                             Ok(()) => {
                                 self.set_flag(cpu_flag::CARRY, false);
                             }
@@ -1433,7 +1421,7 @@ impl Cpu {
     ///   CF set if error: AX = error code
     fn int21_ioctl_get_device_params(
         &mut self,
-        memory: &mut Memory,
+        bus: &mut Bus,
         io: &mut super::Bios,
         drive: DriveNumber,
     ) -> Result<(), DosError> {
@@ -1457,75 +1445,75 @@ impl Cpu {
 
         // Build device parameter block
         // Byte 0: Special functions (0 = default)
-        memory.write_u8(addr, 0x00);
+        bus.write_u8(addr, 0x00);
 
         // Byte 1: Device type (5 = hard disk, 0-4 = floppy types)
         let device_type = if drive.is_hard_drive() { 0x05 } else { 0x02 }; // 0x02 = 720KB floppy
-        memory.write_u8(addr + 1, device_type);
+        bus.write_u8(addr + 1, device_type);
 
         // Bytes 2-3: Device attributes (bit 0 = 0 for non-removable, 1 for removable)
         let is_removable = drive.is_floppy(); // Floppies are removable, hard drives are not
         let attributes: u16 = if is_removable { 0x0001 } else { 0x0000 };
-        memory.write_u16(addr + 2, attributes);
+        bus.write_u16(addr + 2, attributes);
 
         // Bytes 4-5: Number of cylinders
-        memory.write_u16(addr + 4, cylinders);
+        bus.write_u16(addr + 4, cylinders);
 
         // Byte 6: Media type (0 = default)
-        memory.write_u8(addr + 6, 0x00);
+        bus.write_u8(addr + 6, 0x00);
 
         // BPB starts at byte 7 - provide reasonable defaults for unformatted drive
         // Bytes 7-8: Bytes per sector
-        memory.write_u16(addr + 7, 512);
+        bus.write_u16(addr + 7, 512);
 
         // Byte 9: Sectors per cluster (use 1 for simplicity)
-        memory.write_u8(addr + 9, 0x01);
+        bus.write_u8(addr + 9, 0x01);
 
         // Bytes 10-11: Reserved sectors (usually 1 for boot sector)
-        memory.write_u16(addr + 10, 1);
+        bus.write_u16(addr + 10, 1);
 
         // Byte 12: Number of FATs (usually 2)
-        memory.write_u8(addr + 12, 2);
+        bus.write_u8(addr + 12, 2);
 
         // Bytes 13-14: Root directory entries (512 is common for hard disks)
-        memory.write_u16(addr + 13, 512);
+        bus.write_u16(addr + 13, 512);
 
         // Bytes 15-16: Total sectors (if < 32MB)
         if total_sectors < 65536 {
-            memory.write_u16(addr + 15, total_sectors as u16);
+            bus.write_u16(addr + 15, total_sectors as u16);
         } else {
-            memory.write_u16(addr + 15, 0); // Use extended field instead
+            bus.write_u16(addr + 15, 0); // Use extended field instead
         }
 
         // Byte 17: Media descriptor (0xF8 = hard disk, 0xF0 = floppy)
         let media_desc = if drive.is_hard_drive() { 0xF8 } else { 0xF0 };
-        memory.write_u8(addr + 17, media_desc);
+        bus.write_u8(addr + 17, media_desc);
 
         // Bytes 18-19: Sectors per FAT (calculate based on total sectors)
         let sectors_per_fat = ((total_sectors / 512) / 2).div_ceil(256);
-        memory.write_u16(addr + 18, sectors_per_fat as u16);
+        bus.write_u16(addr + 18, sectors_per_fat as u16);
 
         // Bytes 20-21: Sectors per track
-        memory.write_u16(addr + 20, sectors_per_track);
+        bus.write_u16(addr + 20, sectors_per_track);
 
         // Bytes 22-23: Number of heads
-        memory.write_u16(addr + 22, heads);
+        bus.write_u16(addr + 22, heads);
 
         // Bytes 24-27: Hidden sectors
         // Since PartitionedDisk handles partition offsets transparently,
         // we report 0 (the OS sees the partition directly, not the whole disk)
         let hidden_sectors = 0u32;
         // Write u32 as two u16 values (little-endian)
-        memory.write_u16(addr + 24, (hidden_sectors & 0xFFFF) as u16);
-        memory.write_u16(addr + 26, (hidden_sectors >> 16) as u16);
+        bus.write_u16(addr + 24, (hidden_sectors & 0xFFFF) as u16);
+        bus.write_u16(addr + 26, (hidden_sectors >> 16) as u16);
 
         // Bytes 28-31: Total sectors (extended field for >= 32MB)
         if total_sectors >= 65536 {
-            memory.write_u16(addr + 28, (total_sectors & 0xFFFF) as u16);
-            memory.write_u16(addr + 30, (total_sectors >> 16) as u16);
+            bus.write_u16(addr + 28, (total_sectors & 0xFFFF) as u16);
+            bus.write_u16(addr + 30, (total_sectors >> 16) as u16);
         } else {
-            memory.write_u16(addr + 28, 0);
-            memory.write_u16(addr + 30, 0);
+            bus.write_u16(addr + 28, 0);
+            bus.write_u16(addr + 30, 0);
         }
 
         log::info!(
@@ -1552,7 +1540,7 @@ impl Cpu {
     ///   CF set if error: AX = error code
     fn int21_ioctl_format_track(
         &mut self,
-        memory: &mut Memory,
+        bus: &mut Bus,
         io: &mut super::Bios,
         drive: DriveNumber,
     ) -> Result<(), DosError> {
@@ -1562,9 +1550,9 @@ impl Cpu {
         let addr = (seg as usize) * 16 + offset as usize;
 
         // Read parameters from parameter block
-        let _special_functions = memory.read_u8(addr);
-        let cylinder = memory.read_u16(addr + 1);
-        let head = memory.read_u16(addr + 3);
+        let _special_functions = bus.read_u8(addr);
+        let cylinder = bus.read_u16(addr + 1);
+        let head = bus.read_u16(addr + 3);
 
         log::info!(
             "  Format track: drive={}, cyl={}, head={}",
@@ -1703,9 +1691,9 @@ impl Cpu {
     /// Output:
     ///   CF clear if success
     ///   CF set if error: AX = error code
-    fn int21_exec(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    fn int21_exec(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let subfunction = (self.ax & 0xFF) as u8;
-        let filename = self.read_null_terminated_string(memory, self.ds, self.dx);
+        let filename = self.read_null_terminated_string(bus, self.ds, self.dx);
 
         log::info!("INT 21h AH=4Bh AL={:02X}: EXEC '{}'", subfunction, filename);
 
@@ -1718,16 +1706,16 @@ impl Cpu {
         // Offset 6: Dword - First FCB pointer (far pointer)
         // Offset 10: Dword - Second FCB pointer (far pointer)
 
-        let env_segment = memory.read_u16(param_block_addr);
-        let cmdline_offset = memory.read_u16(param_block_addr + 2);
-        let cmdline_segment = memory.read_u16(param_block_addr + 4);
+        let env_segment = bus.read_u16(param_block_addr);
+        let cmdline_offset = bus.read_u16(param_block_addr + 2);
+        let cmdline_segment = bus.read_u16(param_block_addr + 4);
 
         // Read command line (Pascal-style string: first byte is length)
         let cmdline_addr = Self::physical_address(cmdline_segment, cmdline_offset);
-        let cmdline_len = memory.read_u8(cmdline_addr) as usize;
+        let cmdline_len = bus.read_u8(cmdline_addr) as usize;
         let mut command_line = String::new();
         for i in 0..cmdline_len {
-            let ch = memory.read_u8(cmdline_addr + 1 + i);
+            let ch = bus.read_u8(cmdline_addr + 1 + i);
             if ch == 0x0D {
                 // CR terminates the command line
                 break;
@@ -1775,17 +1763,17 @@ impl Cpu {
 
         if is_exe {
             // EXE file handling
-            self.exec_load_exe(memory, io, &program_data, &params);
+            self.exec_load_exe(bus, io, &program_data, &params);
         } else {
             // COM file handling
-            self.exec_load_com(memory, io, &program_data, &params);
+            self.exec_load_com(bus, io, &program_data, &params);
         }
     }
 
     /// Load and execute a COM file
     fn exec_load_com(
         &mut self,
-        memory: &mut Memory,
+        bus: &mut Bus,
         io: &mut super::Bios,
         program_data: &[u8],
         params: &ExecParams,
@@ -1829,12 +1817,12 @@ impl Cpu {
         );
 
         // Build the PSP at psp_segment:0000
-        self.build_psp(memory, io, psp_segment, params);
+        self.build_psp(bus, io, psp_segment, params);
 
         // Load program at psp_segment:0100
         let load_addr = Self::physical_address(psp_segment, 0x0100);
         for (i, &byte) in program_data.iter().enumerate() {
-            memory.write_u8(load_addr + i, byte);
+            bus.write_u8(load_addr + i, byte);
         }
 
         log::info!(
@@ -1865,14 +1853,14 @@ impl Cpu {
                 // PSP:0000 contains INT 20h instruction (CD 20)
                 self.sp = self.sp.wrapping_sub(2);
                 let stack_addr = Self::physical_address(self.ss, self.sp);
-                memory.write_u16(stack_addr, 0x0000); // Return offset = 0
+                bus.write_u16(stack_addr, 0x0000); // Return offset = 0
                 self.sp = self.sp.wrapping_sub(2);
                 let stack_addr = Self::physical_address(self.ss, self.sp);
-                memory.write_u16(stack_addr, psp_segment); // Return segment = PSP
+                bus.write_u16(stack_addr, psp_segment); // Return segment = PSP
 
                 // Store parent PSP at offset 0x16 in child's PSP
                 let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
-                memory.write_u16(parent_psp_addr, parent_psp);
+                bus.write_u16(parent_psp_addr, parent_psp);
 
                 log::info!(
                     "INT 21h AH=4Bh: Executing COM at {:04X}:{:04X}",
@@ -1910,7 +1898,7 @@ impl Cpu {
     /// Load and execute an EXE file
     fn exec_load_exe(
         &mut self,
-        memory: &mut Memory,
+        bus: &mut Bus,
         io: &mut super::Bios,
         program_data: &[u8],
         params: &ExecParams,
@@ -2004,7 +1992,7 @@ impl Cpu {
         };
 
         // Build PSP
-        self.build_psp(memory, io, psp_segment, params);
+        self.build_psp(bus, io, psp_segment, params);
 
         // Load segment is right after PSP
         let load_segment = psp_segment.wrapping_add(16);
@@ -2016,7 +2004,7 @@ impl Cpu {
                 .iter()
                 .enumerate()
             {
-                memory.write_u8(load_addr + i, byte);
+                bus.write_u8(load_addr + i, byte);
             }
         }
 
@@ -2041,8 +2029,8 @@ impl Cpu {
             let reloc_addr = Self::physical_address(load_segment.wrapping_add(segment), offset);
 
             // Read current value and add load segment
-            let current = memory.read_u16(reloc_addr);
-            memory.write_u16(reloc_addr, current.wrapping_add(load_segment));
+            let current = bus.read_u16(reloc_addr);
+            bus.write_u16(reloc_addr, current.wrapping_add(load_segment));
         }
 
         log::info!(
@@ -2070,7 +2058,7 @@ impl Cpu {
 
                 // Store parent PSP
                 let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
-                memory.write_u16(parent_psp_addr, parent_psp);
+                bus.write_u16(parent_psp_addr, parent_psp);
 
                 log::info!(
                     "INT 21h AH=4Bh: Executing EXE at {:04X}:{:04X}, SS:SP={:04X}:{:04X}",
@@ -2102,7 +2090,7 @@ impl Cpu {
     /// Build a Program Segment Prefix (PSP)
     fn build_psp(
         &mut self,
-        memory: &mut Memory,
+        bus: &mut Bus,
         io: &super::Bios,
         psp_segment: u16,
         params: &ExecParams,
@@ -2111,69 +2099,69 @@ impl Cpu {
 
         // Clear PSP area
         for i in 0..256 {
-            memory.write_u8(psp_addr + i, 0);
+            bus.write_u8(psp_addr + i, 0);
         }
 
         // Offset 0x00: INT 20h instruction (CD 20)
-        memory.write_u8(psp_addr, 0xCD);
-        memory.write_u8(psp_addr + 1, 0x20);
+        bus.write_u8(psp_addr, 0xCD);
+        bus.write_u8(psp_addr + 1, 0x20);
 
         // Offset 0x02: Memory size in paragraphs (segment of first byte beyond allocated memory)
         // For now, use 0xA000 (end of conventional memory)
-        memory.write_u16(psp_addr + 0x02, 0xA000);
+        bus.write_u16(psp_addr + 0x02, 0xA000);
 
         // Offset 0x05: Far call to DOS function dispatcher (not implemented - use INT 21h)
-        memory.write_u8(psp_addr + 0x05, 0xCD); // INT 21h
-        memory.write_u8(psp_addr + 0x06, 0x21);
-        memory.write_u8(psp_addr + 0x07, 0xCB); // RETF
+        bus.write_u8(psp_addr + 0x05, 0xCD); // INT 21h
+        bus.write_u8(psp_addr + 0x06, 0x21);
+        bus.write_u8(psp_addr + 0x07, 0xCB); // RETF
 
         // Offset 0x0A: Terminate address (INT 22h vector)
         // Read current INT 22h vector from IVT (address 0x0088)
-        let int22_ip = memory.read_u16(0x22 * 4);
-        let int22_cs = memory.read_u16(0x22 * 4 + 2);
-        memory.write_u16(psp_addr + 0x0A, int22_ip);
-        memory.write_u16(psp_addr + 0x0C, int22_cs);
+        let int22_ip = bus.read_u16(0x22 * 4);
+        let int22_cs = bus.read_u16(0x22 * 4 + 2);
+        bus.write_u16(psp_addr + 0x0A, int22_ip);
+        bus.write_u16(psp_addr + 0x0C, int22_cs);
 
         // Offset 0x0E: Break address (INT 23h vector)
-        let int23_ip = memory.read_u16(0x23 * 4);
-        let int23_cs = memory.read_u16(0x23 * 4 + 2);
-        memory.write_u16(psp_addr + 0x0E, int23_ip);
-        memory.write_u16(psp_addr + 0x10, int23_cs);
+        let int23_ip = bus.read_u16(0x23 * 4);
+        let int23_cs = bus.read_u16(0x23 * 4 + 2);
+        bus.write_u16(psp_addr + 0x0E, int23_ip);
+        bus.write_u16(psp_addr + 0x10, int23_cs);
 
         // Offset 0x12: Critical error address (INT 24h vector)
-        let int24_ip = memory.read_u16(0x24 * 4);
-        let int24_cs = memory.read_u16(0x24 * 4 + 2);
-        memory.write_u16(psp_addr + 0x12, int24_ip);
-        memory.write_u16(psp_addr + 0x14, int24_cs);
+        let int24_ip = bus.read_u16(0x24 * 4);
+        let int24_cs = bus.read_u16(0x24 * 4 + 2);
+        bus.write_u16(psp_addr + 0x12, int24_ip);
+        bus.write_u16(psp_addr + 0x14, int24_cs);
 
         // Offset 0x16: Parent PSP segment
-        memory.write_u16(psp_addr + 0x16, io.get_psp());
+        bus.write_u16(psp_addr + 0x16, io.get_psp());
 
         // Offset 0x18: Job File Table (JFT) - 20 bytes, 0xFF = unused
         for i in 0..20 {
-            memory.write_u8(psp_addr + 0x18 + i, 0xFF);
+            bus.write_u8(psp_addr + 0x18 + i, 0xFF);
         }
         // Set up standard handles
-        memory.write_u8(psp_addr + 0x18, 0x01); // stdin -> CON
-        memory.write_u8(psp_addr + 0x19, 0x01); // stdout -> CON
-        memory.write_u8(psp_addr + 0x1A, 0x01); // stderr -> CON
-        memory.write_u8(psp_addr + 0x1B, 0x00); // stdaux -> AUX
-        memory.write_u8(psp_addr + 0x1C, 0x02); // stdprn -> PRN
+        bus.write_u8(psp_addr + 0x18, 0x01); // stdin -> CON
+        bus.write_u8(psp_addr + 0x19, 0x01); // stdout -> CON
+        bus.write_u8(psp_addr + 0x1A, 0x01); // stderr -> CON
+        bus.write_u8(psp_addr + 0x1B, 0x00); // stdaux -> AUX
+        bus.write_u8(psp_addr + 0x1C, 0x02); // stdprn -> PRN
 
         // Offset 0x2C: Environment segment
-        memory.write_u16(psp_addr + 0x2C, params.env_segment);
+        bus.write_u16(psp_addr + 0x2C, params.env_segment);
 
         // Offset 0x32: JFT size
-        memory.write_u16(psp_addr + 0x32, 20);
+        bus.write_u16(psp_addr + 0x32, 20);
 
         // Offset 0x34: JFT pointer (far pointer to JFT at offset 0x18)
-        memory.write_u16(psp_addr + 0x34, 0x18);
-        memory.write_u16(psp_addr + 0x36, psp_segment);
+        bus.write_u16(psp_addr + 0x34, 0x18);
+        bus.write_u16(psp_addr + 0x36, psp_segment);
 
         // Offset 0x50: DOS function call (INT 21h, RETF)
-        memory.write_u8(psp_addr + 0x50, 0xCD);
-        memory.write_u8(psp_addr + 0x51, 0x21);
-        memory.write_u8(psp_addr + 0x52, 0xCB);
+        bus.write_u8(psp_addr + 0x50, 0xCD);
+        bus.write_u8(psp_addr + 0x51, 0x21);
+        bus.write_u8(psp_addr + 0x52, 0xCB);
 
         // Offset 0x5C: First FCB (not populated - zeroed)
         // Offset 0x6C: Second FCB (not populated - zeroed)
@@ -2181,12 +2169,12 @@ impl Cpu {
         // Offset 0x80: Command line (Pascal-style: length byte followed by string)
         let cmdline_bytes = params.command_line.as_bytes();
         let cmdline_len = cmdline_bytes.len().min(126) as u8;
-        memory.write_u8(psp_addr + 0x80, cmdline_len);
+        bus.write_u8(psp_addr + 0x80, cmdline_len);
         for (i, &byte) in cmdline_bytes.iter().take(126).enumerate() {
-            memory.write_u8(psp_addr + 0x81 + i, byte);
+            bus.write_u8(psp_addr + 0x81 + i, byte);
         }
         // Terminate with CR
-        memory.write_u8(psp_addr + 0x81 + cmdline_len as usize, 0x0D);
+        bus.write_u8(psp_addr + 0x81 + cmdline_len as usize, 0x0D);
     }
 
     /// INT 21h, AH=50h - Set PSP Address
@@ -2204,7 +2192,7 @@ impl Cpu {
     ///   If AL=00h: DS:SI = pointer to DBCS lead byte table
     ///   Table format: pairs of lead byte ranges, terminated by 00h 00h
     ///   For no DBCS support, returns pointer to empty table (just 00h 00h)
-    fn int21_get_dbcs_lead_byte_table(&mut self, memory: &mut Memory) {
+    fn int21_get_dbcs_lead_byte_table(&mut self, bus: &mut Bus) {
         let subfunction = (self.ax & 0xFF) as u8;
 
         if subfunction == 0x00 {
@@ -2215,8 +2203,8 @@ impl Cpu {
 
             // Write empty table (just two null bytes) at the location
             let addr = Self::physical_address(DBCS_TABLE_SEGMENT, DBCS_TABLE_OFFSET);
-            memory.write_u8(addr, 0x00);
-            memory.write_u8(addr + 1, 0x00);
+            bus.write_u8(addr, 0x00);
+            bus.write_u8(addr + 1, 0x00);
 
             // Return DS:SI pointing to the table
             self.ds = DBCS_TABLE_SEGMENT;
@@ -2236,12 +2224,12 @@ impl Cpu {
     }
 
     /// Helper function to read a null-terminated string from memory
-    fn read_null_terminated_string(&self, memory: &Memory, segment: u16, offset: u16) -> String {
+    fn read_null_terminated_string(&self, bus: &Bus, segment: u16, offset: u16) -> String {
         let mut addr = Self::physical_address(segment, offset);
         let mut result = String::new();
 
         loop {
-            let ch = memory.read_u8(addr);
+            let ch = bus.read_u8(addr);
             if ch == 0 {
                 break;
             }

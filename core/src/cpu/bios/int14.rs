@@ -1,4 +1,4 @@
-use crate::{cpu::Cpu, memory::Memory, serial_port::SerialParams};
+use crate::{cpu::Cpu, serial_port::SerialParams};
 
 /// Serial port line status bits (returned in AH)
 #[allow(dead_code)]
@@ -30,7 +30,7 @@ impl Cpu {
     /// INT 0x14 - Serial Port Services
     /// AH register contains the function number
     /// DX register contains the port number (0=COM1, 1=COM2, 2=COM3, 3=COM4)
-    pub(super) fn handle_int14(&mut self, _memory: &mut Memory, io: &mut super::Bios) {
+    pub(super) fn handle_int14(&mut self, io: &mut super::Bios) {
         let function = (self.ax >> 8) as u8; // Get AH
         let port = self.dx as u8; // DX contains port number
 

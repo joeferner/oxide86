@@ -1,5 +1,6 @@
+use crate::Bus;
 use crate::cpu::Cpu;
-use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW, Memory};
+use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW};
 
 /// Timer ticks at 18.2 Hz (PIT channel 0 frequency)
 /// Ticks per day = 24 * 60 * 60 * 18.2 = 1,573,040 (0x1800B0)
@@ -15,16 +16,11 @@ impl Cpu {
     ///
     /// Note: Chaining to INT 0x1C is now handled by Computer::process_timer_irq()
     /// which properly handles both custom and BIOS handlers using begin_irq_chain().
-    pub(super) fn handle_int08(
-        &mut self,
-        memory: &mut Memory,
-        _io: &mut super::Bios,
-        _video: &mut crate::video::Video,
-    ) {
+    pub(super) fn handle_int08(&mut self, bus: &mut Bus) {
         // Read current timer counter from BDA (4 bytes, little-endian)
         let counter_addr = BDA_START + BDA_TIMER_COUNTER;
-        let low_word = memory.read_u16(counter_addr);
-        let high_word = memory.read_u16(counter_addr + 2);
+        let low_word = bus.read_u16(counter_addr);
+        let high_word = bus.read_u16(counter_addr + 2);
         let mut tick_count = ((high_word as u32) << 16) | (low_word as u32);
 
         // Increment tick count
@@ -35,12 +31,12 @@ impl Cpu {
             tick_count = 0;
             // Set midnight overflow flag
             let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
-            memory.write_u8(overflow_addr, 1);
+            bus.write_u8(overflow_addr, 1);
         }
 
         // Write updated tick count back to BDA
-        memory.write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
-        memory.write_u16(counter_addr + 2, (tick_count >> 16) as u16);
+        bus.write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
+        bus.write_u16(counter_addr + 2, (tick_count >> 16) as u16);
 
         // Chaining to INT 0x1C is handled by Computer::process_timer_irq()
         // which has access to the full execution context needed for proper chaining

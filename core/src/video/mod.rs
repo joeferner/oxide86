@@ -1,8 +1,3 @@
-use crate::video::{
-    cga::{CgaBuffer, CgaPalette},
-    ega::EgaBuffer,
-    text::TextBuffer,
-};
 use crate::video_card_type::VideoCardType;
 
 pub mod cga;
@@ -10,6 +5,12 @@ pub mod composite;
 pub mod ega;
 pub mod render;
 pub mod text;
+
+// Re-export types for bus.rs and other modules
+pub use cga::{CgaBuffer, CgaPalette};
+pub use ega::EgaBuffer;
+pub use text::TextBuffer;
+// CursorPosition is already defined in this file, so no need to re-export
 
 // Video memory constants
 pub const VIDEO_MEMORY_START: usize = 0xB8000;

@@ -1,5 +1,5 @@
+use crate::Bus;
 use crate::cpu::Cpu;
-use crate::memory::Memory;
 
 impl Cpu {
     /// INT 0x1C - User Timer Tick Hook
@@ -17,12 +17,7 @@ impl Cpu {
     ///
     /// The default BIOS handler is a no-op (just IRET).
     #[allow(unused_variables)]
-    pub(super) fn handle_int1c(
-        &mut self,
-        memory: &mut Memory,
-        io: &mut super::Bios,
-        video: &mut crate::video::Video,
-    ) {
+    pub(super) fn handle_int1c(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Default handler does nothing - just returns
         // Programs that need periodic callbacks will install their own handler
         // by modifying the IVT entry for INT 0x1C

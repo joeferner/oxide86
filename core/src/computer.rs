@@ -1,7 +1,7 @@
 use anyhow::Result;
 
 use crate::{
-    Bios, Clock, CpuType, DriveNumber, MouseInput, NullVideoController, SerialDevice,
+    Bios, Bus, Clock, CpuType, DriveNumber, MouseInput, NullVideoController, SerialDevice,
     SpeakerOutput, Video, VideoCardType, VideoController,
     cpu::{Cpu, bios::KeyPress},
     io::IoDevice,
@@ -41,10 +41,9 @@ impl Default for ComputerConfig {
 pub struct Computer<V: VideoController = NullVideoController> {
     cpu: Cpu,
     cpu_type: CpuType,
-    memory: Memory,
+    bus: Bus,
     bios: Bios,
     io_device: IoDevice,
-    video: Video,
     video_controller: V,
     speaker: Box<dyn SpeakerOutput>,
     /// Cycle counter for timer emulation (resets each tick)
@@ -91,6 +90,7 @@ impl<V: VideoController> Computer<V> {
 
         let bios = Bios::new(keyboard, mouse, clock);
 
+        // Create Memory and Video, then wrap in Bus
         let mut memory = memory::Memory::new_with_size(memory_kb);
         memory.initialize_ivt();
         memory.initialize_bda();
@@ -133,13 +133,16 @@ impl<V: VideoController> Computer<V> {
             video_card_type
         );
 
+        // Create Bus with Memory and Video
+        let video = Video::new_with_card_type(video_card_type);
+        let bus = Bus::new(memory, video);
+
         Self {
             cpu: Cpu::new(),
             cpu_type,
-            memory,
+            bus,
             bios,
             io_device: IoDevice::new(joystick),
-            video: Video::new_with_card_type(video_card_type),
             video_controller,
             speaker,
             cycle_count: 0,
@@ -157,14 +160,14 @@ impl<V: VideoController> Computer<V> {
     }
 
     pub fn load_bios(&mut self, bios_data: &[u8]) -> Result<()> {
-        self.memory.load_bios(bios_data)?;
+        self.bus.load_bios(bios_data)?;
         Ok(())
     }
 
     /// Load a program at the specified segment:offset and set CPU to start there
     pub fn load_program(&mut self, program_data: &[u8], segment: u16, offset: u16) -> Result<()> {
         let physical_addr = Cpu::physical_address(segment, offset);
-        self.memory.load_at(physical_addr, program_data)?;
+        self.bus.load_at(physical_addr, program_data)?;
 
         // Set CPU to start at this location
         self.cpu.cs = segment;
@@ -230,7 +233,7 @@ impl<V: VideoController> Computer<V> {
         const BOOT_SEGMENT: u16 = 0x0000;
         const BOOT_OFFSET: u16 = 0x7C00;
         let boot_addr = Cpu::physical_address(BOOT_SEGMENT, BOOT_OFFSET);
-        self.memory.load_at(boot_addr, &boot_sector)?;
+        self.bus.load_at(boot_addr, &boot_sector)?;
 
         // Set up CPU registers as BIOS would
         self.cpu.cs = BOOT_SEGMENT;
@@ -301,24 +304,24 @@ impl<V: VideoController> Computer<V> {
 
         // Clear conventional memory so stale data from the previous boot
         // (e.g. HIMEM.SYS/VDISK signatures, mouse driver state) does not persist
-        self.memory.clear_conventional_memory();
+        self.bus.clear_conventional_memory();
 
         // Reset memory (BDA and IVT)
-        self.memory.initialize_ivt();
-        self.memory.initialize_bda();
-        self.memory.initialize_fonts();
+        self.bus.initialize_ivt();
+        self.bus.initialize_bda();
+        self.bus.initialize_fonts();
 
         // Reset BIOS state (memory allocator, open files, device handles)
         // But keep the attached drives (they're the "hardware")
         self.bios.reset_state();
 
         // Reset video to blank screen
-        self.video = Video::new();
+        *self.bus.video_mut() = Video::new();
 
         // Notify video controller of mode reset (Video::new() defaults to mode 0x03)
         self.video_controller.set_video_mode(0x03);
         self.video_controller
-            .update_vga_dac_palette(self.video.get_vga_dac_palette());
+            .update_vga_dac_palette(self.bus.get_vga_dac_palette());
 
         // Reset IO devices (preserves joystick connection)
         self.io_device.reset();
@@ -336,7 +339,7 @@ impl<V: VideoController> Computer<V> {
         self.speaker_update_cycles = 0;
 
         // Force a video redraw to clear the screen
-        self.video_controller.force_redraw(self.video.get_buffer());
+        self.video_controller.force_redraw(self.bus.get_buffer());
 
         // Reload program or re-boot from the stored boot drive if one exists
         if let Some(program) = self.loaded_program.clone() {
@@ -415,7 +418,7 @@ impl<V: VideoController> Computer<V> {
 
         // Check if custom INT 09h handler is installed
         let int_num: u8 = 0x09;
-        let is_bios_handler = Cpu::is_bios_handler(&self.memory, int_num);
+        let is_bios_handler = Cpu::is_bios_handler(&mut self.bus, int_num);
 
         if !is_bios_handler {
             // Custom INT 09h handler installed by program (e.g., CheckIt, edit.exe)
@@ -431,8 +434,8 @@ impl<V: VideoController> Computer<V> {
 
                 let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
                 let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-                let head = self.memory.read_u16(head_addr);
-                let tail = self.memory.read_u16(tail_addr);
+                let head = self.bus.read_u16(head_addr);
+                let tail = self.bus.read_u16(tail_addr);
 
                 // Calculate what tail would be after adding this key
                 let buffer_start: u16 = 0x001E; // Relative to BDA
@@ -446,9 +449,9 @@ impl<V: VideoController> Computer<V> {
                 if new_tail != head {
                     // Add key to buffer
                     let char_addr = BDA_START + tail as usize;
-                    self.memory.write_u8(char_addr, key.scan_code);
-                    self.memory.write_u8(char_addr + 1, key.ascii_code);
-                    self.memory.write_u16(tail_addr, new_tail);
+                    self.bus.write_u8(char_addr, key.scan_code);
+                    self.bus.write_u8(char_addr + 1, key.ascii_code);
+                    self.bus.write_u16(tail_addr, new_tail);
                     self.bios.key_was_prebuffered = true; // Mark as pre-buffered
                     log::debug!("INT 09h: Pre-buffered key for custom handler");
                 } else {
@@ -461,8 +464,8 @@ impl<V: VideoController> Computer<V> {
 
             // Call the custom INT 09h handler
             let ivt_addr = (int_num as usize) * 4;
-            let offset = self.memory.read_u16(ivt_addr);
-            let segment = self.memory.read_u16(ivt_addr + 2);
+            let offset = self.bus.read_u16(ivt_addr);
+            let segment = self.bus.read_u16(ivt_addr + 2);
 
             log::trace!(
                 "INT 09h: Calling custom handler at {:04X}:{:04X}",
@@ -481,9 +484,9 @@ impl<V: VideoController> Computer<V> {
             }
 
             // Push flags, CS, IP (simulating INT instruction)
-            self.cpu.push(self.cpu.flags, &mut self.memory);
-            self.cpu.push(self.cpu.cs, &mut self.memory);
-            self.cpu.push(self.cpu.ip, &mut self.memory);
+            self.cpu.push(self.cpu.flags, &mut self.bus);
+            self.cpu.push(self.cpu.cs, &mut self.bus);
+            self.cpu.push(self.cpu.ip, &mut self.bus);
 
             // Clear IF and TF flags (standard INT behavior)
             self.cpu.set_flag(cpu_flag::INTERRUPT, false);
@@ -499,9 +502,8 @@ impl<V: VideoController> Computer<V> {
             log::debug!("INT 09h: Calling default BIOS handler");
             self.cpu.handle_bios_interrupt_direct(
                 int_num,
-                &mut self.memory,
+                &mut self.bus,
                 &mut self.bios,
-                &mut self.video,
                 self.cpu_type,
             );
         }
@@ -535,8 +537,8 @@ impl<V: VideoController> Computer<V> {
         let int_num = if port_num == 0 { 0x0C } else { 0x0B };
 
         let ivt_addr = (int_num as usize) * 4;
-        let offset = self.memory.read_u16(ivt_addr);
-        let segment = self.memory.read_u16(ivt_addr + 2);
+        let offset = self.bus.read_u16(ivt_addr);
+        let segment = self.bus.read_u16(ivt_addr + 2);
 
         log::debug!(
             "INT 0x{:02X}: Firing serial IRQ for COM{} - handler at {:04X}:{:04X}",
@@ -558,9 +560,9 @@ impl<V: VideoController> Computer<V> {
         }
 
         // Push flags, CS, IP (simulating INT instruction)
-        self.cpu.push(self.cpu.flags, &mut self.memory);
-        self.cpu.push(self.cpu.cs, &mut self.memory);
-        self.cpu.push(self.cpu.ip, &mut self.memory);
+        self.cpu.push(self.cpu.flags, &mut self.bus);
+        self.cpu.push(self.cpu.cs, &mut self.bus);
+        self.cpu.push(self.cpu.ip, &mut self.bus);
 
         // Clear IF and TF flags (standard INT behavior)
         self.cpu.set_flag(cpu_flag::INTERRUPT, false);
@@ -597,13 +599,13 @@ impl<V: VideoController> Computer<V> {
 
         // Check if custom INT 08h handler is installed
         let int_num: u8 = 0x08;
-        let is_bios_handler = Cpu::is_bios_handler(&self.memory, int_num);
+        let is_bios_handler = Cpu::is_bios_handler(&mut self.bus, int_num);
 
         if !is_bios_handler {
             // Custom INT 08h handler - use full interrupt with stack frame
             let ivt_addr = (int_num as usize) * 4;
-            let offset = self.memory.read_u16(ivt_addr);
-            let segment = self.memory.read_u16(ivt_addr + 2);
+            let offset = self.bus.read_u16(ivt_addr);
+            let segment = self.bus.read_u16(ivt_addr + 2);
 
             if self.log_interrupts_enabled {
                 log::info!(
@@ -624,9 +626,9 @@ impl<V: VideoController> Computer<V> {
             }
 
             // Push flags, CS, IP (simulating INT instruction)
-            self.cpu.push(self.cpu.flags, &mut self.memory);
-            self.cpu.push(self.cpu.cs, &mut self.memory);
-            self.cpu.push(self.cpu.ip, &mut self.memory);
+            self.cpu.push(self.cpu.flags, &mut self.bus);
+            self.cpu.push(self.cpu.cs, &mut self.bus);
+            self.cpu.push(self.cpu.ip, &mut self.bus);
 
             // Clear IF and TF flags (standard INT behavior)
             self.cpu.set_flag(cpu_flag::INTERRUPT, false);
@@ -638,8 +640,8 @@ impl<V: VideoController> Computer<V> {
         } else {
             // BIOS INT 08h handler - update BDA counter directly from memory
             let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
-            let lo = self.memory.read_u16(counter_addr) as u32;
-            let hi = self.memory.read_u16(counter_addr + 2) as u32;
+            let lo = self.bus.read_u16(counter_addr) as u32;
+            let hi = self.bus.read_u16(counter_addr + 2) as u32;
             let mut tick_count = (hi << 16) | lo;
             tick_count = tick_count.wrapping_add(1);
 
@@ -649,17 +651,17 @@ impl<V: VideoController> Computer<V> {
                 tick_count = 0;
                 // Set midnight overflow flag
                 let overflow_addr = memory::BDA_START + memory::BDA_TIMER_OVERFLOW;
-                self.memory.write_u8(overflow_addr, 1);
+                self.bus.write_u8(overflow_addr, 1);
             }
 
             // Write updated counter to BDA
-            self.memory
+            self.bus
                 .write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
-            self.memory
+            self.bus
                 .write_u16(counter_addr + 2, (tick_count >> 16) as u16);
 
             // Check if custom INT 1Ch handler is installed
-            let is_custom_1ch = !Cpu::is_bios_handler(&self.memory, 0x1C);
+            let is_custom_1ch = !Cpu::is_bios_handler(&mut self.bus, 0x1C);
 
             if is_custom_1ch {
                 // Custom INT 1Ch - chain to it
@@ -668,8 +670,8 @@ impl<V: VideoController> Computer<V> {
                 let return_flags = self.cpu.flags;
 
                 let ivt_1c = 0x1C * 4;
-                let handler_off = self.memory.read_u16(ivt_1c);
-                let handler_seg = self.memory.read_u16(ivt_1c + 2);
+                let handler_off = self.bus.read_u16(ivt_1c);
+                let handler_seg = self.bus.read_u16(ivt_1c + 2);
 
                 if self.exec_logging_enabled {
                     log::info!(
@@ -687,7 +689,7 @@ impl<V: VideoController> Computer<V> {
                     return_cs,
                     return_ip,
                     return_flags,
-                    &mut self.memory,
+                    &mut self.bus,
                 );
 
                 if self.log_interrupts_enabled {
@@ -759,8 +761,8 @@ impl<V: VideoController> Computer<V> {
                     use memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START};
                     let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
                     let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-                    let head = self.memory.read_u16(head_addr);
-                    let tail = self.memory.read_u16(tail_addr);
+                    let head = self.bus.read_u16(head_addr);
+                    let tail = self.bus.read_u16(tail_addr);
                     let buffer_start: u16 = 0x001E;
                     let new_tail = if tail == buffer_start + 30 {
                         buffer_start
@@ -769,9 +771,9 @@ impl<V: VideoController> Computer<V> {
                     };
                     if new_tail != head {
                         let char_addr = BDA_START + tail as usize;
-                        self.memory.write_u8(char_addr, key.scan_code);
-                        self.memory.write_u8(char_addr + 1, key.ascii_code);
-                        self.memory.write_u16(tail_addr, new_tail);
+                        self.bus.write_u8(char_addr, key.scan_code);
+                        self.bus.write_u8(char_addr + 1, key.ascii_code);
+                        self.bus.write_u16(tail_addr, new_tail);
                     } else {
                         log::warn!("Keyboard buffer full while in wait state, discarding key");
                     }
@@ -782,15 +784,15 @@ impl<V: VideoController> Computer<V> {
             // Check if a key is available in the BDA keyboard buffer
             let head_addr = memory::BDA_START + memory::BDA_KEYBOARD_BUFFER_HEAD;
             let tail_addr = memory::BDA_START + memory::BDA_KEYBOARD_BUFFER_TAIL;
-            let head = self.memory.read_u16(head_addr);
-            let tail = self.memory.read_u16(tail_addr);
+            let head = self.bus.read_u16(head_addr);
+            let tail = self.bus.read_u16(tail_addr);
 
             if head != tail {
                 log::debug!(
                     "Key available in BDA buffer, resuming from wait state and retrying INT 16h"
                 );
                 if self.cpu.resume_from_wait() {
-                    self.cpu.int16_read_char(&mut self.memory, &mut self.bios);
+                    self.cpu.int16_read_char(&mut self.bus, &mut self.bios);
                     return;
                 }
                 // Fall through to execute the next instruction
@@ -868,16 +870,15 @@ impl<V: VideoController> Computer<V> {
             // DOS typically does: PUSHF, CALL FAR old_handler
             // The stack has: [SP] = IP, [SP+2] = CS, [SP+4] = FLAGS
             // Pop the return address (simulating return from CALL FAR)
-            let ret_offset = self.cpu.pop(&self.memory);
-            let ret_segment = self.cpu.pop(&self.memory);
+            let ret_offset = self.cpu.pop(&self.bus);
+            let ret_segment = self.cpu.pop(&self.bus);
 
             // Call our BIOS handler directly
             // We need to bypass the IVT check since we're already being called via CALL FAR from DOS
             self.cpu.handle_bios_interrupt_direct(
                 int_num,
-                &mut self.memory,
+                &mut self.bus,
                 &mut self.bios,
-                &mut self.video,
                 self.cpu_type,
             );
 
@@ -903,7 +904,7 @@ impl<V: VideoController> Computer<V> {
             // - Case 1: We restore the original caller's FLAGS
             // - Case 2: We restore the DOS handler's PUSHF'd FLAGS (IF=0), and the
             //           DOS handler will later do IRET to restore the original caller's FLAGS
-            let saved_flags = self.cpu.pop(&self.memory);
+            let saved_flags = self.cpu.pop(&self.bus);
             // Restore IF, TF, DF from saved flags (keep CF, ZF, etc. from BIOS handler)
             self.cpu.flags = (self.cpu.flags & 0xF8FF) | (saved_flags & 0x0700);
 
@@ -927,11 +928,11 @@ impl<V: VideoController> Computer<V> {
         }
 
         let addr = Cpu::physical_address(current_cs, current_ip);
-        let opcode = self.memory.read_u8(addr);
+        let opcode = self.bus.read_u8(addr);
 
         if self.exec_logging_enabled {
             let decoded = crate::decoder::decode_instruction_with_regs(
-                &self.memory,
+                self.bus.memory(),
                 current_cs,
                 current_ip,
                 Some(&self.cpu),
@@ -969,11 +970,11 @@ impl<V: VideoController> Computer<V> {
         match opcode {
             0xCD => {
                 // INT with immediate - need to fetch the interrupt number
-                let int_num = self.memory.read_u8(addr + 1);
+                let int_num = self.bus.read_u8(addr + 1);
 
                 // Before executing INT 16h (keyboard read), flush any pending video
                 // updates so the screen is current before we potentially block.
-                if int_num == 0x16 && self.video.is_dirty() {
+                if int_num == 0x16 && self.bus.is_dirty() {
                     self.update_video();
                 }
 
@@ -987,13 +988,8 @@ impl<V: VideoController> Computer<V> {
                 // Manually advance IP past the INT instruction
                 self.cpu.ip = self.cpu.ip.wrapping_add(2);
                 // Execute with BIOS I/O
-                self.cpu.execute_int_with_io(
-                    int_num,
-                    &mut self.memory,
-                    &mut self.bios,
-                    &mut self.video,
-                    self.cpu_type,
-                );
+                self.cpu
+                    .execute_int_with_io(int_num, &mut self.bus, &mut self.bios, self.cpu_type);
                 // Set cycle count for INT instruction (51 cycles)
                 // Only set if the interrupt handler didn't already set a custom cycle count
                 // (e.g., INT 15h AH=86h sets cycles for the wait duration)
@@ -1005,35 +1001,24 @@ impl<V: VideoController> Computer<V> {
                 // INT 3 - advance IP and execute INT 3
                 log::info!("INT 0x03 (breakpoint)");
                 self.cpu.ip = self.cpu.ip.wrapping_add(1);
-                self.cpu.execute_int_with_io(
-                    3,
-                    &mut self.memory,
-                    &mut self.bios,
-                    &mut self.video,
-                    self.cpu_type,
-                );
+                self.cpu
+                    .execute_int_with_io(3, &mut self.bus, &mut self.bios, self.cpu_type);
                 // Set cycle count for INT 3 instruction (52 cycles)
                 self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT3;
             }
             _ => {
                 // Normal instruction - use execute_with_io
-                let opcode = self.cpu.fetch_byte(&self.memory);
+                let opcode = self.cpu.fetch_byte(&self.bus);
                 self.cpu.execute_with_io(
                     opcode,
-                    &mut self.memory,
+                    &mut self.bus,
                     &mut self.bios,
                     &mut self.io_device,
-                    &mut self.video,
                 );
                 // Check for CPU exceptions raised during instruction (e.g. divide error = INT 0)
                 if let Some(exc) = self.cpu.pending_exception.take() {
-                    self.cpu.execute_int_with_io(
-                        exc,
-                        &mut self.memory,
-                        &mut self.bios,
-                        &mut self.video,
-                        self.cpu_type,
-                    );
+                    self.cpu
+                        .execute_int_with_io(exc, &mut self.bus, &mut self.bios, self.cpu_type);
                     self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT;
                 }
             }
@@ -1042,17 +1027,7 @@ impl<V: VideoController> Computer<V> {
         // Sync A20 gate state from keyboard controller to memory
         // This must happen after instruction execution in case OUT instructions changed A20
         let a20_enabled = self.io_device.is_a20_enabled();
-        self.memory.set_a20_enabled(a20_enabled);
-
-        // Process any video memory writes that occurred during instruction execution
-        for (offset, value) in self.memory.drain_video_writes() {
-            self.video.write_byte(offset, value);
-        }
-
-        // Process EGA memory writes (A000:0000 segment)
-        for (offset, value) in self.memory.drain_ega_writes() {
-            self.video.write_byte_ega(offset, value);
-        }
+        self.bus.set_a20_enabled(a20_enabled);
 
         // Increment cycle counter and update timer
         // Use accurate cycle count from instruction, or fall back to 10 cycles
@@ -1081,8 +1056,8 @@ impl<V: VideoController> Computer<V> {
     /// Update video display if needed (call periodically or after step)
     pub fn update_video(&mut self) {
         // Check if video mode changed and notify controller
-        if self.video.take_mode_changed() {
-            let mode = self.video.get_mode();
+        if self.bus.take_mode_changed() {
+            let mode = self.bus.get_mode();
             log::info!(
                 "Notifying video controller of mode change to 0x{:02X}",
                 mode
@@ -1091,7 +1066,7 @@ impl<V: VideoController> Computer<V> {
             // Update VGA DAC palette when mode changes (palette is reset on mode change)
             log::info!("Computer: Passing palette to renderer (mode change)");
             self.video_controller
-                .update_vga_dac_palette(self.video.get_vga_dac_palette());
+                .update_vga_dac_palette(self.bus.get_vga_dac_palette());
 
             // Sync graphics buffer from raw B800 memory if transitioning from text→graphics
             // This handles programs like MS Flight Simulator that write data to B800 in text mode
@@ -1099,44 +1074,43 @@ impl<V: VideoController> Computer<V> {
             // The flag is set in Video::set_mode() ONLY for text→graphics transitions, and this
             // sync happens exactly once before any INT 10h drawing can occur, preventing the
             // overwrite bug that occurred when syncing happened after INT 10h text was drawn.
-            if self.video.needs_memory_sync() {
-                let raw_memory = self.memory.get_video_memory();
-                self.video.sync_from_raw_memory(raw_memory);
+            if self.bus.needs_memory_sync() {
+                let raw_memory = self.bus.get_video_memory().to_vec();
+                self.bus.sync_from_raw_memory(&raw_memory);
             }
 
             // Sync BDA video state (may have been set via CGA hardware registers, not INT 10h)
-            let cols = self.video.get_cols();
-            let rows = self.video.get_rows();
-            self.memory.write_u8(
+            let cols = self.bus.get_cols();
+            let rows = self.bus.get_rows();
+            self.bus.write_u8(
                 crate::memory::BDA_START + crate::memory::BDA_VIDEO_MODE,
                 mode,
             );
-            self.memory.write_u16(
+            self.bus.write_u16(
                 crate::memory::BDA_START + crate::memory::BDA_SCREEN_COLUMNS,
                 cols as u16,
             );
             let page_size = cols * rows * 2;
-            self.memory.write_u16(
+            self.bus.write_u16(
                 crate::memory::BDA_START + crate::memory::BDA_VIDEO_PAGE_SIZE,
                 page_size as u16,
             );
         }
 
-        if self.video.is_dirty() {
+        if self.bus.is_dirty() {
             // Update VGA DAC palette (in case it was modified via INT 10h or I/O ports)
             log::trace!("Computer: Passing palette to renderer (dirty)");
             self.video_controller
-                .update_vga_dac_palette(self.video.get_vga_dac_palette());
+                .update_vga_dac_palette(self.bus.get_vga_dac_palette());
 
             // Update video controller based on current mode
-            match self.video.get_mode_type() {
+            match self.bus.get_mode_type() {
                 crate::video::VideoMode::Text { .. } => {
-                    self.video_controller
-                        .update_display(self.video.get_buffer());
+                    self.video_controller.update_display(self.bus.get_buffer());
                 }
                 crate::video::VideoMode::Graphics320x200 => {
-                    if let Some(buffer) = self.video.get_graphics_buffer() {
-                        if self.video.is_composite_mode() {
+                    if let Some(buffer) = self.bus.get_graphics_buffer() {
+                        if self.bus.is_composite_mode() {
                             // Composite CGA: render 320x200 2bpp data as composite
                             // (nibble-to-color mapping, same byte layout)
                             self.video_controller.update_graphics_640x200(
@@ -1148,7 +1122,7 @@ impl<V: VideoController> Computer<V> {
                         } else {
                             // Pass AC palette registers 0-3 as the color map
                             // These map pixel values 0-3 to VGA DAC indices
-                            let ac = self.video.get_ac_palette();
+                            let ac = self.bus.get_ac_palette();
                             let color_map = [ac[0], ac[1], ac[2], ac[3]];
                             self.video_controller
                                 .update_graphics_320x200(buffer.get_pixels(), color_map);
@@ -1156,26 +1130,26 @@ impl<V: VideoController> Computer<V> {
                     }
                 }
                 crate::video::VideoMode::Graphics640x200 => {
-                    if let Some(buffer) = self.video.get_graphics_buffer() {
+                    if let Some(buffer) = self.bus.get_graphics_buffer() {
                         self.video_controller.update_graphics_640x200(
                             buffer.get_pixels(),
                             15, // Foreground: always bright white
                             0,  // Background: always black
-                            self.video.is_composite_mode(),
+                            self.bus.is_composite_mode(),
                         );
                     }
                 }
                 crate::video::VideoMode::Graphics320x200x16 => {
-                    if let Some(buffer) = self.video.get_ega_buffer() {
+                    if let Some(buffer) = self.bus.get_ega_buffer() {
                         let pixels = buffer.get_pixels();
                         self.video_controller.update_graphics_320x200x16(&pixels);
                     }
                 }
             }
-            self.video.clear_dirty();
+            self.bus.clear_dirty();
         }
         // Always update cursor position (cursor moves don't dirty the buffer)
-        self.video_controller.update_cursor(self.video.get_cursor());
+        self.video_controller.update_cursor(self.bus.get_cursor());
     }
 
     /// Update speaker output (call periodically for platforms that need it)
@@ -1187,13 +1161,13 @@ impl<V: VideoController> Computer<V> {
     /// Used when terminal state is known to be out of sync (e.g., after clearing screen)
     pub fn force_video_redraw(&mut self) {
         // Force redraw based on current mode
-        match self.video.get_mode_type() {
+        match self.bus.get_mode_type() {
             crate::video::VideoMode::Text { .. } => {
-                self.video_controller.force_redraw(self.video.get_buffer());
+                self.video_controller.force_redraw(self.bus.get_buffer());
             }
             crate::video::VideoMode::Graphics320x200 => {
-                if let Some(buffer) = self.video.get_graphics_buffer() {
-                    if self.video.is_composite_mode() {
+                if let Some(buffer) = self.bus.get_graphics_buffer() {
+                    if self.bus.is_composite_mode() {
                         self.video_controller.update_graphics_640x200(
                             buffer.get_pixels(),
                             15,
@@ -1201,7 +1175,7 @@ impl<V: VideoController> Computer<V> {
                             true,
                         );
                     } else {
-                        let palette = self.video.get_palette();
+                        let palette = self.bus.get_palette();
                         let colors = palette.get_colors();
                         self.video_controller
                             .update_graphics_320x200(buffer.get_pixels(), colors);
@@ -1209,29 +1183,29 @@ impl<V: VideoController> Computer<V> {
                 }
             }
             crate::video::VideoMode::Graphics640x200 => {
-                if let Some(buffer) = self.video.get_graphics_buffer() {
+                if let Some(buffer) = self.bus.get_graphics_buffer() {
                     self.video_controller.update_graphics_640x200(
                         buffer.get_pixels(),
                         15,
                         0,
-                        self.video.is_composite_mode(),
+                        self.bus.is_composite_mode(),
                     );
                 }
             }
             crate::video::VideoMode::Graphics320x200x16 => {
-                if let Some(buffer) = self.video.get_ega_buffer() {
+                if let Some(buffer) = self.bus.get_ega_buffer() {
                     let pixels = buffer.get_pixels();
                     self.video_controller.update_graphics_320x200x16(&pixels);
                 }
             }
         }
-        self.video.clear_dirty();
-        self.video_controller.update_cursor(self.video.get_cursor());
+        self.bus.clear_dirty();
+        self.video_controller.update_cursor(self.bus.get_cursor());
     }
 
     /// Get video buffer for inspection
     pub fn get_video_buffer(&self) -> &TextBuffer {
-        self.video.get_buffer()
+        self.bus.get_buffer()
     }
 
     /// Check if CPU is halted
@@ -1269,7 +1243,7 @@ impl<V: VideoController> Computer<V> {
             .disk_get_params(DriveNumber::hard_drive_c())
             .map(|params| params.drive_count)
             .unwrap_or(0);
-        self.memory.write_u8(
+        self.bus.write_u8(
             memory::BDA_START + memory::BDA_NUM_HARD_DRIVES,
             hard_drive_count,
         );
@@ -1292,7 +1266,7 @@ impl<V: VideoController> Computer<V> {
 
     /// Get a reference to the memory
     pub fn memory(&self) -> &Memory {
-        &self.memory
+        self.bus.memory()
     }
 
     /// Update keyboard shift flags in the BIOS Data Area
@@ -1305,7 +1279,7 @@ impl<V: VideoController> Computer<V> {
     /// * `alt` - Alt key is pressed
     pub fn update_keyboard_flags(&mut self, shift: bool, ctrl: bool, alt: bool) {
         let flags_addr = memory::BDA_START + memory::BDA_KEYBOARD_FLAGS1;
-        let mut flags = self.memory.read_u8(flags_addr);
+        let mut flags = self.bus.read_u8(flags_addr);
 
         // Bit 0: Right Shift pressed
         // Bit 1: Left Shift pressed
@@ -1330,7 +1304,7 @@ impl<V: VideoController> Computer<V> {
             flags &= !0x08;
         }
 
-        self.memory.write_u8(flags_addr, flags);
+        self.bus.write_u8(flags_addr, flags);
     }
 
     /// Increment cycle counter and queue timer interrupts when tick threshold reached.
@@ -1408,9 +1382,9 @@ impl<V: VideoController> Computer<V> {
     /// Write BDA timer counter directly to memory
     fn write_bda_timer(&mut self, tick_count: u32) {
         let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
-        self.memory
+        self.bus
             .write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
-        self.memory
+        self.bus
             .write_u16(counter_addr + 2, (tick_count >> 16) as u16);
     }
 
@@ -1420,8 +1394,8 @@ impl<V: VideoController> Computer<V> {
     /// This ensures accurate time even when interrupts are disabled.
     fn read_bda_timer(&self) -> u32 {
         let counter_addr = memory::BDA_START + memory::BDA_TIMER_COUNTER;
-        let lo = self.memory.read_u16(counter_addr) as u32;
-        let hi = self.memory.read_u16(counter_addr + 2) as u32;
+        let lo = self.bus.read_u16(counter_addr) as u32;
+        let hi = self.bus.read_u16(counter_addr + 2) as u32;
         let bda_value = (hi << 16) | lo;
         bda_value.wrapping_add(self.pending_timer_irqs)
     }
@@ -1454,7 +1428,7 @@ impl<V: VideoController> Computer<V> {
         // Set midnight overflow flag if we rolled over
         if overflow {
             let overflow_addr = memory::BDA_START + memory::BDA_TIMER_OVERFLOW;
-            self.memory.write_u8(overflow_addr, 1);
+            self.bus.write_u8(overflow_addr, 1);
         }
 
         // Clear pending IRQs since we've applied them to the BDA

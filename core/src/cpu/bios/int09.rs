@@ -11,7 +11,8 @@
 // handlers can read port 0x60 directly and handle keys themselves.
 
 use super::Cpu;
-use crate::memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START, Memory};
+use crate::Bus;
+use crate::memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START};
 
 impl Cpu {
     /// INT 09h - Keyboard Hardware Interrupt
@@ -19,7 +20,7 @@ impl Cpu {
     /// This is the default BIOS handler that reads keyboard data and adds it to the buffer.
     /// Programs with custom INT 09h handlers will replace this via the IVT and handle
     /// keyboard input directly by reading port 0x60.
-    pub(super) fn handle_int09(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    pub(super) fn handle_int09(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         // Read keyboard data from BIOS struct (set by fire_keyboard_irq)
         let scan_code = io.pending_scan_code;
         let ascii_code = io.pending_ascii_code;
@@ -47,8 +48,8 @@ impl Cpu {
         // Add key press to BIOS keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-        let head = memory.read_u16(head_addr);
-        let tail = memory.read_u16(tail_addr);
+        let head = bus.read_u16(head_addr);
+        let tail = bus.read_u16(tail_addr);
 
         // Calculate what tail would be after adding this key
         let buffer_start: u16 = 0x001E; // Relative to BDA
@@ -71,9 +72,9 @@ impl Cpu {
 
         // Add key to buffer
         let char_addr = BDA_START + tail as usize;
-        memory.write_u8(char_addr, scan_code);
-        memory.write_u8(char_addr + 1, ascii_code);
-        memory.write_u16(tail_addr, new_tail);
+        bus.write_u8(char_addr, scan_code);
+        bus.write_u8(char_addr + 1, ascii_code);
+        bus.write_u16(tail_addr, new_tail);
 
         log::debug!(
             "INT 09h (BIOS): Added to buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",

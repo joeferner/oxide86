@@ -1,30 +1,24 @@
 use crate::{
-    CpuType,
+    Bus, CpuType,
     cpu::{Cpu, cpu_flag},
-    memory::Memory,
 };
 
 impl Cpu {
-    pub(super) fn handle_int15(
-        &mut self,
-        memory: &mut Memory,
-        _io: &mut super::Bios,
-        cpu_type: CpuType,
-    ) {
+    pub(super) fn handle_int15(&mut self, bus: &mut Bus, cpu_type: CpuType) {
         let function = (self.ax >> 8) as u8; // Get AH
         match function {
-            0x24 => self.int15_a20_gate(memory),
+            0x24 => self.int15_a20_gate(bus),
             0x10 => self.int15_top_view_multi_dos(),
             0x41 => self.int15_wait_external_event(),
-            0x86 => self.int15_wait(memory),
+            0x86 => self.int15_wait(),
             0x88 => {
                 // Cap reported extended memory by both what the CPU supports and what is installed
                 let cpu_max = cpu_type.max_extended_memory_kb();
-                let installed = memory.extended_memory_kb();
+                let installed = bus.memory().extended_memory_kb();
                 let extended_kb = cpu_max.min(installed);
                 self.int15_get_extended_memory(cpu_type, extended_kb);
             }
-            0xC0 => self.int15_get_system_config(memory),
+            0xC0 => self.int15_get_system_config(bus),
             0xC1 => self.int15_get_ebda_segment(),
             0xD8 => self.int15_eisa_not_supported(),
             _ => {
@@ -52,23 +46,23 @@ impl Cpu {
     ///
     /// Output (AL=03):
     ///   AH = 0, BX = 0xFFFF (loops supported), CF = 0
-    fn int15_a20_gate(&mut self, memory: &mut Memory) {
+    fn int15_a20_gate(&mut self, bus: &mut Bus) {
         let sub_function = (self.ax & 0xFF) as u8;
         match sub_function {
             0x00 => {
-                memory.set_a20_enabled(false);
+                bus.memory_mut().set_a20_enabled(false);
                 self.ax &= 0x00FF; // AH = 0
                 self.set_flag(cpu_flag::CARRY, false);
                 log::debug!("INT 15h AH=24h AL=00: A20 disabled");
             }
             0x01 => {
-                memory.set_a20_enabled(true);
+                bus.memory_mut().set_a20_enabled(true);
                 self.ax &= 0x00FF; // AH = 0
                 self.set_flag(cpu_flag::CARRY, false);
                 log::debug!("INT 15h AH=24h AL=01: A20 enabled");
             }
             0x02 => {
-                let enabled = memory.is_a20_enabled();
+                let enabled = bus.memory().is_a20_enabled();
                 self.ax &= 0x00FF; // AH = 0
                 self.bx = (self.bx & 0xFF00) | u16::from(enabled); // BL = status
                 self.set_flag(cpu_flag::CARRY, false);
@@ -135,7 +129,7 @@ impl Cpu {
     /// Note: This emulates the wait by both accounting for CPU cycles AND
     /// sleeping in real time (on native platforms). This matches real hardware
     /// behavior where busy-waiting consumes both CPU cycles and wall clock time.
-    fn int15_wait(&mut self, _memory: &mut Memory) {
+    fn int15_wait(&mut self) {
         let wait_time_high = self.cx as u64;
         let wait_time_low = self.dx as u64;
         let wait_microseconds = (wait_time_high << 16) | wait_time_low;
@@ -197,7 +191,7 @@ impl Cpu {
     ///   Offset 7: Feature information byte 3
     ///   Offset 8: Feature information byte 4
     ///   Offset 9: Feature information byte 5
-    fn int15_get_system_config(&mut self, memory: &mut Memory) {
+    fn int15_get_system_config(&mut self, bus: &mut Bus) {
         // System descriptor table location: we'll use a fixed location
         // Place it at 0xF000:0xE000 (in ROM BIOS area)
         let table_segment = 0xF000;
@@ -219,7 +213,7 @@ impl Cpu {
         // Write table to memory
         let physical_addr = ((table_segment as usize) << 4) + table_offset as usize;
         for (i, &byte) in table.iter().enumerate() {
-            memory.write_u8(physical_addr + i, byte);
+            bus.write_u8(physical_addr + i, byte);
         }
 
         // Return pointer in ES:BX
