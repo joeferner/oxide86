@@ -76,7 +76,7 @@ impl Cpu {
             0x00..=0x07 | 0x0D => {
                 // INT 10h mode set = RGB rendering; composite only via port 0x3D8
                 video.set_composite_mode(false);
-                video.set_mode(mode);
+                video.set_mode(mode, false); // INT 10h clears video memory (real BIOS behavior)
                 // Reset cursor to top-left (only relevant for text modes)
                 video.set_cursor(0, 0);
 

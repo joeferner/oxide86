@@ -325,7 +325,11 @@ impl Video {
     }
 
     /// Set video mode
-    pub fn set_mode(&mut self, mode: u8) {
+    /// Set video mode.
+    /// `preserve_memory`: if true, sync raw B800 to graphics buffer on text→graphics transition
+    /// (used for port-based mode switches where BIOS doesn't clear). INT 10h AH=00h passes false
+    /// because real BIOS always clears video memory on mode change.
+    pub fn set_mode(&mut self, mode: u8, preserve_memory: bool) {
         // Track previous mode type for sync decision
         let was_text_mode = matches!(self.mode_type, VideoMode::Text { .. });
 
@@ -358,7 +362,7 @@ impl Video {
             self.mode_type,
             VideoMode::Graphics320x200 | VideoMode::Graphics640x200
         );
-        self.needs_memory_sync = was_text_mode && is_now_cga_graphics;
+        self.needs_memory_sync = was_text_mode && is_now_cga_graphics && preserve_memory;
 
         // Clear buffers on mode change
         if matches!(self.mode_type, VideoMode::Text { .. }) {
@@ -385,8 +389,8 @@ impl Video {
         ) {
             CgaPalette {
                 background: 0,
-                palette_id: 1, // Palette 1 (Cyan/Magenta/Light Gray) for graphics
-                intensity: false,
+                palette_id: 1, // Palette 1 (Cyan/Magenta/White) for graphics, high-intensity (VGA BIOS default)
+                intensity: true,
             }
         } else {
             CgaPalette::new() // Palette 0 for text modes and EGA

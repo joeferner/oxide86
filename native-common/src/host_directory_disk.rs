@@ -8,7 +8,7 @@ use anyhow::{Context, Result, anyhow};
 use emu86_core::{
     BackedDisk, DiskController, DiskGeometry, MemoryDiskBackend, SECTOR_SIZE, create_formatted_disk,
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{Read as _, Write as _};
 use std::path::{Path, PathBuf};
@@ -157,15 +157,21 @@ impl DiskController for HostDirectoryDisk {
 }
 
 /// Scan a directory and return all files and subdirectories.
+/// Uses tilde notation (e.g. LONGFI~1.COM, LONGFI~2.COM) to resolve 8.3 name collisions.
 fn scan_directory(path: &Path) -> Result<Vec<FileEntry>> {
     let mut entries = Vec::new();
     let base_path = path;
 
-    for entry in WalkDir::new(path).follow_links(false) {
+    // Track used DOS names per parent DOS path (empty string = root).
+    let mut used_names: HashMap<String, HashSet<String>> = HashMap::new();
+    // Map host relative path → already-assigned DOS path, so nested entries can
+    // look up their parent's name rather than re-deriving (and potentially colliding).
+    let mut path_to_dos: HashMap<String, String> = HashMap::new();
+
+    for entry in WalkDir::new(path).follow_links(false).sort_by_file_name() {
         let entry = entry.context("Failed to read directory entry")?;
         let host_path = entry.path();
 
-        // Get relative path from base
         let rel_path = host_path
             .strip_prefix(base_path)
             .context("Failed to strip base path")?;
@@ -174,10 +180,35 @@ fn scan_directory(path: &Path) -> Result<Vec<FileEntry>> {
             continue; // Skip root
         }
 
-        // Convert to DOS path format
-        let dos_path = to_dos_path(rel_path)?;
-
         let metadata = entry.metadata().context("Failed to get file metadata")?;
+
+        let components: Vec<_> = rel_path.components().collect();
+
+        // Look up the already-assigned DOS path for the parent directory.
+        let parent_dos_path = if components.len() <= 1 {
+            String::new()
+        } else {
+            let parent_rel: PathBuf = components[..components.len() - 1].iter().collect();
+            path_to_dos
+                .get(&parent_rel.to_string_lossy().to_string())
+                .cloned()
+                .unwrap_or_default()
+        };
+
+        // Assign a unique DOS name for only the last component (the current entry).
+        let name = components.last().unwrap().as_os_str().to_string_lossy();
+        let dir_used = used_names.entry(parent_dos_path.clone()).or_default();
+        let dos_name = to_dos_name_unique(&name, dir_used);
+        dir_used.insert(dos_name.clone());
+
+        let dos_path = if parent_dos_path.is_empty() {
+            dos_name
+        } else {
+            format!("{}/{}", parent_dos_path, dos_name)
+        };
+
+        // Record the mapping so children can look up their parent's DOS path.
+        path_to_dos.insert(rel_path.to_string_lossy().to_string(), dos_path.clone());
 
         entries.push(FileEntry {
             dos_path,
@@ -190,42 +221,47 @@ fn scan_directory(path: &Path) -> Result<Vec<FileEntry>> {
     Ok(entries)
 }
 
-/// Convert a Unix path to DOS format with 8.3 filenames.
-fn to_dos_path(path: &Path) -> Result<String> {
-    let mut result = String::new();
-
-    for component in path.components() {
-        if !result.is_empty() {
-            result.push('/');
-        }
-
-        let name = component.as_os_str().to_string_lossy();
-
-        // Convert to 8.3: "long_filename.txt" -> "LONG_FIL.TXT"
-        let dos_name = to_dos_name(&name);
-        result.push_str(&dos_name);
-    }
-
-    Ok(result)
-}
-
-/// Convert a single filename to DOS 8.3 format.
-fn to_dos_name(name: &str) -> String {
+/// Convert a single filename to DOS 8.3 format, using tilde notation if the plain
+/// truncated name is already taken in `used_names`.
+///
+/// Examples:
+///   "test_video_mode1.com" (first)  → "TEST_VID.COM"
+///   "test_video_mode2.com" (second) → "TESTV~1.COM"
+///   "test_video_mode3.com" (third)  → "TESTV~2.COM"
+fn to_dos_name_unique(name: &str, used_names: &HashSet<String>) -> String {
     let (base, ext) = if let Some(dot_pos) = name.rfind('.') {
         (&name[..dot_pos], Some(&name[dot_pos + 1..]))
     } else {
         (name, None)
     };
 
-    // Truncate base to 8 chars, extension to 3 chars, convert to uppercase
-    let base = &base[..base.len().min(8)].to_uppercase();
+    let base_up = base.to_uppercase();
+    let ext_up = ext.map(|e| e[..e.len().min(3)].to_uppercase());
 
-    if let Some(ext) = ext {
-        let ext = &ext[..ext.len().min(3)].to_uppercase();
-        format!("{}.{}", base, ext)
-    } else {
-        base.to_string()
+    let make_name = |b: &str| -> String {
+        match &ext_up {
+            Some(e) => format!("{}.{}", b, e),
+            None => b.to_string(),
+        }
+    };
+
+    // Try plain truncated name first.
+    let plain = make_name(&base_up[..base_up.len().min(8)]);
+    if !used_names.contains(&plain) {
+        return plain;
     }
+
+    // Generate tilde alternatives: truncate base to 6 chars + ~N.
+    let tilde_base = &base_up[..base_up.len().min(6)];
+    for n in 1u32.. {
+        let suffix = format!("~{}", n);
+        let candidate = make_name(&format!("{}{}", tilde_base, suffix));
+        if !used_names.contains(&candidate) {
+            return candidate;
+        }
+    }
+
+    unreachable!("could not generate unique DOS name")
 }
 
 /// Calculate appropriate disk geometry for the given data size.

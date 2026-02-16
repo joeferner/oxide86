@@ -361,7 +361,7 @@ impl IoDevice {
                                 value,
                                 mode,
                             );
-                            video.set_mode(mode);
+                            video.set_mode(mode, true); // Port-based: preserve B800 data (e.g. MS Flight Simulator)
                         } else if was_composite {
                             // Composite mode was disabled but video mode didn't change
                             // Still need to trigger re-render
