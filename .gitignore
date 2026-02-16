@@ -3,3 +3,4 @@ target/
 .vscode/launch.json
 *.log
 *.com
+screen_output.png

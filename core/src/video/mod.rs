@@ -396,8 +396,10 @@ impl Video {
             CgaPalette::new() // Palette 0 for text modes and EGA
         };
 
-        // Sync VGA DAC entries 0-3 from CGA palette (only for CGA 4-color modes)
-        // EGA mode 0x0D uses all 16 palette entries directly, not the CGA 4-color mapping
+        // In CGA graphics modes, map AC palette registers to CGA colors.
+        // This ensures pixel values 0-3 map to the correct CGA palette colors via VGA DAC.
+        // Example: CGA palette 1 (high intensity) maps pixel 3 → VGA_DAC[15] (white),
+        // not VGA_DAC[3] (cyan from default EGA palette).
         if matches!(
             self.mode_type,
             VideoMode::Graphics320x200 | VideoMode::Graphics640x200
@@ -569,9 +571,7 @@ impl Video {
     /// Set CGA palette (from I/O port 0x3D9)
     pub fn set_palette(&mut self, value: u8) {
         self.palette = CgaPalette::from_register(value);
-        // Only sync VGA DAC entries 0-3 in CGA graphics modes.
-        // In text mode, port 0x3D9 only affects border/overscan color;
-        // syncing would corrupt text color indices (e.g., blue → green).
+        // Update AC palette registers to match CGA palette colors in graphics modes.
         if self.is_cga_graphics_mode() {
             self.update_ac_from_cga_palette();
         }

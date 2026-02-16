@@ -197,7 +197,11 @@ function ConfigForm({
                                     <Group gap="xs" wrap="nowrap" align="center">
                                         <span>Joystick A</span>
                                         {joystickA.value && (
-                                            <Badge size="xs" color={joystickConnected[0] ? 'green' : 'orange'} variant="dot">
+                                            <Badge
+                                                size="xs"
+                                                color={joystickConnected[0] ? 'green' : 'orange'}
+                                                variant="dot"
+                                            >
                                                 {joystickConnected[0] ? 'active' : 'pending reset'}
                                             </Badge>
                                         )}
@@ -213,7 +217,11 @@ function ConfigForm({
                                     <Group gap="xs" wrap="nowrap" align="center">
                                         <span>Joystick B</span>
                                         {joystickB.value && (
-                                            <Badge size="xs" color={joystickConnected[1] ? 'green' : 'orange'} variant="dot">
+                                            <Badge
+                                                size="xs"
+                                                color={joystickConnected[1] ? 'green' : 'orange'}
+                                                variant="dot"
+                                            >
                                                 {joystickConnected[1] ? 'active' : 'pending reset'}
                                             </Badge>
                                         )}
