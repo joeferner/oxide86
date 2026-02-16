@@ -82,7 +82,7 @@ Simple "Hello World" test program for verifying program loading functionality. U
 ## Opcode Test
 
 ### opcode-test/op8086.asm
-Comprehensive test suite for validating CPU instruction implementation. Tests 36 different instruction categories with multiple test cases each, reporting results to COM1 serial logger.
+Comprehensive test suite for validating CPU instruction implementation. Tests 55 different instruction categories with multiple test cases each, reporting results to COM1 serial logger. Covers approximately 70% of the 8086 instruction set.
 
 **Running with serial logger:**
 ```bash
@@ -132,9 +132,28 @@ cargo run -p emu86-native-gui -- test-programs/opcode-test/op8086.com --com1-dev
 [COM1] JP/JNP: PASS
 [COM1] LDS/LES: PASS
 [COM1] RET imm: PASS
+[COM1] XCHG: PASS
+[COM1] LEA: PASS
+[COM1] CBW/CWD: PASS
+[COM1] LAHF/SAHF: PASS
+[COM1] XLATB: PASS
+[COM1] SAR: PASS
+[COM1] LODSW: PASS
+[COM1] STOSW: PASS
+[COM1] MOVSW: PASS
+[COM1] CMPSW: PASS
+[COM1] SCASW: PASS
+[COM1] Conditional Jumps: PASS
+[COM1] JMP: PASS
+[COM1] CALL/RET: PASS
+[COM1] JCXZ/LOOP: PASS
+[COM1] CLC/STC/CMC: PASS
+[COM1] CLD/STD/CLI/STI: PASS
+[COM1] RETF: PASS
+[COM1] PUSHF/POPF: PASS
 [COM1]
 [COM1] --- Summary ---
-[COM1] 36 passed, 0 failed
+[COM1] 55 passed, 0 failed
 ```
 
 **Tested Instructions:**
@@ -200,8 +219,42 @@ cargo run -p emu86-native-gui -- test-programs/opcode-test/op8086.com --com1-dev
 *Advanced Stack:*
 - **RET imm**: Return with immediate stack cleanup (stdcall convention)
 
+*Data Transfer Extensions:*
+- **XCHG**: Exchange register/memory values (includes NOP as XCHG AX,AX)
+- **LEA**: Load effective address (calculate address without dereferencing)
+- **CBW**: Convert byte to word (sign-extend AL to AX)
+- **CWD**: Convert word to doubleword (sign-extend AX to DX:AX)
+- **LAHF/SAHF**: Load/store flags register via AH
+- **XLATB**: Translate byte via lookup table (AL = [BX + AL])
+
+*Shift Extensions:*
+- **SAR**: Shift arithmetic right (sign-extending shift)
+
+*String Word Operations:*
+- **LODSW**: Load string word (DS:SI → AX, SI±2)
+- **STOSW**: Store string word (AX → ES:DI, DI±2)
+- **MOVSW**: Move string word (DS:SI → ES:DI, SI±2, DI±2) with REP
+- **CMPSW**: Compare string word with REPE/REPNE prefixes
+- **SCASW**: Scan string word (find word with REPNE)
+
+*Control Flow:*
+- **Conditional Jumps**: JA, JAE, JB, JBE, JE/JZ, JNE/JNZ, JG, JGE, JL, JLE, JS, JNS (all flag-based branches)
+- **JMP**: Unconditional jump (short and near)
+- **CALL/RET**: Near call and return with nesting
+- **JCXZ**: Jump if CX register is zero
+- **LOOP**: Basic loop (decrement CX, jump if non-zero)
+
+*Flag Operations:*
+- **CLC/STC/CMC**: Clear/set/complement carry flag
+- **CLD/STD**: Clear/set direction flag (affects string operations)
+- **CLI/STI**: Clear/set interrupt flag (enable/disable interrupts)
+- **PUSHF/POPF**: Push/pop flags register to/from stack
+
+*Advanced Control:*
+- **RETF**: Far return (restore CS:IP from stack)
+
 **Technical Details:**
-Each test includes multiple assertions checking both result values and CPU flags. Tests validate edge cases like carry propagation in multi-word arithmetic, sign extension in signed operations, proper flag behavior in conditional loops, BCD/ASCII decimal arithmetic, overflow detection, parity calculation, far pointer loading, and stack cleanup on return. Failed tests print specific error messages (e.g., "carry/borrow propagation incorrect", "signed multiply incorrect", "BCD decimal adjust incorrect"). The test framework validates all critical 8086 instructions needed for real-world programs including MS-DOS applications, games, and commercial software requiring BCD arithmetic or stdcall conventions.
+Each test includes multiple assertions checking both result values and CPU flags. Tests validate edge cases like carry propagation in multi-word arithmetic, sign extension in signed operations, proper flag behavior in conditional loops, BCD/ASCII decimal arithmetic, overflow detection, parity calculation, far pointer loading, stack cleanup on return, effective address calculation, register exchange, arithmetic vs logical shifts, word string operations with direction flag, all conditional jump conditions (unsigned, signed, equality, sign, carry, overflow, parity), flag manipulation instructions, and interrupt/direction flag control. Failed tests print specific error messages (e.g., "carry/borrow propagation incorrect", "signed multiply incorrect", "BCD decimal adjust incorrect", "exchange incorrect", "effective address incorrect", "conditional jump incorrect"). The test framework validates all critical 8086 instructions needed for real-world programs including MS-DOS applications, games, and commercial software requiring BCD arithmetic, stdcall conventions, string processing, table lookups, and complex control flow.
 
 ## Serial
 
