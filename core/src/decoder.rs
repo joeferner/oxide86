@@ -195,11 +195,45 @@ impl<'a> InstructionDecoder<'a> {
                 memory.read_u8(address) as u16
             };
 
-            // Format as "display=value"
-            if mem_ref.is_word {
-                parts.push(format!("{}={:04X}", mem_ref.display, value));
+            // Calculate segment for display (only for direct addresses without override)
+            let segment = if mem_ref.direct_address.is_some() {
+                match mem_ref.segment_override {
+                    Some(0) => cpu.es,
+                    Some(1) => cpu.cs,
+                    Some(2) => cpu.ss,
+                    Some(3) | None => cpu.ds,
+                    Some(4) => cpu.es,
+                    Some(5) => cpu.es,
+                    _ => cpu.ds,
+                }
+            } else if let Some(modrm) = mem_ref.modrm {
+                let rm = modrm & 0x07;
+                let default_segment = if matches!(rm, 0b010 | 0b011 | 0b110) {
+                    cpu.ss
+                } else {
+                    cpu.ds
+                };
+                match mem_ref.segment_override {
+                    Some(0) => cpu.es,
+                    Some(1) => cpu.cs,
+                    Some(2) => cpu.ss,
+                    Some(3) => cpu.ds,
+                    Some(4) => cpu.es,
+                    Some(5) => cpu.es,
+                    None => default_segment,
+                    _ => default_segment,
+                }
             } else {
-                parts.push(format!("{}={:02X}", mem_ref.display, value as u8));
+                cpu.ds
+            };
+
+            // Format as "display=value @seg:off"
+            if mem_ref.is_word {
+                parts.push(format!("{}={:04X} @{:04X}:{:04X}",
+                    mem_ref.display, value, segment, address - ((segment as usize) << 4)));
+            } else {
+                parts.push(format!("{}={:02X} @{:04X}:{:04X}",
+                    mem_ref.display, value as u8, segment, address - ((segment as usize) << 4)));
             }
         }
 
