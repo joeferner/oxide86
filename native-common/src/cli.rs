@@ -14,8 +14,8 @@ pub struct CommonCli {
     #[arg(long, default_value = "0x00")]
     pub boot_drive: String,
 
-    /// Starting segment address (default: 0x0000)
-    #[arg(long, default_value = "0x0000")]
+    /// Starting segment address (default: 0x1000)
+    #[arg(long, default_value = "0x1000")]
     pub segment: String,
 
     /// Starting offset address (default: 0x0100, like .COM files)

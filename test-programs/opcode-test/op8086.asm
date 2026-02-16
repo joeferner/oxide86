@@ -64,6 +64,21 @@ start:
     ; Loop instructions
     call test_loopz_loopnz
 
+    ; BCD Arithmetic
+    call test_daa_das
+    call test_aaa_aas
+    call test_aam_aad
+
+    ; Conditional jumps
+    call test_jo_jno
+    call test_jp_jnp
+
+    ; Segment operations
+    call test_lds_les
+
+    ; Return with immediate
+    call test_ret_imm
+
     ; Print summary
     call print_summary
 
@@ -1093,6 +1108,377 @@ test_loopz_loopnz:
     ret
 
 ;=============================================================================
+; Test: DAA/DAS (Decimal Adjust for Addition/Subtraction)
+;=============================================================================
+test_daa_das:
+    mov si, test_daa_das_name
+    call print_test_name
+
+    ; Test DAA: 9 + 8 = 17 (BCD: 0x17)
+    mov al, 9
+    add al, 8            ; AL = 0x11 (17 in hex)
+    daa                  ; Adjust to BCD: AL = 0x17
+    cmp al, 0x17
+    jne .fail
+
+    ; Test DAA: 29 + 15 = 44 (BCD)
+    ; 0x29 + 0x15 = 0x3E, DAA adjusts to 0x44
+    mov al, 0x29         ; BCD 29
+    add al, 0x15         ; Add BCD 15
+    daa                  ; Should give 0x44 (BCD 44)
+    cmp al, 0x44
+    jne .fail
+
+    ; Test DAA with carry: 95 + 8 = 103 (should set carry)
+    clc
+    mov al, 0x95         ; BCD 95
+    add al, 0x08         ; Add 8
+    daa                  ; Should give 0x03 with carry set
+    jnc .fail            ; Carry should be set
+    cmp al, 0x03
+    jne .fail
+
+    ; Test DAS: 58 - 25 = 33 (BCD)
+    mov al, 0x58         ; BCD 58
+    sub al, 0x25         ; Subtract BCD 25
+    das                  ; Should give 0x33 (BCD 33)
+    cmp al, 0x33
+    jne .fail
+
+    ; Test DAS: 40 - 15 = 25 (BCD)
+    mov al, 0x40         ; BCD 40
+    sub al, 0x15         ; Subtract BCD 15
+    das                  ; Should give 0x25 (BCD 25)
+    cmp al, 0x25
+    jne .fail
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_daa_das_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: AAA/AAS (ASCII Adjust for Addition/Subtraction)
+;=============================================================================
+test_aaa_aas:
+    mov si, test_aaa_aas_name
+    call print_test_name
+
+    ; Test AAA: '9' + '8' in ASCII
+    mov ax, 0           ; Clear AX
+    mov al, '9'         ; ASCII 9 (0x39)
+    add al, '8'         ; Add ASCII 8 (0x38) -> AL = 0x71
+    aaa                 ; Adjust to unpacked BCD
+    ; Should give AH = 1 (carry), AL = 7 (sum digit)
+    cmp ah, 1
+    jne .fail
+    and al, 0x0F        ; Mask to get digit
+    cmp al, 7
+    jne .fail
+
+    ; Test AAA: '5' + '3' in ASCII
+    mov ax, 0
+    mov al, '5'         ; ASCII 5 (0x35)
+    add al, '3'         ; Add ASCII 3 (0x33) -> AL = 0x68
+    aaa                 ; Adjust
+    ; Should give AH = 0, AL = 8
+    cmp ah, 0
+    jne .fail
+    and al, 0x0F
+    cmp al, 8
+    jne .fail
+
+    ; Test AAS: '8' - '3' in ASCII
+    mov ax, 0
+    mov al, '8'         ; ASCII 8 (0x38)
+    sub al, '3'         ; Subtract ASCII 3 (0x33) -> AL = 0x05
+    aas                 ; Adjust
+    ; Should give AH = 0, AL = 5
+    cmp ah, 0
+    jne .fail
+    and al, 0x0F
+    cmp al, 5
+    jne .fail
+
+    ; Test AAS: '2' - '9' in ASCII (borrow)
+    mov ax, 0
+    mov al, '2'         ; ASCII 2 (0x32)
+    sub al, '9'         ; Subtract ASCII 9 (0x39) -> AL = 0xF9 (negative)
+    aas                 ; Adjust with borrow
+    ; Should give AH = 0xFF (borrow), AL = 3 (10 - 7 = 3)
+    cmp ah, 0xFF
+    jne .fail
+    and al, 0x0F
+    cmp al, 3
+    jne .fail
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_aaa_aas_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: AAM/AAD (ASCII Adjust for Multiply/Divide)
+;=============================================================================
+test_aam_aad:
+    mov si, test_aam_aad_name
+    call print_test_name
+
+    ; Test AAM: Convert binary to unpacked BCD
+    ; 54 decimal = 5 * 10 + 4
+    mov al, 54
+    aam                 ; Converts to AH = 5, AL = 4
+    cmp ah, 5
+    jne .fail
+    cmp al, 4
+    jne .fail
+
+    ; Test AAM: 99 decimal
+    mov al, 99
+    aam                 ; Should give AH = 9, AL = 9
+    cmp ah, 9
+    jne .fail
+    cmp al, 9
+    jne .fail
+
+    ; Test AAD: Convert unpacked BCD to binary
+    ; AH = 5, AL = 4 -> 54 decimal
+    mov ah, 5
+    mov al, 4
+    aad                 ; Converts to AL = 54
+    cmp al, 54
+    jne .fail
+
+    ; Test AAD: AH = 9, AL = 9 -> 99 decimal
+    mov ah, 9
+    mov al, 9
+    aad                 ; Should give AL = 99
+    cmp al, 99
+    jne .fail
+
+    ; Test AAM/AAD round trip: 73 -> unpacked -> back to 73
+    mov al, 73
+    aam                 ; AH = 7, AL = 3
+    aad                 ; Back to AL = 73
+    cmp al, 73
+    jne .fail
+
+    call print_pass
+    ret
+.fail:
+    mov si, msg_aam_aad_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: JO/JNO (Jump on Overflow/No Overflow)
+;=============================================================================
+test_jo_jno:
+    mov si, test_jo_jno_name
+    call print_test_name
+
+    ; Test JO: Signed overflow (127 + 1 = -128)
+    mov al, 127         ; Maximum positive signed byte
+    add al, 1           ; Should set overflow flag
+    jno .fail           ; Should overflow
+    jo .jo_ok           ; Should jump
+.fail:
+    mov si, msg_jo_jno_failed
+    call print_fail
+    ret
+.jo_ok:
+
+    ; Test JNO: No overflow (100 + 20 = 120)
+    mov al, 100
+    add al, 20          ; Should NOT overflow
+    jo .fail            ; Should not overflow
+    jno .jno_ok         ; Should jump
+    jmp .fail
+.jno_ok:
+
+    ; Test JO: Negative overflow (-128 - 1 = 127)
+    mov al, -128        ; Minimum negative signed byte (0x80)
+    sub al, 1           ; Should set overflow flag
+    jno .fail           ; Should overflow
+    jo .jo_ok2          ; Should jump
+    jmp .fail
+.jo_ok2:
+
+    ; Test JNO: No overflow in subtraction
+    mov al, -50
+    sub al, 20          ; -50 - 20 = -70, no overflow
+    jo .fail
+    jno .jno_ok2
+    jmp .fail
+.jno_ok2:
+
+    call print_pass
+    ret
+
+;=============================================================================
+; Test: JP/JNP (Jump on Parity/No Parity)
+;=============================================================================
+test_jp_jnp:
+    mov si, test_jp_jnp_name
+    call print_test_name
+
+    ; Test JP: Even parity (even number of 1 bits)
+    mov al, 0x03        ; 0000 0011 - two 1 bits (even)
+    or al, al           ; Set flags based on AL
+    jnp .fail           ; Should have even parity
+    jp .jp_ok           ; Should jump
+.fail:
+    mov si, msg_jp_jnp_failed
+    call print_fail
+    ret
+.jp_ok:
+
+    ; Test JNP: Odd parity (odd number of 1 bits)
+    mov al, 0x07        ; 0000 0111 - three 1 bits (odd)
+    or al, al           ; Set flags
+    jp .fail            ; Should NOT have even parity
+    jnp .jnp_ok         ; Should jump
+    jmp .fail
+.jnp_ok:
+
+    ; Test JP: Zero has even parity
+    mov al, 0x00        ; 0000 0000 - zero 1 bits (even)
+    or al, al
+    jnp .fail
+    jp .jp_ok2
+    jmp .fail
+.jp_ok2:
+
+    ; Test JNP: All bits set (8 bits) - even parity
+    mov al, 0xFF        ; 1111 1111 - eight 1 bits (even)
+    or al, al
+    jnp .fail           ; Should have even parity
+    jp .jp_ok3
+    jmp .fail
+.jp_ok3:
+
+    ; Test JNP: Single bit - odd parity
+    mov al, 0x01        ; 0000 0001 - one 1 bit (odd)
+    or al, al
+    jp .fail
+    jnp .jnp_ok2
+    jmp .fail
+.jnp_ok2:
+
+    call print_pass
+    ret
+
+;=============================================================================
+; Test: LDS/LES (Load Pointer to DS/ES)
+;=============================================================================
+test_lds_les:
+    mov si, test_lds_les_name
+    call print_test_name
+
+    ; Save original segment registers
+    push ds
+    push es
+
+    ; Set up a far pointer in memory (offset:segment)
+    mov word [far_ptr_offset], 0x1234
+    mov word [far_ptr_segment], 0x5678
+
+    ; Test LDS: Load DS:SI from memory
+    mov bx, far_ptr_offset
+    lds si, [bx]        ; Load SI and DS from [BX] and [BX+2]
+    cmp si, 0x1234      ; Check offset
+    jne .fail
+    mov ax, ds
+    cmp ax, 0x5678      ; Check segment
+    jne .fail
+
+    ; Restore DS for further testing
+    pop es              ; Get saved ES (will restore later)
+    pop ds              ; Restore DS
+    push ds             ; Save DS again
+    push es             ; Save ES again
+
+    ; Set up another far pointer
+    mov word [far_ptr_offset], 0xABCD
+    mov word [far_ptr_segment], 0xEF01
+
+    ; Test LES: Load ES:DI from memory
+    mov bx, far_ptr_offset
+    les di, [bx]        ; Load DI and ES from [BX] and [BX+2]
+    cmp di, 0xABCD      ; Check offset
+    jne .fail
+    mov ax, es
+    cmp ax, 0xEF01      ; Check segment
+    jne .fail
+
+    ; Restore segment registers
+    pop es
+    pop ds
+
+    call print_pass
+    ret
+.fail:
+    pop es
+    pop ds
+    mov si, msg_lds_les_failed
+    call print_fail
+    ret
+
+;=============================================================================
+; Test: RET with immediate (stack cleanup)
+;=============================================================================
+test_ret_imm:
+    mov si, test_ret_imm_name
+    call print_test_name
+
+    ; Save original SP
+    mov word [saved_sp], sp
+
+    ; Test 1: RET with 6-byte cleanup
+    mov bp, sp
+    mov ax, 0x1111
+    push ax
+    mov ax, 0x2222
+    push ax
+    mov ax, 0x3333
+    push ax
+    call .subroutine    ; Should clean up 6 bytes
+    cmp sp, bp          ; SP should be restored
+    jne .fail_cleanup
+
+    ; Test 2: RET with 4-byte cleanup
+    mov bp, sp
+    mov ax, 0xAAAA
+    push ax
+    mov ax, 0xBBBB
+    push ax
+    call .subroutine2   ; Should clean up 4 bytes
+    cmp sp, bp          ; SP should be restored
+    jne .fail_cleanup
+
+    call print_pass
+    ret
+
+.subroutine:
+    ; This subroutine cleans up 6 bytes from stack on return
+    ret 6               ; Pop return address and add 6 to SP
+
+.subroutine2:
+    ; This subroutine cleans up 4 bytes from stack on return
+    ret 4               ; Pop return address and add 4 to SP
+
+.fail_cleanup:
+    ; Restore SP to saved value before failing
+    mov sp, [saved_sp]
+    mov si, msg_ret_imm_failed
+    call print_fail
+    ret
+
+;=============================================================================
 ; Helper: Print test name
 ;=============================================================================
 print_test_name:
@@ -1271,6 +1657,13 @@ test_imul_name: db 'IMUL', 0
 test_idiv_name: db 'IDIV', 0
 test_rcl_rcr_name: db 'RCL/RCR', 0
 test_loopz_loopnz_name: db 'LOOPZ/LOOPNZ', 0
+test_daa_das_name: db 'DAA/DAS', 0
+test_aaa_aas_name: db 'AAA/AAS', 0
+test_aam_aad_name: db 'AAM/AAD', 0
+test_jo_jno_name: db 'JO/JNO', 0
+test_jp_jnp_name: db 'JP/JNP', 0
+test_lds_les_name: db 'LDS/LES', 0
+test_ret_imm_name: db 'RET imm', 0
 
 msg_pass: db 'PASS', 13, 10, 0
 msg_fail: db 'FAIL - ', 0
@@ -1304,6 +1697,13 @@ msg_imul_failed: db 'signed multiply incorrect', 0
 msg_idiv_failed: db 'signed divide incorrect', 0
 msg_rcl_rcr_failed: db 'rotate through carry incorrect', 0
 msg_loopz_loopnz_failed: db 'loop with zero flag incorrect', 0
+msg_daa_das_failed: db 'BCD decimal adjust incorrect', 0
+msg_aaa_aas_failed: db 'ASCII adjust incorrect', 0
+msg_aam_aad_failed: db 'ASCII multiply/divide adjust incorrect', 0
+msg_jo_jno_failed: db 'overflow flag jump incorrect', 0
+msg_jp_jnp_failed: db 'parity flag jump incorrect', 0
+msg_lds_les_failed: db 'load far pointer incorrect', 0
+msg_ret_imm_failed: db 'return with immediate incorrect', 0
 
 msg_summary: db '--- Summary ---', 13, 10, 0
 msg_passed: db ' passed, ', 0
@@ -1317,3 +1717,6 @@ section .bss
 pass_count: resw 1
 fail_count: resw 1
 test_buffer: resb 10
+far_ptr_offset: resw 1
+far_ptr_segment: resw 1
+saved_sp: resw 1

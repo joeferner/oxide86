@@ -82,7 +82,7 @@ Simple "Hello World" test program for verifying program loading functionality. U
 ## Opcode Test
 
 ### opcode-test/op8086.asm
-Comprehensive test suite for validating CPU instruction implementation. Tests 29 different instructions with multiple test cases each, reporting results to COM1 serial logger.
+Comprehensive test suite for validating CPU instruction implementation. Tests 36 different instruction categories with multiple test cases each, reporting results to COM1 serial logger.
 
 **Running with serial logger:**
 ```bash
@@ -125,9 +125,16 @@ cargo run -p emu86-native-gui -- test-programs/opcode-test/op8086.com --com1-dev
 [COM1] IDIV: PASS
 [COM1] RCL/RCR: PASS
 [COM1] LOOPZ/LOOPNZ: PASS
+[COM1] DAA/DAS: PASS
+[COM1] AAA/AAS: PASS
+[COM1] AAM/AAD: PASS
+[COM1] JO/JNO: PASS
+[COM1] JP/JNP: PASS
+[COM1] LDS/LES: PASS
+[COM1] RET imm: PASS
 [COM1]
 [COM1] --- Summary ---
-[COM1] 29 passed, 0 failed
+[COM1] 36 passed, 0 failed
 ```
 
 **Tested Instructions:**
@@ -178,8 +185,23 @@ cargo run -p emu86-native-gui -- test-programs/opcode-test/op8086.com --com1-dev
 - **LOOPZ/LOOPE**: Loop while zero flag set
 - **LOOPNZ/LOOPNE**: Loop while zero flag clear
 
+*BCD Arithmetic:*
+- **DAA/DAS**: Decimal adjust for addition/subtraction (packed BCD)
+- **AAA/AAS**: ASCII adjust for addition/subtraction (unpacked BCD)
+- **AAM/AAD**: ASCII adjust for multiply/divide (base-10 conversion)
+
+*Conditional Jumps:*
+- **JO/JNO**: Jump on overflow/no overflow flag
+- **JP/JNP**: Jump on parity/no parity (even/odd bit count)
+
+*Segment Operations:*
+- **LDS/LES**: Load far pointer to DS:SI or ES:DI from memory
+
+*Advanced Stack:*
+- **RET imm**: Return with immediate stack cleanup (stdcall convention)
+
 **Technical Details:**
-Each test includes multiple assertions checking both result values and CPU flags. Tests validate edge cases like carry propagation in multi-word arithmetic, sign extension in signed operations, and proper flag behavior in conditional loops. Failed tests print specific error messages (e.g., "carry/borrow propagation incorrect", "signed multiply incorrect"). The test framework validates all critical 8086 instructions needed for real-world programs including MS-DOS applications and games.
+Each test includes multiple assertions checking both result values and CPU flags. Tests validate edge cases like carry propagation in multi-word arithmetic, sign extension in signed operations, proper flag behavior in conditional loops, BCD/ASCII decimal arithmetic, overflow detection, parity calculation, far pointer loading, and stack cleanup on return. Failed tests print specific error messages (e.g., "carry/borrow propagation incorrect", "signed multiply incorrect", "BCD decimal adjust incorrect"). The test framework validates all critical 8086 instructions needed for real-world programs including MS-DOS applications, games, and commercial software requiring BCD arithmetic or stdcall conventions.
 
 ## Serial
 
