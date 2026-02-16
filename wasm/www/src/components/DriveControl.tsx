@@ -1,11 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useSignal, useSignalEffect } from '@preact/signals-react';
 import { Group, Button, FileButton, Text, ActionIcon, Tooltip } from '@mantine/core';
-import { Emu86Computer } from '../../pkg/emu86_wasm';
+import { computer, status } from '../emulatorState';
 import styles from './ControlGroup.module.scss';
 
 interface DriveControlProps {
-    computer: Emu86Computer | null;
-    onStatusUpdate: (message: string) => void;
     onManageDrive: (driveNumber: number) => void;
     floppyALabel?: string | null;
     floppyBLabel?: string | null;
@@ -24,66 +22,64 @@ async function loadFile(file: File): Promise<Uint8Array> {
 }
 
 export function DriveControl({
-    computer,
-    onStatusUpdate,
     onManageDrive,
     floppyALabel,
     floppyBLabel,
     onFloppyEjected,
 }: DriveControlProps): React.ReactElement | null {
-    const [floppyAFile, setFloppyAFile] = useState<File | null>(null);
-    const [floppyBFile, setFloppyBFile] = useState<File | null>(null);
-    const [hddFile, setHddFile] = useState<File | null>(null);
+    const floppyAFile = useSignal<File | null>(null);
+    const floppyBFile = useSignal<File | null>(null);
+    const hddFile = useSignal<File | null>(null);
 
     // Re-mount previously loaded drives whenever the computer instance is replaced
-    useEffect(() => {
-        if (!computer) {
+    useSignalEffect(() => {
+        const comp = computer.value;
+        if (!comp) {
             return;
         }
+
         const remount = async (): Promise<void> => {
-            if (floppyAFile) {
+            if (floppyAFile.value) {
                 try {
-                    computer.load_floppy(0, await loadFile(floppyAFile));
+                    comp.load_floppy(0, await loadFile(floppyAFile.value));
                 } catch {
-                    setFloppyAFile(null);
+                    floppyAFile.value = null;
                 }
             }
-            if (floppyBFile) {
+            if (floppyBFile.value) {
                 try {
-                    computer.load_floppy(1, await loadFile(floppyBFile));
+                    comp.load_floppy(1, await loadFile(floppyBFile.value));
                 } catch {
-                    setFloppyBFile(null);
+                    floppyBFile.value = null;
                 }
             }
-            if (hddFile) {
+            if (hddFile.value) {
                 try {
-                    computer.add_hard_drive(await loadFile(hddFile));
+                    comp.add_hard_drive(await loadFile(hddFile.value));
                 } catch {
-                    setHddFile(null);
+                    hddFile.value = null;
                 }
             }
         };
         void remount();
-        // Only re-run when the computer instance itself changes, not when file state changes
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [computer]);
+    });
 
     const handleDownloadDrive = (driveType: 'floppy' | 'hdd', driveNumber: number): void => {
-        if (!computer) {
+        const comp = computer.value;
+        if (!comp) {
             return;
         }
 
         try {
             const data =
                 driveType === 'floppy'
-                    ? computer.get_floppy_data(driveNumber)
-                    : computer.get_hard_drive_data(driveNumber - 0x80);
+                    ? comp.get_floppy_data(driveNumber)
+                    : comp.get_hard_drive_data(driveNumber - 0x80);
 
             if (!data) {
                 throw new Error('No data returned');
             }
 
-            // Create a new Uint8Array to ensure proper ArrayBuffer type
             const arrayData = new Uint8Array(data);
             const blob = new Blob([arrayData], { type: 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
@@ -96,9 +92,9 @@ export function DriveControl({
             a.download = `drive_${driveLetter}.img`;
             a.click();
             URL.revokeObjectURL(url);
-            onStatusUpdate(`Downloaded drive ${driveLetter}:`);
+            status.value = `Downloaded drive ${driveLetter}:`;
         } catch (e) {
-            onStatusUpdate(`Error downloading disk: ${e}`);
+            status.value = `Error downloading disk: ${e}`;
             console.error(e);
         }
     };
@@ -107,28 +103,27 @@ export function DriveControl({
         if (!file) {
             return;
         }
-
-        setFloppyAFile(file);
+        floppyAFile.value = file;
         try {
-            onStatusUpdate('Loading floppy A...');
+            status.value = 'Loading floppy A...';
             const data = await loadFile(file);
-            computer?.load_floppy(0, data);
-            onStatusUpdate(`Loaded floppy A: ${file.name} (${data.length} bytes)`);
+            computer.value?.load_floppy(0, data);
+            status.value = `Loaded floppy A: ${file.name} (${data.length} bytes)`;
         } catch (e) {
-            onStatusUpdate(`Error loading floppy A: ${e}`);
+            status.value = `Error loading floppy A: ${e}`;
             console.error(e);
-            setFloppyAFile(null);
+            floppyAFile.value = null;
         }
     };
 
     const handleEjectFloppyA = (): void => {
         try {
-            computer?.eject_floppy(0);
-            setFloppyAFile(null);
+            computer.value?.eject_floppy(0);
+            floppyAFile.value = null;
             onFloppyEjected?.(0);
-            onStatusUpdate('Floppy A ejected');
+            status.value = 'Floppy A ejected';
         } catch (e) {
-            onStatusUpdate(`Error ejecting floppy A: ${e}`);
+            status.value = `Error ejecting floppy A: ${e}`;
             console.error(e);
         }
     };
@@ -137,28 +132,27 @@ export function DriveControl({
         if (!file) {
             return;
         }
-
-        setFloppyBFile(file);
+        floppyBFile.value = file;
         try {
-            onStatusUpdate('Loading floppy B...');
+            status.value = 'Loading floppy B...';
             const data = await loadFile(file);
-            computer?.load_floppy(1, data);
-            onStatusUpdate(`Loaded floppy B: ${file.name} (${data.length} bytes)`);
+            computer.value?.load_floppy(1, data);
+            status.value = `Loaded floppy B: ${file.name} (${data.length} bytes)`;
         } catch (e) {
-            onStatusUpdate(`Error loading floppy B: ${e}`);
+            status.value = `Error loading floppy B: ${e}`;
             console.error(e);
-            setFloppyBFile(null);
+            floppyBFile.value = null;
         }
     };
 
     const handleEjectFloppyB = (): void => {
         try {
-            computer?.eject_floppy(1);
-            setFloppyBFile(null);
+            computer.value?.eject_floppy(1);
+            floppyBFile.value = null;
             onFloppyEjected?.(1);
-            onStatusUpdate('Floppy B ejected');
+            status.value = 'Floppy B ejected';
         } catch (e) {
-            onStatusUpdate(`Error ejecting floppy B: ${e}`);
+            status.value = `Error ejecting floppy B: ${e}`;
             console.error(e);
         }
     };
@@ -167,21 +161,20 @@ export function DriveControl({
         if (!file) {
             return;
         }
-
-        setHddFile(file);
+        hddFile.value = file;
         try {
-            onStatusUpdate('Loading hard drive C...');
+            status.value = 'Loading hard drive C...';
             const data = await loadFile(file);
-            computer?.add_hard_drive(data);
-            onStatusUpdate(`Loaded hard drive C: ${file.name} (${data.length} bytes)`);
+            computer.value?.add_hard_drive(data);
+            status.value = `Loaded hard drive C: ${file.name} (${data.length} bytes)`;
         } catch (e) {
-            onStatusUpdate(`Error loading hard drive: ${e}`);
+            status.value = `Error loading hard drive: ${e}`;
             console.error(e);
-            setHddFile(null);
+            hddFile.value = null;
         }
     };
 
-    if (!computer) {
+    if (!computer.value) {
         return null;
     }
 
@@ -192,13 +185,13 @@ export function DriveControl({
                     Floppy Drive A:
                 </Text>
                 <Group gap="xs">
-                    {floppyAFile === null && floppyALabel ? (
+                    {floppyAFile.value === null && floppyALabel ? (
                         <Button size="compact-sm" variant="filled" color="teal" disabled>
                             {floppyALabel}
                         </Button>
                     ) : (
                         <FileButton
-                            key={floppyAFile?.name ?? 'empty-a'}
+                            key={floppyAFile.value?.name ?? 'empty-a'}
                             onChange={(v) => {
                                 void handleFloppyAChange(v);
                             }}
@@ -206,7 +199,7 @@ export function DriveControl({
                         >
                             {(props) => (
                                 <Button {...props} size="compact-sm" variant="default">
-                                    {floppyAFile ? floppyAFile.name : 'Choose File'}
+                                    {floppyAFile.value ? floppyAFile.value.name : 'Choose File'}
                                 </Button>
                             )}
                         </FileButton>
@@ -216,7 +209,7 @@ export function DriveControl({
                             onClick={handleEjectFloppyA}
                             size="md"
                             color="red"
-                            disabled={floppyAFile === null && !floppyALabel}
+                            disabled={floppyAFile.value === null && !floppyALabel}
                         >
                             <i className="bi bi-eject"></i>
                         </ActionIcon>
@@ -251,13 +244,13 @@ export function DriveControl({
                     Floppy Drive B:
                 </Text>
                 <Group gap="xs">
-                    {floppyBFile === null && floppyBLabel ? (
+                    {floppyBFile.value === null && floppyBLabel ? (
                         <Button size="compact-sm" variant="filled" color="teal" disabled>
                             {floppyBLabel}
                         </Button>
                     ) : (
                         <FileButton
-                            key={floppyBFile?.name ?? 'empty-b'}
+                            key={floppyBFile.value?.name ?? 'empty-b'}
                             onChange={(v) => {
                                 void handleFloppyBChange(v);
                             }}
@@ -265,7 +258,7 @@ export function DriveControl({
                         >
                             {(props) => (
                                 <Button {...props} size="compact-sm" variant="default">
-                                    {floppyBFile ? floppyBFile.name : 'Choose File'}
+                                    {floppyBFile.value ? floppyBFile.value.name : 'Choose File'}
                                 </Button>
                             )}
                         </FileButton>
@@ -275,7 +268,7 @@ export function DriveControl({
                             onClick={handleEjectFloppyB}
                             size="md"
                             color="red"
-                            disabled={floppyBFile === null && !floppyBLabel}
+                            disabled={floppyBFile.value === null && !floppyBLabel}
                         >
                             <i className="bi bi-eject"></i>
                         </ActionIcon>
@@ -318,7 +311,7 @@ export function DriveControl({
                     >
                         {(props) => (
                             <Button {...props} size="compact-sm" variant="default">
-                                {hddFile ? hddFile.name : 'Choose File'}
+                                {hddFile.value ? hddFile.value.name : 'Choose File'}
                             </Button>
                         )}
                     </FileButton>

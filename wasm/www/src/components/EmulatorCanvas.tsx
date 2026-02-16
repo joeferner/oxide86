@@ -1,28 +1,38 @@
 import { useRef, useEffect, forwardRef } from 'react';
-import { usePointerLock } from '../hooks/usePointerLock';
+import { useSignalEffect } from '@preact/signals-react';
 import { Emu86Computer } from '../../pkg/emu86_wasm';
+import { initPointerLock, isLocked, requestLock, exitLock } from '../pointerLockState';
+import { status } from '../emulatorState';
 import styles from './EmulatorCanvas.module.scss';
 
 interface EmulatorCanvasProps {
     computer: Emu86Computer | null;
-    onStatusUpdate: (message: string) => void;
 }
 
 export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>(function EmulatorCanvas(
-    { computer, onStatusUpdate },
+    { computer },
     forwardedRef
 ): React.ReactElement {
     const localRef = useRef<HTMLCanvasElement>(null);
     const canvasRef = (forwardedRef as React.RefObject<HTMLCanvasElement> | null) ?? localRef;
-    const { isLocked, requestLock, exitLock } = usePointerLock(canvasRef);
 
+    // Register pointer lock listeners and clean up on unmount
     useEffect(() => {
-        if (isLocked) {
-            onStatusUpdate('Mouse locked to canvas (press F12 to exit)');
-        } else {
-            onStatusUpdate('Mouse unlocked (click canvas to lock)');
+        const canvas = canvasRef.current;
+        if (!canvas) {
+            return;
         }
-    }, [isLocked, onStatusUpdate]);
+        return initPointerLock(canvas);
+    }, [canvasRef]);
+
+    // Update status when pointer lock state changes
+    useSignalEffect(() => {
+        if (isLocked.value) {
+            status.value = 'Mouse locked to canvas (press F12 to exit)';
+        } else {
+            status.value = 'Mouse unlocked (click canvas to lock)';
+        }
+    });
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -53,7 +63,7 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
         ];
 
         const handleKeyDown = (event: KeyboardEvent): void => {
-            if (event.code === 'F12' && isLocked) {
+            if (event.code === 'F12' && isLocked.value) {
                 event.preventDefault();
                 exitLock();
                 return;
@@ -64,14 +74,7 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
             }
 
             try {
-                computer.handle_key_event(
-                    event.code,
-                    event.key,
-                    event.shiftKey,
-                    event.ctrlKey,
-                    event.altKey,
-                    true // pressed = true for keydown
-                );
+                computer.handle_key_event(event.code, event.key, event.shiftKey, event.ctrlKey, event.altKey, true);
             } catch (e) {
                 console.error('Keyboard event error:', e);
             }
@@ -83,14 +86,7 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
             }
 
             try {
-                computer.handle_key_event(
-                    event.code,
-                    event.key,
-                    event.shiftKey,
-                    event.ctrlKey,
-                    event.altKey,
-                    false // pressed = false for keyup
-                );
+                computer.handle_key_event(event.code, event.key, event.shiftKey, event.ctrlKey, event.altKey, false);
             } catch (e) {
                 console.error('Keyboard event error:', e);
             }
@@ -98,7 +94,7 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
 
         const handleMouseMove = (event: MouseEvent): void => {
             try {
-                if (isLocked) {
+                if (isLocked.value) {
                     computer.handle_mouse_delta(event.movementX, event.movementY);
                 } else {
                     computer.handle_mouse_move(event.offsetX, event.offsetY);
@@ -146,7 +142,7 @@ export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>
             canvas.removeEventListener('mouseup', handleMouseUp);
             canvas.removeEventListener('click', handleClick);
         };
-    }, [computer, isLocked, requestLock, exitLock, canvasRef]);
+    }, [computer, canvasRef]);
 
     return (
         <div className={styles.container}>

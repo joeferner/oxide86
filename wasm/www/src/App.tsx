@@ -1,7 +1,23 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef } from 'react';
+import { useSignal, useSignalEffect } from '@preact/signals-react';
 import { Container, Title, Group, Paper, Stack, SegmentedControl, Button } from '@mantine/core';
-import { useEmulator } from './hooks/useEmulator';
-import { usePointerLock } from './hooks/usePointerLock';
+import {
+    computer,
+    status,
+    isRunning,
+    perfStats,
+    joystickConnected,
+    config,
+    bootDrive,
+    initEmulator,
+    startExecution,
+    stopExecution,
+    bootAndStart,
+    loadProgram,
+    reset,
+    applyConfig,
+} from './emulatorState';
+import { isLocked } from './pointerLockState';
 import { EmulatorCanvas } from './components/EmulatorCanvas';
 import { InfoBox } from './components/InfoBox';
 import { DriveControl } from './components/DriveControl';
@@ -13,75 +29,38 @@ import { RunningIndicator } from './components/RunningIndicator';
 import { PerformanceDisplay } from './components/PerformanceDisplay';
 import { DiskManager } from './components/DiskManager';
 import { ConfigDialog } from './components/ConfigDialog';
-import { loadConfig, saveConfig, EmulatorConfig } from './components/ConfigDialog.consts';
+import { saveConfig, EmulatorConfig } from './components/ConfigDialog.consts';
 
 function App(): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const { isLocked } = usePointerLock(canvasRef);
-    const [mode, setMode] = useState<'boot' | 'program'>('boot');
-    const [diskManagerOpened, setDiskManagerOpened] = useState(false);
-    const [configOpened, setConfigOpened] = useState(false);
-    const [currentConfig, setCurrentConfig] = useState<EmulatorConfig>(loadConfig);
-    const [selectedDrive, setSelectedDrive] = useState<number>(0x80);
-    const [bootDrive, setBootDrive] = useState<number>(0x80); // Default to C:
-    const [hasBooted, setHasBooted] = useState(false);
-    const [floppyLabels, setFloppyLabels] = useState<[string | null, string | null]>([null, null]);
+    const mode = useSignal<'boot' | 'program'>('boot');
+    const diskManagerOpened = useSignal(false);
+    const configOpened = useSignal(false);
+    const selectedDrive = useSignal<number>(0x80);
+    const hasBooted = useSignal(false);
+    const floppyLabels = useSignal<[string | null, string | null]>([null, null]);
 
-    const {
-        computer,
-        status,
-        setStatus,
-        isRunning,
-        performance,
-        joystickConnected,
-        startExecution,
-        stopExecution,
-        loadProgram,
-        reset,
-        bootAndStart,
-        applyConfig,
-    } = useEmulator(canvasRef, bootDrive, currentConfig);
-
-    const handleStatusUpdate = useCallback(
-        (message: string) => {
-            setStatus(message);
-        },
-        [setStatus]
-    );
-
-    const handleBootA = useCallback(() => {
-        setBootDrive(0x00);
-    }, []);
-
-    const handleBootC = useCallback(() => {
-        setBootDrive(0x80);
-    }, []);
-
-    const handleAction = useCallback(() => {
-        if (!hasBooted) {
-            // First boot/start
-            if (mode === 'boot') {
-                bootAndStart();
-            } else {
-                startExecution();
-            }
-            setHasBooted(true);
-        } else if (isRunning) {
-            // Pause
-            stopExecution();
-        } else {
-            // Resume
-            startExecution();
-        }
-    }, [hasBooted, mode, isRunning, bootAndStart, startExecution, stopExecution]);
-
-    const handleReset = useCallback(() => {
-        reset();
-        setHasBooted(false);
-    }, [reset]);
-
+    // Initialize emulator once canvas is available
     useEffect(() => {
-        if (!hasBooted) {
+        let mounted = true;
+        const init = async (): Promise<void> => {
+            if (!canvasRef.current) {
+                if (mounted) {
+                    setTimeout(() => void init(), 100);
+                }
+                return;
+            }
+            await initEmulator(canvasRef.current);
+        };
+        void init();
+        return () => {
+            mounted = false;
+        };
+    }, []);
+
+    // Warn before unload when session is active
+    useSignalEffect(() => {
+        if (!hasBooted.value) {
             return;
         }
         const handler = (e: BeforeUnloadEvent): void => {
@@ -91,52 +70,43 @@ function App(): React.ReactElement {
         return () => {
             window.removeEventListener('beforeunload', handler);
         };
-    }, [hasBooted]);
+    });
 
-    const handleLoadProgram = useCallback(
-        async (file: File, segment: number, offset: number) => {
-            try {
-                const arrayBuffer = await file.arrayBuffer();
-                const data = new Uint8Array(arrayBuffer);
-                loadProgram(data, segment, offset);
-            } catch (e) {
-                setStatus(`Failed to load file: ${e}`);
-                console.error(e);
+    const handleAction = (): void => {
+        if (!hasBooted.value) {
+            if (mode.value === 'boot') {
+                bootAndStart();
+            } else {
+                startExecution();
             }
-        },
-        [loadProgram, setStatus]
-    );
+            hasBooted.value = true;
+        } else if (isRunning.value) {
+            stopExecution();
+        } else {
+            startExecution();
+        }
+    };
 
-    const handleManageDrive = useCallback((driveNumber: number) => {
-        setSelectedDrive(driveNumber);
-        setDiskManagerOpened(true);
-    }, []);
+    const handleReset = (): void => {
+        reset();
+        hasBooted.value = false;
+    };
 
-    const handleFloppyCreated = useCallback((slot: number, label: string) => {
-        setFloppyLabels((prev) => {
-            const next: [string | null, string | null] = [prev[0], prev[1]];
-            next[slot] = label;
-            return next;
-        });
-    }, []);
+    const handleLoadProgram = async (file: File, segment: number, offset: number): Promise<void> => {
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            loadProgram(new Uint8Array(arrayBuffer), segment, offset);
+        } catch (e) {
+            status.value = `Failed to load file: ${e}`;
+            console.error(e);
+        }
+    };
 
-    const handleFloppyEjected = useCallback((slot: number) => {
-        setFloppyLabels((prev) => {
-            const next: [string | null, string | null] = [prev[0], prev[1]];
-            next[slot] = null;
-            return next;
-        });
-    }, []);
-
-    const handleApplyConfig = useCallback(
-        (config: EmulatorConfig) => {
-            setCurrentConfig(config);
-            saveConfig(config);
-            applyConfig(config);
-            setHasBooted(false);
-        },
-        [applyConfig]
-    );
+    const handleApplyConfig = (cfg: EmulatorConfig): void => {
+        saveConfig(cfg);
+        applyConfig(cfg);
+        hasBooted.value = false;
+    };
 
     return (
         <Container size="xl" p="md">
@@ -146,39 +116,47 @@ function App(): React.ReactElement {
                     variant="default"
                     leftSection="⚙"
                     onClick={() => {
-                        setConfigOpened(true);
+                        configOpened.value = true;
                     }}
                 >
                     System Configuration
                 </Button>
             </Group>
 
-            <InfoBox isPointerLocked={isLocked} />
+            <InfoBox isPointerLocked={isLocked.value} />
 
             <Group align="flex-start" gap="md" mt="md" wrap="nowrap">
                 <Stack gap="xs">
-                    <EmulatorCanvas ref={canvasRef} computer={computer} onStatusUpdate={handleStatusUpdate} />
+                    <EmulatorCanvas ref={canvasRef} computer={computer.value} />
                     <Group gap="md" grow>
-                        <RunningIndicator isRunning={isRunning} />
-                        <PerformanceDisplay performance={performance} />
+                        <RunningIndicator isRunning={isRunning.value} />
+                        <PerformanceDisplay performance={perfStats.value} />
                     </Group>
                 </Stack>
 
                 <Paper shadow="sm" p="md" style={{ flex: 1, minWidth: 300 }} withBorder>
                     <Stack gap="xs">
                         <DriveControl
-                            computer={computer}
-                            onStatusUpdate={handleStatusUpdate}
-                            onManageDrive={handleManageDrive}
-                            floppyALabel={floppyLabels[0]}
-                            floppyBLabel={floppyLabels[1]}
-                            onFloppyEjected={handleFloppyEjected}
+                            onManageDrive={(driveNumber) => {
+                                selectedDrive.value = driveNumber;
+                                diskManagerOpened.value = true;
+                            }}
+                            floppyALabel={floppyLabels.value[0]}
+                            floppyBLabel={floppyLabels.value[1]}
+                            onFloppyEjected={(slot) => {
+                                const next: [string | null, string | null] = [
+                                    floppyLabels.value[0],
+                                    floppyLabels.value[1],
+                                ];
+                                next[slot] = null;
+                                floppyLabels.value = next;
+                            }}
                         />
 
                         <SegmentedControl
-                            value={mode}
+                            value={mode.value}
                             onChange={(value) => {
-                                setMode(value as 'boot' | 'program');
+                                mode.value = value as 'boot' | 'program';
                             }}
                             data={[
                                 { label: 'Boot from Disk', value: 'boot' },
@@ -188,8 +166,16 @@ function App(): React.ReactElement {
                             mb="xs"
                         />
 
-                        {mode === 'boot' ? (
-                            <BootControl onBootA={handleBootA} onBootC={handleBootC} bootDrive={bootDrive} />
+                        {mode.value === 'boot' ? (
+                            <BootControl
+                                onBootA={() => {
+                                    bootDrive.value = 0x00;
+                                }}
+                                onBootC={() => {
+                                    bootDrive.value = 0x80;
+                                }}
+                                bootDrive={bootDrive.value}
+                            />
                         ) : (
                             <ProgramControl
                                 onLoadProgram={(file, segment, offset) => {
@@ -199,38 +185,40 @@ function App(): React.ReactElement {
                         )}
 
                         <ExecutionControl
-                            mode={mode}
-                            isRunning={isRunning}
-                            hasBooted={hasBooted}
+                            mode={mode.value}
+                            isRunning={isRunning.value}
+                            hasBooted={hasBooted.value}
                             onAction={handleAction}
                             onReset={handleReset}
                         />
 
-                        <StatusDisplay status={status} />
+                        <StatusDisplay status={status.value} />
                     </Stack>
                 </Paper>
             </Group>
 
             <DiskManager
-                computer={computer}
-                opened={diskManagerOpened}
+                opened={diskManagerOpened.value}
                 onClose={() => {
-                    setDiskManagerOpened(false);
+                    diskManagerOpened.value = false;
                 }}
-                onStatusUpdate={handleStatusUpdate}
-                driveNumber={selectedDrive}
-                onFloppyCreated={handleFloppyCreated}
+                driveNumber={selectedDrive.value}
+                onFloppyCreated={(slot, label) => {
+                    const next: [string | null, string | null] = [floppyLabels.value[0], floppyLabels.value[1]];
+                    next[slot] = label;
+                    floppyLabels.value = next;
+                }}
             />
 
             <ConfigDialog
-                opened={configOpened}
+                opened={configOpened.value}
                 onClose={() => {
-                    setConfigOpened(false);
+                    configOpened.value = false;
                 }}
-                currentConfig={currentConfig}
+                currentConfig={config.value}
                 onApply={handleApplyConfig}
-                isRunning={isRunning}
-                joystickConnected={joystickConnected}
+                isRunning={isRunning.value}
+                joystickConnected={joystickConnected.value}
             />
         </Container>
     );

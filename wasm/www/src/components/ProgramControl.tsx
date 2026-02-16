@@ -1,14 +1,14 @@
+import { useSignal } from '@preact/signals-react';
 import { Group, Button, Text, FileButton, TextInput, Stack } from '@mantine/core';
-import { useState } from 'react';
 
 interface ProgramControlProps {
     onLoadProgram: (file: File, segment: number, offset: number) => void;
 }
 
 export function ProgramControl({ onLoadProgram }: ProgramControlProps): React.ReactElement {
-    const [file, setFile] = useState<File | null>(null);
-    const [segment, setSegment] = useState('0x0000');
-    const [offset, setOffset] = useState('0x0100');
+    const file = useSignal<File | null>(null);
+    const segment = useSignal('0x0000');
+    const offset = useSignal('0x0100');
 
     const parseHex = (value: string): number | null => {
         const cleaned = value.trim();
@@ -17,19 +17,19 @@ export function ProgramControl({ onLoadProgram }: ProgramControlProps): React.Re
     };
 
     const handleLoad = (): void => {
-        if (!file) {
+        if (!file.value) {
             return;
         }
 
-        const segmentValue = parseHex(segment);
-        const offsetValue = parseHex(offset);
+        const segmentValue = parseHex(segment.value);
+        const offsetValue = parseHex(offset.value);
 
         if (segmentValue === null || offsetValue === null) {
             alert('Invalid segment or offset. Use hex format (e.g., 0x0000)');
             return;
         }
 
-        onLoadProgram(file, segmentValue, offsetValue);
+        onLoadProgram(file.value, segmentValue, offsetValue);
     };
 
     return (
@@ -38,10 +38,15 @@ export function ProgramControl({ onLoadProgram }: ProgramControlProps): React.Re
                 <Text fw={500} size="sm" style={{ minWidth: 100, textAlign: 'right' }}>
                     Program File:
                 </Text>
-                <FileButton onChange={setFile} accept=".com,.bin,.exe">
+                <FileButton
+                    onChange={(f) => {
+                        file.value = f;
+                    }}
+                    accept=".com,.bin,.exe"
+                >
                     {(props) => (
                         <Button {...props} size="compact-sm" color="blue">
-                            {file ? file.name : 'Choose File'}
+                            {file.value ? file.value.name : 'Choose File'}
                         </Button>
                     )}
                 </FileButton>
@@ -53,9 +58,9 @@ export function ProgramControl({ onLoadProgram }: ProgramControlProps): React.Re
                 </Text>
                 <TextInput
                     placeholder="0x0000"
-                    value={segment}
+                    value={segment.value}
                     onChange={(e) => {
-                        setSegment(e.currentTarget.value);
+                        segment.value = e.currentTarget.value;
                     }}
                     size="xs"
                     style={{ width: 100 }}
@@ -68,9 +73,9 @@ export function ProgramControl({ onLoadProgram }: ProgramControlProps): React.Re
                 </Text>
                 <TextInput
                     placeholder="0x0100"
-                    value={offset}
+                    value={offset.value}
                     onChange={(e) => {
-                        setOffset(e.currentTarget.value);
+                        offset.value = e.currentTarget.value;
                     }}
                     size="xs"
                     style={{ width: 100 }}
@@ -78,7 +83,7 @@ export function ProgramControl({ onLoadProgram }: ProgramControlProps): React.Re
             </Group>
 
             <Group gap="xs" mt="xs">
-                <Button onClick={handleLoad} disabled={!file} color="green" size="compact-sm" style={{ flex: 1 }}>
+                <Button onClick={handleLoad} disabled={!file.value} color="green" size="compact-sm" style={{ flex: 1 }}>
                     Load Program
                 </Button>
             </Group>

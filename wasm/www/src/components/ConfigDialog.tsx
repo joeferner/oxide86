@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useSignal, useSignalEffect } from '@preact/signals-react';
 import { Modal, Stack, Select, Button, Group, Text, Alert, Grid, Checkbox, Badge } from '@mantine/core';
 import {
     CLOCK_OPTIONS,
@@ -25,44 +25,43 @@ function ConfigForm({
     isRunning,
     joystickConnected,
 }: Omit<ConfigDialogProps, 'opened'>): React.ReactElement {
-    const [cpuType, setCpuType] = useState(currentConfig.cpuType);
-    const [memoryKb, setMemoryKb] = useState(String(currentConfig.memoryKb));
-    const [clockMhz, setClockMhz] = useState(String(currentConfig.clockMhz));
-    const [videoCard, setVideoCard] = useState(currentConfig.videoCard);
-    const [com1Device, setCom1Device] = useState(currentConfig.com1Device);
-    const [com2Device, setCom2Device] = useState(currentConfig.com2Device);
-    const [joystickA, setJoystickA] = useState(currentConfig.joystickA);
-    const [joystickB, setJoystickB] = useState(currentConfig.joystickB);
-    const [physicalGamepads, setPhysicalGamepads] = useState<number>(0);
+    const cpuType = useSignal(currentConfig.cpuType);
+    const memoryKb = useSignal(String(currentConfig.memoryKb));
+    const clockMhz = useSignal(String(currentConfig.clockMhz));
+    const videoCard = useSignal(currentConfig.videoCard);
+    const com1Device = useSignal(currentConfig.com1Device);
+    const com2Device = useSignal(currentConfig.com2Device);
+    const joystickA = useSignal(currentConfig.joystickA);
+    const joystickB = useSignal(currentConfig.joystickB);
+    const physicalGamepads = useSignal<number>(0);
 
     // Poll for physical gamepads while dialog is open
-    useEffect(() => {
+    useSignalEffect(() => {
         const poll = (): void => {
-            const count = navigator.getGamepads().filter(Boolean).length;
-            setPhysicalGamepads(count);
+            physicalGamepads.value = navigator.getGamepads().filter(Boolean).length;
         };
         poll();
         const id = setInterval(poll, 500);
         return () => {
             clearInterval(id);
         };
-    }, []);
+    });
 
     const handleApply = (): void => {
         onApply({
-            cpuType,
-            memoryKb: parseInt(memoryKb, 10),
-            clockMhz: parseFloat(clockMhz),
-            videoCard,
-            com1Device,
-            com2Device,
-            joystickA,
-            joystickB,
+            cpuType: cpuType.value,
+            memoryKb: parseInt(memoryKb.value, 10),
+            clockMhz: parseFloat(clockMhz.value),
+            videoCard: videoCard.value,
+            com1Device: com1Device.value,
+            com2Device: com2Device.value,
+            joystickA: joystickA.value,
+            joystickB: joystickB.value,
         });
         onClose();
     };
 
-    const needsExtendedRam = parseInt(memoryKb, 10) > 640;
+    const needsExtendedRam = parseInt(memoryKb.value, 10) > 640;
 
     return (
         <Stack gap="md">
@@ -80,10 +79,10 @@ function ConfigForm({
                         </Text>
                         <Select
                             data={CPU_OPTIONS}
-                            value={cpuType}
+                            value={cpuType.value}
                             onChange={(v) => {
                                 if (v) {
-                                    setCpuType(v);
+                                    cpuType.value = v;
                                 }
                             }}
                         />
@@ -97,10 +96,10 @@ function ConfigForm({
                         </Text>
                         <Select
                             data={VIDEO_CARD_OPTIONS}
-                            value={videoCard}
+                            value={videoCard.value}
                             onChange={(v) => {
                                 if (v) {
-                                    setVideoCard(v);
+                                    videoCard.value = v;
                                 }
                             }}
                         />
@@ -114,14 +113,14 @@ function ConfigForm({
                         </Text>
                         <Select
                             data={MEMORY_OPTIONS}
-                            value={memoryKb}
+                            value={memoryKb.value}
                             onChange={(v) => {
                                 if (v) {
-                                    setMemoryKb(v);
+                                    memoryKb.value = v;
                                 }
                             }}
                         />
-                        {needsExtendedRam && cpuType === '8086' && (
+                        {needsExtendedRam && cpuType.value === '8086' && (
                             <Text size="xs" c="red" mt={2}>
                                 Extended memory requires 286 or later CPU
                             </Text>
@@ -136,10 +135,10 @@ function ConfigForm({
                         </Text>
                         <Select
                             data={COM_PORT_OPTIONS}
-                            value={com1Device}
+                            value={com1Device.value}
                             onChange={(v) => {
                                 if (v) {
-                                    setCom1Device(v);
+                                    com1Device.value = v;
                                 }
                             }}
                         />
@@ -153,10 +152,10 @@ function ConfigForm({
                         </Text>
                         <Select
                             data={CLOCK_OPTIONS}
-                            value={clockMhz}
+                            value={clockMhz.value}
                             onChange={(v) => {
                                 if (v) {
-                                    setClockMhz(v);
+                                    clockMhz.value = v;
                                 }
                             }}
                         />
@@ -170,10 +169,10 @@ function ConfigForm({
                         </Text>
                         <Select
                             data={COM_PORT_OPTIONS}
-                            value={com2Device}
+                            value={com2Device.value}
                             onChange={(v) => {
                                 if (v) {
-                                    setCom2Device(v);
+                                    com2Device.value = v;
                                 }
                             }}
                         />
@@ -186,9 +185,9 @@ function ConfigForm({
                             <Text size="sm" fw={500}>
                                 Joystick
                             </Text>
-                            <Badge size="xs" color={physicalGamepads > 0 ? 'green' : 'gray'} variant="light">
-                                {physicalGamepads > 0
-                                    ? `${physicalGamepads} gamepad${physicalGamepads > 1 ? 's' : ''} detected`
+                            <Badge size="xs" color={physicalGamepads.value > 0 ? 'green' : 'gray'} variant="light">
+                                {physicalGamepads.value > 0
+                                    ? `${physicalGamepads.value} gamepad${physicalGamepads.value > 1 ? 's' : ''} detected`
                                     : 'no gamepad'}
                             </Badge>
                         </Group>
@@ -196,12 +195,12 @@ function ConfigForm({
                             <Group gap="xs">
                                 <Checkbox
                                     label="Joystick A (gamepad 1)"
-                                    checked={joystickA}
+                                    checked={joystickA.value}
                                     onChange={(e) => {
-                                        setJoystickA(e.currentTarget.checked);
+                                        joystickA.value = e.currentTarget.checked;
                                     }}
                                 />
-                                {joystickA && (
+                                {joystickA.value && (
                                     <Badge size="xs" color={joystickConnected[0] ? 'green' : 'orange'} variant="dot">
                                         {joystickConnected[0] ? 'active' : 'pending reset'}
                                     </Badge>
@@ -210,12 +209,12 @@ function ConfigForm({
                             <Group gap="xs">
                                 <Checkbox
                                     label="Joystick B (gamepad 2)"
-                                    checked={joystickB}
+                                    checked={joystickB.value}
                                     onChange={(e) => {
-                                        setJoystickB(e.currentTarget.checked);
+                                        joystickB.value = e.currentTarget.checked;
                                     }}
                                 />
-                                {joystickB && (
+                                {joystickB.value && (
                                     <Badge size="xs" color={joystickConnected[1] ? 'green' : 'orange'} variant="dot">
                                         {joystickConnected[1] ? 'active' : 'pending reset'}
                                     </Badge>

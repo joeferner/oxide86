@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useSignal } from '@preact/signals-react';
 import {
     Modal,
     Table,
@@ -14,8 +14,8 @@ import {
     Select,
     TextInput,
 } from '@mantine/core';
-import { Emu86Computer } from '../../pkg/emu86_wasm';
 import { create_floppy_image, create_hdd_image } from '../../pkg/emu86_wasm';
+import { computer, status } from '../emulatorState';
 
 interface FileEntry {
     name: string;
@@ -27,10 +27,8 @@ interface FileEntry {
 }
 
 interface DiskManagerProps {
-    computer: Emu86Computer | null;
     opened: boolean;
     onClose: () => void;
-    onStatusUpdate: (message: string) => void;
     driveNumber: number;
     onFloppyCreated?: (slot: number, label: string) => void;
 }
@@ -41,21 +39,14 @@ interface DeleteConfirmation {
     name: string;
 }
 
-export function DiskManager({
-    computer,
-    opened,
-    onClose,
-    onStatusUpdate,
-    driveNumber,
-    onFloppyCreated,
-}: DiskManagerProps): React.ReactElement {
-    const [currentPath, setCurrentPath] = useState<string>('/');
-    const [files, setFiles] = useState<FileEntry[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [deleteConfirmation, setDeleteConfirmation] = useState<DeleteConfirmation | null>(null);
-    const [createDiskOpened, setCreateDiskOpened] = useState(false);
-    const [selectedSize, setSelectedSize] = useState<string | null>(null);
-    const [diskLabel, setDiskLabel] = useState('');
+export function DiskManager({ opened, onClose, driveNumber, onFloppyCreated }: DiskManagerProps): React.ReactElement {
+    const currentPath = useSignal<string>('/');
+    const files = useSignal<FileEntry[]>([]);
+    const loading = useSignal(false);
+    const deleteConfirmation = useSignal<DeleteConfirmation | null>(null);
+    const createDiskOpened = useSignal(false);
+    const selectedSize = useSignal<string | null>(null);
+    const diskLabel = useSignal('');
 
     const isFloppy = driveNumber < 0x80;
 
@@ -76,8 +67,7 @@ export function DiskManager({
 
     const sizeOptions = isFloppy ? floppySizeOptions : hddSizeOptions;
 
-    // Get drive letter from drive number
-    const getDriveLetter = useCallback((drive: number): string => {
+    const getDriveLetter = (drive: number): string => {
         if (drive === 0) {
             return 'A';
         }
@@ -86,63 +76,53 @@ export function DiskManager({
         }
         if (drive >= 0x80) {
             return String.fromCharCode(67 + (drive - 0x80));
-        } // C, D, E, etc.
-        return '?';
-    }, []);
-
-    // Browse disk directory
-    const browseDisk = useCallback(
-        (drive: number, path: string): void => {
-            if (!computer) {
-                return;
-            }
-
-            setLoading(true);
-            try {
-                const fileList = computer.list_directory(drive, path) as unknown as FileEntry[];
-
-                // Sort files: directories first, then files, both alphabetically (case-insensitive)
-                fileList.sort((a, b) => {
-                    // Directories come before files
-                    if (a.isDirectory && !b.isDirectory) {
-                        return -1;
-                    }
-                    if (!a.isDirectory && b.isDirectory) {
-                        return 1;
-                    }
-
-                    // Sort by name (case-insensitive)
-                    return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
-                });
-
-                setFiles(fileList);
-            } catch (e) {
-                onStatusUpdate(`Error browsing ${getDriveLetter(drive)}: ${e}`);
-                setFiles([]);
-            } finally {
-                setLoading(false);
-            }
-        },
-        [computer, onStatusUpdate, getDriveLetter]
-    );
-
-    // Refresh directory listing when drive or path changes
-    useEffect(() => {
-        if (opened && computer) {
-            browseDisk(driveNumber, currentPath);
         }
-    }, [opened, computer, driveNumber, currentPath, browseDisk]);
+        return '?';
+    };
 
-    // Download individual file
-    const downloadFile = (drive: number, filePath: string, fileName: string): void => {
-        if (!computer) {
+    const browseDisk = (drive: number, path: string): void => {
+        const comp = computer.value;
+        if (!comp) {
             return;
         }
 
-        setLoading(true);
+        loading.value = true;
         try {
-            const data = computer.read_file_from_disk(drive, filePath);
-            // Create a new Uint8Array to ensure proper ArrayBuffer type
+            const fileList = comp.list_directory(drive, path) as unknown as FileEntry[];
+
+            fileList.sort((a, b) => {
+                if (a.isDirectory && !b.isDirectory) {
+                    return -1;
+                }
+                if (!a.isDirectory && b.isDirectory) {
+                    return 1;
+                }
+                return a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+            });
+
+            files.value = fileList;
+        } catch (e) {
+            status.value = `Error browsing ${getDriveLetter(drive)}: ${e}`;
+            files.value = [];
+        } finally {
+            loading.value = false;
+        }
+    };
+
+    // Refresh when dialog opens or drive/path changes
+    if (opened && computer.value) {
+        browseDisk(driveNumber, currentPath.value);
+    }
+
+    const downloadFile = (drive: number, filePath: string, fileName: string): void => {
+        const comp = computer.value;
+        if (!comp) {
+            return;
+        }
+
+        loading.value = true;
+        try {
+            const data = comp.read_file_from_disk(drive, filePath);
             const arrayData = new Uint8Array(data);
             const blob = new Blob([arrayData], { type: 'application/octet-stream' });
             const url = URL.createObjectURL(blob);
@@ -151,21 +131,21 @@ export function DiskManager({
             a.download = fileName;
             a.click();
             URL.revokeObjectURL(url);
-            onStatusUpdate(`Downloaded ${fileName}`);
+            status.value = `Downloaded ${fileName}`;
         } catch (e) {
-            onStatusUpdate(`Error downloading file: ${e}`);
+            status.value = `Error downloading file: ${e}`;
         } finally {
-            setLoading(false);
+            loading.value = false;
         }
     };
 
-    // Upload files to disk
     const uploadFiles = async (selectedFiles: File[]): Promise<void> => {
-        if (!computer || selectedFiles.length === 0) {
+        const comp = computer.value;
+        if (!comp || selectedFiles.length === 0) {
             return;
         }
 
-        setLoading(true);
+        loading.value = true;
         let uploaded = 0;
         const errors: string[] = [];
 
@@ -173,8 +153,8 @@ export function DiskManager({
             try {
                 const arrayBuffer = await file.arrayBuffer();
                 const data = new Uint8Array(arrayBuffer);
-                const targetPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
-                computer.write_file_to_disk(driveNumber, targetPath, data);
+                const targetPath = currentPath.value === '/' ? `/${file.name}` : `${currentPath.value}/${file.name}`;
+                comp.write_file_to_disk(driveNumber, targetPath, data);
                 uploaded++;
             } catch (e) {
                 errors.push(`${file.name}: ${e}`);
@@ -182,72 +162,67 @@ export function DiskManager({
         }
 
         if (errors.length > 0) {
-            onStatusUpdate(`Uploaded ${uploaded}/${selectedFiles.length} files. Errors: ${errors.join(', ')}`);
+            status.value = `Uploaded ${uploaded}/${selectedFiles.length} files. Errors: ${errors.join(', ')}`;
         } else {
-            onStatusUpdate(
-                `Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''} to ${getDriveLetter(driveNumber)}:${currentPath}`
-            );
+            status.value = `Uploaded ${uploaded} file${uploaded !== 1 ? 's' : ''} to ${getDriveLetter(driveNumber)}:${currentPath.value}`;
         }
-        browseDisk(driveNumber, currentPath);
-        setLoading(false);
+        browseDisk(driveNumber, currentPath.value);
+        loading.value = false;
     };
 
-    // Show delete confirmation dialog
     const deleteItem = (drive: number, path: string, name: string): void => {
-        setDeleteConfirmation({ drive, path, name });
+        deleteConfirmation.value = { drive, path, name };
     };
 
-    // Perform actual deletion after confirmation
     const confirmDelete = (): void => {
-        if (!computer || !deleteConfirmation) {
+        const comp = computer.value;
+        const conf = deleteConfirmation.value;
+        if (!comp || !conf) {
             return;
         }
 
-        const { drive, path, name } = deleteConfirmation;
-        setDeleteConfirmation(null);
-        setLoading(true);
+        const { drive, path, name } = conf;
+        deleteConfirmation.value = null;
+        loading.value = true;
 
         try {
-            computer.delete_from_disk(drive, path);
-            onStatusUpdate(`Deleted ${name}`);
-            browseDisk(driveNumber, currentPath); // Refresh listing
+            comp.delete_from_disk(drive, path);
+            status.value = `Deleted ${name}`;
+            browseDisk(driveNumber, currentPath.value);
         } catch (e) {
-            onStatusUpdate(`Error deleting: ${e}`);
+            status.value = `Error deleting: ${e}`;
         } finally {
-            setLoading(false);
+            loading.value = false;
         }
     };
 
-    // Navigate to directory
     const navigateToDirectory = (dirName: string): void => {
         if (dirName === '..') {
-            // Go up one level
-            const parts = currentPath.split('/').filter((p) => p);
+            const parts = currentPath.value.split('/').filter((p) => p);
             parts.pop();
-            setCurrentPath(parts.length === 0 ? '/' : '/' + parts.join('/'));
+            currentPath.value = parts.length === 0 ? '/' : '/' + parts.join('/');
         } else {
-            // Go into subdirectory
-            setCurrentPath(currentPath === '/' ? `/${dirName}` : `${currentPath}/${dirName}`);
+            currentPath.value = currentPath.value === '/' ? `/${dirName}` : `${currentPath.value}/${dirName}`;
         }
     };
 
-    // Create a new blank formatted disk
     const createNewDisk = (): void => {
-        if (!selectedSize || !computer) {
+        const comp = computer.value;
+        if (!selectedSize.value || !comp) {
             return;
         }
 
-        setLoading(true);
+        loading.value = true;
         try {
-            const label = diskLabel.trim() || undefined;
-            const size = parseInt(selectedSize);
+            const label = diskLabel.value.trim() || undefined;
+            const size = parseInt(selectedSize.value);
 
             if (isFloppy) {
                 const data = new Uint8Array(create_floppy_image(size, label));
-                computer.load_floppy(driveNumber, data);
-                onStatusUpdate(`Created ${selectedSize}KB floppy on ${getDriveLetter(driveNumber)}:`);
-                onFloppyCreated?.(driveNumber, label ?? `New Disk (${selectedSize}KB)`);
-                setCurrentPath('/');
+                comp.load_floppy(driveNumber, data);
+                status.value = `Created ${selectedSize.value}KB floppy on ${getDriveLetter(driveNumber)}:`;
+                onFloppyCreated?.(driveNumber, label ?? `New Disk (${selectedSize.value}KB)`);
+                currentPath.value = '/';
                 browseDisk(driveNumber, '/');
             } else {
                 const data = new Uint8Array(create_hdd_image(size, label));
@@ -258,20 +233,19 @@ export function DiskManager({
                 a.download = `drive_${getDriveLetter(driveNumber)}_new.img`;
                 a.click();
                 URL.revokeObjectURL(url);
-                onStatusUpdate(`Created and downloaded ${selectedSize}MB HDD image`);
+                status.value = `Created and downloaded ${selectedSize.value}MB HDD image`;
             }
 
-            setCreateDiskOpened(false);
-            setSelectedSize(null);
-            setDiskLabel('');
+            createDiskOpened.value = false;
+            selectedSize.value = null;
+            diskLabel.value = '';
         } catch (e) {
-            onStatusUpdate(`Error creating disk: ${e}`);
+            status.value = `Error creating disk: ${e}`;
         } finally {
-            setLoading(false);
+            loading.value = false;
         }
     };
 
-    // Format file size
     const formatSize = (bytes: number): string => {
         if (bytes < 1024) {
             return `${bytes} B`;
@@ -282,13 +256,12 @@ export function DiskManager({
         return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
     };
 
-    // Build breadcrumbs for current path
-    const pathParts = currentPath.split('/').filter((p) => p);
+    const pathParts = currentPath.value.split('/').filter((p) => p);
     const breadcrumbs = [
         <Anchor
             key="root"
             onClick={() => {
-                setCurrentPath('/');
+                currentPath.value = '/';
             }}
             size="sm"
         >
@@ -298,8 +271,7 @@ export function DiskManager({
             <Anchor
                 key={`path-${pathParts.slice(0, idx + 1).join('/')}`}
                 onClick={() => {
-                    const newPath = '/' + pathParts.slice(0, idx + 1).join('/');
-                    setCurrentPath(newPath);
+                    currentPath.value = '/' + pathParts.slice(0, idx + 1).join('/');
                 }}
                 size="sm"
             >
@@ -319,34 +291,34 @@ export function DiskManager({
                 <Stack gap="md">
                     <Group justify="flex-end">
                         <FileButton
-                            onChange={(files) => {
-                                void uploadFiles(files);
+                            onChange={(uploadedFiles) => {
+                                void uploadFiles(uploadedFiles);
                             }}
                             accept="*/*"
                             multiple
                         >
                             {(props) => (
-                                <Button {...props} size="sm" disabled={loading} color="blue">
+                                <Button {...props} size="sm" disabled={loading.value} color="blue">
                                     Upload File
                                 </Button>
                             )}
                         </FileButton>
                         <Button
                             onClick={() => {
-                                setCreateDiskOpened(true);
+                                createDiskOpened.value = true;
                             }}
                             size="sm"
-                            disabled={loading}
+                            disabled={loading.value}
                             color="green"
                         >
                             Create New Disk
                         </Button>
                         <Button
                             onClick={() => {
-                                browseDisk(driveNumber, currentPath);
+                                browseDisk(driveNumber, currentPath.value);
                             }}
                             size="sm"
-                            disabled={loading}
+                            disabled={loading.value}
                             color="blue"
                         >
                             Refresh
@@ -365,7 +337,7 @@ export function DiskManager({
                             </Table.Tr>
                         </Table.Thead>
                         <Table.Tbody>
-                            {currentPath !== '/' && (
+                            {currentPath.value !== '/' && (
                                 <Table.Tr>
                                     <Table.Td>
                                         <Anchor
@@ -381,8 +353,9 @@ export function DiskManager({
                                     <Table.Td>-</Table.Td>
                                 </Table.Tr>
                             )}
-                            {files.map((file) => {
-                                const fullPath = currentPath === '/' ? `/${file.name}` : `${currentPath}/${file.name}`;
+                            {files.value.map((file) => {
+                                const fullPath =
+                                    currentPath.value === '/' ? `/${file.name}` : `${currentPath.value}/${file.name}`;
                                 return (
                                     <Table.Tr key={file.name}>
                                         <Table.Td>
@@ -411,7 +384,7 @@ export function DiskManager({
                                                             onClick={() => {
                                                                 downloadFile(driveNumber, fullPath, file.name);
                                                             }}
-                                                            disabled={loading}
+                                                            disabled={loading.value}
                                                         >
                                                             <i className="bi bi-download"></i>
                                                         </ActionIcon>
@@ -425,7 +398,7 @@ export function DiskManager({
                                                         onClick={() => {
                                                             deleteItem(driveNumber, fullPath, file.name);
                                                         }}
-                                                        disabled={loading}
+                                                        disabled={loading.value}
                                                     >
                                                         <i className="bi bi-trash"></i>
                                                     </ActionIcon>
@@ -438,29 +411,29 @@ export function DiskManager({
                         </Table.Tbody>
                     </Table>
 
-                    {files.length === 0 && !loading && (
+                    {files.value.length === 0 && !loading.value && (
                         <div style={{ textAlign: 'center', padding: '2rem', color: '#666' }}>No files found</div>
                     )}
                 </Stack>
             </Modal>
 
             <Modal
-                opened={deleteConfirmation !== null}
+                opened={deleteConfirmation.value !== null}
                 onClose={() => {
-                    setDeleteConfirmation(null);
+                    deleteConfirmation.value = null;
                 }}
                 title="Confirm Deletion"
                 size="sm"
             >
                 <Stack gap="md">
                     <Text>
-                        Are you sure you want to delete <strong>{deleteConfirmation?.name}</strong>?
+                        Are you sure you want to delete <strong>{deleteConfirmation.value?.name}</strong>?
                     </Text>
                     <Group justify="flex-end">
                         <Button
                             variant="default"
                             onClick={() => {
-                                setDeleteConfirmation(null);
+                                deleteConfirmation.value = null;
                             }}
                         >
                             Cancel
@@ -473,11 +446,11 @@ export function DiskManager({
             </Modal>
 
             <Modal
-                opened={createDiskOpened}
+                opened={createDiskOpened.value}
                 onClose={() => {
-                    setCreateDiskOpened(false);
-                    setSelectedSize(null);
-                    setDiskLabel('');
+                    createDiskOpened.value = false;
+                    selectedSize.value = null;
+                    diskLabel.value = '';
                 }}
                 title={isFloppy ? 'Create New Floppy Disk' : 'Create New Hard Drive Image'}
                 size="sm"
@@ -487,15 +460,17 @@ export function DiskManager({
                         label="Disk Size"
                         placeholder="Select size"
                         data={sizeOptions}
-                        value={selectedSize}
-                        onChange={setSelectedSize}
+                        value={selectedSize.value}
+                        onChange={(v) => {
+                            selectedSize.value = v;
+                        }}
                     />
                     <TextInput
                         label="Volume Label (optional, max 11 chars)"
                         maxLength={11}
-                        value={diskLabel}
+                        value={diskLabel.value}
                         onChange={(e) => {
-                            setDiskLabel(e.currentTarget.value.toUpperCase());
+                            diskLabel.value = e.currentTarget.value.toUpperCase();
                         }}
                     />
                     {!isFloppy && (
@@ -507,14 +482,14 @@ export function DiskManager({
                         <Button
                             variant="default"
                             onClick={() => {
-                                setCreateDiskOpened(false);
-                                setSelectedSize(null);
-                                setDiskLabel('');
+                                createDiskOpened.value = false;
+                                selectedSize.value = null;
+                                diskLabel.value = '';
                             }}
                         >
                             Cancel
                         </Button>
-                        <Button color="green" disabled={!selectedSize || loading} onClick={createNewDisk}>
+                        <Button color="green" disabled={!selectedSize.value || loading.value} onClick={createNewDisk}>
                             {isFloppy ? 'Create & Load' : 'Create & Download'}
                         </Button>
                     </Group>
