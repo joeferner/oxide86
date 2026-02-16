@@ -16,6 +16,7 @@ impl Cpu {
             0x24 => self.int15_a20_gate(memory),
             0x10 => self.int15_top_view_multi_dos(),
             0x41 => self.int15_wait_external_event(),
+            0x4F => self.int15_keyboard_intercept(),
             0x86 => self.int15_wait(memory),
             0x88 => {
                 // Cap reported extended memory by both what the CPU supports and what is installed
@@ -239,6 +240,33 @@ impl Cpu {
     fn int15_eisa_not_supported(&mut self) {
         self.ax = (self.ax & 0x00FF) | 0x8600; // AH = 0x86
         self.set_flag(cpu_flag::CARRY, true);
+    }
+
+    /// INT 15h AH=4Fh - Keyboard Intercept (IBM AT BIOS extension)
+    ///
+    /// Called by BIOS INT 09h handler before adding a key to the keyboard buffer.
+    /// Allows TSRs and multitaskers to intercept keystrokes before BIOS buffers them.
+    ///
+    /// Input:
+    ///   AH = 4Fh
+    ///   AL = keyboard scan code
+    ///   CF = 1 (set by INT 09h before calling)
+    ///
+    /// Output (default BIOS behavior):
+    ///   AL = scan code (unchanged or modified)
+    ///   CF = 0 → BIOS should buffer the key normally
+    ///   CF = 1 → key has been handled; BIOS should NOT buffer it
+    ///
+    /// Note: This default BIOS implementation returns CF=0 (always buffer).
+    /// Programs/TSRs that replace INT 15h can intercept keystrokes by returning CF=1.
+    fn int15_keyboard_intercept(&mut self) {
+        // Default BIOS behavior: proceed to buffer the key (CF=0)
+        // AL (scan code) is unchanged
+        self.set_flag(cpu_flag::CARRY, false);
+        log::debug!(
+            "INT 15h AH=4Fh: keyboard intercept scan=0x{:02X}, CF=0 (proceed to buffer)",
+            self.ax as u8
+        );
     }
 
     /// INT 15h AH=C1h - Get Extended BIOS Data Area (EBDA) Segment Address

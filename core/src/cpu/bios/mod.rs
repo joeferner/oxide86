@@ -214,6 +214,24 @@ pub struct Bios {
     pub pending_ascii_code: u8,
     /// Flag: true if we pre-buffered this key for a custom handler (to avoid duplicates when chaining)
     pub key_was_prebuffered: bool,
+    /// Pending INT 15h AH=4Fh keyboard intercept request.
+    /// Set by BIOS INT 09h when a custom INT 15h handler needs to be invoked before
+    /// deciding whether to buffer the key. The F000 return path in computer.rs reads
+    /// this to chain INT 15h before returning to the caller.
+    pub pending_int15_4f: Option<PendingKeyboardIntercept>,
+}
+
+/// Data saved by BIOS INT 09h when it needs to call INT 15h AH=4Fh (keyboard intercept)
+/// before deciding whether to add a key to the BIOS keyboard buffer.
+/// The F000 return path in computer.rs uses this to chain INT 15h asynchronously.
+pub struct PendingKeyboardIntercept {
+    /// Keyboard scan code to pass in AL to INT 15h AH=4Fh
+    pub scan_code: u8,
+    /// ASCII code to add to BDA keyboard buffer if INT 15h returns CF=0
+    pub ascii_code: u8,
+    /// True if fire_keyboard_irq already pre-buffered this key.
+    /// When true, the F000:0xFF continuation skips re-buffering in BDA.
+    pub already_buffered: bool,
 }
 
 impl Bios {
@@ -232,6 +250,7 @@ impl Bios {
             pending_scan_code: 0,
             pending_ascii_code: 0,
             key_was_prebuffered: false,
+            pending_int15_4f: None,
         }
     }
 
@@ -912,10 +931,44 @@ impl Cpu {
             0x2F => self.handle_int2f(memory, io),
             0x33 => self.handle_int33(memory, io),
             0x35..=0x3F => self.handle_int35_3f(int_num),
+            // F000:0xFF continuation: called after custom INT 15h AH=4Fh returns.
+            // Checks carry flag and buffers the pending key in BDA if CF=0.
+            0xFF => self.handle_int09_post_intercept(memory, io),
             // Other BIOS interrupts can be added here
             _ => {
                 log::warn!("Unhandled BIOS interrupt: 0x{:02X}", int_num);
             }
+        }
+    }
+
+    /// INT 09h continuation after INT 15h AH=4Fh keyboard intercept.
+    /// Executed when the F000:0xFF trampoline is reached (after INT 15h's IRET).
+    /// Checks the carry flag set by the INT 15h handler and buffers the key if CF=0.
+    fn handle_int09_post_intercept(&mut self, memory: &mut Memory, io: &mut Bios) {
+        if let Some(pending) = io.pending_int15_4f.take() {
+            let carry = self.get_flag(super::cpu_flag::CARRY);
+            if carry {
+                // CF=1: INT 15h intercepted the key - do not buffer in BDA
+                log::debug!(
+                    "INT 09h post-intercept: CF=1, key (scan=0x{:02X}) handled by INT 15h, not buffering in BDA",
+                    pending.scan_code
+                );
+            } else if pending.already_buffered {
+                // CF=0 but already pre-buffered by fire_keyboard_irq
+                log::debug!(
+                    "INT 09h post-intercept: CF=0 but key (scan=0x{:02X}) already in BDA",
+                    pending.scan_code
+                );
+            } else {
+                // CF=0 and not yet buffered: add to BDA keyboard buffer
+                log::debug!(
+                    "INT 09h post-intercept: CF=0, buffering scan=0x{:02X} in BDA",
+                    pending.scan_code
+                );
+                Cpu::add_key_to_bda_buffer(memory, pending.scan_code, pending.ascii_code);
+            }
+        } else {
+            log::warn!("INT 09h post-intercept (F000:0xFF): no pending keyboard intercept data");
         }
     }
 }

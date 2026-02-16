@@ -6,11 +6,20 @@
 // 2. Translate it to ASCII and add to keyboard buffer
 // 3. Send EOI to PIC
 //
+// IBM AT BIOS behavior: Before buffering a key, calls INT 15h AH=4Fh (keyboard intercept).
+// Task managers (like FDC8) install INT 15h handlers to route keystrokes to their
+// own buffers. If INT 15h returns CF=1, the key has been handled and BIOS skips buffering.
+//
+// The INT 15h AH=4Fh call is handled asynchronously by the F000 return path in
+// computer.rs when a custom INT 15h handler is installed. This handler only does
+// the direct buffering case (used when called directly via fire_keyboard_irq or
+// execute_int_with_io).
+//
 // This emulator's default BIOS handler reads the scan code and ASCII from the BIOS
 // struct and adds them to the BIOS keyboard buffer. Programs that install custom INT 09h
 // handlers can read port 0x60 directly and handle keys themselves.
 
-use super::Cpu;
+use super::{Bios, Cpu};
 use crate::memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START, Memory};
 
 impl Cpu {
@@ -19,7 +28,11 @@ impl Cpu {
     /// This is the default BIOS handler that reads keyboard data and adds it to the buffer.
     /// Programs with custom INT 09h handlers will replace this via the IVT and handle
     /// keyboard input directly by reading port 0x60.
-    pub(super) fn handle_int09(&mut self, memory: &mut Memory, io: &mut super::Bios) {
+    ///
+    /// Note: when called via the F000 CALL FAR path (computer.rs step()), the caller
+    /// is responsible for invoking INT 15h AH=4Fh first if a custom INT 15h is installed.
+    /// This handler only buffers; it does not call INT 15h itself.
+    pub(super) fn handle_int09(&mut self, memory: &mut Memory, io: &mut Bios) {
         // Read keyboard data from BIOS struct (set by fire_keyboard_irq)
         let scan_code = io.pending_scan_code;
         let ascii_code = io.pending_ascii_code;
@@ -44,7 +57,12 @@ impl Cpu {
             return;
         }
 
-        // Add key press to BIOS keyboard buffer
+        Self::add_key_to_bda_buffer(memory, scan_code, ascii_code);
+    }
+
+    /// Add a key press to the BIOS Data Area keyboard ring buffer.
+    /// Called by handle_int09 and by the F000:0xFF continuation after INT 15h returns CF=0.
+    pub(super) fn add_key_to_bda_buffer(memory: &mut Memory, scan_code: u8, ascii_code: u8) {
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
         let head = memory.read_u16(head_addr);
@@ -60,7 +78,6 @@ impl Cpu {
 
         // Check if buffer would become full
         if new_tail == head {
-            // Buffer full - discard key (beep would be appropriate here)
             log::warn!(
                 "INT 09h (BIOS): Keyboard buffer full! Discarding scan=0x{:02X}, ascii=0x{:02X}",
                 scan_code,

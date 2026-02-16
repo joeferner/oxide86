@@ -871,6 +871,73 @@ impl<V: VideoController> Computer<V> {
             let ret_offset = self.cpu.pop(&self.memory);
             let ret_segment = self.cpu.pop(&self.memory);
 
+            // For INT 09h: check for custom INT 15h AH=4Fh keyboard intercept BEFORE
+            // calling the BIOS handler. If a custom INT 15h is installed, set up an
+            // async chain with a continuation trampoline at F000:0xFF. The handler
+            // called via this CALL FAR path is typically a custom INT 09h chaining back
+            // to BIOS (e.g. FDC8's 0395 handler).
+            //
+            // Stack layout we construct:
+            //   [0xFF]        ← INT 15h IRET IP  (returns to F000:0xFF continuation)
+            //   [0xF000]      ← INT 15h IRET CS
+            //   [int15_flags] ← INT 15h IRET FLAGS (CF=1; handler may clear to signal "buffer")
+            //   [ret_offset]  ← F000:0xFF pops this to restore return IP for caller
+            //   [ret_segment] ← F000:0xFF pops this to restore return CS for caller
+            //   [saved_flags] ← F000:0xFF pops this to restore FLAGS for caller
+            if int_num == 0x09 {
+                let ivt_15_segment = self.memory.read_u16(0x15 * 4 + 2);
+                if ivt_15_segment != 0xF000 {
+                    use crate::cpu::cpu_flag;
+                    let ivt_15_offset = self.memory.read_u16(0x15 * 4);
+                    let scan_code = self.bios.pending_scan_code;
+                    let ascii_code = self.bios.pending_ascii_code;
+                    let already_buffered = self.bios.key_was_prebuffered;
+                    self.bios.key_was_prebuffered = false;
+
+                    // Store keyboard data for the F000:0xFF continuation
+                    self.bios.pending_int15_4f = Some(crate::cpu::bios::PendingKeyboardIntercept {
+                        scan_code,
+                        ascii_code,
+                        already_buffered,
+                    });
+
+                    if self.exec_logging_enabled {
+                        log::info!(
+                            "INT 09h->15h AH=4Fh: {:04X}:{:04X} -> {:04X}:{:04X} scan=0x{:02X}",
+                            self.cpu.cs,
+                            self.cpu.ip,
+                            ivt_15_segment,
+                            ivt_15_offset,
+                            scan_code
+                        );
+                    }
+
+                    // Pop the PUSHF'd FLAGS from the CALL FAR chain
+                    let saved_flags = self.cpu.pop(&self.memory);
+
+                    // Push continuation frame (F000:0xFF uses these to return to the caller)
+                    self.cpu.push(saved_flags, &mut self.memory);
+                    self.cpu.push(ret_segment, &mut self.memory);
+                    self.cpu.push(ret_offset, &mut self.memory);
+
+                    // Push INT 15h IRET frame: IRET returns to F000:0xFF
+                    // CF=1 so the handler can leave it set to signal "intercepted"
+                    let int15_flags = (self.cpu.flags & !cpu_flag::INTERRUPT) | cpu_flag::CARRY;
+                    self.cpu.push(int15_flags, &mut self.memory);
+                    self.cpu.push(0xF000u16, &mut self.memory);
+                    self.cpu.push(0x00FFu16, &mut self.memory);
+
+                    // Set up CPU for INT 15h AH=4Fh call
+                    self.cpu.ax = 0x4F00 | (scan_code as u16);
+                    self.cpu.set_flag(cpu_flag::CARRY, true);
+                    self.cpu.set_flag(cpu_flag::INTERRUPT, false);
+                    self.cpu.cs = ivt_15_segment;
+                    self.cpu.ip = ivt_15_offset;
+
+                    return; // CPU executes INT 15h handler; IRET returns to F000:0xFF
+                }
+            }
+
             // Call our BIOS handler directly
             // We need to bypass the IVT check since we're already being called via CALL FAR from DOS
             self.cpu.handle_bios_interrupt_direct(
