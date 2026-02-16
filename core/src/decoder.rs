@@ -227,13 +227,18 @@ impl<'a> InstructionDecoder<'a> {
                 cpu.ds
             };
 
-            // Format as "display=value @seg:off"
+            // Format as "display=value @seg:off(linear)"
+            let offset = address - ((segment as usize) << 4);
             if mem_ref.is_word {
-                parts.push(format!("{}={:04X} @{:04X}:{:04X}",
-                    mem_ref.display, value, segment, address - ((segment as usize) << 4)));
+                parts.push(format!(
+                    "{}={:04X} @{:04X}:{:04X}({:05X})",
+                    mem_ref.display, value, segment, offset, address,
+                ));
             } else {
-                parts.push(format!("{}={:02X} @{:04X}:{:04X}",
-                    mem_ref.display, value as u8, segment, address - ((segment as usize) << 4)));
+                parts.push(format!(
+                    "{}={:02X} @{:04X}:{:04X}({:05X})",
+                    mem_ref.display, value as u8, segment, offset, address,
+                ));
             }
         }
 
@@ -889,11 +894,31 @@ impl<'a> InstructionDecoder<'a> {
             }
             0xA2 => {
                 let offset = self.fetch_word();
-                format!("mov [0x{:04x}], al", offset)
+                let display = format!("[0x{:04x}]", offset);
+                self.memory_refs.push(MemoryRef {
+                    display: display.clone(),
+                    modrm: None,
+                    segment_override: None,
+                    direct_address: Some(offset),
+                    displacement: 0,
+                    is_word: false,
+                });
+                self.mark_reg_input("al");
+                format!("mov {}, al", display)
             }
             0xA3 => {
                 let offset = self.fetch_word();
-                format!("mov [0x{:04x}], ax", offset)
+                let display = format!("[0x{:04x}]", offset);
+                self.memory_refs.push(MemoryRef {
+                    display: display.clone(),
+                    modrm: None,
+                    segment_override: None,
+                    direct_address: Some(offset),
+                    displacement: 0,
+                    is_word: true,
+                });
+                self.mark_reg_input("ax");
+                format!("mov {}, ax", display)
             }
 
             // String operations

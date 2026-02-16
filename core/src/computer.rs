@@ -470,6 +470,16 @@ impl<V: VideoController> Computer<V> {
                 offset
             );
 
+            if self.exec_logging_enabled {
+                log::info!(
+                    "IRQ 09h: {:04X}:{:04X} -> {:04X}:{:04X}",
+                    self.cpu.cs,
+                    self.cpu.ip,
+                    segment,
+                    offset
+                );
+            }
+
             // Push flags, CS, IP (simulating INT instruction)
             self.cpu.push(self.cpu.flags, &mut self.memory);
             self.cpu.push(self.cpu.cs, &mut self.memory);
@@ -536,6 +546,17 @@ impl<V: VideoController> Computer<V> {
             offset
         );
 
+        if self.exec_logging_enabled {
+            log::info!(
+                "IRQ {:02X}h: {:04X}:{:04X} -> {:04X}:{:04X}",
+                int_num,
+                self.cpu.cs,
+                self.cpu.ip,
+                segment,
+                offset
+            );
+        }
+
         // Push flags, CS, IP (simulating INT instruction)
         self.cpu.push(self.cpu.flags, &mut self.memory);
         self.cpu.push(self.cpu.cs, &mut self.memory);
@@ -592,6 +613,16 @@ impl<V: VideoController> Computer<V> {
                 );
             }
 
+            if self.exec_logging_enabled {
+                log::info!(
+                    "IRQ 08h: {:04X}:{:04X} -> {:04X}:{:04X}",
+                    self.cpu.cs,
+                    self.cpu.ip,
+                    segment,
+                    offset
+                );
+            }
+
             // Push flags, CS, IP (simulating INT instruction)
             self.cpu.push(self.cpu.flags, &mut self.memory);
             self.cpu.push(self.cpu.cs, &mut self.memory);
@@ -636,6 +667,20 @@ impl<V: VideoController> Computer<V> {
                 let return_ip = self.cpu.ip;
                 let return_flags = self.cpu.flags;
 
+                let ivt_1c = 0x1C * 4;
+                let handler_off = self.memory.read_u16(ivt_1c);
+                let handler_seg = self.memory.read_u16(ivt_1c + 2);
+
+                if self.exec_logging_enabled {
+                    log::info!(
+                        "IRQ 08h (->1Ch): {:04X}:{:04X} -> {:04X}:{:04X}",
+                        return_cs,
+                        return_ip,
+                        handler_seg,
+                        handler_off
+                    );
+                }
+
                 self.cpu.begin_irq_chain(
                     0x08,
                     0x1C,
@@ -652,6 +697,8 @@ impl<V: VideoController> Computer<V> {
                         self.cpu.ip
                     );
                 }
+            } else if self.exec_logging_enabled {
+                log::info!("IRQ 08h: tick at {:04X}:{:04X}", self.cpu.cs, self.cpu.ip);
             }
             // BIOS INT 1Ch is a no-op, so nothing more to do
         }
