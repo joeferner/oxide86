@@ -157,12 +157,6 @@ export async function initEmulator(canvasEl: HTMLCanvasElement): Promise<void> {
         const cfg = config.value;
         const comp = createComputer(cfg);
         console.log(`[joystick] Init: joystickA=${cfg.joystickA}, joystickB=${cfg.joystickB}`);
-        if (cfg.joystickA) {
-            setJoystickConnectedSlot(comp, 0, true);
-        }
-        if (cfg.joystickB) {
-            setJoystickConnectedSlot(comp, 1, true);
-        }
 
         // Scan physical gamepads already connected
         const gamepads = navigator.getGamepads();
@@ -258,19 +252,14 @@ export function applyConfig(cfg: EmulatorConfig): void {
         animationFrameRef.current = null;
     }
 
-    // Clear gamepad assignments; they'll be re-assigned below
+    // Clear gamepad assignments and connection state; they'll be re-assigned below
     gamepadSlotsRef.current.clear();
+    joystickConnected.value = [false, false];
     config.value = cfg;
 
     try {
         const comp = createComputer(cfg);
         console.log(`[joystick] applyConfig: joystickA=${cfg.joystickA}, joystickB=${cfg.joystickB}`);
-        if (cfg.joystickA) {
-            setJoystickConnectedSlot(comp, 0, true);
-        }
-        if (cfg.joystickB) {
-            setJoystickConnectedSlot(comp, 1, true);
-        }
 
         // Re-scan physical gamepads and assign them
         const gamepads = navigator.getGamepads();

@@ -192,34 +192,38 @@ function ConfigForm({
                             </Badge>
                         </Group>
                         <Stack gap="xs">
-                            <Group gap="xs">
-                                <Checkbox
-                                    label="Joystick A (gamepad 1)"
-                                    checked={joystickA.value}
-                                    onChange={(e) => {
-                                        joystickA.value = e.currentTarget.checked;
-                                    }}
-                                />
-                                {joystickA.value && (
-                                    <Badge size="xs" color={joystickConnected[0] ? 'green' : 'orange'} variant="dot">
-                                        {joystickConnected[0] ? 'active' : 'pending reset'}
-                                    </Badge>
-                                )}
-                            </Group>
-                            <Group gap="xs">
-                                <Checkbox
-                                    label="Joystick B (gamepad 2)"
-                                    checked={joystickB.value}
-                                    onChange={(e) => {
-                                        joystickB.value = e.currentTarget.checked;
-                                    }}
-                                />
-                                {joystickB.value && (
-                                    <Badge size="xs" color={joystickConnected[1] ? 'green' : 'orange'} variant="dot">
-                                        {joystickConnected[1] ? 'active' : 'pending reset'}
-                                    </Badge>
-                                )}
-                            </Group>
+                            <Checkbox
+                                label={
+                                    <Group gap="xs" wrap="nowrap" align="center">
+                                        <span>Joystick A</span>
+                                        {joystickA.value && (
+                                            <Badge size="xs" color={joystickConnected[0] ? 'green' : 'orange'} variant="dot">
+                                                {joystickConnected[0] ? 'active' : 'pending reset'}
+                                            </Badge>
+                                        )}
+                                    </Group>
+                                }
+                                checked={joystickA.value}
+                                onChange={(e) => {
+                                    joystickA.value = e.currentTarget.checked;
+                                }}
+                            />
+                            <Checkbox
+                                label={
+                                    <Group gap="xs" wrap="nowrap" align="center">
+                                        <span>Joystick B</span>
+                                        {joystickB.value && (
+                                            <Badge size="xs" color={joystickConnected[1] ? 'green' : 'orange'} variant="dot">
+                                                {joystickConnected[1] ? 'active' : 'pending reset'}
+                                            </Badge>
+                                        )}
+                                    </Group>
+                                }
+                                checked={joystickB.value}
+                                onChange={(e) => {
+                                    joystickB.value = e.currentTarget.checked;
+                                }}
+                            />
                         </Stack>
                     </div>
                 </Grid.Col>
