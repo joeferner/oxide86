@@ -46,6 +46,11 @@ pub struct IoDevice {
     ega_graphics_index: u8,
     /// EGA Graphics Controller registers (indexed via 0x3CE/0x3CF)
     ega_graphics_regs: [u8; 16],
+    /// VGA Attribute Controller address/data flip-flop
+    /// false = next write to 0x3C0 is address, true = next write is data
+    ac_flip_flop: bool,
+    /// VGA Attribute Controller index register (set by address write)
+    ac_index: u8,
 }
 
 impl IoDevice {
@@ -70,6 +75,8 @@ impl IoDevice {
             ega_sequencer_regs,
             ega_graphics_index: 0,
             ega_graphics_regs: [0u8; 16],
+            ac_flip_flop: false,
+            ac_index: 0,
         }
     }
 
@@ -129,7 +136,13 @@ impl IoDevice {
             // Bit 3: Vertical retrace active
             // Toggle state on each read so programs waiting for retrace
             // start/end don't spin forever.
+            // VGA Attribute Controller (port 0x3C0) - read returns current index
+            0x3C0 => self.ac_index,
+
             0x3DA => {
+                // Reading port 0x3DA resets the AC address/data flip-flop
+                self.ac_flip_flop = false;
+
                 self.cga_status_counter = self.cga_status_counter.wrapping_add(1);
                 // Every other read: alternate between active display (0x00) and
                 // retrace (0x09 = both hsync and vsync bits set)
@@ -282,6 +295,23 @@ impl IoDevice {
                     self.keyboard_output_port &= !0x02;
                     log::debug!("Fast A20 gate: disabled (via port 0x92)");
                 }
+            }
+
+            // VGA Attribute Controller (port 0x3C0)
+            // Alternates between address and data writes (flip-flop reset by reading 0x3DA)
+            0x3C0 => {
+                if !self.ac_flip_flop {
+                    // Address write: select which AC register to modify
+                    self.ac_index = value & 0x1F; // 5-bit index
+                } else {
+                    // Data write: set the selected AC register
+                    let index = self.ac_index & 0x0F;
+                    if index < 16 {
+                        // AC palette registers 0-15: map attribute values to VGA DAC indices
+                        video.set_ac_register(index, value);
+                    }
+                }
+                self.ac_flip_flop = !self.ac_flip_flop;
             }
 
             // CGA Mode Control Register

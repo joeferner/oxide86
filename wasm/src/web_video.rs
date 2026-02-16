@@ -22,8 +22,8 @@ pub struct WebVideo {
     last_cursor: Option<CursorPosition>,
     /// Current video mode (for tracking text vs graphics)
     current_mode: VideoMode,
-    /// CGA palette for 320x200 mode (4 EGA color indices 0-15)
-    graphics_palette: Option<[u8; 4]>,
+    /// CGA color map for 320x200 mode (4 VGA DAC indices from AC registers)
+    graphics_color_map: Option<[u8; 4]>,
     /// VGA DAC palette (256 colors, RGB 6-bit values 0-63)
     vga_dac_palette: [[u8; 3]; 256],
 }
@@ -69,44 +69,26 @@ impl WebVideo {
                 cols: TEXT_MODE_COLS,
                 rows: TEXT_MODE_ROWS,
             },
-            graphics_palette: None,
+            graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
         })
     }
 
     /// Render a single character to the pixel buffer
     fn render_char_to_buffer(&mut self, row: usize, col: usize, cell: &TextCell) {
-        let glyph = self.font.get_glyph(cell.character);
-        let fg_color = TextModePalette::get_color(cell.attribute.foreground);
-        let bg_color = TextModePalette::get_color(cell.attribute.background);
-
-        let char_x = col * CHAR_WIDTH;
-        let char_y = row * CHAR_HEIGHT;
-
-        // Render each row of the glyph
-        for (glyph_row, &glyph_byte) in glyph.iter().enumerate() {
-            let pixel_y = char_y + glyph_row;
-
-            // Render each pixel in the row (8 pixels from MSB to LSB)
-            for bit in 0..8 {
-                let pixel_x = char_x + bit;
-                let is_fg = (glyph_byte & (0x80 >> bit)) != 0;
-                let color = if is_fg { fg_color } else { bg_color };
-
-                // Calculate buffer offset (RGBA format)
-                let buffer_idx = ((pixel_y * CANVAS_WIDTH as usize) + pixel_x) * 4;
-
-                self.buffer[buffer_idx] = color[0]; // R
-                self.buffer[buffer_idx + 1] = color[1]; // G
-                self.buffer[buffer_idx + 2] = color[2]; // B
-                self.buffer[buffer_idx + 3] = 255; // A
-            }
-        }
+        emu86_core::video::render::render_text_cell(
+            &self.font,
+            row,
+            col,
+            cell,
+            &self.vga_dac_palette,
+            CANVAS_WIDTH as usize,
+            &mut self.buffer,
+        );
     }
 
     /// Draw the cursor at the specified position
     fn draw_cursor(&mut self, cursor: &CursorPosition) {
-        // Get actual mode dimensions
         let (cols, rows) = match self.current_mode {
             VideoMode::Text { cols, rows } => (cols, rows),
             _ => (TEXT_MODE_COLS, TEXT_MODE_ROWS),
@@ -116,25 +98,7 @@ impl WebVideo {
             return;
         }
 
-        let char_x = cursor.col * CHAR_WIDTH;
-        let char_y = cursor.row * CHAR_HEIGHT;
-
-        // Draw cursor as white underline on the last 2 rows of the character
-        let cursor_color = [255u8, 255u8, 255u8]; // White
-
-        for row_offset in (CHAR_HEIGHT - 2)..CHAR_HEIGHT {
-            let pixel_y = char_y + row_offset;
-
-            for col_offset in 0..CHAR_WIDTH {
-                let pixel_x = char_x + col_offset;
-                let buffer_idx = ((pixel_y * CANVAS_WIDTH as usize) + pixel_x) * 4;
-
-                self.buffer[buffer_idx] = cursor_color[0]; // R
-                self.buffer[buffer_idx + 1] = cursor_color[1]; // G
-                self.buffer[buffer_idx + 2] = cursor_color[2]; // B
-                self.buffer[buffer_idx + 3] = 255; // A
-            }
-        }
+        emu86_core::video::render::render_cursor(cursor, CANVAS_WIDTH as usize, &mut self.buffer);
     }
 
     /// Update the canvas with the current buffer
@@ -168,71 +132,29 @@ impl WebVideo {
 
     /// Render graphics mode 320x200 (4-color) using ImageData API
     fn render_graphics_320x200(&mut self, pixel_data: &[u8]) -> Result<(), JsValue> {
-        // Get CGA palette or return early if not set
-        let cga_palette = match &self.graphics_palette {
+        let color_map = match &self.graphics_color_map {
             Some(p) => *p,
-            None => return Ok(()), // No palette set yet, skip rendering
+            None => return Ok(()),
         };
 
-        // Resize canvas for graphics mode
-        self.canvas.set_width(640); // 320 * 2 (scaled)
-        self.canvas.set_height(400); // 200 * 2 (scaled)
+        self.canvas.set_width(640);
+        self.canvas.set_height(400);
 
-        let width = 320;
-        let height = 200;
-        let scale = 2;
+        let mut image_data_buf = vec![0u8; 640 * 400 * 4];
+        emu86_core::video::render::render_cga_320x200(
+            pixel_data,
+            &color_map,
+            &self.vga_dac_palette,
+            &mut image_data_buf,
+        );
 
-        // Create ImageData buffer for scaled output
-        let scaled_width = width * scale;
-        let scaled_height = height * scale;
-        let mut image_data_buf = vec![0u8; scaled_width * scaled_height * 4]; // RGBA
-
-        // Iterate through all CGA pixels
-        for y in 0..height {
-            for x in 0..width {
-                // Extract pixel color (2 bits per pixel, 4 pixels per byte)
-                let byte_offset = y * 80 + x / 4;
-                let pixel_in_byte = x % 4;
-                let byte_val = pixel_data[byte_offset];
-                let shift = 6 - (pixel_in_byte * 2);
-                let color_index = ((byte_val >> shift) & 0x03) as usize;
-
-                // Map pixel value to CGA palette entry (EGA color index)
-                // For CGA compatibility, use fixed CGA palette colors, not VGA DAC
-                let ega_color = cga_palette[color_index];
-                let rgb = TextModePalette::get_color(ega_color);
-
-                // Draw scaled pixel (2x2 screen pixels per CGA pixel)
-                for dy in 0..scale {
-                    for dx in 0..scale {
-                        let screen_x = x * scale + dx;
-                        let screen_y = y * scale + dy;
-                        let pixel_offset = (screen_y * scaled_width + screen_x) * 4;
-
-                        image_data_buf[pixel_offset] = rgb[0]; // R
-                        image_data_buf[pixel_offset + 1] = rgb[1]; // G
-                        image_data_buf[pixel_offset + 2] = rgb[2]; // B
-                        image_data_buf[pixel_offset + 3] = 255; // A
-                    }
-                }
-            }
-        }
-
-        // Create ImageData and render to canvas
-        let image_data = ImageData::new_with_u8_clamped_array_and_sh(
-            Clamped(&image_data_buf),
-            scaled_width as u32,
-            scaled_height as u32,
-        )?;
-
+        let image_data =
+            ImageData::new_with_u8_clamped_array_and_sh(Clamped(&image_data_buf), 640, 400)?;
         self.context.put_image_data(&image_data, 0.0, 0.0)?;
         Ok(())
     }
 
     /// Render graphics mode 640x200 to canvas.
-    /// In composite mode: when in mode 0x04 (2bpp), renders each 2-bit pixel individually
-    /// using composite color palette (320x200 scaled 2x2 to 640x400).
-    /// In RGB mode: per-pixel B&W (640x200).
     fn render_graphics_640x200(
         &mut self,
         pixel_data: &[u8],
@@ -243,85 +165,39 @@ impl WebVideo {
         self.canvas.set_width(640);
         self.canvas.set_height(400);
 
-        let width = 640usize;
-        let scaled_height = 400usize;
-        let mut image_data_buf = vec![0u8; width * scaled_height * 4];
+        let mut image_data_buf = vec![0u8; 640 * 400 * 4];
 
         if composite {
-            // Use shared composite rendering logic from core
             emu86_core::video::composite::render_composite_2bpp(pixel_data, &mut image_data_buf);
         } else {
-            let fg_rgb = TextModePalette::get_color(fg_color);
-            let bg_rgb = TextModePalette::get_color(bg_color);
-            for y in 0..200 {
-                for x in 0..640 {
-                    let byte_val = pixel_data[y * 80 + x / 8];
-                    let bit_mask = 0x80 >> (x % 8);
-                    let rgb = if (byte_val & bit_mask) != 0 {
-                        fg_rgb
-                    } else {
-                        bg_rgb
-                    };
-                    for dy in 0..2 {
-                        let screen_y = y * 2 + dy;
-                        let pixel_offset = (screen_y * width + x) * 4;
-                        image_data_buf[pixel_offset] = rgb[0];
-                        image_data_buf[pixel_offset + 1] = rgb[1];
-                        image_data_buf[pixel_offset + 2] = rgb[2];
-                        image_data_buf[pixel_offset + 3] = 255;
-                    }
-                }
-            }
+            emu86_core::video::render::render_cga_640x200_bw(
+                pixel_data,
+                fg_color,
+                bg_color,
+                &mut image_data_buf,
+            );
         }
 
-        let image_data = ImageData::new_with_u8_clamped_array_and_sh(
-            Clamped(&image_data_buf),
-            width as u32,
-            scaled_height as u32,
-        )?;
-
+        let image_data =
+            ImageData::new_with_u8_clamped_array_and_sh(Clamped(&image_data_buf), 640, 400)?;
         self.context.put_image_data(&image_data, 0.0, 0.0)?;
         Ok(())
     }
+
     /// Render EGA graphics mode 320x200 (16-color) using ImageData API
     fn render_graphics_320x200x16(&mut self, pixel_data: &[u8]) -> Result<(), JsValue> {
-        self.canvas.set_width(640); // 320 * 2 (scaled)
-        self.canvas.set_height(400); // 200 * 2 (scaled)
+        self.canvas.set_width(640);
+        self.canvas.set_height(400);
 
-        let width = 320;
-        let height = 200;
-        let scale = 2;
-        let scaled_width = width * scale;
-        let scaled_height = height * scale;
-        let mut image_data_buf = vec![0u8; scaled_width * scaled_height * 4];
+        let mut image_data_buf = vec![0u8; 640 * 400 * 4];
+        emu86_core::video::render::render_ega_320x200x16(
+            pixel_data,
+            &self.vga_dac_palette,
+            &mut image_data_buf,
+        );
 
-        for y in 0..height {
-            for x in 0..width {
-                let color_index = pixel_data[y * width + x] as usize;
-                let dac = self.vga_dac_palette[color_index];
-                let r = (dac[0] << 2) | (dac[0] >> 4);
-                let g = (dac[1] << 2) | (dac[1] >> 4);
-                let b = (dac[2] << 2) | (dac[2] >> 4);
-
-                for dy in 0..scale {
-                    for dx in 0..scale {
-                        let screen_x = x * scale + dx;
-                        let screen_y = y * scale + dy;
-                        let offset = (screen_y * scaled_width + screen_x) * 4;
-                        image_data_buf[offset] = r;
-                        image_data_buf[offset + 1] = g;
-                        image_data_buf[offset + 2] = b;
-                        image_data_buf[offset + 3] = 255;
-                    }
-                }
-            }
-        }
-
-        let image_data = ImageData::new_with_u8_clamped_array_and_sh(
-            Clamped(&image_data_buf),
-            scaled_width as u32,
-            scaled_height as u32,
-        )?;
+        let image_data =
+            ImageData::new_with_u8_clamped_array_and_sh(Clamped(&image_data_buf), 640, 400)?;
         self.context.put_image_data(&image_data, 0.0, 0.0)?;
         Ok(())
     }
@@ -404,9 +280,9 @@ impl VideoController for WebVideo {
         self.update_display(buffer);
     }
 
-    fn update_graphics_320x200(&mut self, pixel_data: &[u8], cga_palette: [u8; 4]) {
-        // Store CGA palette for rendering
-        self.graphics_palette = Some(cga_palette);
+    fn update_graphics_320x200(&mut self, pixel_data: &[u8], color_map: [u8; 4]) {
+        // Store AC color map for rendering
+        self.graphics_color_map = Some(color_map);
 
         if let Err(e) = self.render_graphics_320x200(pixel_data) {
             log::error!("Failed to render 320x200 graphics: {:?}", e);

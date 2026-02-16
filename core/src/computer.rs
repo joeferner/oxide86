@@ -1073,10 +1073,12 @@ impl<V: VideoController> Computer<V> {
                                 true,
                             );
                         } else {
-                            let palette = self.video.get_palette();
-                            let colors = palette.get_colors();
+                            // Pass AC palette registers 0-3 as the color map
+                            // These map pixel values 0-3 to VGA DAC indices
+                            let ac = self.video.get_ac_palette();
+                            let color_map = [ac[0], ac[1], ac[2], ac[3]];
                             self.video_controller
-                                .update_graphics_320x200(buffer.get_pixels(), colors);
+                                .update_graphics_320x200(buffer.get_pixels(), color_map);
                         }
                     }
                 }

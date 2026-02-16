@@ -8,6 +8,7 @@ use crate::video_card_type::VideoCardType;
 pub mod cga;
 pub mod composite;
 pub mod ega;
+pub mod render;
 pub mod text;
 
 // Video memory constants
@@ -79,11 +80,11 @@ pub trait VideoController {
 
     /// Update graphics display (320x200, 4 colors)
     /// pixel_data: linear pixel array
-    /// cga_palette: 4 EGA color indices (0-15) from CGA palette [bg, color1, color2, color3]
-    /// For CGA compatibility, pixel values 0-3 map to these EGA colors, not VGA DAC
-    fn update_graphics_320x200(&mut self, pixel_data: &[u8], cga_palette: [u8; 4]) {
+    /// color_map: 4 VGA DAC indices from Attribute Controller registers [AC[0], AC[1], AC[2], AC[3]]
+    /// Pixel value i maps to VGA DAC[color_map[i]] for final RGB color
+    fn update_graphics_320x200(&mut self, pixel_data: &[u8], color_map: [u8; 4]) {
         // Default implementation: log warning
-        let _ = (pixel_data, cga_palette);
+        let _ = (pixel_data, color_map);
         log::warn!("Graphics mode 320x200 not implemented for this platform");
     }
 
@@ -179,6 +180,11 @@ pub struct Video {
     needs_memory_sync: bool,
     /// Video card type - limits which video modes are available
     card_type: VideoCardType,
+    /// VGA Attribute Controller palette registers (16 entries)
+    /// Maps pixel/attribute values (0-15) to VGA DAC indices (0-255)
+    /// On CGA mode changes, AC[0-3] are synced from the CGA palette EGA indices
+    /// Programs can reprogram these via port 0x3C0 for custom color mapping
+    ac_palette: [u8; 16],
 }
 
 /// Initialize VGA DAC palette with EGA defaults
@@ -221,7 +227,17 @@ impl Video {
             composite_mode: false,
             needs_memory_sync: false,
             card_type,
+            ac_palette: Self::default_ac_palette(),
         }
+    }
+
+    /// Default AC palette: identity mapping (register i = i)
+    fn default_ac_palette() -> [u8; 16] {
+        let mut ac = [0u8; 16];
+        for (i, entry) in ac.iter_mut().enumerate() {
+            *entry = i as u8;
+        }
+        ac
     }
 
     /// Get the video card type
@@ -353,11 +369,12 @@ impl Video {
             self.cga_buffer = None;
         }
 
-        // Reset VGA DAC palette to defaults
+        // Reset VGA DAC palette and AC palette to defaults
         // This ensures programs that modify the palette don't leave the system
         // with invisible text (e.g., black text on black background)
         log::info!("VGA DAC: Resetting palette to defaults on mode change");
         self.vga_dac_palette = default_vga_palette();
+        self.ac_palette = Self::default_ac_palette();
 
         // Reset CGA palette to defaults
         // For graphics modes (0x04-0x06), IBM CGA BIOS initializes to palette 1
@@ -381,7 +398,7 @@ impl Video {
             self.mode_type,
             VideoMode::Graphics320x200 | VideoMode::Graphics640x200
         ) {
-            self.update_vga_dac_from_cga_palette();
+            self.update_ac_from_cga_palette();
         }
 
         self.dirty = true;
@@ -552,7 +569,7 @@ impl Video {
         // In text mode, port 0x3D9 only affects border/overscan color;
         // syncing would corrupt text color indices (e.g., blue → green).
         if self.is_cga_graphics_mode() {
-            self.update_vga_dac_from_cga_palette();
+            self.update_ac_from_cga_palette();
         }
         self.dirty = true;
     }
@@ -619,7 +636,7 @@ impl Video {
     pub fn set_cga_background(&mut self, color: u8) {
         self.palette.background = color & 0x0F;
         if self.is_cga_graphics_mode() {
-            self.update_vga_dac_from_cga_palette();
+            self.update_ac_from_cga_palette();
         }
         self.dirty = true;
     }
@@ -628,7 +645,7 @@ impl Video {
     pub fn set_cga_intensity(&mut self, enabled: bool) {
         self.palette.intensity = enabled;
         if self.is_cga_graphics_mode() {
-            self.update_vga_dac_from_cga_palette();
+            self.update_ac_from_cga_palette();
         }
         self.dirty = true;
     }
@@ -637,29 +654,32 @@ impl Video {
     pub fn set_cga_palette_id(&mut self, palette_id: u8) {
         self.palette.palette_id = palette_id & 0x01;
         if self.is_cga_graphics_mode() {
-            self.update_vga_dac_from_cga_palette();
+            self.update_ac_from_cga_palette();
         }
         self.dirty = true;
     }
 
-    /// Update VGA DAC palette entries 0-3 to match current CGA palette
-    /// This allows CGA palette selection (INT 10h AH=0Bh) to work alongside
-    /// VGA DAC programming (INT 10h AH=10h)
-    fn update_vga_dac_from_cga_palette(&mut self) {
+    /// Update Attribute Controller palette registers 0-3 to match current CGA palette
+    /// This maps CGA pixel values 0-3 to the correct VGA DAC indices via AC registers,
+    /// matching real VGA hardware behavior where BIOS programs AC registers on CGA palette changes
+    fn update_ac_from_cga_palette(&mut self) {
         let cga_colors = self.palette.get_colors(); // [bg, color1, color2, color3] as EGA indices
-        let default_palette = default_vga_palette();
 
-        // Map each CGA color slot to its VGA DAC entry
+        // Set AC registers 0-3 to point to the EGA color indices
+        // This way: pixel i → AC[i] → DAC[EGA_index] → RGB
         for (i, &ega_color) in cga_colors.iter().enumerate() {
-            let rgb = default_palette[ega_color as usize];
-            self.vga_dac_palette[i] = rgb;
+            self.ac_palette[i] = ega_color;
         }
 
         log::debug!(
-            "VGA DAC: Synced entries 0-3 from CGA palette (id={}, intensity={}, bg={})",
+            "AC Palette: Synced registers 0-3 from CGA palette (id={}, intensity={}, bg={}) -> [{}, {}, {}, {}]",
             self.palette.palette_id,
             self.palette.intensity,
-            self.palette.background
+            self.palette.background,
+            cga_colors[0],
+            cga_colors[1],
+            cga_colors[2],
+            cga_colors[3]
         );
     }
 
@@ -696,6 +716,21 @@ impl Video {
     /// Get border color (overscan) for text modes
     pub fn get_border_color(&self) -> u8 {
         self.border_color
+    }
+
+    /// Get Attribute Controller palette registers
+    /// Returns the 16-entry AC palette mapping pixel values to VGA DAC indices
+    pub fn get_ac_palette(&self) -> &[u8; 16] {
+        &self.ac_palette
+    }
+
+    /// Set an individual AC palette register
+    /// index: register number (0-15), value: VGA DAC index (0-255)
+    pub fn set_ac_register(&mut self, index: u8, value: u8) {
+        let idx = (index & 0x0F) as usize;
+        self.ac_palette[idx] = value;
+        self.dirty = true;
+        log::debug!("AC Palette: Register {} = {} (DAC index)", idx, value);
     }
 
     /// Check if video mode changed and clear the flag
