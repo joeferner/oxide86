@@ -13,6 +13,7 @@ interface UseEmulatorReturn {
     setStatus: (status: string) => void;
     isRunning: boolean;
     performance: Performance;
+    joystickConnected: [boolean, boolean];
     startExecution: () => void;
     stopExecution: () => void;
     loadProgram: (data: Uint8Array, segment: number, offset: number) => void;
@@ -30,6 +31,7 @@ export function useEmulator(
     const [status, setStatus] = useState('Initializing...');
     const [isRunning, setIsRunning] = useState(false);
     const [performance, setPerformance] = useState<Performance>({ target: 0, actual: 0 });
+    const [joystickConnected, setJoystickConnected] = useState<[boolean, boolean]>([false, false]);
     const animationFrameRef = useRef<number | null>(null);
     const wasmInitializedRef = useRef(false);
     const isRunningRef = useRef(false);
@@ -46,6 +48,15 @@ export function useEmulator(
             return;
         }
         const gamepads = navigator.getGamepads();
+
+        // Self-healing: assign any newly-visible gamepads that were missed by the
+        // gamepadconnected event (browser requires a button press before exposing them)
+        for (const gp of gamepads) {
+            if (gp && !gamepadSlotsRef.current.has(gp.index)) {
+                assignGamepad(gp.index);
+            }
+        }
+
         for (const [gpIndex, slot] of gamepadSlotsRef.current) {
             const gp = gamepads[gpIndex];
             if (gp) {
@@ -56,23 +67,44 @@ export function useEmulator(
                     comp.handle_gamepad_axis(slot, 1, y);
                     comp.handle_gamepad_button(slot, 0, gp.buttons[0]?.pressed ?? false);
                     comp.handle_gamepad_button(slot, 1, gp.buttons[1]?.pressed ?? false);
-                } catch (_e) {
-                    // ignore
+                } catch (err) {
+                    console.error('[joystick] report failed', err);
                 }
             }
         }
+    };
+
+    // Update joystick connected state in both the emulator and React state
+    const setJoystickConnectedSlot = (
+        comp: Emu86Computer | null | undefined,
+        slot: number,
+        connected: boolean
+    ): void => {
+        const label = slot === 0 ? 'A' : 'B';
+        console.log(`[joystick] Joystick ${label} (slot ${slot}): ${connected ? 'connected' : 'disconnected'}`);
+        comp?.gamepad_connected(slot, connected);
+        setJoystickConnected((prev) => {
+            const next: [boolean, boolean] = [prev[0], prev[1]];
+            next[slot] = connected;
+            return next;
+        });
     };
 
     // Assign a connected gamepad to the first available enabled slot
     const assignGamepad = (gamepadIndex: number): void => {
         const config = configRef.current;
         const assigned = new Set(gamepadSlotsRef.current.values());
+        console.log(
+            `[joystick] Physical gamepad ${gamepadIndex} connected. joystickA=${config.joystickA}, joystickB=${config.joystickB}, assigned slots=${JSON.stringify([...assigned])}`
+        );
         if (config.joystickA && !assigned.has(0)) {
             gamepadSlotsRef.current.set(gamepadIndex, 0);
-            computerRef.current?.gamepad_connected(0, true);
+            setJoystickConnectedSlot(computerRef.current, 0, true);
         } else if (config.joystickB && !assigned.has(1)) {
             gamepadSlotsRef.current.set(gamepadIndex, 1);
-            computerRef.current?.gamepad_connected(1, true);
+            setJoystickConnectedSlot(computerRef.current, 1, true);
+        } else {
+            console.log(`[joystick] Gamepad ${gamepadIndex} not assigned: no enabled slots available`);
         }
     };
 
@@ -109,6 +141,15 @@ export function useEmulator(
                 }
 
                 const comp = createComputer(configRef.current);
+                console.log(
+                    `[joystick] Init: joystickA=${configRef.current.joystickA}, joystickB=${configRef.current.joystickB}`
+                );
+                if (configRef.current.joystickA) {
+                    setJoystickConnectedSlot(comp, 0, true);
+                }
+                if (configRef.current.joystickB) {
+                    setJoystickConnectedSlot(comp, 1, true);
+                }
 
                 if (mounted) {
                     setComputer(comp);
@@ -145,14 +186,28 @@ export function useEmulator(
         const handleDisconnected = (e: GamepadEvent): void => {
             const slot = gamepadSlotsRef.current.get(e.gamepad.index);
             if (slot !== undefined) {
-                computerRef.current?.gamepad_connected(slot, false);
+                console.log(`[joystick] Physical gamepad ${e.gamepad.index} disconnected from slot ${slot}`);
+                setJoystickConnectedSlot(computerRef.current, slot, false);
                 gamepadSlotsRef.current.delete(e.gamepad.index);
             }
         };
         window.addEventListener('gamepadconnected', handleConnected);
         window.addEventListener('gamepaddisconnected', handleDisconnected);
-        // Scan gamepads already connected before this effect ran
+        // Mark joysticks as connected based on config (ensures connection even without physical gamepad)
+        const config = configRef.current;
+        console.log(
+            `[joystick] Gamepad effect: joystickA=${config.joystickA}, joystickB=${config.joystickB}, computerRef=${computerRef.current ? 'set' : 'null'}`
+        );
+        if (config.joystickA) {
+            setJoystickConnectedSlot(computerRef.current, 0, true);
+        }
+        if (config.joystickB) {
+            setJoystickConnectedSlot(computerRef.current, 1, true);
+        }
+        // Scan physical gamepads already connected; they'll push axis/button data via pollGamepads
         const gamepads = navigator.getGamepads();
+        const physicalCount = gamepads.filter(Boolean).length;
+        console.log(`[joystick] Physical gamepads detected: ${physicalCount}`);
         for (const gp of gamepads) {
             if (gp && !gamepadSlotsRef.current.has(gp.index)) {
                 assignGamepad(gp.index);
@@ -323,6 +378,14 @@ export function useEmulator(
 
             try {
                 const comp = createComputer(config);
+                // Mark joysticks as connected based on config, regardless of physical gamepad
+                console.log(`[joystick] applyConfig: joystickA=${config.joystickA}, joystickB=${config.joystickB}`);
+                if (config.joystickA) {
+                    setJoystickConnectedSlot(comp, 0, true);
+                }
+                if (config.joystickB) {
+                    setJoystickConnectedSlot(comp, 1, true);
+                }
                 setComputer(comp);
                 setStatus(`Configuration applied: ${config.cpuType}, ${config.memoryKb}KB, ${config.clockMhz} MHz`);
             } catch (e) {
@@ -339,6 +402,7 @@ export function useEmulator(
         setStatus,
         isRunning,
         performance,
+        joystickConnected,
         startExecution,
         stopExecution,
         loadProgram,

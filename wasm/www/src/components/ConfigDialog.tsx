@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Modal, Stack, Select, Button, Group, Text, Alert, Grid, Checkbox } from '@mantine/core';
+import { useState, useEffect } from 'react';
+import { Modal, Stack, Select, Button, Group, Text, Alert, Grid, Checkbox, Badge } from '@mantine/core';
 import {
     CLOCK_OPTIONS,
     COM_PORT_OPTIONS,
@@ -15,6 +15,7 @@ interface ConfigDialogProps {
     currentConfig: EmulatorConfig;
     onApply: (config: EmulatorConfig) => void;
     isRunning: boolean;
+    joystickConnected: [boolean, boolean];
 }
 
 function ConfigForm({
@@ -22,6 +23,7 @@ function ConfigForm({
     currentConfig,
     onApply,
     isRunning,
+    joystickConnected,
 }: Omit<ConfigDialogProps, 'opened'>): React.ReactElement {
     const [cpuType, setCpuType] = useState(currentConfig.cpuType);
     const [memoryKb, setMemoryKb] = useState(String(currentConfig.memoryKb));
@@ -31,6 +33,20 @@ function ConfigForm({
     const [com2Device, setCom2Device] = useState(currentConfig.com2Device);
     const [joystickA, setJoystickA] = useState(currentConfig.joystickA);
     const [joystickB, setJoystickB] = useState(currentConfig.joystickB);
+    const [physicalGamepads, setPhysicalGamepads] = useState<number>(0);
+
+    // Poll for physical gamepads while dialog is open
+    useEffect(() => {
+        const poll = (): void => {
+            const count = navigator.getGamepads().filter(Boolean).length;
+            setPhysicalGamepads(count);
+        };
+        poll();
+        const id = setInterval(poll, 500);
+        return () => {
+            clearInterval(id);
+        };
+    }, []);
 
     const handleApply = (): void => {
         onApply({
@@ -166,24 +182,45 @@ function ConfigForm({
 
                 <Grid.Col span={6}>
                     <div>
-                        <Text size="sm" fw={500} mb={4}>
-                            Joystick
-                        </Text>
+                        <Group gap="xs" mb={4}>
+                            <Text size="sm" fw={500}>
+                                Joystick
+                            </Text>
+                            <Badge size="xs" color={physicalGamepads > 0 ? 'green' : 'gray'} variant="light">
+                                {physicalGamepads > 0
+                                    ? `${physicalGamepads} gamepad${physicalGamepads > 1 ? 's' : ''} detected`
+                                    : 'no gamepad'}
+                            </Badge>
+                        </Group>
                         <Stack gap="xs">
-                            <Checkbox
-                                label="Joystick A (gamepad 1)"
-                                checked={joystickA}
-                                onChange={(e) => {
-                                    setJoystickA(e.currentTarget.checked);
-                                }}
-                            />
-                            <Checkbox
-                                label="Joystick B (gamepad 2)"
-                                checked={joystickB}
-                                onChange={(e) => {
-                                    setJoystickB(e.currentTarget.checked);
-                                }}
-                            />
+                            <Group gap="xs">
+                                <Checkbox
+                                    label="Joystick A (gamepad 1)"
+                                    checked={joystickA}
+                                    onChange={(e) => {
+                                        setJoystickA(e.currentTarget.checked);
+                                    }}
+                                />
+                                {joystickA && (
+                                    <Badge size="xs" color={joystickConnected[0] ? 'green' : 'orange'} variant="dot">
+                                        {joystickConnected[0] ? 'active' : 'pending reset'}
+                                    </Badge>
+                                )}
+                            </Group>
+                            <Group gap="xs">
+                                <Checkbox
+                                    label="Joystick B (gamepad 2)"
+                                    checked={joystickB}
+                                    onChange={(e) => {
+                                        setJoystickB(e.currentTarget.checked);
+                                    }}
+                                />
+                                {joystickB && (
+                                    <Badge size="xs" color={joystickConnected[1] ? 'green' : 'orange'} variant="dot">
+                                        {joystickConnected[1] ? 'active' : 'pending reset'}
+                                    </Badge>
+                                )}
+                            </Group>
                         </Stack>
                     </div>
                 </Grid.Col>
@@ -205,6 +242,7 @@ export function ConfigDialog({
     currentConfig,
     onApply,
     isRunning,
+    joystickConnected,
 }: ConfigDialogProps): React.ReactElement {
     return (
         <Modal opened={opened} onClose={onClose} title="System Configuration" size="lg">
@@ -214,6 +252,7 @@ export function ConfigDialog({
                 currentConfig={currentConfig}
                 onApply={onApply}
                 isRunning={isRunning}
+                joystickConnected={joystickConnected}
             />
         </Modal>
     );

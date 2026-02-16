@@ -33,6 +33,7 @@ function App(): React.ReactElement {
         setStatus,
         isRunning,
         performance,
+        joystickConnected,
         startExecution,
         stopExecution,
         loadProgram,
@@ -229,6 +230,7 @@ function App(): React.ReactElement {
                 currentConfig={currentConfig}
                 onApply={handleApplyConfig}
                 isRunning={isRunning}
+                joystickConnected={joystickConnected}
             />
         </Container>
     );

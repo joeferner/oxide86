@@ -1,355 +1,378 @@
-; joystick_test.com - Test IBM Game Control Adapter (port 0x201)
-; Reads joystick port and displays axis timer states and button states
-; Press any key to exit
+; joystick_test.asm - Tests IBM Game Control Adapter (port 0x201)
+;
+; Reads and displays axis poll counts and button states for both joysticks in
+; real-time. Fires RC one-shots and counts how many reads each axis timer stays
+; high — a proxy for joystick position.
+;
+; Build: nasm -f bin joystick_test.asm -o joystick_test.com
+; Run:   cargo run -p emu86-native-gui -- --joystick-a [--joystick-b] joystick_test.com
+;
+; Screen layout:
+;   Row  0: Title
+;   Row  1: Usage hint
+;   Row  3: "Joystick A:"
+;   Row  4:   X/Y axis counts
+;   Row  5:   Button states
+;   Row  7: "Joystick B:"
+;   Row  8:   X/Y axis counts
+;   Row  9:   Button states
+;   Row 11: Raw port hex value
 
 org 0x100
 
-section .text
+JOY_PORT  equ 0x0201
+MAX_COUNT equ 500       ; max poll iterations per fire (avoids blocking on missing B)
 
+; ─── Entry point ─────────────────────────────────────────────────────────────
 start:
-    ; Set up video mode (80x25 color text)
+    ; Set 80x25 text mode (clears screen)
     mov ax, 0x0003
     int 0x10
 
-    ; Display header
-    mov ah, 0x13          ; Write string
-    mov al, 0x01          ; Update cursor
-    mov bh, 0             ; Page 0
-    mov bl, 0x0F          ; White on black
-    mov cx, header_len
-    mov dx, 0x0000        ; Row 0, col 0
-    push cs
-    pop es
-    mov bp, header
+    ; Hide cursor
+    mov ah, 0x01
+    mov cx, 0x2000
     int 0x10
 
-    ; Display instructions
-    mov ah, 0x13
-    mov al, 0x01
-    mov bh, 0
-    mov bl, 0x07          ; Gray on black
-    mov cx, inst_len
-    mov dx, 0x0200        ; Row 2, col 0
-    mov bp, instructions
-    int 0x10
+    ; Print static labels (one time)
+    call print_static_labels
 
+; ─── Main loop ───────────────────────────────────────────────────────────────
 main_loop:
-    ; Check for keystroke (non-blocking)
+    ; Non-blocking keypress check — exit on any key
     mov ah, 0x01
     int 0x16
-    jnz exit              ; Exit if key pressed
+    jnz .exit
 
-    ; Fire joystick one-shots (write any value to 0x201)
-    mov al, 0xFF
-    mov dx, 0x201
-    out dx, al
+    ; ── Fire RC one-shots ──
+    mov dx, JOY_PORT
+    out dx, al          ; any write triggers all axis timers
 
-    ; Small delay to let timers run
-    mov cx, 500
-delay_loop:
-    loop delay_loop
+    ; ── Reset per-axis poll counts ──
+    xor ax, ax
+    mov [count_ax], ax
+    mov [count_ay], ax
+    mov [count_bx], ax
+    mov [count_by], ax
 
-    ; Read joystick port
-    mov dx, 0x201
+    ; ── Count reads while each axis timer bit is high ──
+    mov cx, MAX_COUNT
+    .poll_loop:
+        in al, dx           ; read port 0x201 (DX still = JOY_PORT)
+
+        test al, 0x01
+        jz .no_ax
+        inc word [count_ax]
+    .no_ax:
+        test al, 0x02
+        jz .no_ay
+        inc word [count_ay]
+    .no_ay:
+        test al, 0x04
+        jz .no_bx
+        inc word [count_bx]
+    .no_bx:
+        test al, 0x08
+        jz .no_by
+        inc word [count_by]
+    .no_by:
+
+        ; All four timer bits gone — done early
+        test al, 0x0F
+        jz .poll_done
+
+        dec cx
+        jnz .poll_loop
+
+    .poll_done:
+
+    ; ── Read button state (fresh read after timers expired) ──
     in al, dx
-    mov [port_value], al
+    mov [port_val], al
 
-    ; Display port value at row 4
-    call display_port_value
-
-    ; Display axis timer states (bits 0-3)
-    mov bl, [port_value]
-    call display_axis_timers
-
-    ; Display button states (bits 4-7)
-    mov bl, [port_value]
-    call display_buttons
-
-    ; Small delay before next read
-    mov cx, 10000
-delay_loop2:
-    loop delay_loop2
+    ; ── Update dynamic display values ──
+    call update_display
 
     jmp main_loop
 
-exit:
-    ; Clear keyboard buffer
+.exit:
+    ; Consume key from buffer
     mov ah, 0x00
     int 0x16
 
-    ; Restore video mode and exit
+    ; Restore cursor
+    mov ah, 0x01
+    mov cx, 0x0607
+    int 0x10
+
+    ; Clear screen and exit
     mov ax, 0x0003
     int 0x10
-    mov ax, 0x4C00
+    mov ah, 0x4C
+    xor al, al
     int 0x21
 
-; Display the raw port value as two hex digits
-display_port_value:
-    mov ah, 0x13
-    mov al, 0x01
-    mov bh, 0
-    mov bl, 0x0E          ; Yellow on black
-    mov cx, port_label_len
-    mov dx, 0x0400        ; Row 4, col 0
-    mov bp, port_label
-    int 0x10
+; ─── Print static labels (called once at startup) ────────────────────────────
+print_static_labels:
+    mov dh, 0
+    mov dl, 0
+    call set_cursor
+    mov si, str_title
+    call print_str
 
-    ; Convert high nibble to hex
-    mov al, [port_value]
+    mov dh, 1
+    mov dl, 0
+    call set_cursor
+    mov si, str_hint
+    call print_str
+
+    mov dh, 3
+    mov dl, 0
+    call set_cursor
+    mov si, str_joy_a_hdr
+    call print_str
+
+    mov dh, 4
+    mov dl, 0
+    call set_cursor
+    mov si, str_axes_label
+    call print_str
+
+    mov dh, 5
+    mov dl, 0
+    call set_cursor
+    mov si, str_btns_label
+    call print_str
+
+    mov dh, 7
+    mov dl, 0
+    call set_cursor
+    mov si, str_joy_b_hdr
+    call print_str
+
+    mov dh, 8
+    mov dl, 0
+    call set_cursor
+    mov si, str_axes_label
+    call print_str
+
+    mov dh, 9
+    mov dl, 0
+    call set_cursor
+    mov si, str_btns_label
+    call print_str
+
+    mov dh, 11
+    mov dl, 0
+    call set_cursor
+    mov si, str_port_label
+    call print_str
+
+    ret
+
+; ─── Update dynamic display values ───────────────────────────────────────────
+update_display:
+    ; --- Joystick A X count (row 4, col 6) ---
+    mov dh, 4
+    mov dl, 6
+    call set_cursor
+    mov ax, [count_ax]
+    call print_decimal4
+
+    ; --- Joystick A Y count (row 4, col 17) ---
+    mov dh, 4
+    mov dl, 17
+    call set_cursor
+    mov ax, [count_ay]
+    call print_decimal4
+
+    ; --- Joystick A Button 1 (row 5, col 9) ---
+    mov dh, 5
+    mov dl, 9
+    call set_cursor
+    mov al, [port_val]
+    test al, 0x10           ; bit 4: 0=pressed, 1=released
+    jnz .a1_rel
+    mov si, str_pressed
+    jmp .a1_print
+.a1_rel:
+    mov si, str_released
+.a1_print:
+    call print_str
+
+    ; --- Joystick A Button 2 (row 5, col 27) ---
+    mov dh, 5
+    mov dl, 27
+    call set_cursor
+    mov al, [port_val]
+    test al, 0x20           ; bit 5
+    jnz .a2_rel
+    mov si, str_pressed
+    jmp .a2_print
+.a2_rel:
+    mov si, str_released
+.a2_print:
+    call print_str
+
+    ; --- Joystick B X count (row 8, col 6) ---
+    mov dh, 8
+    mov dl, 6
+    call set_cursor
+    mov ax, [count_bx]
+    call print_decimal4
+
+    ; --- Joystick B Y count (row 8, col 17) ---
+    mov dh, 8
+    mov dl, 17
+    call set_cursor
+    mov ax, [count_by]
+    call print_decimal4
+
+    ; --- Joystick B Button 1 (row 9, col 9) ---
+    mov dh, 9
+    mov dl, 9
+    call set_cursor
+    mov al, [port_val]
+    test al, 0x40           ; bit 6
+    jnz .b1_rel
+    mov si, str_pressed
+    jmp .b1_print
+.b1_rel:
+    mov si, str_released
+.b1_print:
+    call print_str
+
+    ; --- Joystick B Button 2 (row 9, col 27) ---
+    mov dh, 9
+    mov dl, 27
+    call set_cursor
+    mov al, [port_val]
+    test al, 0x80           ; bit 7
+    jnz .b2_rel
+    mov si, str_pressed
+    jmp .b2_print
+.b2_rel:
+    mov si, str_released
+.b2_print:
+    call print_str
+
+    ; --- Raw port value hex (row 11, col 20) ---
+    mov dh, 11
+    mov dl, 20
+    call set_cursor
+    mov al, [port_val]
+    call print_hex_byte
+
+    ret
+
+; ─── Subroutines ─────────────────────────────────────────────────────────────
+
+; set_cursor: position cursor at row DH, col DL
+set_cursor:
+    mov ah, 0x02
+    mov bh, 0x00
+    int 0x10
+    ret
+
+; print_str: print null-terminated string at SI
+print_str:
+    mov ah, 0x0E
+    mov bh, 0x00
+.loop:
+    lodsb
+    test al, al
+    jz .done
+    int 0x10
+    jmp .loop
+.done:
+    ret
+
+; print_decimal4: print AX as exactly 4 zero-padded decimal digits
+; Uses dec_buf. Destroys AX, BX, CX, DX, DI.
+print_decimal4:
+    mov di, dec_buf + 3     ; fill from rightmost digit
+    mov cx, 4
+.loop:
+    mov bx, 10
+    xor dx, dx
+    div bx                  ; AX = AX/10, DX = remainder
+    add dl, '0'
+    mov [di], dl
+    dec di
+    loop .loop
+    mov si, dec_buf
+    call print_str
+    ret
+
+; print_hex_byte: print AL as two uppercase hex chars
+; Destroys AX, BX.
+print_hex_byte:
+    mov bl, al
+    ; High nibble
     shr al, 4
-    call hex_to_ascii
-    mov [hex_output], al
-
-    ; Convert low nibble to hex
-    mov al, [port_value]
+    call print_hex_nibble
+    ; Low nibble
+    mov al, bl
     and al, 0x0F
-    call hex_to_ascii
-    mov [hex_output+1], al
-
-    ; Display hex value
-    mov ah, 0x13
-    mov al, 0x00          ; Don't update cursor
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, 2
-    mov dx, 0x040E        ; Row 4, col 14
-    mov bp, hex_output
-    int 0x10
-
+    call print_hex_nibble
     ret
 
-; Display axis timer states
-display_axis_timers:
-    mov ah, 0x13
-    mov al, 0x01
-    mov bh, 0
-    mov bl, 0x0B          ; Cyan on black
-    mov cx, axis_label_len
-    mov dx, 0x0600        ; Row 6, col 0
-    mov bp, axis_label
-    int 0x10
-
-    ; Joystick A X-axis (bit 0)
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, axis_ax_len
-    mov dx, 0x0700
-    mov bp, axis_ax_label
-    int 0x10
-    mov al, [port_value]
-    test al, 0x01
-    call display_timer_state
-    mov dx, 0x0710
-    call display_status
-
-    ; Joystick A Y-axis (bit 1)
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, axis_ay_len
-    mov dx, 0x0800
-    mov bp, axis_ay_label
-    int 0x10
-    mov al, [port_value]
-    test al, 0x02
-    call display_timer_state
-    mov dx, 0x0810
-    call display_status
-
-    ; Joystick B X-axis (bit 2)
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, axis_bx_len
-    mov dx, 0x0900
-    mov bp, axis_bx_label
-    int 0x10
-    mov al, [port_value]
-    test al, 0x04
-    call display_timer_state
-    mov dx, 0x0910
-    call display_status
-
-    ; Joystick B Y-axis (bit 3)
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, axis_by_len
-    mov dx, 0x0A00
-    mov bp, axis_by_label
-    int 0x10
-    mov al, [port_value]
-    test al, 0x08
-    call display_timer_state
-    mov dx, 0x0A10
-    call display_status
-
-    ret
-
-; Display button states
-display_buttons:
-    mov ah, 0x13
-    mov al, 0x01
-    mov bh, 0
-    mov bl, 0x0D          ; Magenta on black
-    mov cx, btn_label_len
-    mov dx, 0x0C00        ; Row 12, col 0
-    mov bp, btn_label
-    int 0x10
-
-    ; Joystick A Button 1 (bit 4, inverted: 0=pressed)
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, btn_a1_len
-    mov dx, 0x0D00
-    mov bp, btn_a1_label
-    int 0x10
-    mov al, [port_value]
-    test al, 0x10
-    call display_button_state
-    mov dx, 0x0D10
-    call display_status
-
-    ; Joystick A Button 2 (bit 5, inverted)
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, btn_a2_len
-    mov dx, 0x0E00
-    mov bp, btn_a2_label
-    int 0x10
-    mov al, [port_value]
-    test al, 0x20
-    call display_button_state
-    mov dx, 0x0E10
-    call display_status
-
-    ; Joystick B Button 1 (bit 6, inverted)
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, btn_b1_len
-    mov dx, 0x0F00
-    mov bp, btn_b1_label
-    int 0x10
-    mov al, [port_value]
-    test al, 0x40
-    call display_button_state
-    mov dx, 0x0F10
-    call display_status
-
-    ; Joystick B Button 2 (bit 7, inverted)
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0F
-    mov cx, btn_b2_len
-    mov dx, 0x1000
-    mov bp, btn_b2_label
-    int 0x10
-    mov al, [port_value]
-    test al, 0x80
-    call display_button_state
-    mov dx, 0x1010
-    call display_status
-
-    ret
-
-; Set status string based on timer state (ZF set = timed out, ZF clear = running)
-display_timer_state:
-    jnz .running
-    mov bp, timed_out
-    ret
-.running:
-    mov bp, running
-    ret
-
-; Set status string based on button state (ZF set = pressed, ZF clear = released)
-; Note: button bits are inverted (0=pressed, 1=released)
-display_button_state:
-    jz .pressed
-    mov bp, released
-    ret
-.pressed:
-    mov bp, pressed
-    ret
-
-; Display status string (BP points to string)
-display_status:
-    mov ah, 0x13
-    mov al, 0x00
-    mov bh, 0
-    mov bl, 0x0A          ; Green on black
-    mov cx, 8
-    int 0x10
-    ret
-
-; Convert hex nibble (0-15) in AL to ASCII character
-hex_to_ascii:
+; print_hex_nibble: print low 4 bits of AL as one hex char
+print_hex_nibble:
     cmp al, 10
-    jb .digit
+    jl .digit
     add al, 'A' - 10
-    ret
+    jmp .print
 .digit:
     add al, '0'
+.print:
+    mov ah, 0x0E
+    mov bh, 0x00
+    int 0x10
     ret
 
-section .data
+; ─── Data ────────────────────────────────────────────────────────────────────
 
-header:         db 'IBM Game Control Adapter (Port 0x201) Test'
-header_len:     equ $ - header
+str_title:
+    db 'Joystick Axis & Button Test  (Port 0x201)', 0
 
-instructions:   db 'Press any key to exit'
-inst_len:       equ $ - instructions
+str_hint:
+    db 'Press any key to exit', 0
 
-port_label:     db 'Port value: '
-port_label_len: equ $ - port_label
+;           "    X: ????    Y: ????"
+;            0       8      15     22
+str_joy_a_hdr:
+    db 'Joystick A:', 0
+str_joy_b_hdr:
+    db 'Joystick B:', 0
 
-axis_label:     db 'Axis Timers:'
-axis_label_len: equ $ - axis_label
+;           "   X: ????    Y: ????"
+;             0  5  8      18 22
+str_axes_label:
+    db '   X: ????    Y: ????', 0
 
-axis_ax_label:  db 'Joy A X-axis'
-axis_ax_len:    equ $ - axis_ax_label
+;           "   Btn1: ????????    Btn2: ????????"
+;             0  5  9            23  27
+str_btns_label:
+    db '   Btn1: ????????    Btn2: ????????', 0
 
-axis_ay_label:  db 'Joy A Y-axis'
-axis_ay_len:    equ $ - axis_ay_label
+str_port_label:
+    db '  Raw port 0x201: 0x', 0
 
-axis_bx_label:  db 'Joy B X-axis'
-axis_bx_len:    equ $ - axis_bx_label
+str_pressed:
+    db 'Pressed ', 0      ; 8 chars (padded to match "Released")
 
-axis_by_label:  db 'Joy B Y-axis'
-axis_by_len:    equ $ - axis_by_label
+str_released:
+    db 'Released', 0      ; 8 chars
 
-btn_label:      db 'Buttons:'
-btn_label_len:  equ $ - btn_label
+; Per-axis poll counts (how many reads the axis timer bit was high)
+count_ax:   dw 0
+count_ay:   dw 0
+count_bx:   dw 0
+count_by:   dw 0
 
-btn_a1_label:   db 'Joy A Btn 1 '
-btn_a1_len:     equ $ - btn_a1_label
+; Last raw port read (for button bits 4-7)
+port_val:   db 0
 
-btn_a2_label:   db 'Joy A Btn 2 '
-btn_a2_len:     equ $ - btn_a2_label
-
-btn_b1_label:   db 'Joy B Btn 1 '
-btn_b1_len:     equ $ - btn_b1_label
-
-btn_b2_label:   db 'Joy B Btn 2 '
-btn_b2_len:     equ $ - btn_b2_label
-
-timed_out:      db 'TimedOut'
-running:        db 'Running '
-pressed:        db 'Pressed '
-released:       db 'Released'
-
-section .bss
-
-port_value:     resb 1
-hex_output:     resb 2
+; 4-digit decimal print buffer (no null terminator in buffer; print_str adds it)
+dec_buf:    db '0000', 0

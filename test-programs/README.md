@@ -50,7 +50,7 @@ Simplified version of beep.asm that produces a 1000 Hz tone for approximately 1 
 ## Joystick
 
 ### joystick/joystick_test.asm
-Tests the IBM Game Control Adapter (port 0x201) by reading and displaying joystick axis timer states and button states in real-time. Demonstrates reading port 0x201, axis timer interpretation (RC one-shot timing), and button state decoding (inverted logic: 0=pressed, 1=released).
+Tests both joysticks (A and B) on the IBM Game Control Adapter (port 0x201) in real-time. Fires RC one-shots and counts how many reads each axis timer stays high — the count is a proxy for stick deflection (0 = timed out immediately / no joystick, ~15 = center, ~30 = full deflection). Also shows button states for both joysticks with inverted logic (0=pressed, 1=released).
 
 **Running with gamepad support:**
 ```bash
@@ -62,16 +62,12 @@ cargo run -p emu86-native-gui -- --joystick-a --joystick-b test-programs/joystic
 ```
 
 **Expected Output:**
-- **Port value**: Raw hex byte from port 0x201 (e.g., 0xF0 with no gamepad)
-- **Axis Timers**: For each joystick (A/B) and axis (X/Y), shows "Running" or "TimedOut"
-  - Without gamepad: All show "TimedOut" (bits 0-3 = 0)
-  - With gamepad: Timers reflect analog stick positions
-- **Buttons**: For each joystick (A/B) and button (1/2), shows "Pressed" or "Released"
-  - Without gamepad: All show "Released" (bits 4-7 = 1)
-  - With gamepad: Button states change when pressing South (Button 1) or East (Button 2)
+- **Joystick A / B X and Y axis counts** (4-digit zero-padded): 0000 with no gamepad; ~0015 at center; ~0030 at full deflection
+- **Button 1 / 2 states**: `Released` with no gamepad; `Pressed ` when South (A/Cross) or East (B/Circle) held
+- **Raw port 0x201 hex**: `F0` with no gamepad (all timers expired, all buttons released)
 
 **Technical Details:**
-Demonstrates IBM Game Control Adapter protocol: writing to port 0x201 fires RC timer one-shots for all four axes, then reading port 0x201 returns 8-bit status with axis timers (bits 0-3: 1=running, 0=timed out) and button states (bits 4-7: 0=pressed, 1=released). Gamepad mapping uses gilrs library on native platforms: first connected gamepad → Joystick A, second → Joystick B. Buttons: South (A/Cross) → Button 1, East (B/Circle) → Button 2. Requires `--joystick-a` and/or `--joystick-b` flags to enable gilrs gamepad detection. Press any key to exit. See [joystick/README.md](joystick/README.md) for full details.
+Fires RC timer one-shots by writing to port 0x201, then polls in a tight loop (up to 500 iterations) counting reads where each axis bit (bits 0-3) stays high. Stops early when all four timer bits go low. Button bits (4-7) are read after timers expire: 0=pressed, 1=released. Gamepad mapping via gilrs: first connected gamepad → Joystick A, second → Joystick B. South (A/Cross) → Button 1, East (B/Circle) → Button 2. Requires `--joystick-a` and/or `--joystick-b` flags. Press any key to exit. See [joystick/README.md](joystick/README.md) for full protocol details.
 
 ## Keyboard
 
