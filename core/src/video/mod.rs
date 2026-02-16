@@ -12,10 +12,14 @@ pub use ega::EgaBuffer;
 pub use text::TextBuffer;
 // CursorPosition is already defined in this file, so no need to re-export
 
-// Video memory constants
-pub const VIDEO_MEMORY_START: usize = 0xB8000;
-pub const VIDEO_MEMORY_END: usize = 0xBFFFF;
-pub const VIDEO_MEMORY_SIZE: usize = VIDEO_MEMORY_END - VIDEO_MEMORY_START + 1; // 32KB
+// CGA video memory constants
+pub const CGA_MEMORY_START: usize = 0xB8000;
+pub const CGA_MEMORY_END: usize = 0xBFFFF;
+pub const CGA_MEMORY_SIZE: usize = CGA_MEMORY_END - CGA_MEMORY_START + 1; // 32KB
+
+// EGA video memory range (A000:0000 - A000:FFFF = 0xA0000 - 0xAFFFF)
+pub const EGA_MEMORY_START: usize = 0xA0000;
+pub const EGA_MEMORY_END: usize = 0xAFFFF;
 
 // Text mode dimensions
 pub const TEXT_MODE_COLS: usize = 80;
@@ -176,9 +180,6 @@ pub struct Video {
     /// CGA composite mode: render 640x200 as composite artifact colors (160x200 16-color)
     /// Set when mode switches to 640x200 via port 0x3D8 (e.g., AGI games); cleared by INT 10h
     composite_mode: bool,
-    /// Flag to sync graphics buffer from raw B800 memory on next update
-    /// Set when transitioning from text → CGA graphics to preserve data (e.g., MS Flight Simulator)
-    needs_memory_sync: bool,
     /// Video card type - limits which video modes are available
     card_type: VideoCardType,
     /// VGA Attribute Controller palette registers (16 entries)
@@ -186,6 +187,10 @@ pub struct Video {
     /// On CGA mode changes, AC[0-3] are synced from the CGA palette EGA indices
     /// Programs can reprogram these via port 0x3C0 for custom color mapping
     ac_palette: [u8; 16],
+    /// Raw video RAM (32KB at B8000-BFFFF)
+    /// Persists across mode changes, just like real hardware
+    /// This is the video card's own memory, separate from system RAM
+    vram: Box<[u8; CGA_MEMORY_SIZE]>,
 }
 
 /// Initialize VGA DAC palette with EGA defaults
@@ -226,9 +231,9 @@ impl Video {
             ega_map_mask: 0x0F, // All 4 planes enabled
             ega_read_plane: 0,  // Read from plane 0
             composite_mode: false,
-            needs_memory_sync: false,
             card_type,
             ac_palette: Self::default_ac_palette(),
+            vram: Box::new([0; CGA_MEMORY_SIZE]),
         }
     }
 
@@ -251,40 +256,29 @@ impl Video {
         self.card_type.supports_mode(mode)
     }
 
+    /// Get raw VRAM for direct access
+    pub fn get_vram(&self) -> &[u8] {
+        &self.vram[..]
+    }
+
     /// Read a single byte from video memory
     pub fn read_byte(&self, offset: usize) -> u8 {
-        match &self.mode_type {
-            VideoMode::Text { cols, .. } => self.text_buffer.read_byte(offset, *cols),
-            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
-                // Graphics mode
-                if let Some(ref buffer) = self.cga_buffer {
-                    buffer.read_byte(offset)
-                } else {
-                    0
-                }
-            }
-            VideoMode::Graphics320x200x16 => {
-                // EGA mode: B800 reads return 0 (EGA uses A000)
-                0
-            }
+        // Read from raw VRAM (source of truth)
+        if offset < self.vram.len() {
+            self.vram[offset]
+        } else {
+            0
         }
     }
 
     /// Update a single byte in video memory
     pub fn write_byte(&mut self, offset: usize, value: u8) {
-        match &self.mode_type {
-            VideoMode::Text { cols, .. } => self.text_buffer.write_byte(offset, *cols, value),
-            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
-                // Graphics mode
-                if let Some(ref mut buffer) = self.cga_buffer {
-                    buffer.write_byte(offset, value);
-                }
-            }
-            VideoMode::Graphics320x200x16 => {
-                // EGA mode: B800 writes are ignored (EGA uses A000 via write_byte_ega)
-            }
+        // Write to raw VRAM (single source of truth)
+        // Parsed buffers (TextBuffer/CgaBuffer) are rebuilt from VRAM before rendering
+        if offset < self.vram.len() {
+            self.vram[offset] = value;
+            self.dirty = true;
         }
-        self.dirty = true;
     }
 
     /// Update a word (char + attr) in video memory
@@ -331,9 +325,6 @@ impl Video {
     /// (used for port-based mode switches where BIOS doesn't clear). INT 10h AH=00h passes false
     /// because real BIOS always clears video memory on mode change.
     pub fn set_mode(&mut self, mode: u8, preserve_memory: bool) {
-        // Track previous mode type for sync decision
-        let was_text_mode = matches!(self.mode_type, VideoMode::Text { .. });
-
         self.mode = mode;
 
         // Determine mode type and allocate appropriate buffer
@@ -358,13 +349,6 @@ impl Video {
             }
         };
 
-        // Set flag to sync from raw memory if transitioning from text to graphics
-        let is_now_cga_graphics = matches!(
-            self.mode_type,
-            VideoMode::Graphics320x200 | VideoMode::Graphics640x200
-        );
-        self.needs_memory_sync = was_text_mode && is_now_cga_graphics && preserve_memory;
-
         // Clear buffers on mode change
         if matches!(self.mode_type, VideoMode::Text { .. }) {
             self.text_buffer = TextBuffer::new();
@@ -372,6 +356,12 @@ impl Video {
             self.ega_buffer = None;
         } else if matches!(self.mode_type, VideoMode::Graphics320x200x16) {
             self.cga_buffer = None;
+        }
+
+        // Clear VRAM when BIOS sets mode (preserve_memory=false)
+        // Real PC BIOS always clears video memory on INT 10h AH=00h
+        if !preserve_memory {
+            self.vram.fill(0);
         }
 
         // Reset VGA DAC palette and AC palette to defaults
@@ -426,41 +416,6 @@ impl Video {
     /// Get CGA composite mode flag
     pub fn is_composite_mode(&self) -> bool {
         self.composite_mode
-    }
-
-    /// Sync graphics buffer from raw B800 memory (for text→graphics transitions)
-    /// This is needed when programs write to B800 in text mode (e.g., as disk I/O buffer)
-    /// then switch to graphics mode expecting that data to be visible.
-    pub fn sync_from_raw_memory(&mut self, raw_memory: &[u8]) {
-        if !self.needs_memory_sync {
-            return;
-        }
-
-        match &self.mode_type {
-            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
-                if let Some(ref mut buffer) = self.cga_buffer {
-                    for (offset, &value) in raw_memory.iter().enumerate() {
-                        if value != 0 {
-                            // Only sync non-zero bytes to avoid clearing graphics
-                            buffer.write_byte(offset, value);
-                        }
-                    }
-                    log::debug!(
-                        "Synced CGA graphics buffer from raw B800 memory ({} bytes)",
-                        raw_memory.len()
-                    );
-                }
-            }
-            _ => {}
-        }
-
-        self.needs_memory_sync = false;
-        self.dirty = true;
-    }
-
-    /// Check if memory sync is needed
-    pub fn needs_memory_sync(&self) -> bool {
-        self.needs_memory_sync
     }
 
     /// Set active display page
@@ -743,6 +698,44 @@ impl Video {
         let changed = self.mode_changed;
         self.mode_changed = false;
         changed
+    }
+
+    /// Rebuild text buffer cache from VRAM
+    fn rebuild_text_buffer(&mut self, cols: usize) {
+        for offset in (0..cols * TEXT_MODE_ROWS * 2).step_by(2) {
+            let row = offset / (cols * 2);
+            let col = (offset % (cols * 2)) / 2;
+            let cell_index = row * TEXT_MODE_COLS + col;
+
+            if offset < self.vram.len() && cell_index < self.text_buffer.len() {
+                self.text_buffer[cell_index].character = self.vram[offset];
+                self.text_buffer[cell_index].attribute =
+                    text::TextAttribute::from_byte(self.vram[offset + 1]);
+            }
+        }
+    }
+
+    /// Rebuild CGA buffer cache from VRAM
+    fn rebuild_cga_buffer(&mut self) {
+        if let Some(ref mut buffer) = self.cga_buffer {
+            // Copy VRAM bytes to CGA buffer
+            for (offset, &byte) in self.vram.iter().enumerate() {
+                buffer.write_byte(offset, byte);
+            }
+        }
+    }
+
+    /// Rebuild appropriate cache from VRAM based on current mode
+    pub fn rebuild_cache(&mut self) {
+        match &self.mode_type {
+            VideoMode::Text { cols, .. } => self.rebuild_text_buffer(*cols),
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
+                self.rebuild_cga_buffer();
+            }
+            VideoMode::Graphics320x200x16 => {
+                // EGA buffer doesn't need rebuild (writes go directly via write_byte_ega)
+            }
+        }
     }
 }
 

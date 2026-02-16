@@ -1,5 +1,5 @@
-use crate::memory::{EGA_MEMORY_END, EGA_MEMORY_START, Memory};
-use crate::video::{VIDEO_MEMORY_END, VIDEO_MEMORY_START, Video};
+use crate::memory::Memory;
+use crate::video::{CGA_MEMORY_END, CGA_MEMORY_START, EGA_MEMORY_END, EGA_MEMORY_START, Video};
 
 /// System bus that routes memory accesses to appropriate devices.
 /// Mirrors real PC hardware where the bus connects CPU, RAM, and
@@ -37,8 +37,8 @@ impl Bus {
     /// Read byte from memory or memory-mapped device
     pub fn read_u8(&self, address: usize) -> u8 {
         // Route to Video for memory-mapped ranges
-        if (VIDEO_MEMORY_START..=VIDEO_MEMORY_END).contains(&address) {
-            let offset = address - VIDEO_MEMORY_START;
+        if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&address) {
+            let offset = address - CGA_MEMORY_START;
             return self.video.read_byte(offset);
         }
         if (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address) {
@@ -53,8 +53,8 @@ impl Bus {
     /// Write byte to memory or memory-mapped device
     pub fn write_u8(&mut self, address: usize, value: u8) {
         // Route to Video for memory-mapped ranges
-        if (VIDEO_MEMORY_START..=VIDEO_MEMORY_END).contains(&address) {
-            let offset = address - VIDEO_MEMORY_START;
+        if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&address) {
+            let offset = address - CGA_MEMORY_START;
             self.video.write_byte(offset, value);
             return;
         }
@@ -131,22 +131,12 @@ impl Bus {
         self.memory.set_a20_enabled(enabled);
     }
 
-    /// Get raw video memory for text→graphics sync
+    /// Get raw video memory (VRAM from video card)
     pub fn get_video_memory_raw(&self) -> &[u8] {
-        self.memory.get_video_memory()
+        self.video.get_vram()
     }
 
     // Common Video delegation methods
-
-    /// Check if video needs memory sync (text→graphics transition)
-    pub fn needs_memory_sync(&self) -> bool {
-        self.video.needs_memory_sync()
-    }
-
-    /// Sync graphics buffer from raw B8000 memory
-    pub fn sync_from_raw_memory(&mut self, raw_memory: &[u8]) {
-        self.video.sync_from_raw_memory(raw_memory);
-    }
 
     /// Check if display needs updating
     pub fn is_dirty(&self) -> bool {
@@ -168,14 +158,19 @@ impl Bus {
         self.video.get_buffer()
     }
 
+    /// Rebuild rendering cache from VRAM
+    pub fn rebuild_cache(&mut self) {
+        self.video.rebuild_cache();
+    }
+
     /// Get current video mode
     pub fn get_mode(&self) -> u8 {
         self.video.get_mode()
     }
 
-    /// Get video memory (raw B8000 memory)
+    /// Get video memory (raw VRAM from video card)
     pub fn get_video_memory(&self) -> &[u8] {
-        self.memory.get_video_memory()
+        self.video.get_vram()
     }
 
     /// Get number of columns in current video mode

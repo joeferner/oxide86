@@ -71,6 +71,7 @@ impl TextBuffer {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn read_byte(&self, offset: usize, cols: usize) -> u8 {
         // Text mode: handle different column widths
         let bytes_per_row = cols * 2; // 2 bytes per cell (char + attr)
@@ -97,6 +98,7 @@ impl TextBuffer {
         }
     }
 
+    #[allow(dead_code)]
     pub(crate) fn write_byte(&mut self, offset: usize, cols: usize, value: u8) {
         // Text mode: handle different column widths
         let bytes_per_row = cols * 2; // 2 bytes per cell (char + attr)

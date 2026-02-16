@@ -1,8 +1,5 @@
-use crate::video::{VIDEO_MEMORY_END, VIDEO_MEMORY_START};
+use crate::video::{CGA_MEMORY_END, CGA_MEMORY_START};
 
-// EGA video memory range (A000:0000 - A000:FFFF = 0xA0000 - 0xAFFFF)
-pub const EGA_MEMORY_START: usize = 0xA0000;
-pub const EGA_MEMORY_END: usize = 0xAFFFF;
 use anyhow::{Result, anyhow};
 
 // 1MB = 0x100000 bytes
@@ -327,8 +324,8 @@ impl Memory {
     /// Drain video memory writes collected during instruction execution
     /// Get a slice of the raw video memory (B8000-BFFFF)
     pub fn get_video_memory(&self) -> &[u8] {
-        let end = (VIDEO_MEMORY_END + 1).min(self.data.len());
-        &self.data[VIDEO_MEMORY_START..end]
+        let end = (CGA_MEMORY_END + 1).min(self.data.len());
+        &self.data[CGA_MEMORY_START..end]
     }
 
     /// Initialize the BIOS Data Area (BDA)

@@ -1068,17 +1068,6 @@ impl<V: VideoController> Computer<V> {
             self.video_controller
                 .update_vga_dac_palette(self.bus.get_vga_dac_palette());
 
-            // Sync graphics buffer from raw B800 memory if transitioning from text→graphics
-            // This handles programs like MS Flight Simulator that write data to B800 in text mode
-            // (e.g., using it as a disk I/O buffer) then switch to graphics expecting that data.
-            // The flag is set in Video::set_mode() ONLY for text→graphics transitions, and this
-            // sync happens exactly once before any INT 10h drawing can occur, preventing the
-            // overwrite bug that occurred when syncing happened after INT 10h text was drawn.
-            if self.bus.needs_memory_sync() {
-                let raw_memory = self.bus.get_video_memory().to_vec();
-                self.bus.sync_from_raw_memory(&raw_memory);
-            }
-
             // Sync BDA video state (may have been set via CGA hardware registers, not INT 10h)
             let cols = self.bus.get_cols();
             let rows = self.bus.get_rows();
@@ -1102,6 +1091,9 @@ impl<V: VideoController> Computer<V> {
             log::trace!("Computer: Passing palette to renderer (dirty)");
             self.video_controller
                 .update_vga_dac_palette(self.bus.get_vga_dac_palette());
+
+            // Rebuild rendering cache from VRAM (VRAM is the single source of truth)
+            self.bus.rebuild_cache();
 
             // Update video controller based on current mode
             match self.bus.get_mode_type() {

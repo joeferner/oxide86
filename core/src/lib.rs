@@ -21,8 +21,8 @@ pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
 pub use crate::speaker::{NullSpeaker, SpeakerOutput};
 pub use crate::video::{
-    CursorPosition, NullVideoController, VIDEO_MEMORY_END, VIDEO_MEMORY_SIZE, VIDEO_MEMORY_START,
-    Video, VideoController, VideoMode, colors,
+    CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, CursorPosition, NullVideoController, Video,
+    VideoController, VideoMode, colors,
 };
 pub use crate::video_card_type::VideoCardType;
 pub use computer::{Computer, ComputerConfig};

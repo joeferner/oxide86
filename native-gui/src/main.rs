@@ -7,8 +7,8 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::NullJoystick;
 use emu86_core::{
-    BackedDisk, Computer, DriveNumber, MEMORY_SIZE, VIDEO_MEMORY_END, VIDEO_MEMORY_SIZE,
-    VIDEO_MEMORY_START,
+    BackedDisk, CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, Computer, DriveNumber,
+    MEMORY_SIZE,
 };
 use emu86_native_common::{
     CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
@@ -1179,7 +1179,7 @@ fn save_video_ram(
 
         // Get the memory data and extract video RAM portion
         let memory_data = computer.memory().data();
-        let video_ram = &memory_data[VIDEO_MEMORY_START..=VIDEO_MEMORY_END];
+        let video_ram = &memory_data[CGA_MEMORY_START..=CGA_MEMORY_END];
 
         // Write to file
         let save_result = std::fs::write(&path, video_ram);
@@ -1190,11 +1190,11 @@ fn save_video_ram(
                     .file_name()
                     .and_then(|n| n.to_str())
                     .unwrap_or(&path);
-                log::info!("Video RAM saved to {} ({} bytes)", path, VIDEO_MEMORY_SIZE);
+                log::info!("Video RAM saved to {} ({} bytes)", path, CGA_MEMORY_SIZE);
                 *notification = Some(Notification::new(
                     format!(
                         "Video RAM saved as {} ({} bytes)",
-                        filename, VIDEO_MEMORY_SIZE
+                        filename, CGA_MEMORY_SIZE
                     ),
                     NotificationType::Success,
                 ));
