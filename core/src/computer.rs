@@ -686,25 +686,53 @@ impl<V: VideoController> Computer<V> {
 
         // Check if CPU is waiting for keyboard input
         if self.cpu.is_waiting_for_keyboard() {
-            // Check if there's a pending keyboard IRQ that needs to be fired
-            // We must fire it first to put the key into the BDA buffer before retrying INT 16h
-            if let Some(key) = self.pending_keyboard_irqs.pop_front() {
+            // Drain any pending keyboard IRQs, looking for a key press.
+            // Key releases (scan_code bit 7 set) are discarded - INT 16h AH=00h only
+            // cares about key presses, and processing releases via fire_keyboard_irq
+            // would corrupt IF (custom INT 09h handlers clear IF on entry) causing
+            // subsequent key presses to be lost.
+            while let Some(key) = self.pending_keyboard_irqs.pop_front() {
+                if key.scan_code & 0x80 != 0 {
+                    // Key release - discard silently
+                    log::debug!(
+                        "Discarding key release 0x{:02X} while waiting for INT 16h keyboard input",
+                        key.scan_code
+                    );
+                    continue;
+                }
+                // Key press - directly pre-buffer in BDA without dispatching INT 09h.
+                // Bypassing INT 09h avoids IF corruption from custom handlers and
+                // correctly unblocks INT 16h AH=00h regardless of DOS hooks.
                 log::debug!(
-                    "Firing pending keyboard IRQ (scan=0x{:02X}, ascii=0x{:02X}) before resuming from wait state",
+                    "Pre-buffering key press (scan=0x{:02X}, ascii=0x{:02X}) for INT 16h wait-state resume",
                     key.scan_code,
                     key.ascii_code
                 );
-                self.fire_keyboard_irq(key);
-                // After firing the IRQ, the key is now in the BDA buffer
-                // Resume and retry INT 16h
-                if self.cpu.resume_from_wait() {
-                    self.cpu.int16_read_char(&mut self.memory, &mut self.bios);
-                    return;
+                {
+                    use memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START};
+                    let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
+                    let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
+                    let head = self.memory.read_u16(head_addr);
+                    let tail = self.memory.read_u16(tail_addr);
+                    let buffer_start: u16 = 0x001E;
+                    let new_tail = if tail == buffer_start + 30 {
+                        buffer_start
+                    } else {
+                        tail + 2
+                    };
+                    if new_tail != head {
+                        let char_addr = BDA_START + tail as usize;
+                        self.memory.write_u8(char_addr, key.scan_code);
+                        self.memory.write_u8(char_addr + 1, key.ascii_code);
+                        self.memory.write_u16(tail_addr, new_tail);
+                    } else {
+                        log::warn!("Keyboard buffer full while in wait state, discarding key");
+                    }
                 }
+                break;
             }
 
             // Check if a key is available in the BDA keyboard buffer
-            // (could be from a previously fired IRQ or direct buffer manipulation)
             let head_addr = memory::BDA_START + memory::BDA_KEYBOARD_BUFFER_HEAD;
             let tail_addr = memory::BDA_START + memory::BDA_KEYBOARD_BUFFER_TAIL;
             let head = self.memory.read_u16(head_addr);
@@ -714,9 +742,7 @@ impl<V: VideoController> Computer<V> {
                 log::debug!(
                     "Key available in BDA buffer, resuming from wait state and retrying INT 16h"
                 );
-                // Resume and check if we should retry INT 16h
                 if self.cpu.resume_from_wait() {
-                    // Retry INT 16h AH=00h handler directly
                     self.cpu.int16_read_char(&mut self.memory, &mut self.bios);
                     return;
                 }
