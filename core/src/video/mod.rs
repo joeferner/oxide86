@@ -455,6 +455,14 @@ impl Video {
         !matches!(self.mode_type, VideoMode::Text { .. })
     }
 
+    /// Check if currently in CGA 4-color graphics mode (320x200 or 640x200)
+    fn is_cga_graphics_mode(&self) -> bool {
+        matches!(
+            self.mode_type,
+            VideoMode::Graphics320x200 | VideoMode::Graphics640x200
+        )
+    }
+
     /// Scroll a text-cell window up in graphics mode.
     /// Dispatches to the appropriate buffer (CGA interlaced or EGA planar).
     /// `lines == 0` clears the entire window.
@@ -540,7 +548,12 @@ impl Video {
     /// Set CGA palette (from I/O port 0x3D9)
     pub fn set_palette(&mut self, value: u8) {
         self.palette = CgaPalette::from_register(value);
-        self.update_vga_dac_from_cga_palette();
+        // Only sync VGA DAC entries 0-3 in CGA graphics modes.
+        // In text mode, port 0x3D9 only affects border/overscan color;
+        // syncing would corrupt text color indices (e.g., blue → green).
+        if self.is_cga_graphics_mode() {
+            self.update_vga_dac_from_cga_palette();
+        }
         self.dirty = true;
     }
 
@@ -605,21 +618,27 @@ impl Video {
     /// Set CGA background color (4 bits, 0-15)
     pub fn set_cga_background(&mut self, color: u8) {
         self.palette.background = color & 0x0F;
-        self.update_vga_dac_from_cga_palette();
+        if self.is_cga_graphics_mode() {
+            self.update_vga_dac_from_cga_palette();
+        }
         self.dirty = true;
     }
 
     /// Set CGA intensity/bright mode
     pub fn set_cga_intensity(&mut self, enabled: bool) {
         self.palette.intensity = enabled;
-        self.update_vga_dac_from_cga_palette();
+        if self.is_cga_graphics_mode() {
+            self.update_vga_dac_from_cga_palette();
+        }
         self.dirty = true;
     }
 
     /// Set CGA palette ID (0 or 1)
     pub fn set_cga_palette_id(&mut self, palette_id: u8) {
         self.palette.palette_id = palette_id & 0x01;
-        self.update_vga_dac_from_cga_palette();
+        if self.is_cga_graphics_mode() {
+            self.update_vga_dac_from_cga_palette();
+        }
         self.dirty = true;
     }
 

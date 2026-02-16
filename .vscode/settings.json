@@ -3,6 +3,7 @@
         "bindgen",
         "changeline",
         "CHDIR",
+        "Checkit",
         "clippy",
         "cmdline",
         "CMPS",

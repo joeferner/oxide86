@@ -506,7 +506,13 @@ impl Cpu {
                     );
 
                     video.write_byte(offset, ch);
-                    // Don't modify attribute byte (preserve existing color)
+                    // Preserve existing color, but substitute 0x07 for 0x00 (black on black)
+                    // since text with attribute 0x00 is always invisible. Many BIOS implementations
+                    // do this as a compatibility measure for programs that clear the screen with
+                    // attribute 0x00 before exiting (e.g., EDIT, Checkit).
+                    if existing_attr == 0x00 {
+                        video.write_byte(offset + 1, 0x07);
+                    }
                 }
 
                 // Advance cursor
