@@ -6,7 +6,8 @@ use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::{Computer, NullJoystick};
 use emu86_native_common::{
     CommonCli, GilrsJoystick, GilrsJoystickInput, NativeClock, apply_logging_flags,
-    attach_serial_device, create_speaker, load_disks, load_program_or_boot,
+    attach_serial_device, create_speaker, load_disks, load_mounted_directories,
+    load_program_or_boot, sync_mounted_directories,
 };
 use std::fs::File;
 use std::panic;
@@ -115,6 +116,10 @@ fn main() -> Result<()> {
         &cli.common.floppy_b,
         &cli.common.hard_disks,
     )?;
+
+    // Load mounted directories
+    let mounted_drives = load_mounted_directories(&mut computer, &cli.common.mount_dirs)?;
+
     load_program_or_boot(&mut computer, &cli.common)?;
 
     // Apply logging flags
@@ -164,6 +169,9 @@ fn main() -> Result<()> {
             }
         }
     }
+
+    // Sync mounted directories before exit
+    sync_mounted_directories(&mut computer, &mounted_drives)?;
 
     Ok(())
 }

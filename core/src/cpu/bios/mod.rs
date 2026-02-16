@@ -295,6 +295,11 @@ impl Bios {
             .add_hard_drive_with_partition(partition, raw_disk)
     }
 
+    /// Sync a drive's changes to backing storage (e.g., for host directory mounts)
+    pub fn sync_drive(&mut self, drive: DriveNumber) -> Result<(), String> {
+        self.shared.drive_manager.sync_drive(drive)
+    }
+
     // Console I/O - delegate to keyboard
     pub fn read_char(&mut self) -> Option<u8> {
         self.keyboard.read_char()

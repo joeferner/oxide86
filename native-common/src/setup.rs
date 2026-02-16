@@ -5,7 +5,8 @@ use emu86_core::{
     SerialMouse, SpeakerOutput, VideoController, parse_mbr,
 };
 
-use crate::{CommonCli, FileDiskBackend, RodioSpeaker};
+use crate::{CommonCli, FileDiskBackend, HostDirectoryDisk, RodioSpeaker};
+use std::path::PathBuf;
 
 /// Create a speaker with Rodio, falling back to NullSpeaker if unavailable.
 pub fn create_speaker() -> Box<dyn SpeakerOutput> {
@@ -200,4 +201,116 @@ pub fn apply_logging_flags<V: VideoController>(
         computer.set_log_interrupts(true);
         log::info!("Interrupt logging enabled");
     }
+}
+
+/// Parse a mount directory argument in the format "/path:E:" or "/path:0x82".
+/// Returns the path and the requested drive letter.
+pub fn parse_mount_arg(arg: &str) -> Result<(PathBuf, char)> {
+    let mut parts: Vec<&str> = arg.rsplitn(2, ':').collect();
+    if parts.len() != 2 {
+        return Err(anyhow::anyhow!(
+            "Invalid mount format. Use: /path:E: or /path:0x82"
+        ));
+    }
+
+    // Handle trailing colon case: "path:D:" splits as ["", "path:D"]
+    // We need to re-split to get the drive spec
+    if parts[0].is_empty() && parts[1].contains(':') {
+        parts = parts[1].rsplitn(2, ':').collect();
+    }
+
+    let path = PathBuf::from(parts[1]);
+    let drive_spec = parts[0].trim_end_matches(':');
+
+    let drive_letter = if let Some(hex_part) = drive_spec.strip_prefix("0x") {
+        // Hex format: 0x82 -> D:
+        let num = u8::from_str_radix(hex_part, 16).context("Invalid hex drive number")?;
+        DriveNumber::from_standard(num).to_letter()
+    } else if drive_spec.len() == 1 {
+        // Letter format: E
+        drive_spec.chars().next().unwrap().to_ascii_uppercase()
+    } else {
+        return Err(anyhow::anyhow!("Invalid drive specifier: {}", drive_spec));
+    };
+
+    if drive_letter < 'C' {
+        return Err(anyhow::anyhow!(
+            "Mounted directories must use hard drive letters (C: or higher)"
+        ));
+    }
+
+    Ok((path, drive_letter))
+}
+
+/// Load mounted directories into the computer.
+/// Returns the list of mounted drive numbers for later sync.
+pub fn load_mounted_directories<V: VideoController>(
+    computer: &mut Computer<V>,
+    mount_dirs: &[String],
+) -> Result<Vec<DriveNumber>> {
+    let mut mounted_drives = Vec::new();
+
+    for mount_spec in mount_dirs.iter() {
+        let (host_path, drive_letter) = parse_mount_arg(mount_spec)?;
+
+        if !host_path.exists() {
+            return Err(anyhow::anyhow!(
+                "Mount path does not exist: {}",
+                host_path.display()
+            ));
+        }
+        if !host_path.is_dir() {
+            return Err(anyhow::anyhow!(
+                "Mount path is not a directory: {}",
+                host_path.display()
+            ));
+        }
+
+        log::info!(
+            "Mounting {} as drive {}...",
+            host_path.display(),
+            drive_letter
+        );
+
+        let host_disk = HostDirectoryDisk::new(host_path, false)?;
+        let drive_num = computer.bios_mut().add_hard_drive(Box::new(host_disk));
+
+        if drive_num.to_letter() != drive_letter {
+            log::warn!(
+                "Requested drive {} but assigned {} (drives must be sequential)",
+                drive_letter,
+                drive_num.to_letter()
+            );
+        }
+
+        mounted_drives.push(drive_num);
+        log::info!("Mounted as drive {}", drive_num.to_letter());
+    }
+
+    // Update BDA hard drive count after adding mounted drives
+    if !mounted_drives.is_empty() {
+        computer.update_bda_hard_drive_count();
+    }
+
+    Ok(mounted_drives)
+}
+
+/// Sync all mounted directories to the host filesystem.
+pub fn sync_mounted_directories<V: VideoController>(
+    computer: &mut Computer<V>,
+    mounted_drives: &[DriveNumber],
+) -> Result<()> {
+    if mounted_drives.is_empty() {
+        return Ok(());
+    }
+
+    log::info!("Syncing {} mounted directories...", mounted_drives.len());
+
+    for &drive_num in mounted_drives {
+        if let Err(e) = computer.bios_mut().sync_drive(drive_num) {
+            log::error!("Failed to sync drive {}: {}", drive_num.to_letter(), e);
+        }
+    }
+
+    Ok(())
 }

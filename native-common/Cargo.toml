@@ -11,6 +11,8 @@ gilrs = "0.11"
 rodio = "0.21"
 anyhow = { workspace = true }
 log = { workspace = true }
+walkdir = "2.5"
+fatfs = { workspace = true }
 
 [lints]
 workspace = true

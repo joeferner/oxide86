@@ -13,8 +13,11 @@ Users need to mount host filesystem directories as DOS drives to easily transfer
 **Architectural Constraint:**
 The DriveManager uses the `fatfs` crate for all file operations via `fatfs::FileSystem::new(adapter, ...)`. This means any DiskController implementation MUST provide valid FAT12/16/32 filesystem sectors. We cannot bypass this without major refactoring.
 
+**Existing Infrastructure:**
+The codebase already has `create_formatted_disk()` in `core/src/disk.rs` that creates FAT-formatted disk images using `fatfs::format_volume()`. This handles both floppy and hard drive geometries, creates MBR partitions for hard drives, and applies DOS-compatible BPB parameters.
+
 **Solution:**
-Create an in-memory FAT16 filesystem populated from the host directory, implement bi-directional synchronization between the FAT image and host files, and provide a seamless user experience through CLI arguments.
+Use `create_formatted_disk()` to generate an in-memory FAT filesystem, populate it from the host directory, implement bi-directional synchronization between the FAT image and host files, and provide a seamless user experience through CLI arguments.
 
 ---
 
@@ -58,16 +61,12 @@ Host Directory              HostDirectoryDisk              DOS Programs
    - HostDirectoryDisk struct implementing DiskController
    - Directory scanning and file mapping
    - Write tracking and sync-back logic
-
-2. **core/src/fat16_format.rs**
-   - FAT16 boot sector generation
-   - FAT table initialization
-   - Root directory setup
+   - Uses existing `create_formatted_disk()` from disk.rs
 
 ### Modified Files
 
 1. **core/src/lib.rs**
-   - Export new modules: `pub mod host_directory_disk;`, `pub mod fat16_format;`
+   - Export new module: `pub mod host_directory_disk;`
 
 2. **native-cli/src/main.rs**
    - Add `mount_dirs: Vec<String>` field to Cli struct
@@ -79,7 +78,7 @@ Host Directory              HostDirectoryDisk              DOS Programs
    - Same changes as native-cli
 
 4. **core/Cargo.toml**
-   - No new dependencies needed (use existing: fatfs, anyhow, walkdir)
+   - Add `walkdir` dependency for directory traversal
 
 ---
 
@@ -109,12 +108,12 @@ impl HostDirectoryDisk {
 
         // 2. Calculate required size
         let total_bytes: u64 = files.iter().map(|f| f.size).sum();
-        let sectors = calculate_fat16_sectors(total_bytes)?;
+        let geometry = calculate_geometry(total_bytes)?;
 
-        // 3. Create and format blank FAT16 image
-        let backend = MemoryDiskBackend::new_blank(sectors * SECTOR_SIZE);
+        // 3. Create and format blank FAT image using existing infrastructure
+        let disk_data = create_formatted_disk(geometry, Some("HOST_DIR"))?;
+        let backend = MemoryDiskBackend::new(disk_data);
         let mut disk = BackedDisk::new(backend)?;
-        format_fat16(&mut disk, sectors)?;
 
         // 4. Populate with files
         let file_map = populate_fat_image(&mut disk, &host_path, files)?;
@@ -132,6 +131,17 @@ impl HostDirectoryDisk {
         // Extract changed files from FAT image and write to host
         // Only sync files tracked in dirty_sectors
     }
+}
+
+fn calculate_geometry(data_bytes: u64) -> Result<DiskGeometry> {
+    // Add 20% overhead for FAT structures
+    let total_bytes = (data_bytes as f64 * 1.2) as u64;
+    // Round up to power of 2, minimum 16MB
+    let total_sectors = (total_bytes / SECTOR_SIZE as u64).max(32768);
+    let total_sectors = total_sectors.next_power_of_two() as usize;
+
+    // Create hard drive geometry
+    Ok(DiskGeometry::hard_drive(total_sectors))
 }
 
 impl DiskController for HostDirectoryDisk {
@@ -167,103 +177,7 @@ impl DiskController for HostDirectoryDisk {
 }
 ```
 
-### 2. FAT16 Formatting
-
-```rust
-// core/src/fat16_format.rs
-
-pub fn format_fat16(disk: &mut dyn DiskController, total_sectors: usize) -> Result<()> {
-    // FAT16 parameters
-    let sectors_per_cluster = 8;  // 4KB clusters
-    let reserved_sectors = 1;     // Boot sector only
-    let num_fats = 2;              // Standard: 2 copies
-    let root_entries = 512;        // Standard for FAT16
-    let root_sectors = (root_entries * 32 + SECTOR_SIZE - 1) / SECTOR_SIZE;
-
-    // Calculate FAT size
-    let clusters = (total_sectors - reserved_sectors - root_sectors) / sectors_per_cluster;
-    let fat_entries = clusters + 2;  // +2 for reserved entries
-    let fat_size = (fat_entries * 2 + SECTOR_SIZE - 1) / SECTOR_SIZE;
-
-    // Write boot sector
-    let mut boot_sector = [0u8; SECTOR_SIZE];
-    // Jump instruction
-    boot_sector[0..3].copy_from_slice(&[0xEB, 0x3C, 0x90]);
-    // OEM ID
-    boot_sector[3..11].copy_from_slice(b"EMU86   ");
-    // Bytes per sector
-    boot_sector[11..13].copy_from_slice(&512u16.to_le_bytes());
-    // Sectors per cluster
-    boot_sector[13] = sectors_per_cluster as u8;
-    // Reserved sectors
-    boot_sector[14..16].copy_from_slice(&(reserved_sectors as u16).to_le_bytes());
-    // Number of FATs
-    boot_sector[16] = num_fats as u8;
-    // Root entries
-    boot_sector[17..19].copy_from_slice(&(root_entries as u16).to_le_bytes());
-    // Total sectors (16-bit if < 65536, else 0)
-    if total_sectors < 65536 {
-        boot_sector[19..21].copy_from_slice(&(total_sectors as u16).to_le_bytes());
-    }
-    // Media descriptor (0xF8 = hard disk)
-    boot_sector[21] = 0xF8;
-    // Sectors per FAT
-    boot_sector[22..24].copy_from_slice(&(fat_size as u16).to_le_bytes());
-    // Total sectors (32-bit)
-    if total_sectors >= 65536 {
-        boot_sector[32..36].copy_from_slice(&(total_sectors as u32).to_le_bytes());
-    }
-    // Boot signature
-    boot_sector[510..512].copy_from_slice(&[0x55, 0xAA]);
-
-    disk.write_sector_lba(0, &boot_sector)?;
-
-    // Write FAT tables (both copies)
-    let mut fat_sector = [0u8; SECTOR_SIZE];
-    // First FAT entry: media descriptor
-    fat_sector[0] = 0xF8;
-    fat_sector[1] = 0xFF;
-    // Second FAT entry: end of chain marker
-    fat_sector[2] = 0xFF;
-    fat_sector[3] = 0xFF;
-
-    for copy in 0..num_fats {
-        let fat_start = reserved_sectors + (copy * fat_size);
-        disk.write_sector_lba(fat_start, &fat_sector)?;
-        // Zero remaining FAT sectors
-        let zero = [0u8; SECTOR_SIZE];
-        for i in 1..fat_size {
-            disk.write_sector_lba(fat_start + i, &zero)?;
-        }
-    }
-
-    // Zero root directory
-    let root_start = reserved_sectors + (num_fats * fat_size);
-    let zero = [0u8; SECTOR_SIZE];
-    for i in 0..root_sectors {
-        disk.write_sector_lba(root_start + i, &zero)?;
-    }
-
-    Ok(())
-}
-
-fn calculate_fat16_sectors(data_bytes: u64) -> Result<usize> {
-    // Add 20% overhead for FAT structures
-    let total_bytes = (data_bytes as f64 * 1.2) as u64;
-    // Round up to power of 2, minimum 16MB
-    let sectors = (total_bytes / SECTOR_SIZE as u64).max(32768);
-    let sectors = sectors.next_power_of_two() as usize;
-
-    // FAT16 max: 65525 clusters * 8 sectors/cluster
-    if sectors > 524200 {
-        anyhow::bail!("Directory too large for FAT16 (max ~256MB)");
-    }
-
-    Ok(sectors)
-}
-```
-
-### 3. Directory Scanning and Population
+### 2. Directory Scanning and Population
 
 ```rust
 // core/src/host_directory_disk.rs (continued)
@@ -491,50 +405,44 @@ impl DiskController for HostDirectoryDisk {
 
 ## Implementation Phases
 
-### Phase 1: FAT16 Foundation (2-3 hours)
-1. Create `core/src/fat16_format.rs`
-2. Implement boot sector generation
-3. Implement FAT table initialization
-4. Write unit tests for FAT structures
-5. Verify fatfs can mount generated filesystem
-
-### Phase 2: Directory Scanning (1-2 hours)
+### Phase 1: Directory Scanning (1-2 hours)
 1. Implement `scan_directory()` with walkdir
 2. Implement `to_dos_name()` with 8.3 conversion
 3. Handle filename collisions
 4. Test with various directory structures
 
-### Phase 3: Image Population (2-3 hours)
-1. Implement `populate_fat_image()` using fatfs
-2. Create directories and files in FAT image
-3. Build file mapping (DOS name -> host path)
-4. Test reading files through fatfs
+### Phase 2: Image Population (2-3 hours)
+1. Use `create_formatted_disk()` to generate blank FAT image
+2. Implement `populate_fat_image()` using fatfs
+3. Create directories and files in FAT image
+4. Build file mapping (DOS name -> host path)
+5. Test reading files through fatfs
 
-### Phase 4: DiskController Implementation (1 hour)
+### Phase 3: DiskController Implementation (1 hour)
 1. Implement DiskController trait for HostDirectoryDisk
 2. Add write tracking (dirty_sectors)
 3. Test read operations through emulator
 
-### Phase 5: Write-Back Sync (2-3 hours)
+### Phase 4: Write-Back Sync (2-3 hours)
 1. Implement `sync_to_host()` method
 2. Extract files from FAT image
 3. Write changed files to host
 4. Test bidirectional sync
 
-### Phase 6: CLI Integration (1-2 hours)
+### Phase 5: CLI Integration (1-2 hours)
 1. Add --mount-dir argument parsing
 2. Integrate with drive loading
 3. Add sync on shutdown
 4. Test end-to-end
 
-### Phase 7: Polish & Edge Cases (2-3 hours)
+### Phase 6: Polish & Edge Cases (2-3 hours)
 1. Handle long filenames gracefully
 2. Add progress indicators
 3. Improve error messages
 4. Add size limits and warnings
 5. Update documentation
 
-**Total Estimated Time: 11-17 hours**
+**Total Estimated Time: 9-14 hours** (reduced from original estimate due to existing formatting infrastructure)
 
 ---
 
@@ -578,19 +486,19 @@ cat /tmp/dos_test/NEW.TXT  # Should contain "Hello from DOS"
 ## Limitations & Future Enhancements
 
 ### Known Limitations
-1. **FAT16 size limit**: Max ~256MB per mounted directory
-2. **8.3 filenames**: Long names truncated
-3. **No hot-reload**: Host changes not visible until remount
-4. **Sequential drive letters**: Cannot skip drive letters
-5. **Native only**: WASM cannot access host filesystem
+1. **8.3 filenames**: Long names truncated (DOS limitation)
+2. **No hot-reload**: Host changes not visible until remount
+3. **Sequential drive letters**: Cannot skip drive letters
+4. **Native only**: WASM cannot access host filesystem
+5. **FAT filesystem size limits**: `create_formatted_disk()` chooses FAT12/FAT16/FAT32 based on size, but very large directories may hit FAT32 limits
 
 ### Future Enhancements
 1. **inotify/FSEvents**: Watch host for changes, live updates
-2. **FAT32 support**: Larger directories (2GB+)
-3. **LFN support**: Long filename extensions
-4. **Read-only mode**: `--mount-dir-ro` flag
-5. **Floppy mounting**: Allow mounting as A: or B:
-6. **WASM support**: File System Access API integration
+2. **LFN support**: Long filename extensions (requires VFAT)
+3. **Read-only mode**: `--mount-dir-ro` flag
+4. **Floppy mounting**: Allow mounting as A: or B:
+5. **WASM support**: File System Access API integration
+6. **Selective sync**: Only sync changed files instead of entire image
 
 ---
 
@@ -611,8 +519,8 @@ After implementation:
 
 ## Dependencies
 
-All required crates already in use:
-- `fatfs` - FAT filesystem access (already used)
-- `walkdir` - Directory traversal (add if not present)
-- `anyhow` - Error handling (already used)
-- Standard library for file I/O
+Required crates:
+- `fatfs` - FAT filesystem access (✅ already in core/Cargo.toml)
+- `anyhow` - Error handling (✅ already in core/Cargo.toml)
+- `walkdir` - Directory traversal (❌ needs to be added to core/Cargo.toml)
+- Standard library for file I/O (✅ built-in)

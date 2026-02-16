@@ -381,6 +381,22 @@ impl DriveManager {
         drive_number
     }
 
+    /// Sync a drive's changes to backing storage (e.g., for host directory mounts)
+    pub fn sync_drive(&mut self, drive: DriveNumber) -> Result<(), String> {
+        let drive_state = self
+            .get_drive_mut(drive)
+            .ok_or_else(|| format!("Drive {} not found", drive))?;
+
+        if let Some(adapter) = &mut drive_state.adapter {
+            adapter
+                .disk_mut()
+                .sync()
+                .map_err(|e| format!("Failed to sync drive {}: {}", drive, e))?;
+        }
+
+        Ok(())
+    }
+
     // === Drive Access ===
 
     /// Get mutable reference to a drive state

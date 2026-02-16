@@ -34,6 +34,10 @@ pub struct CommonCli {
     #[arg(long = "hdd", action = clap::ArgAction::Append)]
     pub hard_disks: Vec<String>,
 
+    /// Mount host directory as DOS drive (format: /path:E: or /path/to/dir:D:)
+    #[arg(long = "mount-dir", action = clap::ArgAction::Append)]
+    pub mount_dirs: Vec<String>,
+
     /// Device to attach to COM1 (e.g., "mouse")
     #[arg(long = "com1", value_name = "DEVICE")]
     pub com1_device: Option<String>,

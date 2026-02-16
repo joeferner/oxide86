@@ -176,6 +176,11 @@ pub trait DiskController {
 
     /// Check if disk is read-only
     fn is_read_only(&self) -> bool;
+
+    /// Sync changes to backing storage (no-op for most implementations)
+    fn sync(&mut self) -> Result<()> {
+        Ok(()) // Default: no-op
+    }
 }
 
 /// Backend trait for disk storage operations.

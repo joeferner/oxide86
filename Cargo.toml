@@ -9,6 +9,7 @@ members = ["core", "native-common", "native-cli", "native-gui", "wasm", "emu86-d
 [workspace.dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
+fatfs = { version = "0.3", features = ["alloc"] }
 log = "0.4"
 
 [workspace.lints.clippy]

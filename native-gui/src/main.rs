@@ -12,7 +12,8 @@ use emu86_core::{
 };
 use emu86_native_common::{
     CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
-    apply_logging_flags, attach_serial_device, create_speaker, load_disks, load_program_or_boot,
+    apply_logging_flags, attach_serial_device, create_speaker, load_disks,
+    load_mounted_directories, load_program_or_boot, sync_mounted_directories,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -612,7 +613,8 @@ fn run(cli: Cli) -> Result<()> {
     );
 
     // Initialize computer and optional joystick
-    let (mut computer, mut gilrs_joystick) = create_computer(&cli, gui_mouse.clone_shared())?;
+    let (mut computer, mut gilrs_joystick, mounted_drives) =
+        create_computer(&cli, gui_mouse.clone_shared())?;
 
     // Apply logging flags
     apply_logging_flags(&mut computer, cli.common.exec_log, cli.common.int_log);
@@ -723,6 +725,10 @@ fn run(cli: Cli) -> Result<()> {
                 match event {
                     WindowEvent::CloseRequested => {
                         log::info!("Window close requested");
+                        // Sync mounted directories before exit
+                        if let Err(e) = sync_mounted_directories(&mut computer, &mounted_drives) {
+                            log::error!("Failed to sync mounted directories: {}", e);
+                        }
                         std::process::exit(0);
                     }
                     WindowEvent::Resized(new_size) => {
@@ -810,7 +816,11 @@ fn run(cli: Cli) -> Result<()> {
 fn create_computer(
     cli: &Cli,
     gui_mouse: GuiMouse,
-) -> Result<(Computer<PixelsVideoController>, Option<GilrsJoystick>)> {
+) -> Result<(
+    Computer<PixelsVideoController>,
+    Option<GilrsJoystick>,
+    Vec<DriveNumber>,
+)> {
     // Parse CPU type
     let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
         .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.common.cpu_type))?;
@@ -862,11 +872,15 @@ fn create_computer(
         &cli.common.floppy_b,
         &cli.common.hard_disks,
     )?;
+
+    // Load mounted directories
+    let mounted_drives = load_mounted_directories(&mut computer, &cli.common.mount_dirs)?;
+
     load_program_or_boot(&mut computer, &cli.common)?;
 
     log::info!("Starting execution...");
 
-    Ok((computer, gilrs_joystick))
+    Ok((computer, gilrs_joystick, mounted_drives))
 }
 
 fn show_insert_dialog(
