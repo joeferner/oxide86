@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
     BackedDisk, Computer, DiskController, DriveNumber, MouseInput, NullSpeaker, PartitionedDisk,
-    SerialMouse, SpeakerOutput, VideoController, parse_mbr,
+    SerialLogger, SerialMouse, SpeakerOutput, VideoController, parse_mbr,
 };
 
 use crate::{CommonCli, FileDiskBackend, HostDirectoryDisk, RodioSpeaker};
@@ -175,6 +175,22 @@ pub fn attach_serial_device<V: VideoController>(
                 2 => {
                     computer.set_com2_device(serial_mouse);
                     log::info!("Serial mouse attached to COM2");
+                }
+                _ => {
+                    eprintln!("Warning: Invalid COM port {}", port);
+                }
+            }
+        }
+        "logger" => {
+            let serial_logger = Box::new(SerialLogger::new(port - 1)); // port is 1-based
+            match port {
+                1 => {
+                    computer.set_com1_device(serial_logger);
+                    log::info!("Serial logger attached to COM1");
+                }
+                2 => {
+                    computer.set_com2_device(serial_logger);
+                    log::info!("Serial logger attached to COM2");
                 }
                 _ => {
                     eprintln!("Warning: Invalid COM port {}", port);

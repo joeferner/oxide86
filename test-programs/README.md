@@ -79,6 +79,37 @@ Tests INT 16h AH=00h blocking keyboard input behavior. Waits for keypresses and 
 ### hello_program.asm
 Simple "Hello World" test program for verifying program loading functionality. Uses INT 21h AH=09h to display a message and INT 21h AH=4Ch to exit. Minimal .COM file structure starting at CS:0100h.
 
+## Serial
+
+### serial/serial_logger_test.asm
+Tests serial port logger functionality by writing debug output to COM1. Initializes COM1 at 9600 baud (8N1), then sends multiple test messages to verify the serial logger captures and displays them correctly.
+
+**Running with serial logger:**
+```bash
+# Native CLI
+cargo run -p emu86-native-cli -- test-programs/serial/serial_logger_test.com --com1-device logger
+
+# Native GUI
+cargo run -p emu86-native-gui -- test-programs/serial/serial_logger_test.com --com1-device logger
+```
+
+**Expected Log Output:**
+```
+[COM1] [TEST] Serial Logger Test Program
+[COM1] [TEST] Test 1: Simple message
+[COM1] [TEST] Test 2: Multiple lines
+[COM1] [TEST]   - Line 2
+[COM1] [TEST]   - Line 3
+[COM1] [TEST] Test 3: Number output: 42
+[COM1] 1234
+[COM1] 65535
+[COM1] [TEST] Test 4: Mixed content - CPU initialized, memory OK, ready to run
+[COM1] [TEST] All tests completed successfully!
+```
+
+**Technical Details:**
+Demonstrates INT 14h serial port services (AH=00h initialize, AH=01h write character), serial port initialization with baud rate and parameters (9600,N,1,8), null-terminated string output, CR+LF line endings (\r\n), and decimal number conversion/output. The program writes to the BIOS serial port interface which gets logged by the attached SerialLogger device. Output appears at INFO log level with `[COM1]` prefix to distinguish from other log messages.
+
 ## Video
 
 ### mode_04h_cga_320x200x4.asm

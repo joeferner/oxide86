@@ -59,6 +59,7 @@ export const VIDEO_CARD_OPTIONS = [
 export const COM_PORT_OPTIONS = [
     { value: 'null', label: 'None' },
     { value: 'mouse', label: 'Serial Mouse' },
+    { value: 'logger', label: 'Serial Logger' },
 ];
 
 const CONFIG_STORAGE_KEY = 'emu86_config';

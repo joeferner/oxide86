@@ -126,10 +126,10 @@ pub struct ComputerConfig {
     /// Video card type: "cga", "ega", or "vga" (default: "ega")
     #[serde(default)]
     pub video_card: Option<String>,
-    /// COM1 device: "mouse" or "null" (default: "mouse")
+    /// COM1 device: "mouse", "logger", or "null" (default: "mouse")
     #[serde(default)]
     pub com1_device: Option<String>,
-    /// COM2 device: "mouse" or "null" (default: "null")
+    /// COM2 device: "mouse", "logger", or "null" (default: "null")
     #[serde(default)]
     pub com2_device: Option<String>,
 }
@@ -256,6 +256,10 @@ impl Emu86Computer {
                 Box::new(SharedMouse(mouse.clone())) as Box<dyn emu86_core::MouseInput>;
             computer.set_com1_device(Box::new(SerialMouse::new(mouse_clone)));
             log::info!("Serial mouse attached to COM1");
+        } else if com1_device_str == "logger" {
+            use emu86_core::SerialLogger;
+            computer.set_com1_device(Box::new(SerialLogger::new(0)));
+            log::info!("Serial logger attached to COM1");
         }
 
         // Attach devices to COM2
@@ -265,6 +269,10 @@ impl Emu86Computer {
                 Box::new(SharedMouse(mouse.clone())) as Box<dyn emu86_core::MouseInput>;
             computer.set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
             log::info!("Serial mouse attached to COM2");
+        } else if com2_device_str == "logger" {
+            use emu86_core::SerialLogger;
+            computer.set_com2_device(Box::new(SerialLogger::new(1)));
+            log::info!("Serial logger attached to COM2");
         }
 
         // Force initial video render to show blank screen

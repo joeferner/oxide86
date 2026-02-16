@@ -38,11 +38,11 @@ pub struct CommonCli {
     #[arg(long = "mount-dir", action = clap::ArgAction::Append)]
     pub mount_dirs: Vec<String>,
 
-    /// Device to attach to COM1 (e.g., "mouse")
+    /// Device to attach to COM1 (e.g., "mouse", "logger")
     #[arg(long = "com1", value_name = "DEVICE")]
     pub com1_device: Option<String>,
 
-    /// Device to attach to COM2 (e.g., "mouse")
+    /// Device to attach to COM2 (e.g., "mouse", "logger")
     #[arg(long = "com2", value_name = "DEVICE")]
     pub com2_device: Option<String>,
 
