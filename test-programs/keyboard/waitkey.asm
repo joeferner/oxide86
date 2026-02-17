@@ -2,6 +2,7 @@
 ; This program waits for keypresses and echoes them back
 ; Press ESC to exit
 
+[CPU 8086]
 org 0x100
 
 start:

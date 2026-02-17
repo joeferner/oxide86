@@ -1,4 +1,6 @@
 ; simple_beep.asm - Simple 1000 Hz beep test
+
+[CPU 8086]
 org 0x100
 
 ; Set PIT Channel 2 to Mode 3 (square wave), 1000 Hz

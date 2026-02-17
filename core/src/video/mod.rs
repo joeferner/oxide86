@@ -15,6 +15,10 @@ pub const CGA_MEMORY_START: usize = 0xB8000;
 pub const CGA_MEMORY_END: usize = 0xBFFFF;
 pub const CGA_MEMORY_SIZE: usize = CGA_MEMORY_END - CGA_MEMORY_START + 1; // 32KB
 
+// Video RAM size: 64KB to hold mode 13h linear framebuffer (64000 bytes)
+// and EGA planar data (4 × 8000 = 32000 bytes). Must be at least 64000.
+pub const VIDEO_MEMORY_SIZE: usize = 65536; // 64KB
+
 // EGA video memory range (A000:0000 - A000:FFFF = 0xA0000 - 0xAFFFF)
 pub const EGA_MEMORY_START: usize = 0xA0000;
 pub const EGA_MEMORY_END: usize = 0xAFFFF;
@@ -63,6 +67,8 @@ pub enum VideoMode {
     Graphics640x200,
     /// EGA 320x200, 16 colors (mode 0x0D)
     Graphics320x200x16,
+    /// VGA 320x200, 256 colors (mode 0x13) — linear framebuffer, 1 byte per pixel
+    Graphics320x200x256,
 }
 
 /// Video controller trait - platform-specific implementations provide rendering
@@ -110,6 +116,13 @@ pub trait VideoController {
     fn update_graphics_320x200x16(&mut self, pixel_data: &[u8]) {
         let _ = pixel_data;
         log::warn!("Graphics mode 320x200x16 (EGA) not implemented for this platform");
+    }
+
+    /// Update VGA graphics display (320x200, 256 colors, mode 0x13)
+    /// pixel_data: linear pixel array (320*200 bytes), each byte is a 0-255 color index
+    fn update_graphics_320x200x256(&mut self, pixel_data: &[u8]) {
+        let _ = pixel_data;
+        log::warn!("Graphics mode 320x200x256 (VGA mode 13h) not implemented for this platform");
     }
 
     /// Set cursor visibility
@@ -181,11 +194,12 @@ pub struct Video {
     /// On CGA mode changes, AC[0-3] are synced from the CGA palette EGA indices
     /// Programs can reprogram these via port 0x3C0 for custom color mapping
     ac_palette: [u8; 16],
-    /// Raw video RAM (32KB).
+    /// Raw video RAM (64KB).
     /// In CGA/text modes: framebuffer at B8000-BFFFF.
     /// In EGA mode 0x0D: 4 planes × 8000 bytes (plane N at vram[N*8000..N*8000+8000]).
+    /// In VGA mode 0x13: linear framebuffer vram[0..64000], 1 byte per pixel.
     /// Persists across mode changes, just like real hardware.
-    vram: Box<[u8; CGA_MEMORY_SIZE]>,
+    vram: Box<[u8; VIDEO_MEMORY_SIZE]>,
 }
 
 /// Initialize VGA DAC palette with EGA defaults
@@ -226,7 +240,7 @@ impl Video {
             composite_mode: false,
             card_type,
             ac_palette: Self::default_ac_palette(),
-            vram: Box::new([0; CGA_MEMORY_SIZE]),
+            vram: Box::new([0; VIDEO_MEMORY_SIZE]),
         }
     }
 
@@ -327,6 +341,7 @@ impl Video {
             0x04 | 0x05 => VideoMode::Graphics320x200,
             0x06 => VideoMode::Graphics640x200,
             0x0D => VideoMode::Graphics320x200x16,
+            0x13 => VideoMode::Graphics320x200x256,
             _ => {
                 log::warn!("Unsupported video mode 0x{:02X}, defaulting to text", mode);
                 VideoMode::Text { cols: 80, rows: 25 }
@@ -491,6 +506,31 @@ impl Video {
                 }
                 self.dirty = true;
             }
+            VideoMode::Graphics320x200x256 => {
+                // VGA linear: 1 byte per pixel, 320 bytes per scan line, 8 scan lines per text row
+                let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+                for row in top..=bottom {
+                    let src_row = row + scroll_lines;
+                    for py in 0..8usize {
+                        let dst_y = row * 8 + py;
+                        let dst_base = dst_y * 320;
+                        if src_row <= bottom {
+                            let src_base = (src_row * 8 + py) * 320;
+                            let cx_start = left * 8;
+                            let cx_end = (right + 1) * 8;
+                            self.vram.copy_within(
+                                src_base + cx_start..src_base + cx_end,
+                                dst_base + cx_start,
+                            );
+                        } else {
+                            let cx_start = left * 8;
+                            let cx_end = (right + 1) * 8;
+                            self.vram[dst_base + cx_start..dst_base + cx_end].fill(0);
+                        }
+                    }
+                }
+                self.dirty = true;
+            }
             VideoMode::Text { .. } => {}
         }
     }
@@ -571,6 +611,33 @@ impl Video {
                 }
                 self.dirty = true;
             }
+            VideoMode::Graphics320x200x256 => {
+                // VGA linear: 1 byte per pixel, 320 bytes per scan line, 8 scan lines per text row
+                let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+                for row in (top..=bottom).rev() {
+                    let src_row = if row >= top + scroll_lines {
+                        row - scroll_lines
+                    } else {
+                        usize::MAX
+                    };
+                    for py in 0..8usize {
+                        let dst_y = row * 8 + py;
+                        let dst_base = dst_y * 320;
+                        let cx_start = left * 8;
+                        let cx_end = (right + 1) * 8;
+                        if src_row != usize::MAX && src_row >= top {
+                            let src_base = (src_row * 8 + py) * 320;
+                            self.vram.copy_within(
+                                src_base + cx_start..src_base + cx_end,
+                                dst_base + cx_start,
+                            );
+                        } else {
+                            self.vram[dst_base + cx_start..dst_base + cx_end].fill(0);
+                        }
+                    }
+                }
+                self.dirty = true;
+            }
             VideoMode::Text { .. } => {}
         }
     }
@@ -585,7 +652,9 @@ impl Video {
     pub fn get_cols(&self) -> usize {
         match self.mode_type {
             VideoMode::Text { cols, .. } => cols,
-            VideoMode::Graphics320x200 | VideoMode::Graphics320x200x16 => 40,
+            VideoMode::Graphics320x200
+            | VideoMode::Graphics320x200x16
+            | VideoMode::Graphics320x200x256 => 40,
             VideoMode::Graphics640x200 => 80,
         }
     }
@@ -597,7 +666,8 @@ impl Video {
             VideoMode::Text { rows, .. } => rows,
             VideoMode::Graphics320x200
             | VideoMode::Graphics640x200
-            | VideoMode::Graphics320x200x16 => 25,
+            | VideoMode::Graphics320x200x16
+            | VideoMode::Graphics320x200x256 => 25,
         }
     }
 
@@ -656,6 +726,26 @@ impl Video {
             }
         }
         pixels
+    }
+
+    /// Get VGA 256-color pixel data (mode 13h) as a linear byte array for rendering.
+    /// Returns 64000 bytes: 200 lines × 320 bytes/line, one byte per pixel (color index 0-255).
+    pub fn get_vga_pixels(&self) -> Vec<u8> {
+        self.vram[0..64000].to_vec()
+    }
+
+    /// Write a byte to VGA linear memory (A000 segment, mode 13h).
+    /// Offset is a direct linear framebuffer offset (y * 320 + x).
+    pub fn write_byte_vga(&mut self, offset: usize, value: u8) {
+        if offset < 64000 {
+            self.vram[offset] = value;
+            self.dirty = true;
+        }
+    }
+
+    /// Read a byte from VGA linear memory (A000 segment, mode 13h).
+    pub fn read_byte_vga(&self, offset: usize) -> u8 {
+        if offset < 64000 { self.vram[offset] } else { 0 }
     }
 
     /// Write a byte to EGA planar memory (A000 segment).
@@ -824,10 +914,11 @@ impl Video {
     pub fn rebuild_cache(&mut self) {
         match &self.mode_type {
             VideoMode::Text { cols, .. } => self.rebuild_text_buffer(*cols),
-            // CGA and EGA pixels are computed on demand from vram; no cache to rebuild
+            // CGA, EGA, and VGA pixels are computed on demand from vram; no cache to rebuild
             VideoMode::Graphics320x200
             | VideoMode::Graphics640x200
-            | VideoMode::Graphics320x200x16 => {}
+            | VideoMode::Graphics320x200x16
+            | VideoMode::Graphics320x200x256 => {}
         }
     }
 }

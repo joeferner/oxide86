@@ -18,6 +18,7 @@
 ;   Row  9:   Button states
 ;   Row 11: Raw port hex value
 
+[CPU 8086]
 org 0x100
 
 JOY_PORT  equ 0x0201
@@ -309,7 +310,8 @@ print_decimal4:
 print_hex_byte:
     mov bl, al
     ; High nibble
-    shr al, 4
+    mov cl, 4
+    shr al, cl
     call print_hex_nibble
     ; Low nibble
     mov al, bl

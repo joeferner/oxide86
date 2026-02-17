@@ -68,7 +68,7 @@ pub struct CommonCli {
     pub memory: u32,
 
     /// Video card type to emulate (cga, ega, vga)
-    #[arg(long = "video-card", default_value = "ega")]
+    #[arg(long = "video-card", default_value = "vga")]
     pub video_card: String,
 
     /// Enable joystick A (port 0x201)

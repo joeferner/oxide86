@@ -1,5 +1,6 @@
 ; Simple test program for program loading
 
+[CPU 8086]
 org 0x0100          ; .COM files start at CS:0100h
 
     mov ah, 0x09    ; DOS function: write string

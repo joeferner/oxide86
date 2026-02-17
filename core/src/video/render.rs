@@ -187,6 +187,46 @@ pub fn render_cga_640x200_bw(pixel_data: &[u8], fg_color: u8, bg_color: u8, outp
     }
 }
 
+/// Render VGA 320x200 256-color graphics (mode 0x13) to a 640x400 RGBA buffer.
+///
+/// Each byte in `pixel_data` is a direct color index (0-255) into `vga_dac_palette`.
+/// Output is scaled 2x2 to produce a 640x400 display.
+///
+/// # Arguments
+/// * `pixel_data` - 64000 bytes (320 * 200), one byte per pixel (0-255)
+/// * `vga_dac_palette` - 256-entry VGA DAC palette (6-bit RGB per component)
+/// * `output` - RGBA buffer, must be at least 640*400*4 = 1,024,000 bytes
+pub fn render_vga_320x200x256(
+    pixel_data: &[u8],
+    vga_dac_palette: &[[u8; 3]; 256],
+    output: &mut [u8],
+) {
+    const WIDTH: usize = 640;
+    const SCALE: usize = 2;
+
+    for y in 0..200 {
+        for x in 0..320 {
+            let color_index = pixel_data[y * 320 + x] as usize;
+            let dac = vga_dac_palette[color_index];
+            let r = dac_to_8bit(dac[0]);
+            let g = dac_to_8bit(dac[1]);
+            let b = dac_to_8bit(dac[2]);
+
+            for dy in 0..SCALE {
+                for dx in 0..SCALE {
+                    let screen_x = x * SCALE + dx;
+                    let screen_y = y * SCALE + dy;
+                    let offset = (screen_y * WIDTH + screen_x) * 4;
+                    output[offset] = r;
+                    output[offset + 1] = g;
+                    output[offset + 2] = b;
+                    output[offset + 3] = 0xFF;
+                }
+            }
+        }
+    }
+}
+
 /// Render EGA 320x200 16-color graphics to a 640x400 RGBA buffer.
 ///
 /// Each byte in `pixel_data` is a color index (0-15). Looked up in

@@ -145,6 +145,17 @@ impl PixelsVideoController {
         }
     }
 
+    /// Render VGA graphics mode 320x200 (256-color, mode 13h) to framebuffer
+    fn render_graphics_320x200x256(&self, frame: &mut [u8]) {
+        if let Some(pixel_data) = &self.graphics_data {
+            emu86_core::video::render::render_vga_320x200x256(
+                pixel_data,
+                &self.vga_dac_palette,
+                frame,
+            );
+        }
+    }
+
     /// Render current state to a raw RGBA buffer (for screenshots)
     /// Returns a buffer of size SCREEN_WIDTH * SCREEN_HEIGHT * 4 bytes (RGBA)
     pub fn render_to_buffer(&self) -> Vec<u8> {
@@ -166,6 +177,10 @@ impl PixelsVideoController {
             }
             VideoMode::Graphics320x200x16 => {
                 self.render_graphics_320x200x16(&mut buffer);
+                return buffer;
+            }
+            VideoMode::Graphics320x200x256 => {
+                self.render_graphics_320x200x256(&mut buffer);
                 return buffer;
             }
             VideoMode::Text { .. } => {
@@ -218,6 +233,11 @@ impl PixelsVideoController {
             }
             VideoMode::Graphics320x200x16 => {
                 self.render_graphics_320x200x16(frame);
+                self.has_pending_updates = false;
+                return;
+            }
+            VideoMode::Graphics320x200x256 => {
+                self.render_graphics_320x200x256(frame);
                 self.has_pending_updates = false;
                 return;
             }
@@ -325,6 +345,7 @@ impl VideoController for PixelsVideoController {
             0x04 | 0x05 => VideoMode::Graphics320x200,
             0x06 => VideoMode::Graphics640x200,
             0x0D => VideoMode::Graphics320x200x16,
+            0x13 => VideoMode::Graphics320x200x256,
             _ => VideoMode::Text { cols: 80, rows: 25 }, // Default to text mode
         };
 
@@ -369,6 +390,11 @@ impl VideoController for PixelsVideoController {
     }
 
     fn update_graphics_320x200x16(&mut self, pixel_data: &[u8]) {
+        self.graphics_data = Some(pixel_data.to_vec());
+        self.has_pending_updates = true;
+    }
+
+    fn update_graphics_320x200x256(&mut self, pixel_data: &[u8]) {
         self.graphics_data = Some(pixel_data.to_vec());
         self.has_pending_updates = true;
     }

@@ -1,6 +1,7 @@
 ; timer_test.asm - Test TIMER functionality using DOS INT 21h AH=2Ch
 ; Expected: Should measure approximately 1.0 second delay
 
+[CPU 8086]
 org 0x100
 
 start:

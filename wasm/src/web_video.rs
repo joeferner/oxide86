@@ -201,6 +201,24 @@ impl WebVideo {
         self.context.put_image_data(&image_data, 0.0, 0.0)?;
         Ok(())
     }
+
+    /// Render VGA graphics mode 320x200 (256-color, mode 13h) using ImageData API
+    fn render_graphics_320x200x256(&mut self, pixel_data: &[u8]) -> Result<(), JsValue> {
+        self.canvas.set_width(640);
+        self.canvas.set_height(400);
+
+        let mut image_data_buf = vec![0u8; 640 * 400 * 4];
+        emu86_core::video::render::render_vga_320x200x256(
+            pixel_data,
+            &self.vga_dac_palette,
+            &mut image_data_buf,
+        );
+
+        let image_data =
+            ImageData::new_with_u8_clamped_array_and_sh(Clamped(&image_data_buf), 640, 400)?;
+        self.context.put_image_data(&image_data, 0.0, 0.0)?;
+        Ok(())
+    }
 }
 
 impl VideoController for WebVideo {
@@ -243,6 +261,7 @@ impl VideoController for WebVideo {
             0x04 | 0x05 => VideoMode::Graphics320x200,
             0x06 => VideoMode::Graphics640x200,
             0x0D => VideoMode::Graphics320x200x16,
+            0x13 => VideoMode::Graphics320x200x256,
             _ => {
                 log::warn!(
                     "WASM: Unsupported video mode 0x{:02X}, defaulting to text",
@@ -271,6 +290,10 @@ impl VideoController for WebVideo {
             VideoMode::Graphics320x200x16 => {
                 // Canvas will be resized in render_graphics_320x200x16
                 log::info!("WASM: Switched to 320x200x16 EGA graphics mode");
+            }
+            VideoMode::Graphics320x200x256 => {
+                // Canvas will be resized in render_graphics_320x200x256
+                log::info!("WASM: Switched to VGA mode 13h (320x200x256)");
             }
         }
     }
@@ -304,6 +327,12 @@ impl VideoController for WebVideo {
     fn update_graphics_320x200x16(&mut self, pixel_data: &[u8]) {
         if let Err(e) = self.render_graphics_320x200x16(pixel_data) {
             log::error!("Failed to render 320x200x16 EGA graphics: {:?}", e);
+        }
+    }
+
+    fn update_graphics_320x200x256(&mut self, pixel_data: &[u8]) {
+        if let Err(e) = self.render_graphics_320x200x256(pixel_data) {
+            log::error!("Failed to render 320x200x256 VGA graphics: {:?}", e);
         }
     }
 

@@ -1130,6 +1130,10 @@ impl<V: VideoController> Computer<V> {
                     let pixels = self.bus.video().get_ega_pixels();
                     self.video_controller.update_graphics_320x200x16(&pixels);
                 }
+                crate::video::VideoMode::Graphics320x200x256 => {
+                    let pixels = self.bus.video().get_vga_pixels();
+                    self.video_controller.update_graphics_320x200x256(&pixels);
+                }
             }
             self.bus.video_mut().clear_dirty();
         }
@@ -1176,6 +1180,10 @@ impl<V: VideoController> Computer<V> {
             crate::video::VideoMode::Graphics320x200x16 => {
                 let pixels = self.bus.video().get_ega_pixels();
                 self.video_controller.update_graphics_320x200x16(&pixels);
+            }
+            crate::video::VideoMode::Graphics320x200x256 => {
+                let pixels = self.bus.video().get_vga_pixels();
+                self.video_controller.update_graphics_320x200x256(&pixels);
             }
         }
         self.bus.video_mut().clear_dirty();

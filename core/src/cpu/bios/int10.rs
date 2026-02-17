@@ -72,9 +72,9 @@ impl Cpu {
             return;
         }
 
-        // Support text modes (0x00-0x03, 0x07), CGA graphics (0x04-0x06), EGA graphics (0x0D)
+        // Support text modes (0x00-0x03, 0x07), CGA graphics (0x04-0x06), EGA graphics (0x0D), VGA (0x13)
         match mode {
-            0x00..=0x07 | 0x0D => {
+            0x00..=0x07 | 0x0D | 0x13 => {
                 // INT 10h mode set = RGB rendering; composite only via port 0x3D8
                 bus.video_mut().set_composite_mode(false);
                 bus.video_mut().set_mode(mode, false); // INT 10h clears video memory (real BIOS behavior)
@@ -755,6 +755,55 @@ impl Cpu {
                     }
                 }
             }
+            crate::video::VideoMode::Graphics320x200x256 => {
+                // VGA mode 13h: 1 byte per pixel, linear framebuffer
+                let char_code = if matches!(mode, GraphicsDrawMode::XorInverted) {
+                    character & 0x7F
+                } else {
+                    character
+                };
+                let glyph = font.get_glyph_8(char_code);
+                let char_height = 8;
+                let char_width = 8;
+
+                let start_x = col * char_width;
+                let start_y = row * char_height;
+
+                for (py, &glyph_byte) in glyph.iter().enumerate() {
+                    let y = start_y + py;
+                    if y >= 200 {
+                        break;
+                    }
+
+                    let final_glyph_byte = if matches!(mode, GraphicsDrawMode::XorInverted) {
+                        !glyph_byte
+                    } else {
+                        glyph_byte
+                    };
+
+                    for px in 0..char_width {
+                        let x = start_x + px;
+                        if x >= 320 {
+                            break;
+                        }
+                        let offset = y * 320 + x;
+                        let bit = (final_glyph_byte >> (7 - px)) & 1;
+                        if bit != 0 {
+                            match mode {
+                                GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted => {
+                                    let current = bus.video().read_byte_vga(offset);
+                                    bus.video_mut().write_byte_vga(offset, current ^ fg_color);
+                                }
+                                GraphicsDrawMode::Transparent | GraphicsDrawMode::Opaque => {
+                                    bus.video_mut().write_byte_vga(offset, fg_color);
+                                }
+                            }
+                        } else if matches!(mode, GraphicsDrawMode::Opaque) {
+                            bus.video_mut().write_byte_vga(offset, 0);
+                        }
+                    }
+                }
+            }
             _ => {
                 // Other modes not supported yet
             }
@@ -1148,6 +1197,12 @@ impl Cpu {
                     }
                 }
             }
+            crate::video::VideoMode::Graphics320x200x256 => {
+                // VGA mode 13h: 1 byte per pixel, linear framebuffer
+                if col < 320 && row < 200 {
+                    bus.video_mut().write_byte_vga(row * 320 + col, color);
+                }
+            }
         }
     }
 
@@ -1207,6 +1262,14 @@ impl Cpu {
                         }
                     }
                     color
+                }
+            }
+            crate::video::VideoMode::Graphics320x200x256 => {
+                // VGA mode 13h: 1 byte per pixel, linear framebuffer
+                if col >= 320 || row >= 200 {
+                    0
+                } else {
+                    bus.video().read_byte_vga(row * 320 + col)
                 }
             }
         };

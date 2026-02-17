@@ -3,6 +3,7 @@
 ; This creates a 640x200 mode with NTSC composite artifact coloring
 ; Each byte = 2 nibbles, each nibble (0-15) maps to a color palette entry
 
+[CPU 8086]
 org 0x100
 
 start:
@@ -274,7 +275,12 @@ clear_message_area:
 ; Draw vertical bars with different nibble patterns
 ; Rows 100-139 (40 rows), 8 bars of 10 bytes each
 draw_vertical_bars:
-    pusha
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
 
     ; Calculate starting offset for row 100
     ; Row 100 is even, so: (100/2) * 80 = 50 * 80 = 4000
@@ -383,7 +389,12 @@ draw_vertical_bars:
     pop cx
     loop .row_loop
 
-    popa
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
 ; Data

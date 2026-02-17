@@ -2,6 +2,7 @@
 ; 640x200, 2 Colors (1 bit per pixel)
 ; Properly handles CGA interlaced memory
 
+[CPU 8086]
 org 0x100
 
 start:
@@ -105,7 +106,12 @@ start:
 ; Print null-terminated string using BIOS teletype
 ; Input: SI = pointer to string, BL = color
 print_string:
-    pusha
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
 .loop:
     lodsb
     test al, al
@@ -114,14 +120,24 @@ print_string:
     int 0x10
     jmp .loop
 .done:
-    popa
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
 ; Draw a 10-byte wide, 40-row tall box
 ; Parameters: box_row, box_col (byte offset 0-79), box_pattern
 ; Each byte = 8 pixels; 10 bytes = 80 pixels wide
 draw_box:
-    pusha
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
 
     mov cx, 40              ; 40 rows
     mov si, [box_row]       ; Starting row
@@ -165,7 +181,12 @@ draw_box:
     pop cx
     loop .row_loop
 
-    popa
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
 ; Data

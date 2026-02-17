@@ -43,7 +43,10 @@ impl Bus {
         }
         if (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address) {
             let offset = address - EGA_MEMORY_START;
-            return self.video.read_byte_ega(offset);
+            return match self.video.get_mode_type() {
+                crate::video::VideoMode::Graphics320x200x256 => self.video.read_byte_vga(offset),
+                _ => self.video.read_byte_ega(offset),
+            };
         }
 
         // Normal memory access
@@ -60,7 +63,14 @@ impl Bus {
         }
         if (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address) {
             let offset = address - EGA_MEMORY_START;
-            self.video.write_byte_ega(offset, value);
+            match self.video.get_mode_type() {
+                crate::video::VideoMode::Graphics320x200x256 => {
+                    self.video.write_byte_vga(offset, value);
+                }
+                _ => {
+                    self.video.write_byte_ega(offset, value);
+                }
+            }
             return;
         }
 

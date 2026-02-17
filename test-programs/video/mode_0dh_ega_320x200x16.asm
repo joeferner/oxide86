@@ -4,6 +4,7 @@
 ; Displays all 16 EGA colors with labels inside each swatch
 ; Tests: direct planar writes, AH=0Eh (transparent teletype)
 
+[CPU 8086]
 org 0x100
 
 start:
@@ -195,7 +196,12 @@ start:
 ; Print null-terminated string using BIOS teletype (AH=0Eh, transparent)
 ; Input: SI = pointer to string, BL = color
 print_string:
-    pusha
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
 .loop:
     lodsb
     test al, al
@@ -204,14 +210,24 @@ print_string:
     int 0x10
     jmp .loop
 .done:
-    popa
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
 ; Draw a 5-byte wide (40 pixel), 48-row tall box using EGA planar writes
 ; Parameters: box_row, box_col (byte offset 0-39), box_color (map mask)
 ; EGA memory is linear: offset = row * 40 + col
 draw_box:
-    pusha
+    push ax
+    push bx
+    push cx
+    push dx
+    push si
+    push di
 
     ; First clear all planes in box area (write 0x00 to all planes)
     mov dx, 0x3C4
@@ -272,7 +288,12 @@ draw_box:
     loop .row_loop
 
 .skip_draw:
-    popa
+    pop di
+    pop si
+    pop dx
+    pop cx
+    pop bx
+    pop ax
     ret
 
 ; Data

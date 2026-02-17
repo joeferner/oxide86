@@ -1,6 +1,7 @@
 ; Test program to demonstrate memory value logging
 ; Assemble with: nasm -f bin test_mem_log.asm -o test_mem_log.com
 
+[CPU 8086]
 org 0x100
 
 start:

@@ -3,6 +3,7 @@
 ; Build: nasm -f bin serial_logger_test.asm -o serial_logger_test.com
 ; Run: cargo run -p emu86-native-cli -- test-programs/serial/serial_logger_test.com --com1-device logger
 
+[CPU 8086]
 org 0x100
 
 start:

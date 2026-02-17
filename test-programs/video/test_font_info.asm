@@ -1,6 +1,7 @@
 ; Test INT 10h/AH=11h/AL=30h - Get Font Information
 ; This program tests all font pointer types and displays the results
 
+[CPU 8086]
 org 0x100
 
 start:
@@ -126,7 +127,8 @@ print_hex16:
     mov bx, ax          ; Save value
 
 .loop:
-    rol bx, 4           ; Rotate left by 4 bits
+    mov cl, 4
+    rol bx, cl           ; Rotate left by 4 bits
     mov al, bl
     and al, 0x0F        ; Get low nibble
     add al, '0'

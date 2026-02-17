@@ -341,5 +341,21 @@ EGA graphics mode 0x0D test program. Switches to 320x200, 16-color mode using EG
 **Technical Details:**
 Demonstrates all 16 EGA colors via the planar memory model (4 bit planes at A000:0000, 40 bytes per row). Each color is drawn by clearing all planes then setting the Map Mask to the color value (each bit enables one plane). Shows EGA linear addressing (offset = row × 40 + column, no interlacing), INT 10h AH=0Eh teletype in 40-column grid, and labeled color swatches. Waits for keypress then returns to text mode.
 
+### mode_13h_vga_320x200x256.asm
+VGA graphics mode 0x13 test program. Switches to 320x200, 256-color mode using the VGA linear framebuffer at A000:0000 (1 byte per pixel, offset = y × 320 + x). Displays all 256 colors as a 16×16 grid of color blocks, then shows mode info text at the bottom.
+
+**Running (requires VGA card):**
+```bash
+cargo run -p emu86-native-gui -- --video-card vga test-programs/video/mode_13h_vga_320x200x256.com
+```
+
+**Expected Output:**
+- **Pixel rows 0-191:** 16×16 grid of 20×12 pixel color swatches covering all 256 palette entries (arranged left-to-right, top-to-bottom by color index)
+- **Character row 22:** White text "VGA Mode 13h - 256 Color Palette"
+- **Character row 23:** Yellow text "320x200, 1 Byte Per Pixel (Linear)"
+
+**Technical Details:**
+Demonstrates VGA mode 0x13 (INT 10h AH=00h AL=13h) with direct linear framebuffer access via A000:0000. Unlike CGA (interlaced) or EGA (planar), mode 13h uses simple linear addressing: one byte per pixel, each byte is a color index (0-255) into the VGA DAC palette. Shows both direct memory writes for graphics and INT 10h AH=0Eh text output in graphics mode. The default VGA DAC palette maps indices 0-15 to standard EGA colors and 16-255 to other colors. Waits for keypress then returns to text mode.
+
 ### color.bas
 QBasic program that demonstrates text mode color capabilities. Displays all 16 foreground colors (0-15) with black background, then shows standard background colors (0-7) with white foreground. Illustrates COLOR command usage and text mode color attribute handling.

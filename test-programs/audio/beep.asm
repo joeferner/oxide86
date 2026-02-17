@@ -1,5 +1,6 @@
 ; beep.asm - Test PC speaker with PIT Channel 2
 
+[CPU 8086]
 org 0x100
 
 ; Configure PIT Channel 2: Mode 3 (square wave), LSB+MSB, Binary
