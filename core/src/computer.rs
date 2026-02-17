@@ -321,7 +321,7 @@ impl<V: VideoController> Computer<V> {
         // Notify video controller of mode reset (Video::new() defaults to mode 0x03)
         self.video_controller.set_video_mode(0x03);
         self.video_controller
-            .update_vga_dac_palette(self.bus.get_vga_dac_palette());
+            .update_vga_dac_palette(self.bus.video().get_vga_dac_palette());
 
         // Reset IO devices (preserves joystick connection)
         self.io_device.reset();
@@ -339,7 +339,8 @@ impl<V: VideoController> Computer<V> {
         self.speaker_update_cycles = 0;
 
         // Force a video redraw to clear the screen
-        self.video_controller.force_redraw(self.bus.get_buffer());
+        self.video_controller
+            .force_redraw(self.bus.video().get_buffer());
 
         // Reload program or re-boot from the stored boot drive if one exists
         if let Some(program) = self.loaded_program.clone() {
@@ -974,7 +975,7 @@ impl<V: VideoController> Computer<V> {
 
                 // Before executing INT 16h (keyboard read), flush any pending video
                 // updates so the screen is current before we potentially block.
-                if int_num == 0x16 && self.bus.is_dirty() {
+                if int_num == 0x16 && self.bus.video().is_dirty() {
                     self.update_video();
                 }
 
@@ -1056,8 +1057,8 @@ impl<V: VideoController> Computer<V> {
     /// Update video display if needed (call periodically or after step)
     pub fn update_video(&mut self) {
         // Check if video mode changed and notify controller
-        if self.bus.take_mode_changed() {
-            let mode = self.bus.get_mode();
+        if self.bus.video_mut().take_mode_changed() {
+            let mode = self.bus.video().get_mode();
             log::info!(
                 "Notifying video controller of mode change to 0x{:02X}",
                 mode
@@ -1066,11 +1067,11 @@ impl<V: VideoController> Computer<V> {
             // Update VGA DAC palette when mode changes (palette is reset on mode change)
             log::info!("Computer: Passing palette to renderer (mode change)");
             self.video_controller
-                .update_vga_dac_palette(self.bus.get_vga_dac_palette());
+                .update_vga_dac_palette(self.bus.video().get_vga_dac_palette());
 
             // Sync BDA video state (may have been set via CGA hardware registers, not INT 10h)
-            let cols = self.bus.get_cols();
-            let rows = self.bus.get_rows();
+            let cols = self.bus.video().get_cols();
+            let rows = self.bus.video().get_rows();
             self.bus.write_u8(
                 crate::memory::BDA_START + crate::memory::BDA_VIDEO_MODE,
                 mode,
@@ -1086,53 +1087,55 @@ impl<V: VideoController> Computer<V> {
             );
         }
 
-        if self.bus.is_dirty() {
+        if self.bus.video().is_dirty() {
             // Update VGA DAC palette (in case it was modified via INT 10h or I/O ports)
             log::trace!("Computer: Passing palette to renderer (dirty)");
             self.video_controller
-                .update_vga_dac_palette(self.bus.get_vga_dac_palette());
+                .update_vga_dac_palette(self.bus.video().get_vga_dac_palette());
 
             // Rebuild rendering cache from VRAM (VRAM is the single source of truth)
-            self.bus.rebuild_cache();
+            self.bus.video_mut().rebuild_cache();
 
             // Update video controller based on current mode
-            match self.bus.get_mode_type() {
+            match self.bus.video().get_mode_type() {
                 crate::video::VideoMode::Text { .. } => {
-                    self.video_controller.update_display(self.bus.get_buffer());
+                    self.video_controller
+                        .update_display(self.bus.video().get_buffer());
                 }
                 crate::video::VideoMode::Graphics320x200 => {
-                    let pixels = self.bus.get_cga_pixels();
-                    if self.bus.is_composite_mode() {
+                    let pixels = self.bus.video().get_cga_pixels();
+                    if self.bus.video().is_composite_mode() {
                         // Composite CGA: render 320x200 2bpp data as composite artifact colors
                         self.video_controller
                             .update_graphics_640x200(&pixels, 15, 0, true);
                     } else {
                         // Pass AC palette registers 0-3 as the color map
                         // These map pixel values 0-3 to VGA DAC indices
-                        let ac = self.bus.get_ac_palette();
+                        let ac = self.bus.video().get_ac_palette();
                         let color_map = [ac[0], ac[1], ac[2], ac[3]];
                         self.video_controller
                             .update_graphics_320x200(&pixels, color_map);
                     }
                 }
                 crate::video::VideoMode::Graphics640x200 => {
-                    let pixels = self.bus.get_cga_pixels();
+                    let pixels = self.bus.video().get_cga_pixels();
                     self.video_controller.update_graphics_640x200(
                         &pixels,
                         15, // Foreground: always bright white
                         0,  // Background: always black
-                        self.bus.is_composite_mode(),
+                        self.bus.video().is_composite_mode(),
                     );
                 }
                 crate::video::VideoMode::Graphics320x200x16 => {
-                    let pixels = self.bus.get_ega_pixels();
+                    let pixels = self.bus.video().get_ega_pixels();
                     self.video_controller.update_graphics_320x200x16(&pixels);
                 }
             }
-            self.bus.clear_dirty();
+            self.bus.video_mut().clear_dirty();
         }
         // Always update cursor position (cursor moves don't dirty the buffer)
-        self.video_controller.update_cursor(self.bus.get_cursor());
+        self.video_controller
+            .update_cursor(self.bus.video().get_cursor());
     }
 
     /// Update speaker output (call periodically for platforms that need it)
@@ -1144,43 +1147,45 @@ impl<V: VideoController> Computer<V> {
     /// Used when terminal state is known to be out of sync (e.g., after clearing screen)
     pub fn force_video_redraw(&mut self) {
         // Force redraw based on current mode
-        match self.bus.get_mode_type() {
+        match self.bus.video().get_mode_type() {
             crate::video::VideoMode::Text { .. } => {
-                self.video_controller.force_redraw(self.bus.get_buffer());
+                self.video_controller
+                    .force_redraw(self.bus.video().get_buffer());
             }
             crate::video::VideoMode::Graphics320x200 => {
-                let pixels = self.bus.get_cga_pixels();
-                if self.bus.is_composite_mode() {
+                let pixels = self.bus.video().get_cga_pixels();
+                if self.bus.video().is_composite_mode() {
                     self.video_controller
                         .update_graphics_640x200(&pixels, 15, 0, true);
                 } else {
-                    let ac = self.bus.get_ac_palette();
+                    let ac = self.bus.video().get_ac_palette();
                     let color_map = [ac[0], ac[1], ac[2], ac[3]];
                     self.video_controller
                         .update_graphics_320x200(&pixels, color_map);
                 }
             }
             crate::video::VideoMode::Graphics640x200 => {
-                let pixels = self.bus.get_cga_pixels();
+                let pixels = self.bus.video().get_cga_pixels();
                 self.video_controller.update_graphics_640x200(
                     &pixels,
                     15,
                     0,
-                    self.bus.is_composite_mode(),
+                    self.bus.video().is_composite_mode(),
                 );
             }
             crate::video::VideoMode::Graphics320x200x16 => {
-                let pixels = self.bus.get_ega_pixels();
+                let pixels = self.bus.video().get_ega_pixels();
                 self.video_controller.update_graphics_320x200x16(&pixels);
             }
         }
-        self.bus.clear_dirty();
-        self.video_controller.update_cursor(self.bus.get_cursor());
+        self.bus.video_mut().clear_dirty();
+        self.video_controller
+            .update_cursor(self.bus.video().get_cursor());
     }
 
     /// Get video buffer for inspection
     pub fn get_video_buffer(&self) -> &TextBuffer {
-        self.bus.get_buffer()
+        self.bus.video().get_buffer()
     }
 
     /// Check if CPU is halted
