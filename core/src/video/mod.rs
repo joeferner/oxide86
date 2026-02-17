@@ -215,6 +215,23 @@ fn default_vga_palette() -> [[u8; 3]; 256] {
     palette
 }
 
+/// Convert a CGA interlaced memory offset to pixel (x, y) coordinates.
+///
+/// CGA interleaves even and odd scan lines:
+///   Bank 0 (0x0000–0x1FFF): even rows (0, 2, 4, …, 198)
+///   Bank 1 (0x2000–0x3FFF): odd rows  (1, 3, 5, …, 199)
+/// `pixels_per_byte`: 4 for 2bpp (320x200), 8 for 1bpp (640x200).
+fn cga_interlaced_to_xy(offset: usize, pixels_per_byte: usize) -> (usize, usize) {
+    let (bank_offset, row_parity) = if offset >= 0x2000 {
+        (offset - 0x2000, 1)
+    } else {
+        (offset, 0)
+    };
+    let y = (bank_offset / 80) * 2 + row_parity;
+    let x = (bank_offset % 80) * pixels_per_byte;
+    (x, y)
+}
+
 impl Video {
     pub fn new() -> Self {
         Self::new_with_card_type(VideoCardType::default())
@@ -285,6 +302,32 @@ impl Video {
         if offset < self.vram.len() {
             self.vram[offset] = value;
             self.dirty = true;
+            // Debug logging for graphics modes (used by scripts/recreate_screen.py)
+            if log::log_enabled!(log::Level::Debug) {
+                match self.mode_type {
+                    VideoMode::Graphics320x200 => {
+                        let (x, y) = cga_interlaced_to_xy(offset, 4);
+                        log::debug!(
+                            "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} (2bpp)",
+                            offset,
+                            x,
+                            y,
+                            value
+                        );
+                    }
+                    VideoMode::Graphics640x200 => {
+                        let (x, y) = cga_interlaced_to_xy(offset, 8);
+                        log::debug!(
+                            "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} (1bpp)",
+                            offset,
+                            x,
+                            y,
+                            value
+                        );
+                    }
+                    _ => {}
+                }
+            }
         }
     }
 
@@ -740,6 +783,13 @@ impl Video {
         if offset < 64000 {
             self.vram[offset] = value;
             self.dirty = true;
+            log::debug!(
+                "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} (8bpp)",
+                offset,
+                offset % 320,
+                offset / 320,
+                value
+            );
         }
     }
 
@@ -757,6 +807,14 @@ impl Video {
         for plane in 0..4usize {
             if self.ega_map_mask & (1 << plane) != 0 {
                 self.vram[plane * 8000 + offset] = value;
+                log::debug!(
+                    "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} (ega_p{})",
+                    offset,
+                    (offset % 40) * 8,
+                    offset / 40,
+                    value,
+                    plane
+                );
             }
         }
         self.dirty = true;

@@ -50,6 +50,8 @@ class ScreenRecreator:
         for i, color in enumerate(EGA_PALETTE):
             self.vga_dac[i] = color
         self.ac_palette = list(range(16))  # Identity mapping by default [0,1,2,3,...]
+        # EGA plane buffers: 4 planes, each 40 bytes wide × 200 rows = 8000 bytes
+        self.ega_planes = [[0] * 8000 for _ in range(4)]
 
     def set_vga_dac(self, index, r, g, b):
         """Set VGA DAC palette entry (6-bit RGB values)."""
@@ -66,7 +68,12 @@ class ScreenRecreator:
 
     def update_palette(self):
         """Update working palette based on mode, VGA DAC, and AC palette."""
-        if "Graphics320x200" in self.mode and "x16" not in self.mode:
+        if self.mode is None:
+            return
+        if "Graphics320x200x256" in self.mode:
+            # VGA mode 13h: 256 color index → VGA DAC directly
+            self.palette = self.vga_dac  # full 256-entry DAC
+        elif "Graphics320x200" in self.mode and "x16" not in self.mode:
             # CGA 4-color mode: use AC palette to map to VGA DAC
             self.palette = [
                 self.vga_dac[self.ac_palette[0]],
@@ -90,7 +97,13 @@ class ScreenRecreator:
         """Set video mode and initialize pixel buffer."""
         self.mode = mode_str
 
-        if "Graphics320x200" in mode_str:
+        if "Graphics320x200x256" in mode_str:
+            self.width = 320
+            self.height = 200
+        elif "Graphics320x200x16" in mode_str:
+            self.width = 320
+            self.height = 200
+        elif "Graphics320x200" in mode_str:
             self.width = 320
             self.height = 200
         elif "Graphics640x200" in mode_str:
@@ -102,6 +115,8 @@ class ScreenRecreator:
 
         # Initialize pixel buffer with black
         self.pixels = [[[0, 0, 0] for _ in range(self.width)] for _ in range(self.height)]
+        # Reset EGA planes
+        self.ega_planes = [[0] * 8000 for _ in range(4)]
         print(f"Set video mode: {mode_str} ({self.width}x{self.height})")
         self.update_palette()
 
@@ -135,12 +150,51 @@ class ScreenRecreator:
             if color_index < len(self.palette):
                 self.pixels[y][px] = list(self.palette[color_index])
 
-    def process_write(self, x, y, value, format_str):
+    def write_8bpp(self, x, y, value):
+        """Write a single pixel in 8bpp format (VGA mode 13h, 256 colors)."""
+        if self.pixels is None or y >= self.height or x >= self.width:
+            return
+        color = self.vga_dac[value] if value < len(self.vga_dac) else (0, 0, 0)
+        self.pixels[y][x] = list(color)
+
+    def write_ega_plane(self, plane, x, y, value):
+        """Write a byte to an EGA plane and update the pixel buffer.
+
+        Each byte covers 8 pixels; x is the leftmost pixel of the group.
+        Bits are combined across all 4 planes to produce a 4-bit color index.
+        """
+        if self.pixels is None or plane >= 4:
+            return
+        # Store in plane buffer (offset = y * 40 + x // 8)
+        byte_x = x // 8
+        offset = y * 40 + byte_x
+        if offset < 8000:
+            self.ega_planes[plane][offset] = value
+
+        # Reconstruct the 8 pixels at this byte position from all 4 planes
+        for bit in range(8):
+            px = x + bit
+            if px >= self.width or y >= self.height:
+                continue
+            color_index = 0
+            for p in range(4):
+                byte_offset = y * 40 + px // 8
+                if byte_offset < 8000:
+                    if self.ega_planes[p][byte_offset] & (0x80 >> (px % 8)):
+                        color_index |= (1 << p)
+            if self.palette and color_index < len(self.palette):
+                self.pixels[y][px] = list(self.palette[color_index])
+
+    def process_write(self, x, y, value, format_str, plane=None):
         """Process a graphics write operation."""
         if format_str == "2bpp":
             self.write_2bpp(x, y, value)
         elif format_str == "1bpp":
             self.write_1bpp(x, y, value)
+        elif format_str == "8bpp":
+            self.write_8bpp(x, y, value)
+        elif format_str.startswith("ega_p") and plane is not None:
+            self.write_ega_plane(plane, x, y, value)
         else:
             print(f"Unknown format: {format_str}")
 
@@ -169,6 +223,7 @@ class ScreenRecreator:
 def find_last_screen(log_path):
     """Find the last screen in the log file."""
     mode_pattern = re.compile(r'Video mode set to 0x[0-9A-Fa-f]+ \(([^)]+)\)')
+    # Standard format: x=N, y=N, format=(2bpp|1bpp|8bpp)
     write_pattern = re.compile(
         r'Graphics write: offset=0x[0-9A-Fa-f]+ \(x=(\d+), y=(\d+)\), value=0x([0-9A-Fa-f]+) \((\w+)\)'
     )
@@ -256,7 +311,15 @@ def find_last_screen(log_path):
             value = int(match.group(3), 16)
             format_str = match.group(4)
 
-            recreator.process_write(x, y, value, format_str)
+            # Parse plane number for EGA plane writes (format: ega_p0, ega_p1, etc.)
+            plane = None
+            if format_str.startswith("ega_p"):
+                try:
+                    plane = int(format_str[5:])
+                except ValueError:
+                    pass
+
+            recreator.process_write(x, y, value, format_str, plane)
             write_count += 1
 
             if write_count % 10000 == 0:
