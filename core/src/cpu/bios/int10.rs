@@ -658,10 +658,10 @@ impl Cpu {
 
                     if bit_shift == 0 {
                         // Byte-aligned: fast path
-                        for plane in 0..4u8 {
+                        for plane in 0..4usize {
                             let plane_bit = (fg_color >> plane) & 1;
-                            bus.video_mut().set_ega_map_mask(1 << plane);
-                            let current = bus.video().read_byte_ega_plane(plane, byte_offset);
+                            let vram_offset = plane * 8000 + byte_offset;
+                            let current = bus.video().read_byte(vram_offset);
 
                             let new_val = match mode {
                                 GraphicsDrawMode::Opaque => {
@@ -684,19 +684,19 @@ impl Cpu {
                                     }
                                 }
                             };
-                            bus.video_mut().write_byte_ega(byte_offset, new_val);
+                            bus.video_mut().write_byte(vram_offset, new_val);
                         }
                     } else {
                         // Not byte-aligned: spans two EGA bytes
                         let left_mask = final_glyph_byte >> bit_shift;
                         let right_mask = final_glyph_byte << (8 - bit_shift);
 
-                        for plane in 0..4u8 {
+                        for plane in 0..4usize {
                             let plane_bit = (fg_color >> plane) & 1;
-                            bus.video_mut().set_ega_map_mask(1 << plane);
+                            let vram_offset = plane * 8000 + byte_offset;
 
                             // Left byte
-                            let cur_left = bus.video().read_byte_ega_plane(plane, byte_offset);
+                            let cur_left = bus.video().read_byte(vram_offset);
                             let new_left = match mode {
                                 GraphicsDrawMode::Opaque => {
                                     if plane_bit != 0 {
@@ -720,12 +720,12 @@ impl Cpu {
                                     }
                                 }
                             };
-                            bus.video_mut().write_byte_ega(byte_offset, new_left);
+                            bus.video_mut().write_byte(vram_offset, new_left);
 
                             // Right byte (if any pixels spill over)
                             if right_mask != 0 && byte_offset + 1 < 8000 {
-                                let cur_right =
-                                    bus.video().read_byte_ega_plane(plane, byte_offset + 1);
+                                let vram_offset_r = plane * 8000 + byte_offset + 1;
+                                let cur_right = bus.video().read_byte(vram_offset_r);
                                 let new_right = match mode {
                                     GraphicsDrawMode::Opaque => {
                                         if plane_bit != 0 {
@@ -749,12 +749,11 @@ impl Cpu {
                                         }
                                     }
                                 };
-                                bus.video_mut().write_byte_ega(byte_offset + 1, new_right);
+                                bus.video_mut().write_byte(vram_offset_r, new_right);
                             }
                         }
                     }
                 }
-                bus.video_mut().set_ega_map_mask(0x0F); // Restore all planes
             }
             _ => {
                 // Other modes not supported yet
@@ -1132,23 +1131,21 @@ impl Cpu {
                 // Ignore write pixel in text mode
             }
             crate::video::VideoMode::Graphics320x200x16 => {
-                // EGA 320x200 16-color: write pixel via EGA plane interface
+                // EGA 320x200 16-color: write pixel via per-plane vram offsets
                 if col < 320 && row < 200 {
                     let byte_offset = row * 40 + col / 8;
                     let bit = 7 - (col % 8);
-                    // Write color to each plane individually
-                    for plane in 0..4u8 {
-                        let plane_bit = (color >> plane) & 1;
-                        bus.video_mut().set_ega_map_mask(1 << plane);
-                        let mut byte_val = bus.video().read_byte(byte_offset);
+                    for plane in 0..4usize {
+                        let plane_bit = (color as usize >> plane) & 1;
+                        let vram_offset = plane * 8000 + byte_offset;
+                        let mut byte_val = bus.video().read_byte(vram_offset);
                         if plane_bit != 0 {
                             byte_val |= 1 << bit;
                         } else {
                             byte_val &= !(1 << bit);
                         }
-                        bus.video_mut().write_byte_ega(byte_offset, byte_val);
+                        bus.video_mut().write_byte(vram_offset, byte_val);
                     }
-                    bus.video_mut().set_ega_map_mask(0x0F); // Restore all planes enabled
                 }
             }
         }
@@ -1196,15 +1193,15 @@ impl Cpu {
             }
             crate::video::VideoMode::Text { .. } => 0,
             crate::video::VideoMode::Graphics320x200x16 => {
-                // EGA 320x200 16-color: read pixel from EGA planes
+                // EGA 320x200 16-color: read pixel from per-plane vram offsets
                 if col >= 320 || row >= 200 {
                     0
                 } else {
                     let byte_offset = row * 40 + col / 8;
                     let bit = 7 - (col % 8);
                     let mut color = 0u8;
-                    for plane in 0..4u8 {
-                        let byte_val = bus.video().read_byte_ega_plane(plane, byte_offset);
+                    for plane in 0..4usize {
+                        let byte_val = bus.video().read_byte(plane * 8000 + byte_offset);
                         if (byte_val >> bit) & 1 != 0 {
                             color |= 1 << plane;
                         }

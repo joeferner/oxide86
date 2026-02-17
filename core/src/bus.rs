@@ -198,14 +198,14 @@ impl Bus {
         self.video.get_mode_type()
     }
 
-    /// Get graphics buffer
-    pub fn get_graphics_buffer(&self) -> Option<&crate::video::CgaBuffer> {
-        self.video.get_graphics_buffer()
+    /// Get CGA pixel data as a linear (de-interlaced) byte array for rendering
+    pub fn get_cga_pixels(&self) -> Vec<u8> {
+        self.video.get_cga_pixels()
     }
 
-    /// Get EGA buffer
-    pub fn get_ega_buffer(&self) -> Option<&crate::video::EgaBuffer> {
-        self.video.get_ega_buffer()
+    /// Get EGA pixel data (320×200 16-color, composed from vram planes)
+    pub fn get_ega_pixels(&self) -> Vec<u8> {
+        self.video.get_ega_pixels()
     }
 
     /// Get CGA palette

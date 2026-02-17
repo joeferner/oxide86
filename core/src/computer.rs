@@ -1101,41 +1101,32 @@ impl<V: VideoController> Computer<V> {
                     self.video_controller.update_display(self.bus.get_buffer());
                 }
                 crate::video::VideoMode::Graphics320x200 => {
-                    if let Some(buffer) = self.bus.get_graphics_buffer() {
-                        if self.bus.is_composite_mode() {
-                            // Composite CGA: render 320x200 2bpp data as composite
-                            // (nibble-to-color mapping, same byte layout)
-                            self.video_controller.update_graphics_640x200(
-                                buffer.get_pixels(),
-                                15,
-                                0,
-                                true,
-                            );
-                        } else {
-                            // Pass AC palette registers 0-3 as the color map
-                            // These map pixel values 0-3 to VGA DAC indices
-                            let ac = self.bus.get_ac_palette();
-                            let color_map = [ac[0], ac[1], ac[2], ac[3]];
-                            self.video_controller
-                                .update_graphics_320x200(buffer.get_pixels(), color_map);
-                        }
+                    let pixels = self.bus.get_cga_pixels();
+                    if self.bus.is_composite_mode() {
+                        // Composite CGA: render 320x200 2bpp data as composite artifact colors
+                        self.video_controller
+                            .update_graphics_640x200(&pixels, 15, 0, true);
+                    } else {
+                        // Pass AC palette registers 0-3 as the color map
+                        // These map pixel values 0-3 to VGA DAC indices
+                        let ac = self.bus.get_ac_palette();
+                        let color_map = [ac[0], ac[1], ac[2], ac[3]];
+                        self.video_controller
+                            .update_graphics_320x200(&pixels, color_map);
                     }
                 }
                 crate::video::VideoMode::Graphics640x200 => {
-                    if let Some(buffer) = self.bus.get_graphics_buffer() {
-                        self.video_controller.update_graphics_640x200(
-                            buffer.get_pixels(),
-                            15, // Foreground: always bright white
-                            0,  // Background: always black
-                            self.bus.is_composite_mode(),
-                        );
-                    }
+                    let pixels = self.bus.get_cga_pixels();
+                    self.video_controller.update_graphics_640x200(
+                        &pixels,
+                        15, // Foreground: always bright white
+                        0,  // Background: always black
+                        self.bus.is_composite_mode(),
+                    );
                 }
                 crate::video::VideoMode::Graphics320x200x16 => {
-                    if let Some(buffer) = self.bus.get_ega_buffer() {
-                        let pixels = buffer.get_pixels();
-                        self.video_controller.update_graphics_320x200x16(&pixels);
-                    }
+                    let pixels = self.bus.get_ega_pixels();
+                    self.video_controller.update_graphics_320x200x16(&pixels);
                 }
             }
             self.bus.clear_dirty();
@@ -1158,37 +1149,29 @@ impl<V: VideoController> Computer<V> {
                 self.video_controller.force_redraw(self.bus.get_buffer());
             }
             crate::video::VideoMode::Graphics320x200 => {
-                if let Some(buffer) = self.bus.get_graphics_buffer() {
-                    if self.bus.is_composite_mode() {
-                        self.video_controller.update_graphics_640x200(
-                            buffer.get_pixels(),
-                            15,
-                            0,
-                            true,
-                        );
-                    } else {
-                        let palette = self.bus.get_palette();
-                        let colors = palette.get_colors();
-                        self.video_controller
-                            .update_graphics_320x200(buffer.get_pixels(), colors);
-                    }
+                let pixels = self.bus.get_cga_pixels();
+                if self.bus.is_composite_mode() {
+                    self.video_controller
+                        .update_graphics_640x200(&pixels, 15, 0, true);
+                } else {
+                    let ac = self.bus.get_ac_palette();
+                    let color_map = [ac[0], ac[1], ac[2], ac[3]];
+                    self.video_controller
+                        .update_graphics_320x200(&pixels, color_map);
                 }
             }
             crate::video::VideoMode::Graphics640x200 => {
-                if let Some(buffer) = self.bus.get_graphics_buffer() {
-                    self.video_controller.update_graphics_640x200(
-                        buffer.get_pixels(),
-                        15,
-                        0,
-                        self.bus.is_composite_mode(),
-                    );
-                }
+                let pixels = self.bus.get_cga_pixels();
+                self.video_controller.update_graphics_640x200(
+                    &pixels,
+                    15,
+                    0,
+                    self.bus.is_composite_mode(),
+                );
             }
             crate::video::VideoMode::Graphics320x200x16 => {
-                if let Some(buffer) = self.bus.get_ega_buffer() {
-                    let pixels = buffer.get_pixels();
-                    self.video_controller.update_graphics_320x200x16(&pixels);
-                }
+                let pixels = self.bus.get_ega_pixels();
+                self.video_controller.update_graphics_320x200x16(&pixels);
             }
         }
         self.bus.clear_dirty();

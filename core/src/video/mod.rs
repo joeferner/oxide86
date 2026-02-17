@@ -2,13 +2,11 @@ use crate::video_card_type::VideoCardType;
 
 pub mod cga;
 pub mod composite;
-pub mod ega;
 pub mod render;
 pub mod text;
 
 // Re-export types for bus.rs and other modules
-pub use cga::{CgaBuffer, CgaPalette};
-pub use ega::EgaBuffer;
+pub use cga::CgaPalette;
 pub use text::TextBuffer;
 // CursorPosition is already defined in this file, so no need to re-export
 
@@ -153,10 +151,6 @@ pub struct Video {
     cursor: CursorPosition,
     /// Text mode buffer (parsed representation)
     text_buffer: TextBuffer,
-    /// Graphics mode buffer (optional, allocated when in graphics mode)
-    cga_buffer: Option<CgaBuffer>,
-    /// EGA planar graphics buffer (optional, allocated in EGA modes)
-    ega_buffer: Option<EgaBuffer>,
     /// Current video mode
     mode: u8,
     /// Parsed video mode type
@@ -187,9 +181,10 @@ pub struct Video {
     /// On CGA mode changes, AC[0-3] are synced from the CGA palette EGA indices
     /// Programs can reprogram these via port 0x3C0 for custom color mapping
     ac_palette: [u8; 16],
-    /// Raw video RAM (32KB at B8000-BFFFF)
-    /// Persists across mode changes, just like real hardware
-    /// This is the video card's own memory, separate from system RAM
+    /// Raw video RAM (32KB).
+    /// In CGA/text modes: framebuffer at B8000-BFFFF.
+    /// In EGA mode 0x0D: 4 planes × 8000 bytes (plane N at vram[N*8000..N*8000+8000]).
+    /// Persists across mode changes, just like real hardware.
     vram: Box<[u8; CGA_MEMORY_SIZE]>,
 }
 
@@ -215,8 +210,6 @@ impl Video {
         Self {
             cursor: CursorPosition::default(),
             text_buffer: TextBuffer::default(),
-            cga_buffer: None,
-            ega_buffer: None,
             mode: 0x03, // 80x25 text mode
             mode_type: VideoMode::Text {
                 cols: TEXT_MODE_COLS,
@@ -274,7 +267,7 @@ impl Video {
     /// Update a single byte in video memory
     pub fn write_byte(&mut self, offset: usize, value: u8) {
         // Write to raw VRAM (single source of truth)
-        // Parsed buffers (TextBuffer/CgaBuffer) are rebuilt from VRAM before rendering
+        // TextBuffer is rebuilt from VRAM before rendering; CGA pixels are computed on demand
         if offset < self.vram.len() {
             self.vram[offset] = value;
             self.dirty = true;
@@ -331,31 +324,18 @@ impl Video {
         self.mode_type = match mode {
             0x00 | 0x01 => VideoMode::Text { cols: 40, rows: 25 },
             0x02 | 0x03 | 0x07 => VideoMode::Text { cols: 80, rows: 25 },
-            0x04 | 0x05 => {
-                self.cga_buffer = Some(CgaBuffer::new_320x200());
-                VideoMode::Graphics320x200
-            }
-            0x06 => {
-                self.cga_buffer = Some(CgaBuffer::new_640x200());
-                VideoMode::Graphics640x200
-            }
-            0x0D => {
-                self.ega_buffer = Some(EgaBuffer::new());
-                VideoMode::Graphics320x200x16
-            }
+            0x04 | 0x05 => VideoMode::Graphics320x200,
+            0x06 => VideoMode::Graphics640x200,
+            0x0D => VideoMode::Graphics320x200x16,
             _ => {
                 log::warn!("Unsupported video mode 0x{:02X}, defaulting to text", mode);
                 VideoMode::Text { cols: 80, rows: 25 }
             }
         };
 
-        // Clear buffers on mode change
+        // Clear text buffer on mode change to text
         if matches!(self.mode_type, VideoMode::Text { .. }) {
             self.text_buffer = TextBuffer::new();
-            self.cga_buffer = None;
-            self.ega_buffer = None;
-        } else if matches!(self.mode_type, VideoMode::Graphics320x200x16) {
-            self.cga_buffer = None;
         }
 
         // Clear VRAM when BIOS sets mode (preserve_memory=false)
@@ -455,14 +435,59 @@ impl Video {
         );
         match self.mode_type {
             VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
-                if let Some(ref mut buf) = self.cga_buffer {
-                    buf.scroll_up_window(lines, top, left, bottom, right);
+                // bytes per character cell column (2bpp=2 for 320x200, 1bpp=1 for 640x200)
+                let bpc = if matches!(self.mode_type, VideoMode::Graphics320x200) {
+                    2usize
+                } else {
+                    1
+                };
+                let cx_start = left * bpc;
+                let cx_end = (right + 1) * bpc;
+                let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+                for row in top..=bottom {
+                    let src_row = row + scroll_lines;
+                    for py in 0..8usize {
+                        let dst_y = row * 8 + py;
+                        if src_row <= bottom {
+                            let src_y = src_row * 8 + py;
+                            for cx in cx_start..cx_end {
+                                let val = self.vram[Self::cga_vram_offset(src_y, cx)];
+                                self.vram[Self::cga_vram_offset(dst_y, cx)] = val;
+                            }
+                        } else {
+                            for cx in cx_start..cx_end {
+                                self.vram[Self::cga_vram_offset(dst_y, cx)] = 0;
+                            }
+                        }
+                    }
                 }
                 self.dirty = true;
             }
             VideoMode::Graphics320x200x16 => {
-                if let Some(ref mut buf) = self.ega_buffer {
-                    buf.scroll_up_window(lines, top, left, bottom, right);
+                const PIXELS_PER_ROW: usize = 8;
+                const BYTES_PER_SCAN_LINE: usize = 40;
+                let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+                for plane in 0..4usize {
+                    let base = plane * 8000;
+                    for row in top..=bottom {
+                        let src_row = row + scroll_lines;
+                        for py in 0..PIXELS_PER_ROW {
+                            let dst_y = row * PIXELS_PER_ROW + py;
+                            let dst_base = dst_y * BYTES_PER_SCAN_LINE;
+                            if src_row <= bottom {
+                                let src_y = src_row * PIXELS_PER_ROW + py;
+                                let src_base = src_y * BYTES_PER_SCAN_LINE;
+                                for cx in left..=right {
+                                    self.vram[base + dst_base + cx] =
+                                        self.vram[base + src_base + cx];
+                                }
+                            } else {
+                                for cx in left..=right {
+                                    self.vram[base + dst_base + cx] = 0;
+                                }
+                            }
+                        }
+                    }
                 }
                 self.dirty = true;
             }
@@ -483,14 +508,66 @@ impl Video {
         );
         match self.mode_type {
             VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
-                if let Some(ref mut buf) = self.cga_buffer {
-                    buf.scroll_down_window(lines, top, left, bottom, right);
+                let bpc = if matches!(self.mode_type, VideoMode::Graphics320x200) {
+                    2usize
+                } else {
+                    1
+                };
+                let cx_start = left * bpc;
+                let cx_end = (right + 1) * bpc;
+                let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+                for row in (top..=bottom).rev() {
+                    let src_row = if row >= top + scroll_lines {
+                        row - scroll_lines
+                    } else {
+                        usize::MAX
+                    };
+                    for py in 0..8usize {
+                        let dst_y = row * 8 + py;
+                        if src_row != usize::MAX && src_row >= top {
+                            let src_y = src_row * 8 + py;
+                            for cx in cx_start..cx_end {
+                                let val = self.vram[Self::cga_vram_offset(src_y, cx)];
+                                self.vram[Self::cga_vram_offset(dst_y, cx)] = val;
+                            }
+                        } else {
+                            for cx in cx_start..cx_end {
+                                self.vram[Self::cga_vram_offset(dst_y, cx)] = 0;
+                            }
+                        }
+                    }
                 }
                 self.dirty = true;
             }
             VideoMode::Graphics320x200x16 => {
-                if let Some(ref mut buf) = self.ega_buffer {
-                    buf.scroll_down_window(lines, top, left, bottom, right);
+                const PIXELS_PER_ROW: usize = 8;
+                const BYTES_PER_SCAN_LINE: usize = 40;
+                let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
+                for plane in 0..4usize {
+                    let base = plane * 8000;
+                    for row in (top..=bottom).rev() {
+                        let src_row = if row >= top + scroll_lines {
+                            row - scroll_lines
+                        } else {
+                            usize::MAX
+                        };
+                        for py in 0..PIXELS_PER_ROW {
+                            let dst_y = row * PIXELS_PER_ROW + py;
+                            let dst_base = dst_y * BYTES_PER_SCAN_LINE;
+                            if src_row != usize::MAX && src_row >= top {
+                                let src_y = src_row * PIXELS_PER_ROW + py;
+                                let src_base = src_y * BYTES_PER_SCAN_LINE;
+                                for cx in left..=right {
+                                    self.vram[base + dst_base + cx] =
+                                        self.vram[base + src_base + cx];
+                                }
+                            } else {
+                                for cx in left..=right {
+                                    self.vram[base + dst_base + cx] = 0;
+                                }
+                            }
+                        }
+                    }
                 }
                 self.dirty = true;
             }
@@ -539,42 +616,70 @@ impl Video {
         self.palette.to_register()
     }
 
-    /// Get graphics buffer (for rendering)
-    pub fn get_graphics_buffer(&self) -> Option<&CgaBuffer> {
-        self.cga_buffer.as_ref()
+    /// Map (scan_line_y, byte_column) to VRAM offset using CGA interlaced layout.
+    /// Even lines live in bank 0 (base 0x0000), odd lines in bank 1 (base 0x2000).
+    fn cga_vram_offset(scan_y: usize, byte_col: usize) -> usize {
+        if scan_y.is_multiple_of(2) {
+            (scan_y / 2) * 80 + byte_col
+        } else {
+            0x2000 + ((scan_y - 1) / 2) * 80 + byte_col
+        }
     }
 
-    /// Get EGA buffer (for rendering)
-    pub fn get_ega_buffer(&self) -> Option<&EgaBuffer> {
-        self.ega_buffer.as_ref()
+    /// Get CGA pixel data as a linear (de-interlaced) byte array for rendering.
+    /// Returns 16000 bytes: 200 lines × 80 bytes/line, top-to-bottom order.
+    /// Works for both 320x200 (2bpp) and 640x200 (1bpp) modes — the renderer
+    /// interprets pixel packing from the bits-per-pixel of the current mode.
+    pub fn get_cga_pixels(&self) -> Vec<u8> {
+        let mut pixels = vec![0u8; 16000];
+        for line in 0..200usize {
+            let src = Self::cga_vram_offset(line, 0);
+            let dst = line * 80;
+            pixels[dst..dst + 80].copy_from_slice(&self.vram[src..src + 80]);
+        }
+        pixels
     }
 
-    /// Write a byte to EGA planar memory (A000 segment)
-    /// Writes to all planes enabled by the current Map Mask register
+    /// Get 16-color pixel data composed from EGA planes stored in vram.
+    /// Returns 320×200 = 64000 bytes; each byte is a 0-15 color index.
+    pub fn get_ega_pixels(&self) -> Vec<u8> {
+        let mut pixels = vec![0u8; 320 * 200];
+        for y in 0..200usize {
+            for x in 0..320usize {
+                let byte_offset = y * 40 + x / 8;
+                let bit = 7 - (x % 8);
+                let color = ((self.vram[byte_offset] >> bit) & 1)
+                    | (((self.vram[8000 + byte_offset] >> bit) & 1) << 1)
+                    | (((self.vram[16000 + byte_offset] >> bit) & 1) << 2)
+                    | (((self.vram[24000 + byte_offset] >> bit) & 1) << 3);
+                pixels[y * 320 + x] = color;
+            }
+        }
+        pixels
+    }
+
+    /// Write a byte to EGA planar memory (A000 segment).
+    /// Writes value to each plane enabled by the current Map Mask register.
     pub fn write_byte_ega(&mut self, offset: usize, value: u8) {
-        if let Some(buf) = &mut self.ega_buffer {
-            buf.write_byte(self.ega_map_mask, offset, value);
-            self.dirty = true;
+        if offset >= 8000 {
+            return;
         }
+        for plane in 0..4usize {
+            if self.ega_map_mask & (1 << plane) != 0 {
+                self.vram[plane * 8000 + offset] = value;
+            }
+        }
+        self.dirty = true;
     }
 
-    /// Read a byte from EGA planar memory (A000 segment)
-    /// Reads from the plane selected by the Read Map Select register
+    /// Read a byte from EGA planar memory (A000 segment).
+    /// Reads from the plane selected by the Read Map Select register.
     pub fn read_byte_ega(&self, offset: usize) -> u8 {
-        if let Some(buf) = &self.ega_buffer {
-            buf.read_byte(self.ega_read_plane, offset)
-        } else {
-            0
+        let plane = (self.ega_read_plane & 3) as usize;
+        if offset >= 8000 {
+            return 0;
         }
-    }
-
-    /// Read a byte from a specific EGA plane (ignores Read Map Select register)
-    pub fn read_byte_ega_plane(&self, plane: u8, offset: usize) -> u8 {
-        if let Some(buf) = &self.ega_buffer {
-            buf.read_byte(plane & 3, offset)
-        } else {
-            0
-        }
+        self.vram[plane * 8000 + offset]
     }
 
     /// Set EGA Sequencer Map Mask (register 2): which planes receive writes
@@ -715,26 +820,14 @@ impl Video {
         }
     }
 
-    /// Rebuild CGA buffer cache from VRAM
-    fn rebuild_cga_buffer(&mut self) {
-        if let Some(ref mut buffer) = self.cga_buffer {
-            // Copy VRAM bytes to CGA buffer
-            for (offset, &byte) in self.vram.iter().enumerate() {
-                buffer.write_byte(offset, byte);
-            }
-        }
-    }
-
     /// Rebuild appropriate cache from VRAM based on current mode
     pub fn rebuild_cache(&mut self) {
         match &self.mode_type {
             VideoMode::Text { cols, .. } => self.rebuild_text_buffer(*cols),
-            VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
-                self.rebuild_cga_buffer();
-            }
-            VideoMode::Graphics320x200x16 => {
-                // EGA buffer doesn't need rebuild (writes go directly via write_byte_ega)
-            }
+            // CGA and EGA pixels are computed on demand from vram; no cache to rebuild
+            VideoMode::Graphics320x200
+            | VideoMode::Graphics640x200
+            | VideoMode::Graphics320x200x16 => {}
         }
     }
 }

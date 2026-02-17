@@ -1,7 +1,6 @@
 # TODO
 
-- [ ] check-it 2 - real time clock not detected
-- [ ] check-it 2 - support video mode 13h (see plans/implement-vga-mode-13h.md)
+- [ ] support video mode 13h (see plans/implement-vga-mode-13h.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
@@ -28,6 +27,7 @@
   - [ ] DOOM
   - [ ] Windows 95
 - [ ] Upgrade to latest pixels/winit/egui (see https://github.com/parasyte/pixels/blob/main/examples/minimal-egui/Cargo.toml)
+- [ ] check-it 2 - real time clock not detected
 - [ ] WASM - add feature to save ram or video ram
 - [ ] Install SvarDOS (open source dos)
 - [ ] Add support FreeDos-1.4 (requires 32-bit instructions)
