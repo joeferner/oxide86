@@ -1,6 +1,7 @@
 # TODO
 
-- [ ] check-it 2 - Graphics screen 1 should be white on black (see plans/fix-cga-palette-mapping.md)
+- [ ] check-it 2 - real time clock not detected
+- [ ] check-it 2 - support video mode 13h (see plans/implement-vga-mode-13h.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
@@ -12,8 +13,6 @@
   - [X] Test Wasm
   - [ ] Test Native GUI
   - [ ] Test Native CLI
-- [ ] Test EGA Applications
-  - [ ] Commander Keen
 - [ ] Support 386
 - [ ] Support 486
 - [ ] Test VGA Applications

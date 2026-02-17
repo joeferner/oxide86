@@ -22,6 +22,8 @@ impl Cpu {
 
         let function = (self.ax >> 8) as u8; // Get AH
 
+        log::debug!("INT 0x1A: AH=0x{:02X}", function);
+
         match function {
             0x00 => self.int1a_get_system_time(bus),
             0x01 => self.int1a_set_system_time(bus),
