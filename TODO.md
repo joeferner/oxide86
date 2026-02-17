@@ -1,5 +1,6 @@
 # TODO
 
+- [ ] add graphics logging for all modes
 - [ ] support video mode 13h (see plans/implement-vga-mode-13h.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/keen1-error-during-code-expansion.md branch: keen1)
