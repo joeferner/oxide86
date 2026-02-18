@@ -43,6 +43,7 @@ emu86-disktools -- copy -i test.img my-files/* ::/
   - :white_check_mark: Alley Cat
   - :white_check_mark: Kings Quest 1
   - :white_check_mark: Flight Simulator 1
+  - :white_check_mark: Battle Chess
 
 # History
 

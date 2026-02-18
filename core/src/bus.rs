@@ -1,5 +1,6 @@
 use crate::memory::Memory;
 use crate::video::{CGA_MEMORY_END, CGA_MEMORY_START, EGA_MEMORY_END, EGA_MEMORY_START, Video};
+use crate::video_card_type::VideoCardType;
 
 /// System bus that routes memory accesses to appropriate devices.
 /// Mirrors real PC hardware where the bus connects CPU, RAM, and
@@ -41,7 +42,9 @@ impl Bus {
             let offset = address - CGA_MEMORY_START;
             return self.video.read_byte(offset);
         }
-        if (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address) {
+        if self.video.card_type() != VideoCardType::CGA
+            && (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address)
+        {
             let offset = address - EGA_MEMORY_START;
             return match self.video.get_mode_type() {
                 crate::video::VideoMode::Graphics320x200x256 => self.video.read_byte_vga(offset),
@@ -61,7 +64,9 @@ impl Bus {
             self.video.write_byte(offset, value);
             return;
         }
-        if (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address) {
+        if self.video.card_type() != VideoCardType::CGA
+            && (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address)
+        {
             let offset = address - EGA_MEMORY_START;
             match self.video.get_mode_type() {
                 crate::video::VideoMode::Graphics320x200x256 => {

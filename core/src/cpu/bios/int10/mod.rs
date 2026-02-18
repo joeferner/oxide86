@@ -42,9 +42,9 @@ impl Cpu {
             0x0F => self.int10_get_video_mode(bus),
             0x10 => self.int10_palette_registers(bus),
             0x11 => self.int10_character_generator(bus),
-            0x12 => self.int10_alternate_function_select(),
+            0x12 => self.int10_alternate_function_select(bus),
             0x13 => self.int10_write_string(bus),
-            0x15 => self.int10_return_physical_display_params(),
+            0x15 => self.int10_return_physical_display_params(bus),
             0x1A => self.int10_display_combination_code(bus),
             0x1B => self.int10_functionality_state_info(bus),
             0xFA => self.int10_installation_checks(),
@@ -782,7 +782,25 @@ impl Cpu {
     ///   1Ah = Read color page state
     ///   1Bh = Perform gray-scale summing
     fn int10_palette_registers(&mut self, bus: &mut Bus) {
+        use crate::video_card_type::VideoCardType;
+        // CGA BIOS does not implement AH=10h (EGA/VGA function only)
+        if bus.video().card_type() == VideoCardType::CGA {
+            log::warn!("INT 10h AH=10h: not supported by CGA card - ignoring");
+            return;
+        }
+
         let subfunction = (self.ax & 0xFF) as u8; // AL
+
+        // DAC register operations are VGA-only (EGA has no DAC)
+        if bus.video().card_type() == VideoCardType::EGA
+            && matches!(subfunction, 0x10 | 0x12 | 0x15 | 0x17 | 0x1A | 0x1B)
+        {
+            log::warn!(
+                "INT 10h/AH=10h/AL={:02X}h: DAC function not supported by EGA card - ignoring",
+                subfunction
+            );
+            return;
+        }
 
         match subfunction {
             0x00 => {
@@ -917,7 +935,13 @@ impl Cpu {
     ///   34h = Cursor emulation
     ///   35h = Display switch
     ///   36h = Video refresh control
-    fn int10_alternate_function_select(&mut self) {
+    fn int10_alternate_function_select(&mut self, bus: &Bus) {
+        // CGA BIOS does not implement AH=12h (EGA/VGA function only)
+        if bus.video().card_type() == crate::video_card_type::VideoCardType::CGA {
+            log::warn!("INT 10h AH=12h: not supported by CGA card - ignoring");
+            return;
+        }
+
         let subfunction = (self.bx & 0xFF) as u8; // BL
 
         match subfunction {
@@ -1016,6 +1040,15 @@ impl Cpu {
     ///   AL = 1Bh if function supported
     ///   ES:DI buffer filled with state information
     fn int10_functionality_state_info(&mut self, bus: &mut Bus) {
+        // AH=1Bh is a VGA-only function; CGA and EGA leave registers unchanged
+        if bus.video().card_type() != crate::video_card_type::VideoCardType::VGA {
+            log::warn!(
+                "INT 10h AH=1Bh: not supported by {} card - ignoring",
+                bus.video().card_type()
+            );
+            return;
+        }
+
         let impl_type = self.bx;
 
         if impl_type != 0x0000 {
@@ -1203,6 +1236,12 @@ impl Cpu {
     ///   CX = bytes per character
     ///   DL = rows on screen - 1
     fn int10_character_generator(&mut self, bus: &mut Bus) {
+        // CGA BIOS does not implement AH=11h (EGA/VGA function only)
+        if bus.video().card_type() == crate::video_card_type::VideoCardType::CGA {
+            log::warn!("INT 10h AH=11h: not supported by CGA card - ignoring");
+            return;
+        }
+
         let subfunction = (self.ax & 0xFF) as u8; // AL
 
         match subfunction {
@@ -1374,11 +1413,20 @@ impl Cpu {
     ///   AL = 15h if function supported
     ///   BH = active display code
     ///   BL = alternate display code
-    fn int10_return_physical_display_params(&mut self) {
+    fn int10_return_physical_display_params(&mut self, bus: &Bus) {
+        // AH=15h is a VGA-only function; CGA and EGA leave registers unchanged
+        if bus.video().card_type() != crate::video_card_type::VideoCardType::VGA {
+            log::warn!(
+                "INT 10h AH=15h: not supported by {} card - ignoring",
+                bus.video().card_type()
+            );
+            return;
+        }
+
         // Active display code (08h = VGA with color display)
-        let active_display = 0x08;
+        let active_display = 0x08u8;
         // Alternate display code (00h = no alternate display)
-        let alternate_display = 0x00;
+        let alternate_display = 0x00u8;
 
         // Return AL = 15h to indicate function is supported
         self.ax = (self.ax & 0xFF00) | 0x15;
@@ -1416,6 +1464,15 @@ impl Cpu {
     ///   0Bh = MCGA with color digital display
     ///   0Ch = MCGA with monochrome analog display
     fn int10_display_combination_code(&mut self, bus: &mut Bus) {
+        // AH=1Ah was introduced with PS/2 VGA BIOS (1987); CGA and EGA BIOSes do not support it
+        if bus.video().card_type() != crate::video_card_type::VideoCardType::VGA {
+            log::warn!(
+                "INT 10h AH=1Ah: not supported by {} card - ignoring",
+                bus.video().card_type()
+            );
+            return;
+        }
+
         let subfunction = (self.ax & 0xFF) as u8; // AL
 
         // Use BDA location to store display combination (not standard, but convenient)

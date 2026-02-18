@@ -19,7 +19,7 @@
 - [ ] Support 386
 - [ ] Support 486
 - [ ] Test VGA Applications
-  - [ ] Battle Chess
+  - [X] Battle Chess
 - [ ] Test 8086 Applications
   - [ ] Lotus 1-2-3
 - [ ] Test 286 Applications
