@@ -12,7 +12,7 @@ use emu86_core::{
 };
 use emu86_native_common::{
     CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
-    apply_logging_flags, attach_serial_device, create_speaker, load_disks,
+    apply_logging_flags, attach_serial_device, create_adlib, create_speaker, load_disks,
     load_mounted_directories, load_program_or_boot, sync_mounted_directories,
 };
 use gui_keyboard::GuiKeyboard;
@@ -845,7 +845,8 @@ fn create_computer(
         };
 
     let video = PixelsVideoController::new();
-    let speaker = create_speaker(!cli.common.no_audio);
+    let speaker = create_speaker(!cli.common.disable_pc_speaker);
+    let adlib = create_adlib(&cli.common.sound_card);
 
     let clock = Box::new(NativeClock);
     let mut computer = Computer::new(
@@ -861,6 +862,13 @@ fn create_computer(
             video_card_type,
         },
     );
+
+    // Connect AdLib ring buffer if audio output is available.
+    // _adlib_sink must stay alive until end of run() to keep Rodio playing.
+    let _adlib_sink = adlib.map(|(buf, sink)| {
+        computer.set_adlib_buffer(buf);
+        sink
+    });
 
     // Force initial video render to show blank screen
     computer.force_video_redraw();

@@ -3,6 +3,7 @@ mod clock;
 pub mod disk_backend;
 pub mod gilrs_joystick;
 pub mod host_directory_disk;
+pub mod rodio_adlib;
 pub mod rodio_speaker;
 mod setup;
 
@@ -11,8 +12,9 @@ pub use clock::NativeClock;
 pub use disk_backend::FileDiskBackend;
 pub use gilrs_joystick::{GilrsJoystick, GilrsJoystickInput};
 pub use host_directory_disk::HostDirectoryDisk;
+pub use rodio_adlib::RodioAdlib;
 pub use rodio_speaker::RodioSpeaker;
 pub use setup::{
-    apply_logging_flags, attach_serial_device, create_speaker, load_disks,
+    apply_logging_flags, attach_serial_device, create_adlib, create_speaker, load_disks,
     load_mounted_directories, load_program_or_boot, parse_mount_arg, sync_mounted_directories,
 };

@@ -135,6 +135,9 @@ pub struct ComputerConfig {
     /// Enable PC speaker / audio output (default: true)
     #[serde(default)]
     pub audio_enabled: Option<bool>,
+    /// Sound card to emulate: "none" or "adlib" (default: "none")
+    #[serde(default)]
+    pub sound_card: Option<String>,
 }
 
 /// WASM wrapper for the Computer emulator
@@ -1039,6 +1042,42 @@ impl Emu86Computer {
         self.joystick
             .borrow_mut()
             .gamepad_connected(joystick, connected);
+    }
+
+    /// Pull AdLib (OPL2) audio samples for Web Audio output.
+    ///
+    /// Call this from a `ScriptProcessorNode.onaudioprocess` callback to feed
+    /// the audio context with OPL2-generated samples.
+    ///
+    /// # Arguments
+    /// * `count` - Number of samples to retrieve (typically audioBuffer.length, e.g. 4096)
+    ///
+    /// # Returns
+    /// Float32Array of PCM samples at 44100 Hz, range -1.0..1.0.
+    /// Returns zeros if AdLib is not active or the buffer is empty (underrun).
+    #[wasm_bindgen]
+    pub fn get_adlib_samples(&mut self, count: usize) -> js_sys::Float32Array {
+        let samples = self.computer.get_adlib_samples(count);
+        let arr = js_sys::Float32Array::new_with_length(samples.len() as u32);
+        arr.copy_from(&samples);
+        arr
+    }
+
+    /// Enable AdLib (OPL2) audio output.
+    ///
+    /// Call this after the user has interacted with the page (required by browser
+    /// autoplay policy). Creates an AdLib ring buffer in the computer and returns
+    /// the sample rate to use for the ScriptProcessorNode.
+    ///
+    /// # Returns
+    /// Sample rate in Hz (44100). Wire this to `AudioContext.sampleRate`.
+    #[wasm_bindgen]
+    pub fn enable_adlib(&mut self) -> u32 {
+        use emu86_core::sound::adlib::{ADLIB_SAMPLE_RATE, AdlibRingBuffer};
+        let buf = AdlibRingBuffer::new(ADLIB_SAMPLE_RATE as usize / 10);
+        self.computer.set_adlib_buffer(buf);
+        log::info!("AdLib (OPL2) enabled for WASM");
+        ADLIB_SAMPLE_RATE
     }
 }
 

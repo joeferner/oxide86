@@ -1,17 +1,18 @@
 use anyhow::{Context, Result};
+use emu86_core::sound::adlib::{ADLIB_SAMPLE_RATE, AdlibRingBuffer};
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
     BackedDisk, Computer, DiskController, DriveNumber, MouseInput, NullSpeaker, PartitionedDisk,
     SerialLogger, SerialMouse, SpeakerOutput, VideoController, parse_mbr,
 };
 
-use crate::{CommonCli, FileDiskBackend, HostDirectoryDisk, RodioSpeaker};
+use crate::{CommonCli, FileDiskBackend, HostDirectoryDisk, RodioAdlib, RodioSpeaker};
 use std::path::PathBuf;
 
 /// Create a speaker with Rodio, falling back to NullSpeaker if unavailable or disabled.
 pub fn create_speaker(enabled: bool) -> Box<dyn SpeakerOutput> {
     if !enabled {
-        log::info!("PC speaker disabled (--no-audio)");
+        log::info!("PC speaker disabled (--disable-pc-speaker)");
         return Box::new(NullSpeaker);
     }
     match RodioSpeaker::new() {
@@ -23,6 +24,30 @@ pub fn create_speaker(enabled: bool) -> Box<dyn SpeakerOutput> {
             log::warn!("PC speaker unavailable: {}", e);
             log::info!("Using NullSpeaker (no audio)");
             Box::new(NullSpeaker)
+        }
+    }
+}
+
+/// Create an AdLib (OPL2) audio output if the requested sound card is "adlib".
+///
+/// `sound_card` is the value of `--sound-card` (e.g. "none", "adlib").
+/// Returns `Some((buffer, _sink))` on success. The caller should call
+/// `computer.set_adlib_buffer(buffer)` and keep `_sink` alive for the
+/// duration of emulation.
+pub fn create_adlib(sound_card: &str) -> Option<(AdlibRingBuffer, RodioAdlib)> {
+    if !matches!(sound_card.to_lowercase().trim(), "adlib" | "adl") {
+        log::info!("AdLib disabled (--sound-card={})", sound_card);
+        return None;
+    }
+    let buf = AdlibRingBuffer::new(ADLIB_SAMPLE_RATE as usize / 10);
+    match RodioAdlib::new(buf.clone()) {
+        Ok(sink) => {
+            log::info!("AdLib (OPL2) enabled (Rodio, {} Hz)", ADLIB_SAMPLE_RATE);
+            Some((buf, sink))
+        }
+        Err(e) => {
+            log::warn!("AdLib audio output unavailable: {}", e);
+            None
         }
     }
 }

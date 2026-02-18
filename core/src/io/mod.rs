@@ -4,6 +4,7 @@ mod pit;
 mod system_control_port;
 
 use crate::joystick::JoystickInput;
+use crate::sound::opl2::Opl2;
 use crate::video::Video;
 use cga_ports::CgaModeControl;
 use joystick_port::JoystickPort;
@@ -25,6 +26,8 @@ pub struct IoDevice {
     current_cycle: u64,
     /// CGA Mode Control Register (port 3D8h)
     cga_mode_control: CgaModeControl,
+    /// OPL2 / AdLib FM synthesizer (ports 388h-389h)
+    opl2: Opl2,
     /// Keyboard controller data port (port 60h) - stores last scan code
     keyboard_scan_code: u8,
     /// ASCII code corresponding to the last scan code (for BIOS INT 09h handler)
@@ -73,6 +76,7 @@ impl IoDevice {
             joystick: JoystickPort::new(joystick),
             current_cycle: 0,
             cga_mode_control: CgaModeControl::new(),
+            opl2: Opl2::new(),
             keyboard_scan_code: 0x00,
             keyboard_ascii_code: 0x00,
             keyboard_status: 0x14, // Bit 2: system flag, bit 4: command/data (ready for commands)
@@ -196,6 +200,9 @@ impl IoDevice {
                     0xFF
                 }
             }
+
+            // AdLib / OPL2 status register (same value on both ports)
+            0x388 | 0x389 => self.opl2.read_status(),
 
             // Joystick port
             0x201 => self.joystick.read(self.current_cycle),
@@ -472,6 +479,15 @@ impl IoDevice {
                 }
             }
 
+            // AdLib / OPL2 address port
+            0x388 => {
+                self.opl2.write_address(value);
+            }
+            // AdLib / OPL2 data port
+            0x389 => {
+                self.opl2.write_data(value);
+            }
+
             // Joystick port - fire one-shots
             0x201 => {
                 self.joystick.fire(self.current_cycle);
@@ -528,6 +544,11 @@ impl IoDevice {
         self.keyboard_ascii_code
     }
 
+    /// Get mutable reference to the OPL2 chip (for AdLib sample generation)
+    pub fn opl2_mut(&mut self) -> &mut Opl2 {
+        &mut self.opl2
+    }
+
     /// Check if A20 line is enabled (bit 1 of keyboard controller output port)
     pub fn is_a20_enabled(&self) -> bool {
         (self.keyboard_output_port & 0x02) != 0
@@ -559,5 +580,6 @@ impl IoDevice {
         self.ega_sequencer_regs[2] = 0x0F; // Map Mask default
         self.ega_graphics_index = 0;
         self.ega_graphics_regs = [0u8; 16];
+        self.opl2 = Opl2::new();
     }
 }

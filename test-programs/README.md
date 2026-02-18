@@ -47,6 +47,26 @@ Assembly program that directly controls the PC speaker using the Intel 8253/8254
 ### simple_beep.asm
 Simplified version of beep.asm that produces a 1000 Hz tone for approximately 1 second. Tests basic PC speaker functionality through PIT Channel 2 configuration and port 0x61 control.
 
+### adlib_detection.asm
+AdLib (OPL2/YM3812) sound card detection and two-note playback test. Uses the standard IBM AdLib detection sequence: resets timer registers, sets Timer 1 to 0xFF, starts it, waits ~400 µs, then reads the status port (0x388) — bits 7 and 5 must be set (0xC0) for a card to be present. If detected, configures OPL2 channel 0 (FM synthesis, modulator + carrier operators) and plays A4 (440 Hz) then D5 (~587 Hz) as half-second tones, then silences the channel. Outputs "AdLib OPL2 detected" or "AdLib not found" via INT 21h.
+
+**Running:**
+```bash
+cargo run -p emu86-native-gui -- --sound-card adlib test-programs/audio/adlib_detection.com
+cargo run -p emu86-native-cli -- --sound-card adlib test-programs/audio/adlib_detection.com
+```
+
+**Expected Output (with `--sound-card adlib`):**
+```
+AdLib OPL2 detected - playing two notes...
+```
+Two tones (A4 then D5) play through the audio output, approximately 0.5 seconds each.
+
+**Expected Output (without AdLib):**
+```
+AdLib not found (status check failed)
+```
+
 ## Joystick
 
 ### joystick/joystick_test.asm

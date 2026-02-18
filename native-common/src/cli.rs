@@ -80,6 +80,10 @@ pub struct CommonCli {
     pub joystick_b: bool,
 
     /// Disable PC speaker / audio output
-    #[arg(long = "no-audio")]
-    pub no_audio: bool,
+    #[arg(long = "disable-pc-speaker")]
+    pub disable_pc_speaker: bool,
+
+    /// Sound card to emulate (none, adlib)
+    #[arg(long = "sound-card", default_value = "none")]
+    pub sound_card: String,
 }

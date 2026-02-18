@@ -19,6 +19,8 @@ pub use crate::mouse::{MouseInput, MouseState, NullMouse};
 pub use crate::serial_logger::SerialLogger;
 pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
+pub use crate::sound::adlib::AdlibRingBuffer;
+pub use crate::sound::{NullSoundCard, SoundCard, SoundCardType};
 pub use crate::speaker::{NullSpeaker, SpeakerOutput};
 pub use crate::video::{
     CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, CursorPosition, NullVideoController, Video,
@@ -49,6 +51,7 @@ pub mod peripheral;
 pub mod serial_logger;
 pub mod serial_mouse;
 pub mod serial_port;
+pub mod sound;
 pub mod speaker;
 pub mod utils;
 pub mod video;

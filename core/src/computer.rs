@@ -8,6 +8,7 @@ use crate::{
     joystick::JoystickInput,
     keyboard::KeyboardInput,
     memory::{self, Memory},
+    sound::adlib::AdlibRingBuffer,
     video::text::TextBuffer,
 };
 
@@ -65,6 +66,9 @@ pub struct Computer<V: VideoController = NullVideoController> {
     pending_timer_irqs: u32,
     /// Counter for periodic speaker updates (reduces overhead)
     speaker_update_cycles: u64,
+    /// AdLib (OPL2) audio ring buffer shared with the audio backend.
+    /// None when AdLib is disabled or no audio backend is connected.
+    adlib_buffer: Option<AdlibRingBuffer>,
     /// Boot drive for reset/reboot operations
     boot_drive: Option<DriveNumber>,
     /// Loaded program for reset/reload operations
@@ -154,6 +158,7 @@ impl<V: VideoController> Computer<V> {
             pending_serial_irqs: std::collections::VecDeque::new(),
             pending_timer_irqs: 0,
             speaker_update_cycles: 0,
+            adlib_buffer: None,
             boot_drive: None,
             loaded_program: None,
         }
@@ -1317,6 +1322,21 @@ impl<V: VideoController> Computer<V> {
             self.update_speaker();
         }
 
+        // Advance OPL2 (AdLib) chip: always advance timers, generate samples
+        // only when a ring buffer is connected.
+        // Generate samples first (borrows io_device), then push to buffer
+        // (borrows adlib_buffer) — avoids cloning the Arc on every instruction.
+        if self.adlib_buffer.is_some() {
+            let mut samples = Vec::new();
+            self.io_device
+                .opl2_mut()
+                .generate_samples(cycles, &mut samples);
+            // io_device borrow ends above; adlib_buffer borrow is now safe
+            self.adlib_buffer.as_ref().unwrap().push_samples(&samples);
+        } else {
+            self.io_device.opl2_mut().advance_timers_only(cycles);
+        }
+
         // Derive cycles_per_tick from PIT Channel 0's current count register.
         // Default count of 0 means 65536, giving ~18.2 Hz. Programs can write
         // a smaller divisor for faster timer rates (e.g., 1193 for ~1000 Hz).
@@ -1455,6 +1475,21 @@ impl<V: VideoController> Computer<V> {
             }
         } else {
             self.speaker.set_frequency(false, 0.0);
+        }
+    }
+
+    /// Connect an AdLib ring buffer so OPL2 audio is generated during emulation.
+    /// Call this after construction to enable AdLib sound.
+    pub fn set_adlib_buffer(&mut self, buffer: AdlibRingBuffer) {
+        self.adlib_buffer = Some(buffer);
+    }
+
+    /// Pop `count` samples from the AdLib ring buffer (for WASM audio callbacks).
+    /// Returns zeros if no buffer is set or if the buffer is empty.
+    pub fn get_adlib_samples(&mut self, count: usize) -> Vec<f32> {
+        match &self.adlib_buffer {
+            Some(buf) => buf.pop_samples(count),
+            None => vec![0.0; count],
         }
     }
 

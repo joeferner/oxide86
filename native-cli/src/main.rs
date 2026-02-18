@@ -6,7 +6,7 @@ use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::{Computer, NullJoystick};
 use emu86_native_common::{
     CommonCli, GilrsJoystick, GilrsJoystickInput, NativeClock, apply_logging_flags,
-    attach_serial_device, create_speaker, load_disks, load_mounted_directories,
+    attach_serial_device, create_adlib, create_speaker, load_disks, load_mounted_directories,
     load_program_or_boot, sync_mounted_directories,
 };
 use std::fs::File;
@@ -89,7 +89,10 @@ fn main() -> Result<()> {
     };
 
     // Initialize speaker BEFORE video so ALSA messages appear before alternate screen
-    let speaker = create_speaker(!cli.common.no_audio);
+    let speaker = create_speaker(!cli.common.disable_pc_speaker);
+
+    // Initialize AdLib (OPL2) audio output
+    let adlib = create_adlib(&cli.common.sound_card);
 
     // Video init switches to alternate screen - must come after speaker init
     let video = TerminalVideo::new();
@@ -108,6 +111,13 @@ fn main() -> Result<()> {
             video_card_type,
         },
     );
+
+    // Connect AdLib ring buffer if audio output is available.
+    // _adlib_sink must stay alive until end of main() to keep Rodio playing.
+    let _adlib_sink = adlib.map(|(buf, sink)| {
+        computer.set_adlib_buffer(buf);
+        sink
+    });
 
     // Load disks and program/boot
     load_disks(
