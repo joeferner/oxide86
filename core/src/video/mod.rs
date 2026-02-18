@@ -202,16 +202,33 @@ pub struct Video {
     vram: Box<[u8; VIDEO_MEMORY_SIZE]>,
 }
 
-/// Initialize VGA DAC palette with EGA defaults
+/// Initialize VGA DAC palette with defaults.
+///
+/// Entries 0-15 use standard EGA colors (6-bit RGB, 0-63).
+/// Entries 16-255 use an RGB332-derived scheme so all 256 palette slots
+/// have distinct, visible colors.  Real VGA BIOS also programs these slots
+/// on mode change; programs that need specific colors must reprogram the DAC.
 fn default_vga_palette() -> [[u8; 3]; 256] {
     let mut palette = [[0u8; 3]; 256];
 
-    // Initialize first 16 colors with EGA defaults (6-bit RGB values 0-63)
+    // Entries 0-15: standard EGA colors
     for (i, entry) in palette.iter_mut().enumerate().take(16) {
         *entry = crate::palette::TextModePalette::get_dac_color(i as u8);
     }
 
-    // Registers 16-255 remain black (already zeroed)
+    // Entries 16-255: distribute across 8x8x4 = 256 colour slots so every
+    // index maps to a unique, non-black colour.
+    // Bit layout of n: RRRGGGBB
+    //   R = (n >> 5) & 7  -> 8 levels at multiples of 9  (0..63)
+    //   G = (n >> 2) & 7  -> 8 levels at multiples of 9  (0..63)
+    //   B =  n       & 3  -> 4 levels at multiples of 21 (0..63)
+    for (n, entry) in palette.iter_mut().enumerate().skip(16) {
+        let r = ((n >> 5) & 7) as u8 * 9;
+        let g = ((n >> 2) & 7) as u8 * 9;
+        let b = (n & 3) as u8 * 21;
+        *entry = [r, g, b];
+    }
+
     palette
 }
 

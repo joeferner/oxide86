@@ -1,6 +1,6 @@
 # TODO
 
-- [ ] add graphics logging for all modes
+- [X] add graphics logging for all modes
 - [X] support video mode 13h (see plans/implement-vga-mode-13h.md)
 - [ ] look at #[allow(dead_code)] and see if we can remove that code
 - [ ] int10.rs is getting very large can we split it up into multiple files

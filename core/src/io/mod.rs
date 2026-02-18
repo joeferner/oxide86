@@ -51,6 +51,14 @@ pub struct IoDevice {
     ac_flip_flop: bool,
     /// VGA Attribute Controller index register (set by address write)
     ac_index: u8,
+    /// VGA DAC write mode index (port 0x3C8): next palette entry to write
+    dac_write_index: u8,
+    /// VGA DAC read mode index (port 0x3C7): next palette entry to read
+    dac_read_index: u8,
+    /// VGA DAC component counter: 0=R, 1=G, 2=B
+    dac_component: u8,
+    /// VGA DAC accumulation buffer while writing R/G/B components
+    dac_write_buf: [u8; 3],
 }
 
 impl IoDevice {
@@ -77,6 +85,10 @@ impl IoDevice {
             ega_graphics_regs: [0u8; 16],
             ac_flip_flop: false,
             ac_index: 0,
+            dac_write_index: 0,
+            dac_read_index: 0,
+            dac_component: 0,
+            dac_write_buf: [0u8; 3],
         }
     }
 
@@ -136,6 +148,12 @@ impl IoDevice {
             // Bit 3: Vertical retrace active
             // Toggle state on each read so programs waiting for retrace
             // start/end don't spin forever.
+            // VGA DAC state register (port 0x3C7): returns 0=read mode, 3=write mode ready
+            0x3C7 => 3,
+
+            // VGA DAC read index port: returns the current read index
+            0x3C8 => self.dac_read_index,
+
             // VGA Attribute Controller (port 0x3C0) - read returns current index
             0x3C0 => self.ac_index,
 
@@ -294,6 +312,42 @@ impl IoDevice {
                 } else {
                     self.keyboard_output_port &= !0x02;
                     log::debug!("Fast A20 gate: disabled (via port 0x92)");
+                }
+            }
+
+            // VGA DAC: set write-mode palette index (port 0x3C8)
+            // Subsequent writes to 0x3C9 set R, G, B for this entry, then advance the index.
+            0x3C8 => {
+                self.dac_write_index = value;
+                self.dac_component = 0;
+                log::debug!("VGA DAC: write index set to {}", value);
+            }
+
+            // VGA DAC: set read-mode palette index (port 0x3C7)
+            0x3C7 => {
+                self.dac_read_index = value;
+                self.dac_component = 0;
+                log::debug!("VGA DAC: read index set to {}", value);
+            }
+
+            // VGA DAC data port (port 0x3C9): write R/G/B components sequentially
+            0x3C9 => {
+                self.dac_write_buf[self.dac_component as usize] = value & 0x3F;
+                if self.dac_component == 2 {
+                    // All three components received — commit to the palette
+                    let [r, g, b] = self.dac_write_buf;
+                    video.set_vga_dac_register(self.dac_write_index, r, g, b);
+                    log::debug!(
+                        "VGA DAC port: palette[{}] = RGB({}, {}, {})",
+                        self.dac_write_index,
+                        r,
+                        g,
+                        b
+                    );
+                    self.dac_write_index = self.dac_write_index.wrapping_add(1);
+                    self.dac_component = 0;
+                } else {
+                    self.dac_component += 1;
                 }
             }
 
