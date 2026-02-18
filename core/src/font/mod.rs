@@ -7,10 +7,8 @@ pub const CHAR_WIDTH_8: usize = 8;
 pub const CHAR_HEIGHT_16: usize = 16;
 pub const CHAR_HEIGHT_8: usize = 8;
 
-// Backwards compatibility - default to 8x16 VGA font
-#[allow(dead_code)]
+// Default to 8x16 VGA font
 pub const CHAR_WIDTH: usize = CHAR_WIDTH_8;
-#[allow(dead_code)]
 pub const CHAR_HEIGHT: usize = CHAR_HEIGHT_16;
 
 /// Standard VGA BIOS 8x16 font data (256 characters × 16 bytes each)
@@ -24,7 +22,6 @@ const VGA_FONT_8X16: &[u8] = include_bytes!("IBM_VGA_8x16.bin");
 const CGA_FONT_8X8: &[u8] = include_bytes!("IBM_VGA_8x8.bin");
 
 /// CP437 font wrapper around embedded BIOS fonts
-#[allow(dead_code)]
 pub struct Cp437Font {
     vga_font_data: &'static [u8],
     cga_font_data: &'static [u8],

@@ -18,9 +18,6 @@
 //! `None` if no key is buffered, and will typically spin-loop calling the BIOS
 //! function repeatedly until a key becomes available.
 
-// Allow dead code warnings - this module will be used by GuiBios in phase 3.4
-#![allow(dead_code)]
-
 use emu86_core::cpu::bios::KeyPress;
 use emu86_core::keyboard::KeyboardInput;
 use std::collections::VecDeque;
@@ -45,67 +42,6 @@ impl GuiKeyboard {
             keyboard_buffer: VecDeque::new(),
             modifiers: ModifiersState::empty(),
         }
-    }
-
-    /// Update the modifier key state.
-    ///
-    /// This method should be called from the main event loop when a
-    /// `WindowEvent::ModifiersChanged` event is received.
-    pub fn update_modifiers(&mut self, modifiers: ModifiersState) {
-        self.modifiers = modifiers;
-    }
-
-    /// Convert a keyboard event to a KeyPress without buffering it.
-    ///
-    /// This is used by the event loop to extract the KeyPress for
-    /// firing INT 09h keyboard interrupts.
-    ///
-    /// Returns both key press and key release events:
-    /// - Press: normal scan code
-    /// - Release: scan code with bit 7 set (scan_code | 0x80)
-    pub fn event_to_keypress(&self, event: &KeyEvent) -> Option<KeyPress> {
-        let mut key_press = key_event_to_keypress(event, self.modifiers);
-
-        // For key release, set bit 7 of scan code and clear ASCII code
-        if event.state == ElementState::Released {
-            key_press.scan_code |= 0x80;
-            key_press.ascii_code = 0;
-        }
-
-        Some(key_press)
-    }
-
-    /// Process a winit keyboard event and buffer the key press.
-    ///
-    /// This method should be called from the main event loop when a
-    /// `WindowEvent::KeyboardInput` event is received.
-    ///
-    /// # Arguments
-    ///
-    /// * `event` - The keyboard event from winit
-    ///
-    /// # Behavior
-    ///
-    /// - Only processes key press events (ignores key release)
-    /// - Converts the key to a KeyPress with scan code and ASCII code
-    /// - Buffers the key for later retrieval via KeyboardInput methods
-    pub fn process_event(&mut self, event: &KeyEvent) {
-        // Only process key press events, ignore key release
-        if event.state != ElementState::Pressed {
-            return;
-        }
-
-        // Convert the winit key event to a KeyPress
-        let key_press = key_event_to_keypress(event, self.modifiers);
-
-        // Buffer the key press
-        self.keyboard_buffer.push_back(key_press);
-
-        log::debug!(
-            "Buffered key: scan_code=0x{:02X}, ascii_code=0x{:02X}",
-            key_press.scan_code,
-            key_press.ascii_code
-        );
     }
 }
 

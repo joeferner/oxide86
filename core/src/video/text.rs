@@ -70,60 +70,6 @@ impl TextBuffer {
             buffer: [TextCell::default(); TEXT_MODE_COLS * TEXT_MODE_ROWS],
         }
     }
-
-    #[allow(dead_code)]
-    pub(crate) fn read_byte(&self, offset: usize, cols: usize) -> u8 {
-        // Text mode: handle different column widths
-        let bytes_per_row = cols * 2; // 2 bytes per cell (char + attr)
-        let max_offset = cols * TEXT_MODE_ROWS * 2;
-
-        if offset >= max_offset {
-            return 0;
-        }
-
-        // Calculate row and column in the actual video mode
-        let row = offset / bytes_per_row;
-        let col = (offset % bytes_per_row) / 2;
-
-        // Map to internal 80-column buffer
-        let cell_index = row * TEXT_MODE_COLS + col;
-        if cell_index >= self.buffer.len() {
-            return 0;
-        }
-
-        if offset.is_multiple_of(2) {
-            self.buffer[cell_index].character
-        } else {
-            self.buffer[cell_index].attribute.to_byte()
-        }
-    }
-
-    #[allow(dead_code)]
-    pub(crate) fn write_byte(&mut self, offset: usize, cols: usize, value: u8) {
-        // Text mode: handle different column widths
-        let bytes_per_row = cols * 2; // 2 bytes per cell (char + attr)
-        let max_offset = cols * TEXT_MODE_ROWS * 2;
-
-        if offset >= max_offset {
-            return;
-        }
-
-        // Calculate row and column in the actual video mode
-        let row = offset / bytes_per_row;
-        let col = (offset % bytes_per_row) / 2;
-
-        // Map to internal 80-column buffer
-        let cell_index = row * TEXT_MODE_COLS + col;
-        if cell_index >= self.buffer.len() {
-            return;
-        }
-
-        if offset.is_multiple_of(2) {
-            self.buffer[cell_index].character = value;
-        } else {
-            self.buffer[cell_index].attribute = TextAttribute::from_byte(value);
-        }
-    }
 }
 
 impl TextBuffer {

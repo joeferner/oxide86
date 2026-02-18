@@ -4,7 +4,6 @@ use crate::cpu::bios::dos_error::DosError;
 
 /// Memory allocation block
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub struct MemoryBlock {
     /// Segment address where block starts
     pub segment: u16,

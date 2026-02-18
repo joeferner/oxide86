@@ -8,13 +8,10 @@ use emu86_core::{
 use pixels::Pixels;
 
 /// Screen dimensions in pixels
-#[allow(dead_code)]
 pub const SCREEN_WIDTH: usize = TEXT_MODE_COLS * CHAR_WIDTH; // 640
-#[allow(dead_code)]
 pub const SCREEN_HEIGHT: usize = TEXT_MODE_ROWS * CHAR_HEIGHT; // 400
 
 /// Video controller for GUI rendering
-#[allow(dead_code)]
 pub struct PixelsVideoController {
     font: Cp437Font,
     /// Current buffer state
@@ -44,7 +41,6 @@ pub struct PixelsVideoController {
     graphics_composite: bool,
 }
 
-#[allow(dead_code)]
 impl PixelsVideoController {
     /// Create a new video controller
     pub fn new() -> Self {

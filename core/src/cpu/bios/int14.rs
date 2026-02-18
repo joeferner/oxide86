@@ -1,31 +1,5 @@
 use crate::{cpu::Cpu, serial_port::SerialParams};
 
-/// Serial port line status bits (returned in AH)
-#[allow(dead_code)]
-pub mod line_status {
-    pub const TIMEOUT: u8 = 0x80;
-    pub const TRANSMIT_SHIFT_EMPTY: u8 = 0x40;
-    pub const TRANSMIT_HOLDING_EMPTY: u8 = 0x20;
-    pub const BREAK_DETECT: u8 = 0x10;
-    pub const FRAMING_ERROR: u8 = 0x08;
-    pub const PARITY_ERROR: u8 = 0x04;
-    pub const OVERRUN_ERROR: u8 = 0x02;
-    pub const DATA_READY: u8 = 0x01;
-}
-
-/// Serial port modem status bits (returned in AL)
-#[allow(dead_code)]
-pub mod modem_status {
-    pub const RECEIVED_LINE_SIGNAL_DETECT: u8 = 0x80;
-    pub const RING_INDICATOR: u8 = 0x40;
-    pub const DATA_SET_READY: u8 = 0x20;
-    pub const CLEAR_TO_SEND: u8 = 0x10;
-    pub const CHANGE_RECEIVE_LINE_SIGNAL: u8 = 0x08;
-    pub const TRAILING_EDGE_RING: u8 = 0x04;
-    pub const CHANGE_DATA_SET_READY: u8 = 0x02;
-    pub const CHANGE_CLEAR_TO_SEND: u8 = 0x01;
-}
-
 impl Cpu {
     /// INT 0x14 - Serial Port Services
     /// AH register contains the function number

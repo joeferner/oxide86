@@ -2,11 +2,11 @@
 
 - [X] add graphics logging for all modes
 - [X] support video mode 13h (see plans/implement-vga-mode-13h.md)
-- [ ] look at #[allow(dead_code)] and see if we can remove that code
-- [ ] int10.rs is getting very large can we split it up into multiple files
+- [X] look at #[allow(dead_code)] and see if we can remove any of that code
+- [ ] int10.rs is getting very large can we split it up into multiple files. specifically draw_char_graphics, 
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
-- [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/keen1-error-during-code-expansion.md branch: keen1)
-- [ ] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
+- [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
+- [ ] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio. The default should be enable.
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] WASM add additional hard drive support, move B: into an Accordion with additional hard drives

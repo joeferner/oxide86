@@ -3,12 +3,6 @@ use crate::cpu::Cpu;
 use crate::cpu::cpu_flag;
 use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW};
 
-/// Timer ticks at 18.2 Hz (PIT channel 0 frequency)
-/// Ticks per day = 24 * 60 * 60 * 18.2 = 1,573,040 (0x1800B0)
-/// This constant can be used to detect midnight rollovers
-#[allow(dead_code)]
-pub const TIMER_TICKS_PER_DAY: u32 = 0x001800B0;
-
 impl Cpu {
     /// INT 0x1A - Time Services
     /// AH register contains the function number

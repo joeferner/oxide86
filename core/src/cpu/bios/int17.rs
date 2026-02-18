@@ -1,7 +1,6 @@
 use crate::cpu::Cpu;
 
 /// Printer status bits (returned in AH)
-#[allow(dead_code)]
 pub mod printer_status {
     pub const TIMEOUT: u8 = 0x01;
     pub const IO_ERROR: u8 = 0x08;

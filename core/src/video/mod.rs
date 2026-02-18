@@ -29,7 +29,6 @@ pub const TEXT_MODE_ROWS: usize = 25;
 pub const TEXT_MODE_BUFFER_SIZE: usize = TEXT_MODE_COLS * TEXT_MODE_ROWS * 2; // char + attr
 
 // VGA color constants
-#[allow(dead_code)]
 pub mod colors {
     pub const BLACK: u8 = 0x0;
     pub const BLUE: u8 = 0x1;
