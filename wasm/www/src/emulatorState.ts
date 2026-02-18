@@ -31,6 +31,7 @@ function createComputer(cfg: EmulatorConfig): Emu86Computer {
         video_card: cfg.videoCard,
         com1_device: cfg.com1Device,
         com2_device: cfg.com2Device,
+        audio_enabled: cfg.audioEnabled,
     });
 }
 

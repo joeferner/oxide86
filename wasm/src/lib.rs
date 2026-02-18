@@ -132,6 +132,9 @@ pub struct ComputerConfig {
     /// COM2 device: "mouse", "logger", or "null" (default: "null")
     #[serde(default)]
     pub com2_device: Option<String>,
+    /// Enable PC speaker / audio output (default: true)
+    #[serde(default)]
+    pub audio_enabled: Option<bool>,
 }
 
 /// WASM wrapper for the Computer emulator
@@ -191,18 +194,24 @@ impl Emu86Computer {
 
         let video = WebVideo::new(canvas)?;
 
-        // Try to initialize Web Audio API, fall back to NullSpeaker if it fails
-        let speaker: Box<dyn emu86_core::SpeakerOutput> = match WebSpeaker::new() {
-            Ok(s) => {
-                log::info!("Web Audio API initialized successfully");
-                Box::new(s)
-            }
-            Err(e) => {
-                log::warn!(
-                    "Failed to initialize Web Audio API: {:?}, using NullSpeaker",
-                    e
-                );
-                Box::new(NullSpeaker)
+        // Try to initialize Web Audio API, fall back to NullSpeaker if disabled or unavailable
+        let audio_enabled = config.audio_enabled.unwrap_or(true);
+        let speaker: Box<dyn emu86_core::SpeakerOutput> = if !audio_enabled {
+            log::info!("PC speaker disabled (audio_enabled: false)");
+            Box::new(NullSpeaker)
+        } else {
+            match WebSpeaker::new() {
+                Ok(s) => {
+                    log::info!("Web Audio API initialized successfully");
+                    Box::new(s)
+                }
+                Err(e) => {
+                    log::warn!(
+                        "Failed to initialize Web Audio API: {:?}, using NullSpeaker",
+                        e
+                    );
+                    Box::new(NullSpeaker)
+                }
             }
         };
 

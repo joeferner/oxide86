@@ -33,6 +33,7 @@ function ConfigForm({
     const com2Device = useSignal(currentConfig.com2Device);
     const joystickA = useSignal(currentConfig.joystickA);
     const joystickB = useSignal(currentConfig.joystickB);
+    const audioEnabled = useSignal(currentConfig.audioEnabled);
     const physicalGamepads = useSignal<number>(0);
 
     // Poll for physical gamepads while dialog is open
@@ -57,6 +58,7 @@ function ConfigForm({
             com2Device: com2Device.value,
             joystickA: joystickA.value,
             joystickB: joystickB.value,
+            audioEnabled: audioEnabled.value,
         });
         onClose();
     };
@@ -174,6 +176,21 @@ function ConfigForm({
                                 if (v) {
                                     com2Device.value = v;
                                 }
+                            }}
+                        />
+                    </div>
+                </Grid.Col>
+
+                <Grid.Col span={6}>
+                    <div>
+                        <Text size="sm" fw={500} mb={4}>
+                            Audio
+                        </Text>
+                        <Checkbox
+                            label="PC Speaker"
+                            checked={audioEnabled.value}
+                            onChange={(e) => {
+                                audioEnabled.value = e.currentTarget.checked;
                             }}
                         />
                     </div>

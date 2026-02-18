@@ -89,7 +89,7 @@ fn main() -> Result<()> {
     };
 
     // Initialize speaker BEFORE video so ALSA messages appear before alternate screen
-    let speaker = create_speaker();
+    let speaker = create_speaker(!cli.common.no_audio);
 
     // Video init switches to alternate screen - must come after speaker init
     let video = TerminalVideo::new();

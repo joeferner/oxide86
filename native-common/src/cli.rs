@@ -78,4 +78,8 @@ pub struct CommonCli {
     /// Enable joystick B (port 0x201)
     #[arg(long = "joystick-b")]
     pub joystick_b: bool,
+
+    /// Disable PC speaker / audio output
+    #[arg(long = "no-audio")]
+    pub no_audio: bool,
 }

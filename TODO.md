@@ -4,13 +4,14 @@
 - [X] support video mode 13h (see plans/implement-vga-mode-13h.md)
 - [X] look at #[allow(dead_code)] and see if we can remove any of that code
 - [X] int10.rs is getting very large can we split it up into multiple files. specifically draw_char_graphics, 
+- [X] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio. The default should be enable.
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
-- [ ] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio. The default should be enable.
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] WASM add additional hard drive support, move B: into an Accordion with additional hard drives
 - [ ] Clean up handle_bios_interrupt_direct, pending_int15_4f, interrupt chaining, etc
+- [ ] Install SvarDOS (open source dos)
 - [ ] Joystick
   - [X] Test Wasm
   - [ ] Test Native GUI
@@ -32,7 +33,6 @@
 - [ ] Upgrade to latest pixels/winit/egui (see https://github.com/parasyte/pixels/blob/main/examples/minimal-egui/Cargo.toml)
 - [ ] check-it 2 - real time clock not detected
 - [ ] WASM - add feature to save ram or video ram
-- [ ] Install SvarDOS (open source dos)
 - [ ] Add support FreeDos-1.4 (requires 32-bit instructions)
 - [ ] Remove dead code markers
 - [ ] Test CLI/GUI on Windows

@@ -8,8 +8,12 @@ use emu86_core::{
 use crate::{CommonCli, FileDiskBackend, HostDirectoryDisk, RodioSpeaker};
 use std::path::PathBuf;
 
-/// Create a speaker with Rodio, falling back to NullSpeaker if unavailable.
-pub fn create_speaker() -> Box<dyn SpeakerOutput> {
+/// Create a speaker with Rodio, falling back to NullSpeaker if unavailable or disabled.
+pub fn create_speaker(enabled: bool) -> Box<dyn SpeakerOutput> {
+    if !enabled {
+        log::info!("PC speaker disabled (--no-audio)");
+        return Box::new(NullSpeaker);
+    }
     match RodioSpeaker::new() {
         Ok(rodio_speaker) => {
             log::info!("PC speaker enabled (Rodio)");

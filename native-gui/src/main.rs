@@ -845,7 +845,7 @@ fn create_computer(
         };
 
     let video = PixelsVideoController::new();
-    let speaker = create_speaker();
+    let speaker = create_speaker(!cli.common.no_audio);
 
     let clock = Box::new(NativeClock);
     let mut computer = Computer::new(
