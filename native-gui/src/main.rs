@@ -310,8 +310,7 @@ fn step_emulator(
         // target after every step, so the emulator advances the correct number of CPU cycles
         // regardless of instruction mix (NOPs at 3 cycles, LOOPs at 17, etc.).
         const MAX_CYCLES_PER_FRAME: u64 = 100_000;
-        let frame_target = target_cycles
-            .min(current_cycles + MAX_CYCLES_PER_FRAME);
+        let frame_target = target_cycles.min(current_cycles + MAX_CYCLES_PER_FRAME);
 
         while computer.get_cycle_count() < frame_target {
             if computer.is_halted() {

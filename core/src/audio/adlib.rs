@@ -142,7 +142,9 @@ impl SoundCard for Adlib {
     fn pop_samples(&mut self, count: usize) -> Vec<f32> {
         // Flush any pending samples before popping (used by WASM path).
         self.flush_pending();
-        self.consumer.pop_samples(count)
+        let mut out = vec![0.0f32; count];
+        self.consumer.drain_into(&mut out);
+        out
     }
 
     fn reset(&mut self) {
