@@ -261,7 +261,8 @@ impl Emu86Computer {
         let sound_card_str = config.sound_card.unwrap_or_default();
         if matches!(sound_card_str.to_lowercase().trim(), "adlib" | "adl") {
             use emu86_core::audio::adlib::Adlib;
-            computer.set_sound_card(Box::new(Adlib::new()));
+            let cpu_freq = (clock_mhz * 1_000_000.0) as u64;
+            computer.set_sound_card(Box::new(Adlib::new(cpu_freq)));
             log::info!("AdLib (OPL2) sound card configured");
         }
 

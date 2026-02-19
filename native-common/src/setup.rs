@@ -32,7 +32,7 @@ pub type AudioSetup = (
 /// - pass `speaker` to `Computer::new()`
 /// - call `computer.set_sound_card(card)` if `sound_card` is `Some`
 /// - keep `audio_output` alive for the duration of emulation
-pub fn create_audio(speaker_enabled: bool, sound_card: &str) -> AudioSetup {
+pub fn create_audio(speaker_enabled: bool, sound_card: &str, cpu_freq: u64) -> AudioSetup {
     let is_adlib = matches!(sound_card.to_lowercase().trim(), "adlib" | "adl");
 
     if !speaker_enabled {
@@ -62,7 +62,7 @@ pub fn create_audio(speaker_enabled: bool, sound_card: &str) -> AudioSetup {
     };
 
     let (sound_card, pcm_sink) = if is_adlib {
-        let adlib = Adlib::new();
+        let adlib = Adlib::new(cpu_freq);
         let consumer = adlib.consumer();
         let sink = RodioPcm::new(consumer, &stream);
         log::info!("AdLib (OPL2) enabled (Rodio, {} Hz)", ADLIB_SAMPLE_RATE);

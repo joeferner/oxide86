@@ -850,8 +850,9 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
         };
 
     let video = PixelsVideoController::new();
+    let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
     let (speaker, sound_card, audio_output) =
-        create_audio(!cli.common.disable_pc_speaker, &cli.common.sound_card);
+        create_audio(!cli.common.disable_pc_speaker, &cli.common.sound_card, clock_hz);
 
     let clock = Box::new(NativeClock);
     let mut computer = Computer::new(

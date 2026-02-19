@@ -14,9 +14,6 @@ use std::sync::OnceLock;
 /// OPL2 internal sample rate (Hz)
 const OPL_RATE: u64 = 49716;
 
-/// CPU frequency assumed by cycle-to-sample conversion (4.77 MHz)
-const CPU_FREQ: u64 = 4_770_000;
-
 /// Phase accumulator size: 2^20
 const PHASE_MASK: u32 = 0xFFFFF;
 
@@ -59,12 +56,6 @@ const TREMOLO_DEPTH: f32 = 0.06; // ±6% amplitude
 
 /// Vibrato depth: ±7 cents (simplified)
 const VIBRATO_CENTS: f32 = 0.004; // ±0.4% frequency
-
-/// Timer 1: fires every (256 - value) * 80 µs = (256-val) * ~96 cycles at 1.2 MHz
-/// In CPU cycles (4.77 MHz): multiply by 4
-const TIMER1_CYCLES_PER_TICK: u32 = 384; // 80 µs * 4.77 MHz
-/// Timer 2: fires every (256 - value) * 320 µs
-const TIMER2_CYCLES_PER_TICK: u32 = 1526; // 320 µs * 4.77 MHz
 
 // --- Precomputed sine table ---
 
@@ -332,18 +323,24 @@ pub struct Opl2 {
     // Sample generation accumulators
     cycle_acc: u64,    // CPU cycles → OPL samples
     resample_acc: u64, // OPL samples → target sample rate
-}
 
-impl Default for Opl2 {
-    fn default() -> Self {
-        Self::new()
-    }
+    // CPU clock frequency — determines how many OPL samples each CPU cycle produces
+    // and scales timer tick thresholds to match the actual clock speed.
+    cpu_freq: u64,
+    /// Timer 1 fires every (256 - value) * 80 µs; threshold in CPU cycles at cpu_freq.
+    timer1_cycles_per_tick: u32,
+    /// Timer 2 fires every (256 - value) * 320 µs; threshold in CPU cycles at cpu_freq.
+    timer2_cycles_per_tick: u32,
 }
 
 impl Opl2 {
-    pub fn new() -> Self {
+    pub fn new(cpu_freq: u64) -> Self {
         // Pre-init the sine table so first sample is cheap
         get_sine_table();
+
+        // Timer 1: 80 µs period; Timer 2: 320 µs period — in CPU cycles at cpu_freq.
+        let timer1_cycles_per_tick = (80e-6 * cpu_freq as f64).round() as u32;
+        let timer2_cycles_per_tick = (320e-6 * cpu_freq as f64).round() as u32;
 
         Self {
             regs: [0u8; 256],
@@ -362,6 +359,9 @@ impl Opl2 {
             status: 0,
             cycle_acc: 0,
             resample_acc: 0,
+            cpu_freq,
+            timer1_cycles_per_tick,
+            timer2_cycles_per_tick,
         }
     }
 
@@ -535,7 +535,7 @@ impl Opl2 {
         if self.timer_control & 0x01 != 0 {
             self.timer1_counter += cycles;
             let ticks = (256 - self.timer1_value as u32).max(1);
-            let threshold = ticks * TIMER1_CYCLES_PER_TICK;
+            let threshold = ticks * self.timer1_cycles_per_tick;
             if self.timer1_counter >= threshold {
                 self.timer1_counter = 0;
                 if self.timer_control & 0x40 == 0 {
@@ -549,7 +549,7 @@ impl Opl2 {
         if self.timer_control & 0x02 != 0 {
             self.timer2_counter += cycles;
             let ticks = (256 - self.timer2_value as u32).max(1);
-            let threshold = ticks * TIMER2_CYCLES_PER_TICK;
+            let threshold = ticks * self.timer2_cycles_per_tick;
             if self.timer2_counter >= threshold {
                 self.timer2_counter = 0;
                 if self.timer_control & 0x20 == 0 {
@@ -665,8 +665,8 @@ impl Opl2 {
 
         // How many OPL samples does `cpu_cycles` correspond to?
         self.cycle_acc += cpu_cycles * OPL_RATE;
-        let opl_samples = self.cycle_acc / CPU_FREQ;
-        self.cycle_acc %= CPU_FREQ;
+        let opl_samples = self.cycle_acc / self.cpu_freq;
+        self.cycle_acc %= self.cpu_freq;
 
         for _ in 0..opl_samples {
             let sample = self.generate_one_sample();

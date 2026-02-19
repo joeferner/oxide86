@@ -15,9 +15,9 @@ const DEFAULT_CAPACITY: usize = ADLIB_SAMPLE_RATE as usize / 2; // 500 ms
 /// Number of samples accumulated locally before flushing to the shared ring buffer.
 ///
 /// The ring buffer mutex is acquired once per flush instead of once per sample,
-/// reducing emulator-thread lock acquisitions from ~44,100/sec to ~689/sec.
-/// At 44,100 Hz, 64 samples = ~1.45 ms of latency — imperceptible.
-const FLUSH_SIZE: usize = 64;
+/// reducing emulator-thread lock acquisitions from ~44,100/sec to ~244/sec.
+/// At 44,100 Hz, 128 samples = ~0.725 ms of latency — imperceptible.
+const FLUSH_SIZE: usize = 128;
 
 /// AdLib Music Synthesizer Card (Yamaha OPL2 FM synthesis).
 ///
@@ -38,17 +38,20 @@ pub struct Adlib {
     overflow_count: u64,
     /// Total samples flushed since last overflow/underrun log (used for rate limiting).
     samples_since_log: u64,
+    /// CPU clock frequency passed to the OPL2 chip (needed for reset).
+    cpu_freq: u64,
 }
 
 impl Adlib {
-    pub fn new() -> Self {
+    pub fn new(cpu_freq: u64) -> Self {
         Self {
-            opl2: Opl2::new(),
+            opl2: Opl2::new(cpu_freq),
             consumer: PcmRingBuffer::new(DEFAULT_CAPACITY),
             samples_scratch: Vec::new(),
             pending_flush: Vec::with_capacity(FLUSH_SIZE * 2),
             overflow_count: 0,
             samples_since_log: 0,
+            cpu_freq,
         }
     }
 
@@ -91,12 +94,6 @@ impl Adlib {
         }
 
         self.pending_flush.clear();
-    }
-}
-
-impl Default for Adlib {
-    fn default() -> Self {
-        Self::new()
     }
 }
 
@@ -149,7 +146,7 @@ impl SoundCard for Adlib {
 
     fn reset(&mut self) {
         self.pending_flush.clear();
-        self.opl2 = Opl2::new();
+        self.opl2 = Opl2::new(self.cpu_freq);
         self.consumer.inner.lock().unwrap().clear();
     }
 }
