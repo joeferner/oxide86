@@ -34,6 +34,7 @@ pub use font::Cp437Font;
 pub use palette::TextModePalette;
 
 pub mod audio;
+pub mod bios_logo;
 pub mod bus;
 pub mod clock;
 pub mod computer;

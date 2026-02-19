@@ -10,6 +10,9 @@ fatfs = { workspace = true }
 strum = "0.27"
 strum_macros = "0.27"
 
+[build-dependencies]
+png = "0.17"
+
 [dev-dependencies]
 criterion = { version = "0.8.1", features = ["html_reports"] }
 

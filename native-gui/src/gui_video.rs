@@ -39,6 +39,9 @@ pub struct PixelsVideoController {
     vga_dac_palette: [[u8; 3]; 256],
     /// CGA composite rendering mode for 640x200
     graphics_composite: bool,
+    /// BIOS logo overlay: RGBA pixels + (width, height).
+    /// Blended on top of the frame after text rendering until cleared.
+    logo_overlay: Option<(Vec<u8>, usize, usize)>,
 }
 
 impl PixelsVideoController {
@@ -62,6 +65,7 @@ impl PixelsVideoController {
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
             graphics_composite: false,
+            logo_overlay: None,
         }
     }
 
@@ -78,6 +82,18 @@ impl PixelsVideoController {
     /// Check if there are pending updates that need rendering
     pub fn has_pending_updates(&self) -> bool {
         self.has_pending_updates
+    }
+
+    /// Blit the stored logo overlay onto a pixel frame (no-op if no overlay).
+    fn blit_logo_overlay(&self, frame: &mut [u8]) {
+        if let Some((pixels, ow, oh)) = &self.logo_overlay {
+            let frame_stride = SCREEN_WIDTH * 4;
+            for y in 0..*oh {
+                let src = &pixels[y * ow * 4..(y + 1) * ow * 4];
+                let dst_start = y * frame_stride;
+                frame[dst_start..dst_start + ow * 4].copy_from_slice(src);
+            }
+        }
     }
 
     /// Render a single character cell at the given screen position
@@ -290,6 +306,9 @@ impl PixelsVideoController {
             self.last_rendered_cursor = self.current_cursor;
         }
 
+        // Blit graphical logo overlay on top of text cells (no-op once cleared)
+        self.blit_logo_overlay(frame);
+
         // Clear the pending updates flag after rendering
         self.has_pending_updates = false;
     }
@@ -315,6 +334,7 @@ impl Default for PixelsVideoController {
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
             graphics_composite: false,
+            logo_overlay: None,
         }
     }
 }
@@ -423,5 +443,22 @@ impl VideoController for PixelsVideoController {
         // Mark for full redraw since colors changed
         self.needs_full_redraw = true;
         self.has_pending_updates = true;
+    }
+
+    fn shows_logo_overlay(&self) -> bool {
+        true
+    }
+
+    fn draw_logo_overlay(&mut self, pixels: &[u8], width: usize, height: usize) {
+        self.logo_overlay = Some((pixels.to_vec(), width, height));
+        self.has_pending_updates = true;
+    }
+
+    fn clear_logo_overlay(&mut self) {
+        if self.logo_overlay.is_some() {
+            self.logo_overlay = None;
+            self.needs_full_redraw = true;
+            self.has_pending_updates = true;
+        }
     }
 }

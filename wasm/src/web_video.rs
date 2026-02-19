@@ -26,6 +26,9 @@ pub struct WebVideo {
     graphics_color_map: Option<[u8; 4]>,
     /// VGA DAC palette (256 colors, RGB 6-bit values 0-63)
     vga_dac_palette: [[u8; 3]; 256],
+    /// BIOS logo overlay: RGBA pixels + (width, height).
+    /// Blended into the pixel buffer before every canvas flush until cleared.
+    logo_overlay: Option<(Vec<u8>, usize, usize)>,
 }
 
 impl WebVideo {
@@ -71,6 +74,7 @@ impl WebVideo {
             },
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
+            logo_overlay: None,
         })
     }
 
@@ -99,6 +103,19 @@ impl WebVideo {
         }
 
         emu86_core::video::render::render_cursor(cursor, CANVAS_WIDTH as usize, &mut self.buffer);
+    }
+
+    /// Blit the stored logo overlay into the pixel buffer (no-op if no overlay).
+    /// Must be called after text/graphics rendering and before `flush_to_canvas`.
+    fn blit_logo_overlay(&mut self) {
+        if let Some((pixels, ow, oh)) = &self.logo_overlay {
+            let frame_stride = CANVAS_WIDTH as usize * 4;
+            for y in 0..*oh {
+                let src = &pixels[y * ow * 4..(y + 1) * ow * 4];
+                let dst_start = y * frame_stride;
+                self.buffer[dst_start..dst_start + ow * 4].copy_from_slice(src);
+            }
+        }
     }
 
     /// Update the canvas with the current buffer
@@ -226,6 +243,9 @@ impl VideoController for WebVideo {
         // Render all characters
         self.render_full_screen(buffer);
 
+        // Overlay the graphical BIOS logo on top (no-op once cleared)
+        self.blit_logo_overlay();
+
         // Flush to canvas
         if let Err(e) = self.flush_to_canvas() {
             log::error!("Failed to update display: {:?}", e);
@@ -246,6 +266,9 @@ impl VideoController for WebVideo {
 
         // Draw cursor on current buffer
         self.draw_cursor(&cursor);
+
+        // Overlay the graphical BIOS logo on top (no-op once cleared)
+        self.blit_logo_overlay();
 
         // Flush to canvas
         if let Err(e) = self.flush_to_canvas() {
@@ -340,5 +363,17 @@ impl VideoController for WebVideo {
         // Update stored VGA DAC palette
         self.vga_dac_palette.copy_from_slice(palette);
         log::trace!("WebVideo: Updated VGA DAC palette");
+    }
+
+    fn shows_logo_overlay(&self) -> bool {
+        true
+    }
+
+    fn draw_logo_overlay(&mut self, pixels: &[u8], width: usize, height: usize) {
+        self.logo_overlay = Some((pixels.to_vec(), width, height));
+    }
+
+    fn clear_logo_overlay(&mut self) {
+        self.logo_overlay = None;
     }
 }
