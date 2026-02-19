@@ -11,7 +11,7 @@ use emu86_core::{
     MEMORY_SIZE,
 };
 use emu86_native_common::{
-    CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
+    CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock, RodioAdlib,
     apply_logging_flags, attach_serial_device, create_adlib, create_speaker, load_disks,
     load_mounted_directories, load_program_or_boot, sync_mounted_directories,
 };
@@ -613,7 +613,7 @@ fn run(cli: Cli) -> Result<()> {
     );
 
     // Initialize computer and optional joystick
-    let (mut computer, mut gilrs_joystick, mounted_drives) =
+    let (mut computer, mut gilrs_joystick, mounted_drives, _adlib_sink) =
         create_computer(&cli, gui_mouse.clone_shared())?;
 
     // Apply logging flags
@@ -820,6 +820,7 @@ fn create_computer(
     Computer<PixelsVideoController>,
     Option<GilrsJoystick>,
     Vec<DriveNumber>,
+    Option<RodioAdlib>,
 )> {
     // Parse CPU type
     let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
@@ -864,8 +865,8 @@ fn create_computer(
     );
 
     // Connect AdLib sound card if available.
-    // _adlib_sink must stay alive until end of run() to keep Rodio playing.
-    let _adlib_sink = adlib.map(|(card, sink)| {
+    // The returned RodioAdlib must be kept alive in run() for Rodio to play.
+    let adlib_sink = adlib.map(|(card, sink)| {
         computer.set_sound_card(card);
         sink
     });
@@ -888,7 +889,7 @@ fn create_computer(
 
     log::info!("Starting execution...");
 
-    Ok((computer, gilrs_joystick, mounted_drives))
+    Ok((computer, gilrs_joystick, mounted_drives, adlib_sink))
 }
 
 fn show_insert_dialog(

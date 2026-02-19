@@ -13,6 +13,7 @@
   - [ ] test wasm
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
+- [ ] native-gui add icon and possibly logo on startup
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] WASM add additional hard drive support, move B: into an Accordion with additional hard drives
@@ -41,6 +42,6 @@
 - [ ] native-gui - Add configuration UI similar to the wasm interface
 - [ ] WASM - add feature to save ram or video ram
 - [ ] Add support FreeDos-1.4 (requires 32-bit instructions)
-- [ ] Remove dead code markers
+- [ ] enable no panic check in clippy
 - [ ] Test CLI/GUI on Windows
 - [ ] Test CLI/GUI on OSX

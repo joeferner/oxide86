@@ -19,6 +19,7 @@
         "egui",
         "fatfs",
         "fdisk",
+        "gilrs",
         "IDIV",
         "IMUL",
         "INSB",

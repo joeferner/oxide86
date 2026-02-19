@@ -184,10 +184,16 @@ function runLoop(): void {
         const stillRunning = comp.run_for_ms(16, window.performance.now());
         updatePerformance();
 
-        // Push AdLib samples to AudioWorklet (2048 samples ≈ 46ms at 44100 Hz)
+        // Push AdLib samples to AudioWorklet.
+        // Request only one frame's worth of audio + small margin.
+        // Requesting too many (e.g. 2048) pads with zeros and creates ~30 ms
+        // silence gaps every frame, producing an audible repeating/stuttering effect.
         if (adlibAudioRef.current) {
-            const samples = comp.get_adlib_samples(2048);
-            adlibAudioRef.current.node.port.postMessage(samples, [samples.buffer]);
+            const { context, node } = adlibAudioRef.current;
+            // 16 ms frame * sampleRate / 1000, plus 64-sample margin for timing variance
+            const frameSize = Math.ceil(context.sampleRate * 16 / 1000) + 64;
+            const samples = comp.get_adlib_samples(frameSize);
+            node.port.postMessage(samples, [samples.buffer]);
         }
 
         if (!stillRunning) {
