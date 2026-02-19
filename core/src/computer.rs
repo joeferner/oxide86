@@ -223,7 +223,8 @@ impl<V: VideoController> Computer<V> {
 
         // GUI / WASM: push the graphical pixel overlay.
         // CLI renderers use the default no-op.
-        self.video_controller.draw_logo_overlay(logo_pixels, logo_w, logo_h);
+        self.video_controller
+            .draw_logo_overlay(logo_pixels, logo_w, logo_h);
     }
 
     pub fn load_bios(&mut self, bios_data: &[u8]) -> Result<()> {

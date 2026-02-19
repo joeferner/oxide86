@@ -205,10 +205,11 @@ impl VideoController for TerminalVideo {
     }
 
     fn update_vga_dac_palette(&mut self, palette: &[[u8; 3]; 256]) {
-        // Update stored VGA DAC palette
+        // Only force a full redraw if the palette actually changed
+        if self.vga_dac_palette == *palette {
+            return;
+        }
         self.vga_dac_palette.copy_from_slice(palette);
-
-        // Force full redraw since colors changed
         self.last_buffer = TextBuffer::new();
         self.last_cursor = None;
     }

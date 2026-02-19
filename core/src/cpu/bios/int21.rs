@@ -92,10 +92,20 @@ impl Cpu {
     /// Returns: AL = character read
     fn int21_read_char_with_echo(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         if let Some(ch) = io.read_char() {
-            // Echo the character via teletype output
             let saved_ax = self.ax;
-            self.ax = (self.ax & 0xFF00) | (ch as u16);
-            self.int10_teletype_output(bus);
+            if ch == 0x08 {
+                // Destructive backspace: BS, Space, BS to erase the previous character
+                self.ax = (self.ax & 0xFF00) | 0x08;
+                self.int10_teletype_output(bus);
+                self.ax = (self.ax & 0xFF00) | 0x20;
+                self.int10_teletype_output(bus);
+                self.ax = (self.ax & 0xFF00) | 0x08;
+                self.int10_teletype_output(bus);
+            } else {
+                // Echo the character via teletype output
+                self.ax = (self.ax & 0xFF00) | (ch as u16);
+                self.int10_teletype_output(bus);
+            }
             // Store in AL (restore AH, keep AL as the character)
             self.ax = (saved_ax & 0xFF00) | (ch as u16);
         }

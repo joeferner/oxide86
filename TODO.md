@@ -9,7 +9,7 @@
 - [X] Ad Lib support
 - [X] AdLib support
   - [ ] AdLib instruments do not sound correct (see docs/opl2-fm-synthesis-fixes.md)
-- [ ] cli is broken, typing causes double characters, scrolling is broken
+- [ ] cli - typing causes double characters in windows
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons

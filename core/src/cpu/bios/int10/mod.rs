@@ -494,8 +494,8 @@ impl Cpu {
 
                     // Log existing attribute for debugging
                     let existing_attr = bus.video().read_byte(offset + 1);
-                    log::trace!(
-                        "INT 10h AH=0Eh: Writing '{}' (0x{:02X}) at ({},{}) - existing attr=0x{:02X} (fg={}, bg={})",
+                    log::debug!(
+                        "INT 10h AH=0Eh: Writing '{}' (0x{:02X}) at ({},{}) ({:04X}h) - existing attr=0x{:02X} (fg={}, bg={})",
                         if (32..127).contains(&ch) {
                             ch as char
                         } else {
@@ -504,6 +504,7 @@ impl Cpu {
                         ch,
                         cursor.row,
                         cursor.col,
+                        offset,
                         existing_attr,
                         existing_attr & 0x0F,
                         (existing_attr >> 4) & 0x07
