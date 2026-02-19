@@ -1,3 +1,4 @@
+![Logo](docs/emu86-logo-pixel-art.png)
 
 # Getting Started
 
