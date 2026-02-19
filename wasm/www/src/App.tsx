@@ -30,6 +30,7 @@ import { PerformanceDisplay } from './components/PerformanceDisplay';
 import { DiskManager } from './components/DiskManager';
 import { ConfigDialog } from './components/ConfigDialog';
 import { saveConfig, EmulatorConfig } from './components/ConfigDialog.consts';
+import styles from './App.module.scss';
 
 function App(): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -111,7 +112,7 @@ function App(): React.ReactElement {
     return (
         <Container size="xl" p="md">
             <Group justify="space-between" mb="md">
-                <Title order={1}><img src="/logo.png" alt="logo"/> Oxide86 - Rust-powered x86 Emulation</Title>
+                <Title order={1} className={styles.title}><img src="/logo.png" alt="logo"/> Oxide86 - Rust-powered x86 Emulation</Title>
                 <Button
                     variant="default"
                     leftSection="⚙"
