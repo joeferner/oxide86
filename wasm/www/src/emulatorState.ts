@@ -265,6 +265,10 @@ export function startExecution(): void {
     if (!computer.value || isRunning.value) {
         return;
     }
+    // Resume AudioContext if suspended (browser autoplay policy)
+    if (sourceCardAudioRef.current) {
+        void sourceCardAudioRef.current.context.resume();
+    }
     isRunning.value = true;
     status.value = 'Running... (click on display for keyboard input)';
     updatePerformance();
@@ -287,6 +291,10 @@ export function bootAndStart(): void {
     const comp = computer.value;
     if (!comp || isRunning.value) {
         return;
+    }
+    // Resume AudioContext if suspended (browser autoplay policy)
+    if (sourceCardAudioRef.current) {
+        void sourceCardAudioRef.current.context.resume();
     }
     try {
         comp.boot(bootDrive.value);
