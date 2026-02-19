@@ -527,20 +527,24 @@ impl Emu86Computer {
         self.update_performance(current_time_ms);
 
         // target_mhz * 1000 = cycles per ms
-        let cycles = (ms * self.target_mhz * 1000.0) as u64;
-        let mut remaining = cycles;
+        let target_cycles = (ms * self.target_mhz * 1000.0) as u64;
+        let start_cycles = self.computer.get_cycle_count();
 
-        while remaining > 0 {
+        loop {
             if self.computer.is_halted() {
                 // Update video one last time before returning
                 self.computer.update_video();
                 return false;
             }
 
-            self.computer.step();
+            // Stop once we've consumed the target number of CPU cycles.
+            // Using actual cycle counts (not a fixed "10 per instruction") ensures
+            // the OPL2 timer and audio sample generation stay in sync with real time.
+            if self.computer.get_cycle_count() - start_cycles >= target_cycles {
+                break;
+            }
 
-            // Rough approximation: assume average instruction takes ~10 cycles
-            remaining = remaining.saturating_sub(10);
+            self.computer.step();
         }
 
         // Update video after batch execution
