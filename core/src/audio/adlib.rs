@@ -1,42 +1,11 @@
-use crate::audio::SoundCard;
 use crate::audio::opl2::Opl2;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use crate::audio::{PcmRingBuffer, SoundCard};
 
 /// Target audio output sample rate for AdLib (OPL2) output.
 /// Shared by both the ring buffer and the Rodio/Web Audio backends.
 pub const ADLIB_SAMPLE_RATE: u32 = 44100;
 
 const DEFAULT_CAPACITY: usize = ADLIB_SAMPLE_RATE as usize / 10; // 100 ms
-
-/// Shared ring buffer used by native audio consumer threads (e.g., Rodio).
-///
-/// `Adlib::consumer()` returns a clone of this handle before the `Adlib` is
-/// boxed into `Box<dyn SoundCard>`. The consumer calls `pop_samples()` from
-/// the audio thread; the emulator calls `Adlib::tick()` on the main thread.
-/// Thread safety is provided by the inner `Arc<Mutex<_>>`.
-#[derive(Clone)]
-pub struct AdlibConsumer {
-    inner: Arc<Mutex<VecDeque<f32>>>,
-    capacity: usize,
-}
-
-impl AdlibConsumer {
-    /// Pop up to `count` samples from the shared buffer.
-    /// Returns zeros on underrun.
-    pub fn pop_samples(&self, count: usize) -> Vec<f32> {
-        let mut buf = self.inner.lock().unwrap();
-        let mut out = Vec::with_capacity(count);
-        for _ in 0..count {
-            out.push(buf.pop_front().unwrap_or(0.0));
-        }
-        out
-    }
-
-    pub fn available(&self) -> usize {
-        self.inner.lock().unwrap().len()
-    }
-}
 
 /// AdLib Music Synthesizer Card (Yamaha OPL2 FM synthesis).
 ///
@@ -48,17 +17,14 @@ impl AdlibConsumer {
 /// **before** boxing the `Adlib` into `Box<dyn SoundCard>`.
 pub struct Adlib {
     opl2: Opl2,
-    consumer: AdlibConsumer,
+    consumer: PcmRingBuffer,
 }
 
 impl Adlib {
     pub fn new() -> Self {
         Self {
             opl2: Opl2::new(),
-            consumer: AdlibConsumer {
-                inner: Arc::new(Mutex::new(VecDeque::with_capacity(DEFAULT_CAPACITY))),
-                capacity: DEFAULT_CAPACITY,
-            },
+            consumer: PcmRingBuffer::new(DEFAULT_CAPACITY),
         }
     }
 
@@ -66,7 +32,7 @@ impl Adlib {
     ///
     /// Clone this **before** boxing the `Adlib` and pass it to the audio
     /// backend (e.g., `RodioAdlib`).
-    pub fn consumer(&self) -> AdlibConsumer {
+    pub fn consumer(&self) -> PcmRingBuffer {
         self.consumer.clone()
     }
 }

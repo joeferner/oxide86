@@ -1,18 +1,19 @@
-use emu86_core::audio::adlib::{ADLIB_SAMPLE_RATE, AdlibConsumer};
+use emu86_core::audio::PcmRingBuffer;
+use emu86_core::audio::adlib::ADLIB_SAMPLE_RATE;
 use rodio::stream::OutputStream;
 use rodio::{Sink, Source};
 use std::time::Duration;
 
-/// Rodio audio source that pulls PCM samples from an AdLib consumer handle.
-struct AdlibSource {
-    consumer: AdlibConsumer,
+/// Rodio audio source that pulls PCM samples from a PCM ring buffer.
+struct PcmSource {
+    consumer: PcmRingBuffer,
     /// Samples pulled since last log
     log_samples: u32,
     /// Non-zero samples in the current log window
     log_nonzero: u32,
 }
 
-impl Iterator for AdlibSource {
+impl Iterator for PcmSource {
     type Item = f32;
 
     fn next(&mut self) -> Option<f32> {
@@ -27,7 +28,7 @@ impl Iterator for AdlibSource {
         // Log once per second (44100 samples)
         if self.log_samples >= 44100 {
             log::debug!(
-                "[AdLib] Rodio: {}/{} samples non-zero ({:.1}%), ring buffer available: {}",
+                "[PCM] Rodio: {}/{} samples non-zero ({:.1}%), ring buffer available: {}",
                 self.log_nonzero,
                 self.log_samples,
                 100.0 * self.log_nonzero as f32 / self.log_samples as f32,
@@ -41,7 +42,7 @@ impl Iterator for AdlibSource {
     }
 }
 
-impl Source for AdlibSource {
+impl Source for PcmSource {
     fn current_span_len(&self) -> Option<usize> {
         None // Infinite stream
     }
@@ -59,20 +60,20 @@ impl Source for AdlibSource {
     }
 }
 
-/// Rodio-based AdLib (OPL2) audio output.
+/// Rodio-based PCM audio output.
 ///
-/// Holds a Rodio [`Sink`] that continuously drains the AdLib ring buffer.
+/// Holds a Rodio [`Sink`] that continuously drains the PCM ring buffer.
 /// Connects to a shared [`OutputStream`] mixer; the caller must keep
 /// the stream alive for the duration of playback.
-pub struct RodioAdlib {
+pub struct RodioPcm {
     _sink: Sink,
 }
 
-impl RodioAdlib {
-    /// Create a new AdLib audio output connected to `stream`'s mixer.
-    pub fn new(consumer: AdlibConsumer, stream: &OutputStream) -> Self {
+impl RodioPcm {
+    /// Create a new PCM audio output connected to `stream`'s mixer.
+    pub fn new(consumer: PcmRingBuffer, stream: &OutputStream) -> Self {
         let sink = Sink::connect_new(stream.mixer());
-        sink.append(AdlibSource {
+        sink.append(PcmSource {
             consumer,
             log_samples: 0,
             log_nonzero: 0,

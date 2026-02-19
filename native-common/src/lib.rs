@@ -3,7 +3,7 @@ mod clock;
 pub mod disk_backend;
 pub mod gilrs_joystick;
 pub mod host_directory_disk;
-pub mod rodio_adlib;
+pub mod rodio_pcm;
 pub mod rodio_speaker;
 mod setup;
 
@@ -12,7 +12,7 @@ pub use clock::NativeClock;
 pub use disk_backend::FileDiskBackend;
 pub use gilrs_joystick::{GilrsJoystick, GilrsJoystickInput};
 pub use host_directory_disk::HostDirectoryDisk;
-pub use rodio_adlib::RodioAdlib;
+pub use rodio_pcm::RodioPcm;
 pub use rodio_speaker::RodioSpeaker;
 pub use setup::{
     AudioOutput, apply_logging_flags, attach_serial_device, create_audio, load_disks,

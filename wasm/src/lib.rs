@@ -1052,7 +1052,7 @@ impl Emu86Computer {
             .gamepad_connected(joystick, connected);
     }
 
-    /// Pull AdLib (OPL2) audio samples for Web Audio output.
+    /// Pull audio samples for Web Audio output.
     ///
     /// Call this from a `ScriptProcessorNode.onaudioprocess` callback to feed
     /// the audio context with OPL2-generated samples.
@@ -1062,28 +1062,22 @@ impl Emu86Computer {
     ///
     /// # Returns
     /// Float32Array of PCM samples at 44100 Hz, range -1.0..1.0.
-    /// Returns zeros if AdLib is not active or the buffer is empty (underrun).
+    /// Returns zeros if sound card is not active or the buffer is empty (underrun).
     #[wasm_bindgen]
-    pub fn get_adlib_samples(&mut self, count: usize) -> js_sys::Float32Array {
-        let samples = self.computer.get_adlib_samples(count);
+    pub fn get_sound_card_samples(&mut self, count: usize) -> js_sys::Float32Array {
+        let samples = self.computer.get_sound_card_samples(count);
         let arr = js_sys::Float32Array::new_with_length(samples.len() as u32);
         arr.copy_from(&samples);
         arr
     }
 
-    /// Enable AdLib (OPL2) audio output.
-    ///
-    /// Call this after the user has interacted with the page (required by browser
-    /// autoplay policy) to satisfy the Web Audio API autoplay policy.
-    /// The AdLib sound card is already configured at construction time when
-    /// `sound_card: "adlib"` is set in the config.
+    /// Gets the sound card sample rate
     ///
     /// # Returns
     /// Sample rate in Hz (44100). Wire this to `AudioContext({ sampleRate })`.
     #[wasm_bindgen]
-    pub fn enable_adlib(&mut self) -> u32 {
+    pub fn get_sound_card_sample_rate(&mut self) -> u32 {
         use emu86_core::audio::adlib::ADLIB_SAMPLE_RATE;
-        log::info!("AdLib (OPL2) audio output enabled for WASM");
         ADLIB_SAMPLE_RATE
     }
 }

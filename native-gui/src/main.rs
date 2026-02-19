@@ -850,7 +850,7 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
         };
 
     let video = PixelsVideoController::new();
-    let (speaker, adlib_card, audio_output) =
+    let (speaker, sound_card, audio_output) =
         create_audio(!cli.common.disable_pc_speaker, &cli.common.sound_card);
 
     let clock = Box::new(NativeClock);
@@ -868,8 +868,8 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
         },
     );
 
-    // Connect AdLib sound card if available.
-    if let Some(card) = adlib_card {
+    // Connect sound card if available.
+    if let Some(card) = sound_card {
         computer.set_sound_card(card);
     }
 

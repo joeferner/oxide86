@@ -89,7 +89,7 @@ fn main() -> Result<()> {
     };
 
     // Initialize audio BEFORE video so ALSA messages appear before alternate screen
-    let (speaker, adlib_card, _audio_output) =
+    let (speaker, sound_card, _audio_output) =
         create_audio(!cli.common.disable_pc_speaker, &cli.common.sound_card);
 
     // Video init switches to alternate screen - must come after audio init
@@ -110,8 +110,8 @@ fn main() -> Result<()> {
         },
     );
 
-    // Connect AdLib sound card if available.
-    if let Some(card) = adlib_card {
+    // Connect sound card if available.
+    if let Some(card) = sound_card {
         computer.set_sound_card(card);
     }
 

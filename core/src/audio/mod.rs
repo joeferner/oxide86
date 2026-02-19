@@ -3,6 +3,11 @@
 //! Provides the `SoundCard` trait implemented by concrete cards such as `Adlib`.
 //! The `IoDevice` holds a `Box<dyn SoundCard>` and routes I/O ports to it.
 
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
+
 pub mod adlib;
 pub mod opl2;
 pub mod speaker;
@@ -61,5 +66,41 @@ impl SoundCardType {
             "adlib" | "adl" => SoundCardType::AdLib,
             _ => SoundCardType::None,
         }
+    }
+}
+
+/// Shared ring buffer used by native audio consumer threads (e.g., Rodio).
+///
+/// `Adlib::consumer()` returns a clone of this handle before the `Adlib` is
+/// boxed into `Box<dyn SoundCard>`. The consumer calls `pop_samples()` from
+/// the audio thread; the emulator calls `Adlib::tick()` on the main thread.
+/// Thread safety is provided by the inner `Arc<Mutex<_>>`.
+#[derive(Clone)]
+pub struct PcmRingBuffer {
+    inner: Arc<Mutex<VecDeque<f32>>>,
+    capacity: usize,
+}
+
+impl PcmRingBuffer {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(VecDeque::with_capacity(capacity))),
+            capacity,
+        }
+    }
+
+    /// Pop up to `count` samples from the shared buffer.
+    /// Returns zeros on underrun.
+    pub fn pop_samples(&self, count: usize) -> Vec<f32> {
+        let mut buf = self.inner.lock().unwrap();
+        let mut out = Vec::with_capacity(count);
+        for _ in 0..count {
+            out.push(buf.pop_front().unwrap_or(0.0));
+        }
+        out
+    }
+
+    pub fn available(&self) -> usize {
+        self.inner.lock().unwrap().len()
     }
 }

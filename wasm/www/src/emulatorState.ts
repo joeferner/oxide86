@@ -21,8 +21,8 @@ const animationFrameRef = { current: null as number | null };
 const wasmInitializedRef = { current: false };
 // Maps physical gamepad index → emulator joystick slot (0=A, 1=B)
 const gamepadSlotsRef = { current: new Map<number, number>() };
-// AdLib Web Audio state
-const adlibAudioRef = { current: null as { context: AudioContext; node: AudioWorkletNode } | null };
+// Sound card Web Audio state
+const sourceCardAudioRef = { current: null as { context: AudioContext; node: AudioWorkletNode } | null };
 
 function createComputer(cfg: EmulatorConfig): Emu86Computer {
     return new Emu86Computer({
@@ -40,8 +40,8 @@ function createComputer(cfg: EmulatorConfig): Emu86Computer {
 
 // AudioWorklet processor as an inline Blob — no separate file or bundler config needed.
 // The worklet maintains a Float32Array ring buffer fed via MessagePort from the main thread.
-const ADLIB_WORKLET_CODE = `
-class AdlibProcessor extends AudioWorkletProcessor {
+const SOURCE_CARD_WORKLET_CODE = `
+class SoundCardProcessor extends AudioWorkletProcessor {
     constructor() {
         super();
         this._buf = new Float32Array(0);
@@ -67,37 +67,39 @@ class AdlibProcessor extends AudioWorkletProcessor {
         return true;
     }
 }
-registerProcessor('adlib-processor', AdlibProcessor);
+registerProcessor('sound-card-processor', SoundCardProcessor);
 `;
 
-async function setupAdlibAudio(comp: Emu86Computer): Promise<void> {
-    teardownAdlibAudio();
+async function setupSoundCardAudio(comp: Emu86Computer): Promise<void> {
+    teardownSoundCardAudio();
     try {
-        const sampleRate = comp.enable_adlib();
+        const sampleRate = comp.get_sound_card_sample_rate();
         const context = new AudioContext({ sampleRate });
         if (!context.audioWorklet) {
-            console.warn('[adlib] AudioWorklet not available (requires HTTPS or localhost); AdLib audio disabled');
+            console.warn(
+                '[Sound Card] AudioWorklet not available (requires HTTPS or localhost); Sound Card audio disabled'
+            );
             void context.close();
             return;
         }
-        const blob = new Blob([ADLIB_WORKLET_CODE], { type: 'application/javascript' });
+        const blob = new Blob([SOURCE_CARD_WORKLET_CODE], { type: 'application/javascript' });
         const url = URL.createObjectURL(blob);
         await context.audioWorklet.addModule(url);
         URL.revokeObjectURL(url);
-        const node = new AudioWorkletNode(context, 'adlib-processor');
+        const node = new AudioWorkletNode(context, 'sound-card-processor');
         node.connect(context.destination);
-        adlibAudioRef.current = { context, node };
-        console.log(`[adlib] AudioWorklet initialized: ${sampleRate} Hz`);
+        sourceCardAudioRef.current = { context, node };
+        console.log(`[Sound Card] AudioWorklet initialized: ${sampleRate} Hz`);
     } catch (err) {
-        console.error('[adlib] Failed to initialize AudioWorklet:', err);
+        console.error('[Sound Card] Failed to initialize AudioWorklet:', err);
     }
 }
 
-function teardownAdlibAudio(): void {
-    if (adlibAudioRef.current) {
-        adlibAudioRef.current.node.disconnect();
-        void adlibAudioRef.current.context.close();
-        adlibAudioRef.current = null;
+function teardownSoundCardAudio(): void {
+    if (sourceCardAudioRef.current) {
+        sourceCardAudioRef.current.node.disconnect();
+        void sourceCardAudioRef.current.context.close();
+        sourceCardAudioRef.current = null;
     }
 }
 
@@ -184,15 +186,15 @@ function runLoop(): void {
         const stillRunning = comp.run_for_ms(16, window.performance.now());
         updatePerformance();
 
-        // Push AdLib samples to AudioWorklet.
+        // Push Sound Card samples to AudioWorklet.
         // Request only one frame's worth of audio + small margin.
         // Requesting too many (e.g. 2048) pads with zeros and creates ~30 ms
         // silence gaps every frame, producing an audible repeating/stuttering effect.
-        if (adlibAudioRef.current) {
-            const { context, node } = adlibAudioRef.current;
+        if (sourceCardAudioRef.current) {
+            const { context, node } = sourceCardAudioRef.current;
             // 16 ms frame * sampleRate / 1000, plus 64-sample margin for timing variance
             const frameSize = Math.ceil((context.sampleRate * 16) / 1000) + 64;
-            const samples = comp.get_adlib_samples(frameSize);
+            const samples = comp.get_sound_card_samples(frameSize);
             node.port.postMessage(samples, [samples.buffer]);
         }
 
@@ -246,9 +248,9 @@ export async function initEmulator(canvasEl: HTMLCanvasElement): Promise<void> {
             }
         }
 
-        // Set up AdLib audio if configured
+        // Set up sound card audio if configured
         if (cfg.soundCard === 'adlib') {
-            void setupAdlibAudio(comp);
+            void setupSoundCardAudio(comp);
         }
 
         computer.value = comp;
@@ -336,8 +338,8 @@ export function applyConfig(cfg: EmulatorConfig): void {
         animationFrameRef.current = null;
     }
 
-    // Tear down AdLib audio before recreating
-    teardownAdlibAudio();
+    // Tear down sound card audio before recreating
+    teardownSoundCardAudio();
 
     // Clear gamepad assignments and connection state; they'll be re-assigned below
     gamepadSlotsRef.current.clear();
@@ -356,9 +358,9 @@ export function applyConfig(cfg: EmulatorConfig): void {
             }
         }
 
-        // Set up AdLib audio if configured
+        // Set up sound card audio if configured
         if (cfg.soundCard === 'adlib') {
-            void setupAdlibAudio(comp);
+            void setupSoundCardAudio(comp);
         }
 
         computer.value = comp;

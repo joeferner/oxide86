@@ -1469,7 +1469,7 @@ impl<V: VideoController> Computer<V> {
 
     /// Pop `count` samples from the sound card's internal buffer (for WASM audio callbacks).
     /// Returns zeros if the sound card produces no audio or the buffer is empty.
-    pub fn get_adlib_samples(&mut self, count: usize) -> Vec<f32> {
+    pub fn get_sound_card_samples(&mut self, count: usize) -> Vec<f32> {
         self.io_device.pop_sound_card_samples(count)
     }
 

@@ -1,6 +1,6 @@
 use std::fmt::{Debug, Display};
 
-pub use crate::audio::adlib::{ADLIB_SAMPLE_RATE, Adlib, AdlibConsumer};
+pub use crate::audio::adlib::{ADLIB_SAMPLE_RATE, Adlib};
 pub use crate::audio::{
     NullSoundCard, SoundCard, SoundCardType,
     speaker::{NullSpeaker, SpeakerOutput},

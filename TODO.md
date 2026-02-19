@@ -6,8 +6,6 @@
 - [X] int10.rs is getting very large can we split it up into multiple files. specifically draw_char_graphics, 
 - [X] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio. The default should be enable.
 - [ ] Ad Lib support
-  - [ ] rename create_adlib function -> create_sound_card
-  - [ ] rename RodioAdlib to RodioAudioSink or something like that
   - [ ] test cli
   - [ ] test gui
   - [ ] test wasm

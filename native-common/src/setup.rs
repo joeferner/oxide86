@@ -8,7 +8,7 @@ use emu86_core::{
 use rodio::OutputStreamBuilder;
 use rodio::stream::OutputStream;
 
-use crate::{CommonCli, FileDiskBackend, HostDirectoryDisk, RodioAdlib, RodioSpeaker};
+use crate::{CommonCli, FileDiskBackend, HostDirectoryDisk, RodioPcm, RodioSpeaker};
 use std::path::PathBuf;
 
 /// Keeps a single Rodio output stream and all audio sinks alive.
@@ -16,21 +16,21 @@ use std::path::PathBuf;
 /// Must be held for the duration of emulation; dropping it stops all audio.
 pub struct AudioOutput {
     _stream: OutputStream,
-    _adlib_sink: Option<RodioAdlib>,
+    _pcm_sink: Option<RodioPcm>,
 }
 
-/// Result of [`create_audio`]: speaker, optional AdLib card, and the stream/sink bundle.
+/// Result of [`create_audio`]: speaker, optional sound card, and the stream/sink bundle.
 pub type AudioSetup = (
     Box<dyn SpeakerOutput>,
     Option<Box<dyn SoundCard>>,
     Option<AudioOutput>,
 );
 
-/// Create all audio outputs (PC speaker + optional AdLib) from a single stream.
+/// Create all audio outputs (PC speaker + optional sound card) from a single stream.
 ///
-/// Returns `(speaker, adlib_card, audio_output)`. The caller must:
+/// Returns `(speaker, sound_card, audio_output)`. The caller must:
 /// - pass `speaker` to `Computer::new()`
-/// - call `computer.set_sound_card(card)` if `adlib_card` is `Some`
+/// - call `computer.set_sound_card(card)` if `sound_card` is `Some`
 /// - keep `audio_output` alive for the duration of emulation
 pub fn create_audio(speaker_enabled: bool, sound_card: &str) -> AudioSetup {
     let is_adlib = matches!(sound_card.to_lowercase().trim(), "adlib" | "adl");
@@ -61,10 +61,10 @@ pub fn create_audio(speaker_enabled: bool, sound_card: &str) -> AudioSetup {
         Box::new(NullSpeaker)
     };
 
-    let (adlib_card, adlib_sink) = if is_adlib {
+    let (sound_card, pcm_sink) = if is_adlib {
         let adlib = Adlib::new();
         let consumer = adlib.consumer();
-        let sink = RodioAdlib::new(consumer, &stream);
+        let sink = RodioPcm::new(consumer, &stream);
         log::info!("AdLib (OPL2) enabled (Rodio, {} Hz)", ADLIB_SAMPLE_RATE);
         (Some(Box::new(adlib) as Box<dyn SoundCard>), Some(sink))
     } else {
@@ -73,10 +73,10 @@ pub fn create_audio(speaker_enabled: bool, sound_card: &str) -> AudioSetup {
 
     let audio_output = AudioOutput {
         _stream: stream,
-        _adlib_sink: adlib_sink,
+        _pcm_sink: pcm_sink,
     };
 
-    (speaker, adlib_card, Some(audio_output))
+    (speaker, sound_card, Some(audio_output))
 }
 
 /// Load floppy and hard disk images into the computer.
