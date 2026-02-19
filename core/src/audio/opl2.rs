@@ -331,6 +331,16 @@ pub struct Opl2 {
     timer1_cycles_per_tick: u32,
     /// Timer 2 fires every (256 - value) * 320 µs; threshold in CPU cycles at cpu_freq.
     timer2_cycles_per_tick: u32,
+
+    // Rhythm mode (register 0xBD)
+    rhythm_mode: bool,
+    rhythm_bd_on: bool, // Bass drum
+    rhythm_sd_on: bool, // Snare drum
+    rhythm_tt_on: bool, // Tom-tom
+    rhythm_cy_on: bool, // Cymbal
+    rhythm_hh_on: bool, // Hi-hat
+    /// 23-bit LFSR for noise synthesis (hi-hat, snare, cymbal)
+    noise_lfsr: u32,
 }
 
 impl Opl2 {
@@ -362,6 +372,13 @@ impl Opl2 {
             cpu_freq,
             timer1_cycles_per_tick,
             timer2_cycles_per_tick,
+            rhythm_mode: false,
+            rhythm_bd_on: false,
+            rhythm_sd_on: false,
+            rhythm_tt_on: false,
+            rhythm_cy_on: false,
+            rhythm_hh_on: false,
+            noise_lfsr: 0x1,
         }
     }
 
@@ -469,12 +486,74 @@ impl Opl2 {
                 }
             }
             0xBD => {
-                // Rhythm mode — log as unimplemented for now
-                if value & 0x20 != 0 {
-                    log::warn!(
-                        "OPL2: rhythm mode not implemented (reg 0xBD=0x{:02X})",
-                        value
-                    );
+                let new_rhythm = (value & 0x20) != 0;
+
+                if new_rhythm && !self.rhythm_mode {
+                    // Entering rhythm mode: silence channels 6-8 as melodic channels
+                    for ch in 6..9 {
+                        self.channels[ch].key_on = false;
+                        self.operators[OPL_MOD_SLOT[ch]].key_off();
+                        self.operators[OPL_CAR_SLOT[ch]].key_off();
+                    }
+                } else if !new_rhythm && self.rhythm_mode {
+                    // Leaving rhythm mode: key off all rhythm instruments
+                    self.operators[OPL_MOD_SLOT[6]].key_off();
+                    self.operators[OPL_CAR_SLOT[6]].key_off();
+                    self.operators[OPL_MOD_SLOT[7]].key_off();
+                    self.operators[OPL_CAR_SLOT[7]].key_off();
+                    self.operators[OPL_MOD_SLOT[8]].key_off();
+                    self.operators[OPL_CAR_SLOT[8]].key_off();
+                }
+
+                self.rhythm_mode = new_rhythm;
+
+                if self.rhythm_mode {
+                    // Bass drum: modulator=op12 (mod_slot[6]), carrier=op15 (car_slot[6])
+                    let bd = (value & 0x10) != 0;
+                    if bd && !self.rhythm_bd_on {
+                        self.operators[OPL_MOD_SLOT[6]].key_on();
+                        self.operators[OPL_CAR_SLOT[6]].key_on();
+                    } else if !bd && self.rhythm_bd_on {
+                        self.operators[OPL_MOD_SLOT[6]].key_off();
+                        self.operators[OPL_CAR_SLOT[6]].key_off();
+                    }
+                    self.rhythm_bd_on = bd;
+
+                    // Snare drum: carrier=op16 (car_slot[7])
+                    let sd = (value & 0x08) != 0;
+                    if sd && !self.rhythm_sd_on {
+                        self.operators[OPL_CAR_SLOT[7]].key_on();
+                    } else if !sd && self.rhythm_sd_on {
+                        self.operators[OPL_CAR_SLOT[7]].key_off();
+                    }
+                    self.rhythm_sd_on = sd;
+
+                    // Tom-tom: modulator=op14 (mod_slot[8])
+                    let tt = (value & 0x04) != 0;
+                    if tt && !self.rhythm_tt_on {
+                        self.operators[OPL_MOD_SLOT[8]].key_on();
+                    } else if !tt && self.rhythm_tt_on {
+                        self.operators[OPL_MOD_SLOT[8]].key_off();
+                    }
+                    self.rhythm_tt_on = tt;
+
+                    // Cymbal: carrier=op17 (car_slot[8])
+                    let cy = (value & 0x02) != 0;
+                    if cy && !self.rhythm_cy_on {
+                        self.operators[OPL_CAR_SLOT[8]].key_on();
+                    } else if !cy && self.rhythm_cy_on {
+                        self.operators[OPL_CAR_SLOT[8]].key_off();
+                    }
+                    self.rhythm_cy_on = cy;
+
+                    // Hi-hat: modulator=op13 (mod_slot[7])
+                    let hh = (value & 0x01) != 0;
+                    if hh && !self.rhythm_hh_on {
+                        self.operators[OPL_MOD_SLOT[7]].key_on();
+                    } else if !hh && self.rhythm_hh_on {
+                        self.operators[OPL_MOD_SLOT[7]].key_off();
+                    }
+                    self.rhythm_hh_on = hh;
                 }
             }
             0xC0..=0xC8 => {
@@ -594,7 +673,10 @@ impl Opl2 {
         let waveform_enable = self.waveform_enable;
         let mut mix: i32 = 0;
 
-        for ch in 0..9usize {
+        // In rhythm mode, channels 6-8 are repurposed for rhythm instruments
+        let melodic_channels = if self.rhythm_mode { 6 } else { 9 };
+
+        for ch in 0..melodic_channels {
             let mod_slot = OPL_MOD_SLOT[ch];
             let car_slot = OPL_CAR_SLOT[ch];
 
@@ -646,6 +728,88 @@ impl Opl2 {
                 mix += car_out;
             } else {
                 mix += mod_out / 2 + car_out / 2;
+            }
+        }
+
+        // Rhythm mode: channels 6-8 become rhythm instruments
+        if self.rhythm_mode {
+            // Advance noise LFSR (23-bit, polynomial x^23 + x^9 + 1)
+            let noise_bit = ((self.noise_lfsr >> 22) ^ (self.noise_lfsr >> 8)) & 1;
+            self.noise_lfsr = ((self.noise_lfsr << 1) | noise_bit) & 0x7FFFFF;
+            let noise: f32 = if self.noise_lfsr & 1 != 0 { 1.0 } else { -1.0 };
+
+            // Bass drum (ch 6): FM synthesis with operators 12 (mod) and 15 (car)
+            {
+                let mod_slot = OPL_MOD_SLOT[6]; // 12
+                let car_slot = OPL_CAR_SLOT[6]; // 15
+                if self.operators[mod_slot].env_phase != EnvPhase::Off
+                    || self.operators[car_slot].env_phase != EnvPhase::Off
+                {
+                    let fb = self.channels[6].feedback;
+                    let fb_mod: i32 = if fb > 0 {
+                        let avg = ((self.channels[6].fb_buf[0] as i32)
+                            + (self.channels[6].fb_buf[1] as i32))
+                            / 2;
+                        avg >> (9 - fb as i32)
+                    } else {
+                        0
+                    };
+                    let mod_out = {
+                        let op = &mut self.operators[mod_slot];
+                        op.calc_output(fb_mod, waveform_enable, tremolo)
+                    };
+                    self.channels[6].fb_buf[1] = self.channels[6].fb_buf[0];
+                    self.channels[6].fb_buf[0] = mod_out as u32;
+                    let car_out = {
+                        let op = &mut self.operators[car_slot];
+                        if self.channels[6].algorithm == 0 {
+                            op.calc_output(mod_out >> 2, waveform_enable, tremolo)
+                        } else {
+                            op.calc_output(0, waveform_enable, tremolo)
+                        }
+                    };
+                    if self.channels[6].algorithm == 0 {
+                        mix += car_out;
+                    } else {
+                        mix += mod_out / 2 + car_out / 2;
+                    }
+                }
+            }
+
+            // Hi-hat (op 13 = mod_slot[7]): operator tone + noise (metallic)
+            if self.operators[OPL_MOD_SLOT[7]].env_phase != EnvPhase::Off {
+                let op_out = {
+                    let op = &mut self.operators[OPL_MOD_SLOT[7]];
+                    op.calc_output(0, waveform_enable, tremolo)
+                };
+                mix += (op_out as f32 * 0.3 + noise * 12000.0 * 0.7) as i32;
+            }
+
+            // Snare drum (op 16 = car_slot[7]): operator + heavy noise
+            if self.operators[OPL_CAR_SLOT[7]].env_phase != EnvPhase::Off {
+                let op_out = {
+                    let op = &mut self.operators[OPL_CAR_SLOT[7]];
+                    op.calc_output(0, waveform_enable, tremolo)
+                };
+                mix += (op_out as f32 * 0.5 + noise * 12000.0 * 0.5) as i32;
+            }
+
+            // Tom-tom (op 14 = mod_slot[8]): pure sine tone
+            if self.operators[OPL_MOD_SLOT[8]].env_phase != EnvPhase::Off {
+                let op_out = {
+                    let op = &mut self.operators[OPL_MOD_SLOT[8]];
+                    op.calc_output(0, waveform_enable, tremolo)
+                };
+                mix += op_out;
+            }
+
+            // Cymbal (op 17 = car_slot[8]): operator + noise (metallic)
+            if self.operators[OPL_CAR_SLOT[8]].env_phase != EnvPhase::Off {
+                let op_out = {
+                    let op = &mut self.operators[OPL_CAR_SLOT[8]];
+                    op.calc_output(0, waveform_enable, tremolo)
+                };
+                mix += (op_out as f32 * 0.4 + noise * 12000.0 * 0.6) as i32;
             }
         }
 
