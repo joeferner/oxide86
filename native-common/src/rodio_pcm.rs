@@ -4,21 +4,51 @@ use rodio::stream::OutputStream;
 use rodio::{Sink, Source};
 use std::time::Duration;
 
+/// Number of samples pre-fetched from the ring buffer at a time.
+///
+/// The mutex is acquired once per batch, so at 44 100 Hz the audio thread
+/// locks ~86 times/second instead of 44 100 times/second.
+/// At 44 100 Hz this is ~11.6 ms of look-ahead, which is imperceptible.
+const BATCH_SIZE: usize = 512;
+
 /// Rodio audio source that pulls PCM samples from a PCM ring buffer.
 struct PcmSource {
     consumer: PcmRingBuffer,
+    /// Pre-fetched samples — served lock-free until exhausted.
+    batch: Box<[f32; BATCH_SIZE]>,
+    /// Index of the next sample to serve from `batch`.
+    batch_pos: usize,
     /// Samples pulled since last log
     log_samples: u32,
     /// Non-zero samples in the current log window
     log_nonzero: u32,
 }
 
+impl PcmSource {
+    fn new(consumer: PcmRingBuffer) -> Self {
+        Self {
+            consumer,
+            batch: Box::new([0.0f32; BATCH_SIZE]),
+            batch_pos: BATCH_SIZE, // start exhausted so first next() triggers a refill
+            log_samples: 0,
+            log_nonzero: 0,
+        }
+    }
+}
+
 impl Iterator for PcmSource {
     type Item = f32;
 
     fn next(&mut self) -> Option<f32> {
-        // pop_samples already pads with 0.0 on underrun
-        let sample = self.consumer.pop_samples(1).remove(0);
+        // Refill from ring buffer when the local batch is exhausted.
+        // This is the only point where the mutex is acquired.
+        if self.batch_pos >= BATCH_SIZE {
+            self.consumer.drain_into(self.batch.as_mut());
+            self.batch_pos = 0;
+        }
+
+        let sample = self.batch[self.batch_pos];
+        self.batch_pos += 1;
 
         self.log_samples += 1;
         if sample.abs() > 1e-6 {
@@ -73,11 +103,7 @@ impl RodioPcm {
     /// Create a new PCM audio output connected to `stream`'s mixer.
     pub fn new(consumer: PcmRingBuffer, stream: &OutputStream) -> Self {
         let sink = Sink::connect_new(stream.mixer());
-        sink.append(PcmSource {
-            consumer,
-            log_samples: 0,
-            log_nonzero: 0,
-        });
+        sink.append(PcmSource::new(consumer));
         // Sink starts playing immediately (no pause needed — silence is just 0.0 samples)
         Self { _sink: sink }
     }

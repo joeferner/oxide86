@@ -89,18 +89,20 @@ impl PcmRingBuffer {
         }
     }
 
-    /// Pop up to `count` samples from the shared buffer.
-    /// Returns zeros on underrun.
-    pub fn pop_samples(&self, count: usize) -> Vec<f32> {
-        let mut buf = self.inner.lock().unwrap();
-        let mut out = Vec::with_capacity(count);
-        for _ in 0..count {
-            out.push(buf.pop_front().unwrap_or(0.0));
-        }
-        out
-    }
-
     pub fn available(&self) -> usize {
         self.inner.lock().unwrap().len()
+    }
+
+    /// Drain up to `buf.len()` samples into `buf`, padding with 0.0 on underrun.
+    /// Acquires the lock exactly once. Returns the number of real samples written
+    /// (the rest of the slice is zero-filled).
+    pub fn drain_into(&self, buf: &mut [f32]) -> usize {
+        let mut guard = self.inner.lock().unwrap();
+        let available = guard.len().min(buf.len());
+        for slot in buf[..available].iter_mut() {
+            *slot = guard.pop_front().unwrap();
+        }
+        buf[available..].fill(0.0);
+        available
     }
 }

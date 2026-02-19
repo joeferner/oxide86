@@ -75,10 +75,6 @@ impl SoundCard for Adlib {
         }
     }
 
-    fn pop_samples(&mut self, count: usize) -> Vec<f32> {
-        self.consumer.pop_samples(count)
-    }
-
     fn reset(&mut self) {
         self.opl2 = Opl2::new();
         self.consumer.inner.lock().unwrap().clear();

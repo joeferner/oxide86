@@ -305,14 +305,15 @@ fn step_emulator(
         let target_cycles = elapsed_nanos / nanos_per_cycle;
         let current_cycles = computer.get_cycle_count();
 
-        // Execute until we catch up, but cap per frame to stay responsive
+        // Execute until we catch up, but cap per frame to stay responsive.
+        // We compare get_cycle_count() (which tracks actual instruction cycles) against the
+        // target after every step, so the emulator advances the correct number of CPU cycles
+        // regardless of instruction mix (NOPs at 3 cycles, LOOPs at 17, etc.).
         const MAX_CYCLES_PER_FRAME: u64 = 100_000;
-        let cycles_to_run =
-            (target_cycles.saturating_sub(current_cycles)).min(MAX_CYCLES_PER_FRAME);
+        let frame_target = target_cycles
+            .min(current_cycles + MAX_CYCLES_PER_FRAME);
 
-        // Each step is ~10 cycles
-        let steps_to_run = cycles_to_run / 10;
-        for _ in 0..steps_to_run {
+        while computer.get_cycle_count() < frame_target {
             if computer.is_halted() {
                 log::info!("Computer halted");
                 halted = true;
