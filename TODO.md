@@ -38,6 +38,7 @@
   - [ ] Windows 95
 - [ ] Upgrade to latest pixels/winit/egui (see https://github.com/parasyte/pixels/blob/main/examples/minimal-egui/Cargo.toml)
 - [ ] check-it 2 - real time clock not detected
+- [ ] native-gui - Add configuration UI similar to the wasm interface
 - [ ] WASM - add feature to save ram or video ram
 - [ ] Add support FreeDos-1.4 (requires 32-bit instructions)
 - [ ] Remove dead code markers
