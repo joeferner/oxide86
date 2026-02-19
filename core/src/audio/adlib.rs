@@ -5,7 +5,12 @@ use crate::audio::{PcmRingBuffer, SoundCard};
 /// Shared by both the ring buffer and the Rodio/Web Audio backends.
 pub const ADLIB_SAMPLE_RATE: u32 = 44100;
 
-const DEFAULT_CAPACITY: usize = ADLIB_SAMPLE_RATE as usize / 10; // 100 ms
+/// Ring buffer capacity: 500 ms of audio.
+///
+/// A larger buffer gives the emulator more slack to run slightly ahead of
+/// real-time without overflowing, and gives the audio thread more samples
+/// to draw from when the emulator is briefly stalled (e.g. during INT calls).
+const DEFAULT_CAPACITY: usize = ADLIB_SAMPLE_RATE as usize / 2; // 500 ms
 
 /// AdLib Music Synthesizer Card (Yamaha OPL2 FM synthesis).
 ///
@@ -18,6 +23,8 @@ const DEFAULT_CAPACITY: usize = ADLIB_SAMPLE_RATE as usize / 10; // 100 ms
 pub struct Adlib {
     opl2: Opl2,
     consumer: PcmRingBuffer,
+    /// Reusable scratch buffer for OPL2 sample generation (avoids per-tick allocation).
+    samples_scratch: Vec<f32>,
 }
 
 impl Adlib {
@@ -25,6 +32,7 @@ impl Adlib {
         Self {
             opl2: Opl2::new(),
             consumer: PcmRingBuffer::new(DEFAULT_CAPACITY),
+            samples_scratch: Vec::new(),
         }
     }
 
@@ -64,11 +72,21 @@ impl SoundCard for Adlib {
     }
 
     fn tick(&mut self, cpu_cycles: u64) {
-        let mut samples = Vec::new();
-        self.opl2.generate_samples(cpu_cycles, &mut samples);
+        // Reuse the scratch buffer to avoid a heap allocation on every instruction.
+        self.samples_scratch.clear();
+        self.opl2
+            .generate_samples(cpu_cycles, &mut self.samples_scratch);
+
+        if self.samples_scratch.is_empty() {
+            return;
+        }
+
         let mut buf = self.consumer.inner.lock().unwrap();
-        for s in samples {
+        for &s in &self.samples_scratch {
             if buf.len() >= self.consumer.capacity {
+                // Buffer full: discard the oldest sample so the newest is kept.
+                // For a sustained tone this is inaudible; it only matters at
+                // note transitions where the emulator is running faster than real-time.
                 buf.pop_front();
             }
             buf.push_back(s);
