@@ -51,9 +51,6 @@ fn offset_to_slot(offset: u8) -> Option<usize> {
 /// (×2 so we can represent 0.5× for multiple=0 as integer 1 then halve).
 const FREQ_MULT: [u32; 16] = [1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 20, 24, 24, 30, 30];
 
-/// Tremolo depth: ±1 dB (simplified — hardware uses ±4.8 dB deep tremolo)
-const TREMOLO_DEPTH: f32 = 0.06; // ±6% amplitude
-
 /// Vibrato depth: ±7 cents (simplified)
 const VIBRATO_CENTS: f32 = 0.004; // ±0.4% frequency
 
@@ -210,7 +207,30 @@ impl Operator {
                     self.env_phase = EnvPhase::Decay;
                     return;
                 }
-                let inc = env_increment(self.attack);
+                // Exponential (curved) attack mirroring OPL2 hardware.
+                // Real OPL2: increment ∝ ~eg_rout (Nuked-OPL3 formula), meaning large
+                // steps when quiet (env_level high) and small steps near full volume
+                // (env_level → 0).  We approximate this by making inc ∝ env_level itself:
+                // a rate-derived shift controls the overall speed, then multiplying by
+                // env_level/1023 bends the straight line into the hardware-like curve.
+                let shift: u32 = match self.attack {
+                    1 => 14,
+                    2 => 12,
+                    3 => 11,
+                    4 => 10,
+                    5 => 9,
+                    6 => 8,
+                    7 => 7,
+                    8 => 6,
+                    9 => 5,
+                    10 => 4,
+                    11 => 3,
+                    12 => 2,
+                    13 => 1,
+                    _ => 0, // 14: shift=0 → very fast
+                };
+                // inc = env_level >> shift, guaranteed ≥ 1 so we always make progress.
+                let inc = (self.env_level >> shift).max(1);
                 self.env_level = self.env_level.saturating_sub(inc);
                 if self.env_level == 0 {
                     self.env_phase = EnvPhase::Decay;
@@ -246,41 +266,50 @@ impl Operator {
         }
     }
 
+    /// Advance phase accumulator by one sample (vibrato applied).
+    fn advance_phase_acc(&mut self) {
+        let step = (self.phase_step as f32 * self.vibrato_factor) as u32;
+        self.phase_acc = self.phase_acc.wrapping_add(step) & PHASE_MASK;
+    }
+
+    /// Sample the waveform at `phase` and apply the current envelope volume.
+    /// Does NOT advance envelope or phase — call those first.
+    /// Used by rhythm synthesis where the phase is computed externally.
+    fn sample_at_phase(&self, phase: u32, waveform_enable: bool, tremolo_amp: f32) -> i32 {
+        if self.env_phase == EnvPhase::Off {
+            return 0;
+        }
+        let sample = waveform_sample(phase & PHASE_MASK, self.waveform, waveform_enable);
+        // OPL2 hardware uses logarithmic (dB-based) attenuation.
+        // TL: 6-bit register, 0.75 dB/step → 0–47.25 dB total range.
+        // Envelope: 0–1023 mapped to the same 0–47.25 dB scale.
+        let tl_db = self.total_level as f32 * 0.75;
+        let env_db = self.env_level as f32 * (47.25 / 1023.0);
+        let total_db = tl_db + env_db;
+        let volume = if total_db >= 96.0 {
+            0.0
+        } else {
+            10.0f32.powf(-total_db / 20.0)
+        };
+        // Tremolo: ±4.8 dB (hardware spec)
+        let volume = if self.tremolo {
+            volume * 10.0f32.powf(-tremolo_amp * 4.8 / 20.0)
+        } else {
+            volume
+        };
+        (sample * volume * 32767.0) as i32
+    }
+
     /// Compute one sample output given a phase modulation input.
     /// Returns a value in the range -32767..32767.
     fn calc_output(&mut self, phase_mod: i32, waveform_enable: bool, tremolo_amp: f32) -> i32 {
         if self.env_phase == EnvPhase::Off {
             return 0;
         }
-
-        // Advance envelope
         self.advance_envelope();
-
-        // Advance phase accumulator (apply vibrato to step)
-        let step = (self.phase_step as f32 * self.vibrato_factor) as u32;
-        self.phase_acc = self.phase_acc.wrapping_add(step) & PHASE_MASK;
-
-        // Modulate phase
-        let modulated_phase = self.phase_acc.wrapping_add(phase_mod as u32) & PHASE_MASK;
-
-        // Waveform sample
-        let sample = waveform_sample(modulated_phase, self.waveform, waveform_enable);
-
-        // Total attenuation = envelope + total_level (scaled to 0..1023)
-        let tl_atten = (self.total_level as u32) * 16; // 0..1008
-        let total_atten = (self.env_level + tl_atten).min(1023);
-
-        // Linear volume (good enough for a first pass)
-        let volume = 1.0 - (total_atten as f32 / 1023.0);
-
-        // Apply tremolo
-        let volume = if self.tremolo {
-            volume * (1.0 - tremolo_amp * TREMOLO_DEPTH)
-        } else {
-            volume
-        };
-
-        (sample * volume * 32767.0) as i32
+        self.advance_phase_acc();
+        let phase = self.phase_acc.wrapping_add(phase_mod as u32) & PHASE_MASK;
+        self.sample_at_phase(phase, waveform_enable, tremolo_amp)
     }
 }
 
@@ -713,9 +742,12 @@ impl Opl2 {
             let car_out = {
                 let op = &mut self.operators[car_slot];
                 if self.channels[ch].algorithm == 0 {
-                    // FM: modulator output modulates carrier phase
-                    // Scale mod_out to a reasonable phase-mod range
-                    let phase_mod = mod_out >> 2;
+                    // FM: modulator output modulates carrier phase.
+                    // Hardware-accurate depth: in Nuked-OPL3, full-volume modulator output
+                    // (~±8192 units) is added directly to the 10-bit phase index (1024
+                    // entries). Our full-volume output is ±32767; << 8 gives ≈8192 effective
+                    // table-index shifts (32767>>10 ≈ 31; 31<<8 ≈ 8192), matching hardware.
+                    let phase_mod = mod_out << 8;
                     op.calc_output(phase_mod, waveform_enable, tremolo)
                 } else {
                     // Additive: independent carrier
@@ -731,14 +763,18 @@ impl Opl2 {
             }
         }
 
-        // Rhythm mode: channels 6-8 become rhythm instruments
+        // Rhythm mode: channels 6-8 become rhythm instruments.
+        // Hi-hat, snare, and cymbal use phase-based synthesis (Nuked-OPL3 approach):
+        // specific bits of the hi-hat (slot 13) and cymbal (slot 17) phase accumulators
+        // are XOR'd together to produce the metallic/noisy character, rather than
+        // mixing raw noise amplitude with operator output.
         if self.rhythm_mode {
-            // Advance noise LFSR (23-bit, polynomial x^23 + x^9 + 1)
-            let noise_bit = ((self.noise_lfsr >> 22) ^ (self.noise_lfsr >> 8)) & 1;
-            self.noise_lfsr = ((self.noise_lfsr << 1) | noise_bit) & 0x7FFFFF;
-            let noise: f32 = if self.noise_lfsr & 1 != 0 { 1.0 } else { -1.0 };
+            // Advance noise LFSR (23-bit, Nuked-OPL3: taps at bits 14 and 0, shift right)
+            let n_bit = ((self.noise_lfsr >> 14) ^ self.noise_lfsr) & 1;
+            self.noise_lfsr = (self.noise_lfsr >> 1) | (n_bit << 22);
+            let noise_bit = self.noise_lfsr & 1;
 
-            // Bass drum (ch 6): FM synthesis with operators 12 (mod) and 15 (car)
+            // Bass drum (ch 6): standard FM pair, same as melodic channels.
             {
                 let mod_slot = OPL_MOD_SLOT[6]; // 12
                 let car_slot = OPL_CAR_SLOT[6]; // 15
@@ -763,7 +799,7 @@ impl Opl2 {
                     let car_out = {
                         let op = &mut self.operators[car_slot];
                         if self.channels[6].algorithm == 0 {
-                            op.calc_output(mod_out >> 2, waveform_enable, tremolo)
+                            op.calc_output(mod_out << 8, waveform_enable, tremolo)
                         } else {
                             op.calc_output(0, waveform_enable, tremolo)
                         }
@@ -776,49 +812,98 @@ impl Opl2 {
                 }
             }
 
-            // Hi-hat (op 13 = mod_slot[7]): operator tone + noise (metallic)
+            // Pre-advance hi-hat (slot 13) and cymbal/tc (slot 17) phase accumulators.
+            // Phase bits from both operators feed the rm_xor formula, so both must be
+            // advanced before any output is computed.  Envelope is also advanced here
+            // (only when not Off) so that sample_at_phase sees the up-to-date level.
+            {
+                let op = &mut self.operators[OPL_MOD_SLOT[7]]; // hi-hat
+                op.advance_phase_acc();
+                if op.env_phase != EnvPhase::Off {
+                    op.advance_envelope();
+                }
+            }
+            {
+                let op = &mut self.operators[OPL_CAR_SLOT[8]]; // cymbal/tc
+                op.advance_phase_acc();
+                if op.env_phase != EnvPhase::Off {
+                    op.advance_envelope();
+                }
+            }
+            // Snare also needs phase advanced (uses hh_bit8 from hi-hat, computed below)
+            {
+                let op = &mut self.operators[OPL_CAR_SLOT[7]]; // snare
+                op.advance_phase_acc();
+                if op.env_phase != EnvPhase::Off {
+                    op.advance_envelope();
+                }
+            }
+
+            // Extract phase bits from hi-hat (slot 13) and cymbal (slot 17).
+            let hh_phase = self.operators[OPL_MOD_SLOT[7]].phase_acc;
+            let tc_phase = self.operators[OPL_CAR_SLOT[8]].phase_acc;
+            let hh_bit2 = (hh_phase >> 2) & 1;
+            let hh_bit3 = (hh_phase >> 3) & 1;
+            let hh_bit7 = (hh_phase >> 7) & 1;
+            let hh_bit8 = (hh_phase >> 8) & 1;
+            let tc_bit3 = (tc_phase >> 3) & 1;
+            let tc_bit5 = (tc_phase >> 5) & 1;
+
+            // rm_xor: XOR combination that creates the metallic phase relationship.
+            let rm_xor = ((hh_bit2 ^ hh_bit7) | (hh_bit3 ^ tc_bit5) | (tc_bit3 ^ tc_bit5)) & 1;
+
+            // Compute 10-bit phase table indices (matching Nuked-OPL3 formulas).
+            // Hi-hat: rm_xor selects the base half-cycle; noise selects offset within it.
+            let hh_idx = (rm_xor << 9) | if rm_xor != noise_bit { 0xd0 } else { 0x34 };
+            // Snare: hh_bit8 selects base, XOR with noise picks fine position.
+            let sd_idx = (hh_bit8 << 9) | ((hh_bit8 ^ noise_bit) << 8);
+            // Cymbal: rm_xor selects half-cycle, fixed 0x80 offset.
+            let tc_idx = (rm_xor << 9) | 0x80;
+
+            // Convert 10-bit indices to 20-bit phase space.
+            // waveform_sample() reads bits 19:10 of the 20-bit phase as the table index.
+            let hh_phase_ov = (hh_idx << 10) & PHASE_MASK;
+            let sd_phase_ov = (sd_idx << 10) & PHASE_MASK;
+            let tc_phase_ov = (tc_idx << 10) & PHASE_MASK;
+
+            // Hi-hat output at override phase (envelope/phase already advanced above)
             if self.operators[OPL_MOD_SLOT[7]].env_phase != EnvPhase::Off {
-                let op_out = {
-                    let op = &mut self.operators[OPL_MOD_SLOT[7]];
-                    op.calc_output(0, waveform_enable, tremolo)
-                };
-                mix += (op_out as f32 * 0.3 + noise * 12000.0 * 0.7) as i32;
+                mix += self.operators[OPL_MOD_SLOT[7]].sample_at_phase(
+                    hh_phase_ov,
+                    waveform_enable,
+                    tremolo,
+                );
             }
 
-            // Snare drum (op 16 = car_slot[7]): operator + heavy noise
+            // Snare drum output at override phase
             if self.operators[OPL_CAR_SLOT[7]].env_phase != EnvPhase::Off {
-                let op_out = {
-                    let op = &mut self.operators[OPL_CAR_SLOT[7]];
-                    op.calc_output(0, waveform_enable, tremolo)
-                };
-                mix += (op_out as f32 * 0.5 + noise * 12000.0 * 0.5) as i32;
+                mix += self.operators[OPL_CAR_SLOT[7]].sample_at_phase(
+                    sd_phase_ov,
+                    waveform_enable,
+                    tremolo,
+                );
             }
 
-            // Tom-tom (op 14 = mod_slot[8]): pure sine tone
+            // Tom-tom (op 14 = mod_slot[8]): pure FM tone, normal calc_output.
             if self.operators[OPL_MOD_SLOT[8]].env_phase != EnvPhase::Off {
-                let op_out = {
-                    let op = &mut self.operators[OPL_MOD_SLOT[8]];
-                    op.calc_output(0, waveform_enable, tremolo)
-                };
-                mix += op_out;
+                mix += self.operators[OPL_MOD_SLOT[8]].calc_output(0, waveform_enable, tremolo);
             }
 
-            // Cymbal (op 17 = car_slot[8]): operator + noise (metallic)
+            // Cymbal output at override phase (envelope/phase already advanced above)
             if self.operators[OPL_CAR_SLOT[8]].env_phase != EnvPhase::Off {
-                let op_out = {
-                    let op = &mut self.operators[OPL_CAR_SLOT[8]];
-                    op.calc_output(0, waveform_enable, tremolo)
-                };
-                mix += (op_out as f32 * 0.4 + noise * 12000.0 * 0.6) as i32;
+                mix += self.operators[OPL_CAR_SLOT[8]].sample_at_phase(
+                    tc_phase_ov,
+                    waveform_enable,
+                    tremolo,
+                );
             }
         }
 
         self.advance_lfos();
 
-        // Normalize to [-1.0, 1.0]. Clamp at ±32767 (single-channel max) before
-        // scaling so one channel at full amplitude = 1.0. Sums from multiple
-        // simultaneous channels will clip, which is acceptable for the common case.
-        mix.clamp(-32767, 32767) as f32 / 32767.0
+        // Normalize to [-1.0, 1.0].  Allow up to ~3 channels at full amplitude
+        // simultaneously before hard-clipping, which avoids distortion on chords.
+        mix.clamp(-32767 * 3, 32767 * 3) as f32 / (32767.0 * 3.0)
     }
 
     /// Advance chip state by `cpu_cycles` and append resampled PCM to `out`.

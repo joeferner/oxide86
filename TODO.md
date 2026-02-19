@@ -5,8 +5,11 @@
 - [X] look at #[allow(dead_code)] and see if we can remove any of that code
 - [X] int10.rs is getting very large can we split it up into multiple files. specifically draw_char_graphics, 
 - [X] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio. The default should be enable.
-- [X] Ad Lib support
 - [X] native-gui/wasm add logo on startup
+- [X] Ad Lib support
+- [X] AdLib support
+  - [ ] AdLib instruments do not sound correct (see docs/opl2-fm-synthesis-fixes.md)
+- [ ] cli is broken, typing causes double characters, scrolling is broken
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
