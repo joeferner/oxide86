@@ -12,9 +12,9 @@ export interface EmulatorConfig {
 }
 
 export const DEFAULT_CONFIG: EmulatorConfig = {
-    cpuType: '8086',
-    memoryKb: 640,
-    clockMhz: 4.77,
+    cpuType: '286',
+    memoryKb: 2048,
+    clockMhz: 8,
     videoCard: 'vga',
     com1Device: 'mouse',
     com2Device: 'null',

@@ -603,8 +603,20 @@ fn render_frame(
 fn run(cli: Cli) -> Result<()> {
     let event_loop = EventLoop::new().context("Failed to create event loop")?;
 
+    let icon = {
+        let icon_bytes = include_bytes!("../assets/logo.png");
+        image::load_from_memory(icon_bytes)
+            .ok()
+            .map(|img| img.into_rgba8())
+            .and_then(|rgba| {
+                let (w, h) = rgba.dimensions();
+                winit::window::Icon::from_rgba(rgba.into_raw(), w, h).ok()
+            })
+    };
+
     let window = WindowBuilder::new()
         .with_title(TITLE)
+        .with_window_icon(icon)
         .with_inner_size(LogicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32))
         .with_resizable(true)
         .build(&event_loop)
