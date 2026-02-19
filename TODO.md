@@ -5,10 +5,10 @@
 - [X] look at #[allow(dead_code)] and see if we can remove any of that code
 - [X] int10.rs is getting very large can we split it up into multiple files. specifically draw_char_graphics, 
 - [X] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio. The default should be enable.
-- [ ] Ad Lib support
-  - [ ] test cli
-  - [ ] test gui
-  - [ ] test wasm
+- [X] Ad Lib support
+  - [X] test cli
+  - [X] test gui
+  - [X] test wasm
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
 - [ ] native-gui add icon and possibly logo on startup

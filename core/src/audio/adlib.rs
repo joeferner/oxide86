@@ -139,8 +139,17 @@ impl SoundCard for Adlib {
     fn pop_samples(&mut self, count: usize) -> Vec<f32> {
         // Flush any pending samples before popping (used by WASM path).
         self.flush_pending();
-        let mut out = vec![0.0f32; count];
-        self.consumer.drain_into(&mut out);
+        // Return only the samples actually available — no zero-padding.
+        // Zero-padding would inject periodic silence into the audio stream,
+        // causing audible warbling (periodic amplitude modulation at ~57 Hz).
+        // The AudioWorklet handles true underruns by zero-filling individual
+        // 128-sample quanta when its own buffer empties.
+        let mut buf = self.consumer.inner.lock().unwrap();
+        let available = buf.len().min(count);
+        let mut out = Vec::with_capacity(available);
+        for _ in 0..available {
+            out.push(buf.pop_front().unwrap());
+        }
         out
     }
 

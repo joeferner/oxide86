@@ -32,6 +32,8 @@ export const bootDrive = signal<number>(0x80);
 // Imperative handles (not reactive state)
 const animationFrameRef = { current: null as number | null };
 const wasmInitializedRef = { current: false };
+// Timestamp of the previous RAF callback, used to compute actual elapsed time.
+const lastRafTimestampRef = { current: null as number | null };
 // Maps physical gamepad index → emulator joystick slot (0=A, 1=B)
 const gamepadSlotsRef = { current: new Map<number, number>() };
 // Sound card Web Audio state
@@ -231,7 +233,7 @@ function updatePerformance(): void {
     }
 }
 
-function runLoop(): void {
+function runLoop(timestamp: number): void {
     if (!isRunning.value) {
         return;
     }
@@ -240,19 +242,28 @@ function runLoop(): void {
         return;
     }
 
+    // Compute actual elapsed time since last frame.
+    // Using real elapsed time (rather than a fixed 16 ms) ensures the OPL2 chip
+    // generates the correct number of audio samples per frame, matching what the
+    // AudioWorklet consumes — preventing both underruns and periodic silence gaps.
+    const prev = lastRafTimestampRef.current;
+    lastRafTimestampRef.current = timestamp;
+    // First frame after start: default to 16 ms. Cap at 50 ms to prevent runaway
+    // if the tab was hidden or the browser stalled.
+    const elapsedMs = prev !== null ? Math.min(timestamp - prev, 50) : 16;
+
     try {
         pollGamepads(comp);
-        const stillRunning = comp.run_for_ms(16, window.performance.now());
+        const stillRunning = comp.run_for_ms(elapsedMs, timestamp);
         updatePerformance();
 
         // Push Sound Card samples to AudioWorklet.
-        // Request only one frame's worth of audio + small margin.
-        // Requesting too many (e.g. 2048) pads with zeros and creates ~30 ms
-        // silence gaps every frame, producing an audible repeating/stuttering effect.
+        // Request exactly the samples the emulator should have generated for this
+        // frame (plus a small margin). pop_samples returns only real samples — no
+        // zero-padding — so the worklet receives a clean, continuous stream.
         if (sourceCardAudioRef.current) {
             const { context, node } = sourceCardAudioRef.current;
-            // 16 ms frame * sampleRate / 1000, plus 64-sample margin for timing variance
-            const frameSize = Math.ceil((context.sampleRate * 16) / 1000) + 64;
+            const frameSize = Math.ceil((context.sampleRate * elapsedMs) / 1000) + 64;
             const samples = comp.get_sound_card_samples(frameSize);
             const msg: SoundCardSamplesMessage = { type: 'samples', samples };
             node.port.postMessage(msg, [samples.buffer]);
@@ -344,6 +355,7 @@ export function stopExecution(): void {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
     }
+    lastRafTimestampRef.current = null;
     status.value = 'Stopped';
 }
 
@@ -405,6 +417,7 @@ export function applyConfig(cfg: EmulatorConfig): void {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
     }
+    lastRafTimestampRef.current = null;
 
     // Tear down sound card audio before recreating
     teardownSoundCardAudio();
