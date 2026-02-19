@@ -539,7 +539,7 @@ impl Opl2 {
                 self.timer1_counter = 0;
                 if self.timer_control & 0x40 == 0 {
                     // Not masked → set status bits
-                    self.status |= 0xA0; // bit 7 (any) + bit 5 (timer 1)
+                    self.status |= 0xC0; // bit 7 (IRQ) + bit 6 (Timer 1 expired)
                 }
             }
         }
@@ -552,7 +552,7 @@ impl Opl2 {
             if self.timer2_counter >= threshold {
                 self.timer2_counter = 0;
                 if self.timer_control & 0x20 == 0 {
-                    self.status |= 0xC0; // bit 7 (any) + bit 6 (timer 2)
+                    self.status |= 0xA0; // bit 7 (IRQ) + bit 5 (Timer 2 expired)
                 }
             }
         }
