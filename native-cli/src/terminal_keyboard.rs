@@ -11,7 +11,7 @@ use emu86_core::keyboard::KeyboardInput;
 use std::collections::VecDeque;
 use std::time::Duration;
 
-use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyModifiers};
+use crossterm::event::{self, Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
 
 pub const SCAN_CODE_F12: u8 = 0x86;
 
@@ -45,6 +45,9 @@ impl TerminalKeyboard {
     /// - `event`: A crossterm Event to process
     pub fn process_crossterm_event(&mut self, event: Event) {
         if let Event::Key(key_event) = event {
+            if key_event.kind != KeyEventKind::Press {
+                return;
+            }
             let key = key_event_to_keypress(&key_event);
             log::debug!(
                 "key event processed: code={:?}, modifiers={:?}, scan=0x{:02X}, ascii=0x{:02X}",
@@ -68,6 +71,9 @@ impl TerminalKeyboard {
         // Block until we get a key press
         loop {
             if let Ok(Event::Key(key_event)) = event::read() {
+                if key_event.kind != KeyEventKind::Press {
+                    continue;
+                }
                 let key_press = key_event_to_keypress(&key_event);
                 log::debug!(
                     "key press (read_key): code={:?}, modifiers={:?}, scan=0x{:02X}, ascii=0x{:02X}",
@@ -82,10 +88,18 @@ impl TerminalKeyboard {
     }
 
     fn internal_check_key(&self) -> Option<KeyPress> {
-        // Check if a key is available without blocking
-        if event::poll(Duration::from_millis(0)).unwrap_or(false)
-            && let Ok(Event::Key(key_event)) = event::read()
-        {
+        // Check if a key is available without blocking.
+        // Loop to consume and discard non-Press events (release/repeat) on Windows.
+        loop {
+            if !event::poll(Duration::from_millis(0)).unwrap_or(false) {
+                return None;
+            }
+            let Ok(Event::Key(key_event)) = event::read() else {
+                return None;
+            };
+            if key_event.kind != KeyEventKind::Press {
+                continue;
+            }
             let key_press = key_event_to_keypress(&key_event);
             log::debug!(
                 "key press (check_key): code={:?}, modifiers={:?}, scan=0x{:02X}, ascii=0x{:02X}",
@@ -96,7 +110,6 @@ impl TerminalKeyboard {
             );
             return Some(key_press);
         }
-        None
     }
 }
 
@@ -125,12 +138,15 @@ impl KeyboardInput for TerminalKeyboard {
     }
 
     fn read_char(&mut self) -> Option<u8> {
-        // Block until we get a key press
+        // Block until we get a key press (Press events only)
         loop {
-            if let Ok(Event::Key(key_event)) = event::read()
-                && let Some(ch) = key_event_to_ascii(&key_event)
-            {
-                return Some(translate_newline(ch));
+            if let Ok(Event::Key(key_event)) = event::read() {
+                if key_event.kind != KeyEventKind::Press {
+                    continue;
+                }
+                if let Some(ch) = key_event_to_ascii(&key_event) {
+                    return Some(translate_newline(ch));
+                }
             }
         }
     }
@@ -138,13 +154,21 @@ impl KeyboardInput for TerminalKeyboard {
     /// Check if a character is available and return it (non-blocking)
     /// Used by INT 21h, AH=06h (Direct Console I/O)
     fn check_char(&mut self) -> Option<u8> {
-        if event::poll(Duration::from_millis(0)).ok()?
-            && let Ok(Event::Key(key_event)) = event::read()
-            && let Some(ch) = key_event_to_ascii(&key_event)
-        {
-            return Some(translate_newline(ch));
+        loop {
+            if !event::poll(Duration::from_millis(0)).unwrap_or(false) {
+                return None;
+            }
+            let Ok(Event::Key(key_event)) = event::read() else {
+                return None;
+            };
+            if key_event.kind != KeyEventKind::Press {
+                continue;
+            }
+            if let Some(ch) = key_event_to_ascii(&key_event) {
+                return Some(translate_newline(ch));
+            }
+            return None;
         }
-        None
     }
 
     /// Check if a character is available without consuming it
