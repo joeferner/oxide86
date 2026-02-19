@@ -3,8 +3,8 @@ mod joystick_port;
 mod pit;
 mod system_control_port;
 
-use crate::joystick::JoystickInput;
 use crate::audio::{NullSoundCard, SoundCard};
+use crate::joystick::JoystickInput;
 use crate::video::Video;
 use cga_ports::CgaModeControl;
 use joystick_port::JoystickPort;

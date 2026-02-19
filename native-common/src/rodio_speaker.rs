@@ -1,6 +1,6 @@
 use emu86_core::SpeakerOutput;
 use rodio::stream::OutputStream;
-use rodio::{OutputStreamBuilder, Sink, Source};
+use rodio::{Sink, Source};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -46,9 +46,11 @@ impl Source for SquareWave {
     }
 }
 
-/// Rodio-based PC speaker implementation
+/// Rodio-based PC speaker implementation.
+///
+/// Connects to a shared [`OutputStream`] mixer; the caller must keep
+/// the stream alive for the duration of playback.
 pub struct RodioSpeaker {
-    _stream: OutputStream,
     sink: Sink,
     frequency: Arc<Mutex<f32>>,
     enabled: bool,
@@ -57,14 +59,9 @@ pub struct RodioSpeaker {
 }
 
 impl RodioSpeaker {
-    /// Create a new RodioSpeaker
-    ///
-    /// Returns an error if audio device is unavailable or initialization fails
-    pub fn new() -> Result<Self, String> {
-        let stream_handle = OutputStreamBuilder::open_default_stream()
-            .map_err(|e| format!("Audio device unavailable: {}", e))?;
-
-        let sink = Sink::connect_new(stream_handle.mixer());
+    /// Create a new `RodioSpeaker` connected to `stream`'s mixer.
+    pub fn new(stream: &OutputStream) -> Self {
+        let sink = Sink::connect_new(stream.mixer());
 
         let frequency = Arc::new(Mutex::new(0.0));
         let wave = SquareWave {
@@ -76,13 +73,12 @@ impl RodioSpeaker {
         sink.append(wave);
         sink.pause(); // Start paused
 
-        Ok(Self {
-            _stream: stream_handle,
+        Self {
             sink,
             frequency,
             enabled: false,
             last_frequency: 0.0,
-        })
+        }
     }
 }
 

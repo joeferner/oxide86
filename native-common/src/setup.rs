@@ -5,51 +5,78 @@ use emu86_core::{
     BackedDisk, Computer, DiskController, DriveNumber, MouseInput, NullSpeaker, PartitionedDisk,
     SerialLogger, SerialMouse, SoundCard, SpeakerOutput, VideoController, parse_mbr,
 };
+use rodio::OutputStreamBuilder;
+use rodio::stream::OutputStream;
 
 use crate::{CommonCli, FileDiskBackend, HostDirectoryDisk, RodioAdlib, RodioSpeaker};
 use std::path::PathBuf;
 
-/// Create a speaker with Rodio, falling back to NullSpeaker if unavailable or disabled.
-pub fn create_speaker(enabled: bool) -> Box<dyn SpeakerOutput> {
-    if !enabled {
-        log::info!("PC speaker disabled (--disable-pc-speaker)");
-        return Box::new(NullSpeaker);
-    }
-    match RodioSpeaker::new() {
-        Ok(rodio_speaker) => {
-            log::info!("PC speaker enabled (Rodio)");
-            Box::new(rodio_speaker)
-        }
-        Err(e) => {
-            log::warn!("PC speaker unavailable: {}", e);
-            log::info!("Using NullSpeaker (no audio)");
-            Box::new(NullSpeaker)
-        }
-    }
+/// Keeps a single Rodio output stream and all audio sinks alive.
+///
+/// Must be held for the duration of emulation; dropping it stops all audio.
+pub struct AudioOutput {
+    _stream: OutputStream,
+    _adlib_sink: Option<RodioAdlib>,
 }
 
-/// Create an AdLib (OPL2) sound card and audio output if `sound_card` is "adlib".
+/// Result of [`create_audio`]: speaker, optional AdLib card, and the stream/sink bundle.
+pub type AudioSetup = (
+    Box<dyn SpeakerOutput>,
+    Option<Box<dyn SoundCard>>,
+    Option<AudioOutput>,
+);
+
+/// Create all audio outputs (PC speaker + optional AdLib) from a single stream.
 ///
-/// Returns `Some((card, _sink))` on success. The caller should call
-/// `computer.set_sound_card(card)` and keep `_sink` alive for the
-/// duration of emulation.
-pub fn create_adlib(sound_card: &str) -> Option<(Box<dyn SoundCard>, RodioAdlib)> {
-    if !matches!(sound_card.to_lowercase().trim(), "adlib" | "adl") {
+/// Returns `(speaker, adlib_card, audio_output)`. The caller must:
+/// - pass `speaker` to `Computer::new()`
+/// - call `computer.set_sound_card(card)` if `adlib_card` is `Some`
+/// - keep `audio_output` alive for the duration of emulation
+pub fn create_audio(speaker_enabled: bool, sound_card: &str) -> AudioSetup {
+    let is_adlib = matches!(sound_card.to_lowercase().trim(), "adlib" | "adl");
+
+    if !speaker_enabled {
+        log::info!("PC speaker disabled (--disable-pc-speaker)");
+    }
+    if !is_adlib {
         log::info!("AdLib disabled (--sound-card={})", sound_card);
-        return None;
     }
-    let adlib = Adlib::new();
-    let consumer = adlib.consumer();
-    match RodioAdlib::new(consumer) {
-        Ok(sink) => {
-            log::info!("AdLib (OPL2) enabled (Rodio, {} Hz)", ADLIB_SAMPLE_RATE);
-            Some((Box::new(adlib), sink))
-        }
+
+    if !speaker_enabled && !is_adlib {
+        return (Box::new(NullSpeaker), None, None);
+    }
+
+    let stream = match OutputStreamBuilder::open_default_stream() {
+        Ok(s) => s,
         Err(e) => {
-            log::warn!("AdLib audio output unavailable: {}", e);
-            None
+            log::warn!("Audio device unavailable: {}", e);
+            return (Box::new(NullSpeaker), None, None);
         }
-    }
+    };
+
+    let speaker: Box<dyn SpeakerOutput> = if speaker_enabled {
+        log::info!("PC speaker enabled (Rodio)");
+        Box::new(RodioSpeaker::new(&stream))
+    } else {
+        Box::new(NullSpeaker)
+    };
+
+    let (adlib_card, adlib_sink) = if is_adlib {
+        let adlib = Adlib::new();
+        let consumer = adlib.consumer();
+        let sink = RodioAdlib::new(consumer, &stream);
+        log::info!("AdLib (OPL2) enabled (Rodio, {} Hz)", ADLIB_SAMPLE_RATE);
+        (Some(Box::new(adlib) as Box<dyn SoundCard>), Some(sink))
+    } else {
+        (None, None)
+    };
+
+    let audio_output = AudioOutput {
+        _stream: stream,
+        _adlib_sink: adlib_sink,
+    };
+
+    (speaker, adlib_card, Some(audio_output))
 }
 
 /// Load floppy and hard disk images into the computer.

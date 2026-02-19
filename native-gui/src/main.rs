@@ -11,9 +11,9 @@ use emu86_core::{
     MEMORY_SIZE,
 };
 use emu86_native_common::{
-    CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock, RodioAdlib,
-    apply_logging_flags, attach_serial_device, create_adlib, create_speaker, load_disks,
-    load_mounted_directories, load_program_or_boot, sync_mounted_directories,
+    AudioOutput, CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
+    apply_logging_flags, attach_serial_device, create_audio, load_disks, load_mounted_directories,
+    load_program_or_boot, sync_mounted_directories,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -407,6 +407,13 @@ impl Notification {
     }
 }
 
+struct ComputerSetup {
+    computer: Computer<PixelsVideoController>,
+    gilrs_joystick: Option<GilrsJoystick>,
+    mounted_drives: Vec<DriveNumber>,
+    audio_output: Option<AudioOutput>,
+}
+
 struct AppState {
     menu: AppMenu,
     floppy_a_present: bool,
@@ -613,8 +620,13 @@ fn run(cli: Cli) -> Result<()> {
     );
 
     // Initialize computer and optional joystick
-    let (mut computer, mut gilrs_joystick, mounted_drives, _adlib_sink) =
-        create_computer(&cli, gui_mouse.clone_shared())?;
+    let ComputerSetup {
+        mut computer,
+        mut gilrs_joystick,
+        mounted_drives,
+        // Keeps the Rodio output stream alive for the duration of emulation.
+        audio_output: _audio_output,
+    } = create_computer(&cli, gui_mouse.clone_shared())?;
 
     // Apply logging flags
     apply_logging_flags(&mut computer, cli.common.exec_log, cli.common.int_log);
@@ -813,15 +825,7 @@ fn run(cli: Cli) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("Event loop error: {}", e))
 }
 
-fn create_computer(
-    cli: &Cli,
-    gui_mouse: GuiMouse,
-) -> Result<(
-    Computer<PixelsVideoController>,
-    Option<GilrsJoystick>,
-    Vec<DriveNumber>,
-    Option<RodioAdlib>,
-)> {
+fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
     // Parse CPU type
     let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
         .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.common.cpu_type))?;
@@ -846,8 +850,8 @@ fn create_computer(
         };
 
     let video = PixelsVideoController::new();
-    let speaker = create_speaker(!cli.common.disable_pc_speaker);
-    let adlib = create_adlib(&cli.common.sound_card);
+    let (speaker, adlib_card, audio_output) =
+        create_audio(!cli.common.disable_pc_speaker, &cli.common.sound_card);
 
     let clock = Box::new(NativeClock);
     let mut computer = Computer::new(
@@ -865,11 +869,9 @@ fn create_computer(
     );
 
     // Connect AdLib sound card if available.
-    // The returned RodioAdlib must be kept alive in run() for Rodio to play.
-    let adlib_sink = adlib.map(|(card, sink)| {
+    if let Some(card) = adlib_card {
         computer.set_sound_card(card);
-        sink
-    });
+    }
 
     // Force initial video render to show blank screen
     computer.force_video_redraw();
@@ -889,7 +891,12 @@ fn create_computer(
 
     log::info!("Starting execution...");
 
-    Ok((computer, gilrs_joystick, mounted_drives, adlib_sink))
+    Ok(ComputerSetup {
+        computer,
+        gilrs_joystick,
+        mounted_drives,
+        audio_output,
+    })
 }
 
 fn show_insert_dialog(

@@ -112,7 +112,9 @@ function App(): React.ReactElement {
     return (
         <Container size="xl" p="md">
             <Group justify="space-between" mb="md">
-                <Title order={1} className={styles.title}><img src="/logo.png" alt="logo"/> Oxide86 - Rust-powered x86 Emulation</Title>
+                <Title order={1} className={styles.title}>
+                    <img src="/logo.png" alt="logo" /> Oxide86 - Rust-powered x86 Emulation
+                </Title>
                 <Button
                     variant="default"
                     leftSection="⚙"

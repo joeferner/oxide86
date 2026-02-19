@@ -6,8 +6,8 @@ use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
 use emu86_core::{Computer, NullJoystick};
 use emu86_native_common::{
     CommonCli, GilrsJoystick, GilrsJoystickInput, NativeClock, apply_logging_flags,
-    attach_serial_device, create_adlib, create_speaker, load_disks, load_mounted_directories,
-    load_program_or_boot, sync_mounted_directories,
+    attach_serial_device, create_audio, load_disks, load_mounted_directories, load_program_or_boot,
+    sync_mounted_directories,
 };
 use std::fs::File;
 use std::panic;
@@ -88,13 +88,11 @@ fn main() -> Result<()> {
         (Box::new(NullJoystick), None)
     };
 
-    // Initialize speaker BEFORE video so ALSA messages appear before alternate screen
-    let speaker = create_speaker(!cli.common.disable_pc_speaker);
+    // Initialize audio BEFORE video so ALSA messages appear before alternate screen
+    let (speaker, adlib_card, _audio_output) =
+        create_audio(!cli.common.disable_pc_speaker, &cli.common.sound_card);
 
-    // Initialize AdLib (OPL2) audio output
-    let adlib = create_adlib(&cli.common.sound_card);
-
-    // Video init switches to alternate screen - must come after speaker init
+    // Video init switches to alternate screen - must come after audio init
     let video = TerminalVideo::new();
 
     let clock = Box::new(NativeClock);
@@ -113,11 +111,9 @@ fn main() -> Result<()> {
     );
 
     // Connect AdLib sound card if available.
-    // _adlib_sink must stay alive until end of main() to keep Rodio playing.
-    let _adlib_sink = adlib.map(|(card, sink)| {
+    if let Some(card) = adlib_card {
         computer.set_sound_card(card);
-        sink
-    });
+    }
 
     // Load disks and program/boot
     load_disks(

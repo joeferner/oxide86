@@ -3,12 +3,12 @@ use anyhow::Result;
 use crate::{
     Bios, Bus, Clock, CpuType, DriveNumber, MouseInput, NullVideoController, SerialDevice,
     SpeakerOutput, Video, VideoCardType, VideoController,
+    audio::SoundCard,
     cpu::{Cpu, bios::KeyPress},
     io::IoDevice,
     joystick::JoystickInput,
     keyboard::KeyboardInput,
     memory::{self, Memory},
-    audio::SoundCard,
     video::text::TextBuffer,
 };
 

@@ -191,7 +191,7 @@ function runLoop(): void {
         if (adlibAudioRef.current) {
             const { context, node } = adlibAudioRef.current;
             // 16 ms frame * sampleRate / 1000, plus 64-sample margin for timing variance
-            const frameSize = Math.ceil(context.sampleRate * 16 / 1000) + 64;
+            const frameSize = Math.ceil((context.sampleRate * 16) / 1000) + 64;
             const samples = comp.get_adlib_samples(frameSize);
             node.port.postMessage(samples, [samples.buffer]);
         }
