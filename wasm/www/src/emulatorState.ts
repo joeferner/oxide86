@@ -7,6 +7,19 @@ export interface PerformanceStats {
     actual: number;
 }
 
+interface SoundCardSamplesMessage {
+    type: 'samples';
+    samples: Float32Array;
+}
+
+interface SoundCardStatsMessage {
+    type: 'stats';
+    underrunCount: number;
+    nonzeroCount: number;
+    totalCount: number;
+    backlog: number;
+}
+
 // Module-level signals — always current, no stale closures
 export const computer = signal<Emu86Computer | null>(null);
 export const status = signal('Initializing...');
@@ -46,14 +59,20 @@ class SoundCardProcessor extends AudioWorkletProcessor {
         super();
         this._buf = new Float32Array(0);
         this._pos = 0;
+        this._underrunCount = 0;
+        this._nonzeroCount = 0;
+        this._totalCount = 0;
+        this._logInterval = sampleRate; // report ~once per second
         this.port.onmessage = (e) => {
-            const incoming = e.data;
-            const remaining = this._buf.length - this._pos;
-            const merged = new Float32Array(remaining + incoming.length);
-            merged.set(this._buf.subarray(this._pos));
-            merged.set(incoming, remaining);
-            this._buf = merged;
-            this._pos = 0;
+            if (e.data && e.data.type === 'samples') {
+                const incoming = e.data.samples;
+                const remaining = this._buf.length - this._pos;
+                const merged = new Float32Array(remaining + incoming.length);
+                merged.set(this._buf.subarray(this._pos));
+                merged.set(incoming, remaining);
+                this._buf = merged;
+                this._pos = 0;
+            }
         };
     }
     process(_inputs, outputs) {
@@ -63,7 +82,27 @@ class SoundCardProcessor extends AudioWorkletProcessor {
         const n = Math.min(out.length, avail);
         out.set(this._buf.subarray(this._pos, this._pos + n));
         this._pos += n;
+        const padded = out.length - n;
         for (let i = n; i < out.length; i++) out[i] = 0;
+
+        this._underrunCount += padded;
+        this._totalCount += out.length;
+        for (let i = 0; i < n; i++) {
+            if (Math.abs(out[i]) > 1e-6) this._nonzeroCount++;
+        }
+
+        if (this._totalCount >= this._logInterval) {
+            this.port.postMessage({
+                type: 'stats',
+                underrunCount: this._underrunCount,
+                nonzeroCount: this._nonzeroCount,
+                totalCount: this._totalCount,
+                backlog: this._buf.length - this._pos,
+            });
+            this._underrunCount = 0;
+            this._nonzeroCount = 0;
+            this._totalCount = 0;
+        }
         return true;
     }
 }
@@ -88,6 +127,26 @@ async function setupSoundCardAudio(comp: Emu86Computer): Promise<void> {
         URL.revokeObjectURL(url);
         const node = new AudioWorkletNode(context, 'sound-card-processor');
         node.connect(context.destination);
+        node.port.onmessage = (e: MessageEvent<SoundCardStatsMessage>) => {
+            if (e.data?.type !== 'stats') {
+                return;
+            }
+            const { underrunCount, nonzeroCount, totalCount, backlog } = e.data;
+            if (underrunCount > 0) {
+                console.debug(
+                    `[Sound Card] Underrun: ${underrunCount} silence samples in last ~1s (audio thread starved)`
+                );
+            }
+            const overrunThresholdSamples = sampleRate / 2; // 500 ms backlog
+            if (backlog > overrunThresholdSamples) {
+                console.warn(
+                    `[Sound Card] Overrun: ${backlog} samples backlogged (~${((backlog / sampleRate) * 1000).toFixed(0)} ms)`
+                );
+            }
+            console.debug(
+                `[Sound Card] PCM: ${nonzeroCount}/${totalCount} non-zero (${((100 * nonzeroCount) / totalCount).toFixed(1)}%), backlog: ${backlog} samples`
+            );
+        };
         sourceCardAudioRef.current = { context, node };
         console.log(`[Sound Card] AudioWorklet initialized: ${sampleRate} Hz`);
     } catch (err) {
@@ -195,7 +254,8 @@ function runLoop(): void {
             // 16 ms frame * sampleRate / 1000, plus 64-sample margin for timing variance
             const frameSize = Math.ceil((context.sampleRate * 16) / 1000) + 64;
             const samples = comp.get_sound_card_samples(frameSize);
-            node.port.postMessage(samples, [samples.buffer]);
+            const msg: SoundCardSamplesMessage = { type: 'samples', samples };
+            node.port.postMessage(msg, [samples.buffer]);
         }
 
         if (!stillRunning) {

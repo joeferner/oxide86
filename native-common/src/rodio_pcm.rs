@@ -64,7 +64,7 @@ impl Iterator for PcmSource {
         // Log once per second (44100 samples)
         if self.log_samples >= 44100 {
             if self.underrun_count > 0 {
-                log::debug!(
+                log::warn!(
                     "[PCM] Rodio: underrun — {} silence samples in the last ~1s (ring buffer ran dry)",
                     self.underrun_count
                 );

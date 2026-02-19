@@ -90,8 +90,11 @@ fn main() -> Result<()> {
 
     // Initialize audio BEFORE video so ALSA messages appear before alternate screen
     let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
-    let (speaker, sound_card, _audio_output) =
-        create_audio(!cli.common.disable_pc_speaker, &cli.common.sound_card, clock_hz);
+    let (speaker, sound_card, _audio_output) = create_audio(
+        !cli.common.disable_pc_speaker,
+        &cli.common.sound_card,
+        clock_hz,
+    );
 
     // Video init switches to alternate screen - must come after audio init
     let video = TerminalVideo::new();
