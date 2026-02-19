@@ -863,10 +863,10 @@ fn create_computer(
         },
     );
 
-    // Connect AdLib ring buffer if audio output is available.
+    // Connect AdLib sound card if available.
     // _adlib_sink must stay alive until end of run() to keep Rodio playing.
-    let _adlib_sink = adlib.map(|(buf, sink)| {
-        computer.set_adlib_buffer(buf);
+    let _adlib_sink = adlib.map(|(card, sink)| {
+        computer.set_sound_card(card);
         sink
     });
 

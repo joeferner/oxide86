@@ -4,7 +4,7 @@ mod pit;
 mod system_control_port;
 
 use crate::joystick::JoystickInput;
-use crate::sound::opl2::Opl2;
+use crate::sound::{NullSoundCard, SoundCard};
 use crate::video::Video;
 use cga_ports::CgaModeControl;
 use joystick_port::JoystickPort;
@@ -26,8 +26,8 @@ pub struct IoDevice {
     current_cycle: u64,
     /// CGA Mode Control Register (port 3D8h)
     cga_mode_control: CgaModeControl,
-    /// OPL2 / AdLib FM synthesizer (ports 388h-389h)
-    opl2: Opl2,
+    /// Sound card (ports depend on card type; AdLib uses 388h-389h)
+    sound_card: Box<dyn SoundCard>,
     /// Keyboard controller data port (port 60h) - stores last scan code
     keyboard_scan_code: u8,
     /// ASCII code corresponding to the last scan code (for BIOS INT 09h handler)
@@ -76,7 +76,7 @@ impl IoDevice {
             joystick: JoystickPort::new(joystick),
             current_cycle: 0,
             cga_mode_control: CgaModeControl::new(),
-            opl2: Opl2::new(),
+            sound_card: Box::new(NullSoundCard),
             keyboard_scan_code: 0x00,
             keyboard_ascii_code: 0x00,
             keyboard_status: 0x14, // Bit 2: system flag, bit 4: command/data (ready for commands)
@@ -201,8 +201,8 @@ impl IoDevice {
                 }
             }
 
-            // AdLib / OPL2 status register (same value on both ports)
-            0x388 | 0x389 => self.opl2.read_status(),
+            // Sound card ports (AdLib: 388h-389h)
+            0x388 | 0x389 => self.sound_card.read_port(port),
 
             // Joystick port
             0x201 => self.joystick.read(self.current_cycle),
@@ -479,13 +479,9 @@ impl IoDevice {
                 }
             }
 
-            // AdLib / OPL2 address port
-            0x388 => {
-                self.opl2.write_address(value);
-            }
-            // AdLib / OPL2 data port
-            0x389 => {
-                self.opl2.write_data(value);
+            // Sound card ports (AdLib: 388h-389h)
+            0x388 | 0x389 => {
+                self.sound_card.write_port(port, value);
             }
 
             // Joystick port - fire one-shots
@@ -544,9 +540,19 @@ impl IoDevice {
         self.keyboard_ascii_code
     }
 
-    /// Get mutable reference to the OPL2 chip (for AdLib sample generation)
-    pub fn opl2_mut(&mut self) -> &mut Opl2 {
-        &mut self.opl2
+    /// Set the sound card. Call before starting emulation.
+    pub fn set_sound_card(&mut self, card: Box<dyn SoundCard>) {
+        self.sound_card = card;
+    }
+
+    /// Advance the sound card by `cpu_cycles` and accumulate samples.
+    pub fn tick_sound_card(&mut self, cpu_cycles: u64) {
+        self.sound_card.tick(cpu_cycles);
+    }
+
+    /// Pop `count` samples from the sound card's internal buffer.
+    pub fn pop_sound_card_samples(&mut self, count: usize) -> Vec<f32> {
+        self.sound_card.pop_samples(count)
     }
 
     /// Check if A20 line is enabled (bit 1 of keyboard controller output port)
@@ -580,6 +586,6 @@ impl IoDevice {
         self.ega_sequencer_regs[2] = 0x0F; // Map Mask default
         self.ega_graphics_index = 0;
         self.ega_graphics_regs = [0u8; 16];
-        self.opl2 = Opl2::new();
+        self.sound_card.reset();
     }
 }

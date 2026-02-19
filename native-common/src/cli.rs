@@ -84,6 +84,6 @@ pub struct CommonCli {
     pub disable_pc_speaker: bool,
 
     /// Sound card to emulate (none, adlib)
-    #[arg(long = "sound-card", default_value = "none")]
+    #[arg(long = "sound-card", default_value = "adlib")]
     pub sound_card: String,
 }

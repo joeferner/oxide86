@@ -6,6 +6,7 @@ import {
     CPU_OPTIONS,
     EmulatorConfig,
     MEMORY_OPTIONS,
+    SOUND_CARD_OPTIONS,
     VIDEO_CARD_OPTIONS,
 } from './ConfigDialog.consts';
 
@@ -34,6 +35,7 @@ function ConfigForm({
     const joystickA = useSignal(currentConfig.joystickA);
     const joystickB = useSignal(currentConfig.joystickB);
     const audioEnabled = useSignal(currentConfig.audioEnabled);
+    const soundCard = useSignal(currentConfig.soundCard);
     const physicalGamepads = useSignal<number>(0);
 
     // Poll for physical gamepads while dialog is open
@@ -59,6 +61,7 @@ function ConfigForm({
             joystickA: joystickA.value,
             joystickB: joystickB.value,
             audioEnabled: audioEnabled.value,
+            soundCard: soundCard.value,
         });
         onClose();
     };
@@ -186,13 +189,25 @@ function ConfigForm({
                         <Text size="sm" fw={500} mb={4}>
                             Audio
                         </Text>
-                        <Checkbox
-                            label="PC Speaker"
-                            checked={audioEnabled.value}
-                            onChange={(e) => {
-                                audioEnabled.value = e.currentTarget.checked;
-                            }}
-                        />
+                        <Stack gap="xs">
+                            <Checkbox
+                                label="PC Speaker"
+                                checked={audioEnabled.value}
+                                onChange={(e) => {
+                                    audioEnabled.value = e.currentTarget.checked;
+                                }}
+                            />
+                            <Select
+                                label="Sound Card"
+                                data={SOUND_CARD_OPTIONS}
+                                value={soundCard.value}
+                                onChange={(v) => {
+                                    if (v) {
+                                        soundCard.value = v;
+                                    }
+                                }}
+                            />
+                        </Stack>
                     </div>
                 </Grid.Col>
 

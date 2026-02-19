@@ -257,6 +257,14 @@ impl Emu86Computer {
             },
         );
 
+        // Configure sound card
+        let sound_card_str = config.sound_card.unwrap_or_default();
+        if matches!(sound_card_str.to_lowercase().trim(), "adlib" | "adl") {
+            use emu86_core::sound::adlib::Adlib;
+            computer.set_sound_card(Box::new(Adlib::new()));
+            log::info!("AdLib (OPL2) sound card configured");
+        }
+
         // Configure COM ports based on configuration
         let com1_device_str = config.com1_device.unwrap_or_else(|| "mouse".to_string());
         let com2_device_str = config.com2_device.unwrap_or_else(|| "null".to_string());
@@ -1066,17 +1074,16 @@ impl Emu86Computer {
     /// Enable AdLib (OPL2) audio output.
     ///
     /// Call this after the user has interacted with the page (required by browser
-    /// autoplay policy). Creates an AdLib ring buffer in the computer and returns
-    /// the sample rate to use for the ScriptProcessorNode.
+    /// autoplay policy) to satisfy the Web Audio API autoplay policy.
+    /// The AdLib sound card is already configured at construction time when
+    /// `sound_card: "adlib"` is set in the config.
     ///
     /// # Returns
-    /// Sample rate in Hz (44100). Wire this to `AudioContext.sampleRate`.
+    /// Sample rate in Hz (44100). Wire this to `AudioContext({ sampleRate })`.
     #[wasm_bindgen]
     pub fn enable_adlib(&mut self) -> u32 {
-        use emu86_core::sound::adlib::{ADLIB_SAMPLE_RATE, AdlibRingBuffer};
-        let buf = AdlibRingBuffer::new(ADLIB_SAMPLE_RATE as usize / 10);
-        self.computer.set_adlib_buffer(buf);
-        log::info!("AdLib (OPL2) enabled for WASM");
+        use emu86_core::sound::adlib::ADLIB_SAMPLE_RATE;
+        log::info!("AdLib (OPL2) audio output enabled for WASM");
         ADLIB_SAMPLE_RATE
     }
 }

@@ -1,11 +1,11 @@
-use emu86_core::sound::adlib::{ADLIB_SAMPLE_RATE, AdlibRingBuffer};
+use emu86_core::sound::adlib::{ADLIB_SAMPLE_RATE, AdlibConsumer};
 use rodio::stream::OutputStream;
 use rodio::{OutputStreamBuilder, Sink, Source};
 use std::time::Duration;
 
-/// Rodio audio source that pulls PCM samples from an AdLib ring buffer.
+/// Rodio audio source that pulls PCM samples from an AdLib consumer handle.
 struct AdlibSource {
-    buffer: AdlibRingBuffer,
+    consumer: AdlibConsumer,
 }
 
 impl Iterator for AdlibSource {
@@ -13,7 +13,7 @@ impl Iterator for AdlibSource {
 
     fn next(&mut self) -> Option<f32> {
         // pop_samples already pads with 0.0 on underrun
-        Some(self.buffer.pop_samples(1).remove(0))
+        Some(self.consumer.pop_samples(1).remove(0))
     }
 }
 
@@ -46,14 +46,14 @@ pub struct RodioAdlib {
 }
 
 impl RodioAdlib {
-    /// Create a new AdLib audio output connected to `buffer`.
+    /// Create a new AdLib audio output connected to `consumer`.
     /// Returns an error if the audio device is unavailable.
-    pub fn new(buffer: AdlibRingBuffer) -> Result<Self, String> {
+    pub fn new(consumer: AdlibConsumer) -> Result<Self, String> {
         let stream = OutputStreamBuilder::open_default_stream()
             .map_err(|e| format!("AdLib audio device unavailable: {}", e))?;
 
         let sink = Sink::connect_new(stream.mixer());
-        sink.append(AdlibSource { buffer });
+        sink.append(AdlibSource { consumer });
         // Sink starts playing immediately (no pause needed — silence is just 0.0 samples)
 
         Ok(Self {

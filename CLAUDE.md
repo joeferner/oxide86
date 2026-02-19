@@ -194,6 +194,54 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 3. Return boxed implementation from platform initialization
 4. Provide fallback to `NullSpeaker` on initialization failure
 
+### AdLib Sound Card (OPL2 FM Synthesis)
+
+**Hardware Overview:**
+- Yamaha YM3812 (OPL2) FM synthesizer chip on AdLib Music Synthesizer Card (1987)
+- 9 FM channels, 2 operators each (18 operators total)
+- Ports: 0x388 (address/status), 0x389 (data)
+- Standard AdLib detection: write timer values, read status, check flags
+
+**Implementation (`core/src/sound/`):**
+- `opl2.rs` — hand-rolled OPL2 emulator: ADSR envelopes, 4 waveforms, tremolo/vibrato LFOs, timers
+  - Internal rate: 49716 Hz, downsampled to 44100 Hz output
+  - `generate_samples(cpu_cycles, out)` — produces f32 PCM samples
+- `adlib.rs` — `Adlib` struct: owns `Opl2` + `Arc<Mutex<VecDeque<f32>>>` ring buffer. Implements `SoundCard`.
+  - `Adlib::consumer()` — returns `AdlibConsumer` handle (cloneable, for native audio thread)
+  - `AdlibConsumer::pop_samples()` — drains samples from the shared ring buffer
+- `mod.rs` — `SoundCard` trait (`write_port`, `read_port`, `port_ranges`, `tick`, `pop_samples`, `reset`), `NullSoundCard`, `SoundCardType` enum
+
+**I/O Routing (`core/src/io/mod.rs`):**
+- `IoDevice` holds `sound_card: Box<dyn SoundCard>` (default: `NullSoundCard`)
+- Port 0x388/0x389 reads/writes routed through `sound_card.read_port()` / `sound_card.write_port()`
+- `IoDevice::set_sound_card(card)` — installs a new sound card
+- `IoDevice::tick_sound_card(cycles)` — advances chip and accumulates samples
+- `IoDevice::pop_sound_card_samples(count)` — drains samples for audio output
+
+**Computer Integration (`core/src/computer.rs`):**
+- `set_sound_card(card: Box<dyn SoundCard>)` — delegates to `io_device.set_sound_card()`
+- `get_adlib_samples(count)` — delegates to `io_device.pop_sound_card_samples()`
+- Every instruction: `io_device.tick_sound_card(cycles)` (always; NullSoundCard is a no-op)
+
+**CLI Usage:**
+```bash
+cargo run -p emu86-native-gui -- --sound-card adlib test-programs/audio/adlib_detection.com
+cargo run -p emu86-native-gui -- --sound-card adlib --boot --floppy-a dos.img
+```
+
+**Native Platform (`native-common/src/`):**
+- `setup.rs::create_adlib(sound_card)` — creates `Adlib`, gets `AdlibConsumer` handle, boxes into `Box<dyn SoundCard>`, returns `(card, RodioAdlib)`
+- Caller: `computer.set_sound_card(card)`, keep `_adlib_sink` alive in `main()` scope
+- `rodio_adlib.rs::RodioAdlib` — Rodio `Sink` with `AdlibSource` draining via `AdlibConsumer`
+
+**WASM Platform:**
+- Sound card created at `Emu86Computer::new()` when `sound_card: "adlib"` is in config
+- `enable_adlib() -> u32` — satisfies browser autoplay policy; returns sample rate (44100)
+- `get_adlib_samples(count) -> Float32Array` — pops samples from the Adlib's internal buffer
+- `wasm/www/src/emulatorState.ts`: `setupAdlibAudio()` creates AudioWorklet at 44100 Hz; posts 2048 samples/frame via MessagePort
+
+**Test Program:** `test-programs/audio/adlib_detection.asm` — IBM AdLib detection + two-note playback
+
 ### Keyboard Controller / A20 Line
 
 **Hardware Overview:**

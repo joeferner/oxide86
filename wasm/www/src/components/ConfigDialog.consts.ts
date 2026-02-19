@@ -8,18 +8,20 @@ export interface EmulatorConfig {
     joystickA: boolean;
     joystickB: boolean;
     audioEnabled: boolean;
+    soundCard: string;
 }
 
 export const DEFAULT_CONFIG: EmulatorConfig = {
     cpuType: '8086',
     memoryKb: 640,
     clockMhz: 4.77,
-    videoCard: 'ega',
+    videoCard: 'vga',
     com1Device: 'mouse',
     com2Device: 'null',
     joystickA: false,
     joystickB: false,
     audioEnabled: true,
+    soundCard: 'adlib',
 };
 
 export const CPU_OPTIONS = [
@@ -56,6 +58,11 @@ export const VIDEO_CARD_OPTIONS = [
     { value: 'cga', label: 'CGA (text + 4-color graphics)' },
     { value: 'ega', label: 'EGA (CGA + 16-color graphics)' },
     { value: 'vga', label: 'VGA (EGA + VGA modes)' },
+];
+
+export const SOUND_CARD_OPTIONS = [
+    { value: 'none', label: 'None' },
+    { value: 'adlib', label: 'AdLib (OPL2 FM Synthesis)' },
 ];
 
 export const COM_PORT_OPTIONS = [

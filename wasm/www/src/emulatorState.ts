@@ -21,6 +21,8 @@ const animationFrameRef = { current: null as number | null };
 const wasmInitializedRef = { current: false };
 // Maps physical gamepad index → emulator joystick slot (0=A, 1=B)
 const gamepadSlotsRef = { current: new Map<number, number>() };
+// AdLib Web Audio state
+const adlibAudioRef = { current: null as { context: AudioContext; node: AudioWorkletNode } | null };
 
 function createComputer(cfg: EmulatorConfig): Emu86Computer {
     return new Emu86Computer({
@@ -32,7 +34,66 @@ function createComputer(cfg: EmulatorConfig): Emu86Computer {
         com1_device: cfg.com1Device,
         com2_device: cfg.com2Device,
         audio_enabled: cfg.audioEnabled,
+        sound_card: cfg.soundCard,
     });
+}
+
+// AudioWorklet processor as an inline Blob — no separate file or bundler config needed.
+// The worklet maintains a Float32Array ring buffer fed via MessagePort from the main thread.
+const ADLIB_WORKLET_CODE = `
+class AdlibProcessor extends AudioWorkletProcessor {
+    constructor() {
+        super();
+        this._buf = new Float32Array(0);
+        this._pos = 0;
+        this.port.onmessage = (e) => {
+            const incoming = e.data;
+            const remaining = this._buf.length - this._pos;
+            const merged = new Float32Array(remaining + incoming.length);
+            merged.set(this._buf.subarray(this._pos));
+            merged.set(incoming, remaining);
+            this._buf = merged;
+            this._pos = 0;
+        };
+    }
+    process(_inputs, outputs) {
+        const out = outputs[0][0];
+        if (!out) return true;
+        const avail = this._buf.length - this._pos;
+        const n = Math.min(out.length, avail);
+        out.set(this._buf.subarray(this._pos, this._pos + n));
+        this._pos += n;
+        for (let i = n; i < out.length; i++) out[i] = 0;
+        return true;
+    }
+}
+registerProcessor('adlib-processor', AdlibProcessor);
+`;
+
+async function setupAdlibAudio(comp: Emu86Computer): Promise<void> {
+    teardownAdlibAudio();
+    try {
+        const sampleRate = comp.enable_adlib();
+        const context = new AudioContext({ sampleRate });
+        const blob = new Blob([ADLIB_WORKLET_CODE], { type: 'application/javascript' });
+        const url = URL.createObjectURL(blob);
+        await context.audioWorklet.addModule(url);
+        URL.revokeObjectURL(url);
+        const node = new AudioWorkletNode(context, 'adlib-processor');
+        node.connect(context.destination);
+        adlibAudioRef.current = { context, node };
+        console.log(`[adlib] AudioWorklet initialized: ${sampleRate} Hz`);
+    } catch (err) {
+        console.error('[adlib] Failed to initialize AudioWorklet:', err);
+    }
+}
+
+function teardownAdlibAudio(): void {
+    if (adlibAudioRef.current) {
+        adlibAudioRef.current.node.disconnect();
+        void adlibAudioRef.current.context.close();
+        adlibAudioRef.current = null;
+    }
 }
 
 function setJoystickConnectedSlot(comp: Emu86Computer | null | undefined, slot: number, connected: boolean): void {
@@ -118,6 +179,12 @@ function runLoop(): void {
         const stillRunning = comp.run_for_ms(16, window.performance.now());
         updatePerformance();
 
+        // Push AdLib samples to AudioWorklet (2048 samples ≈ 46ms at 44100 Hz)
+        if (adlibAudioRef.current) {
+            const samples = comp.get_adlib_samples(2048);
+            adlibAudioRef.current.node.port.postMessage(samples, [samples.buffer]);
+        }
+
         if (!stillRunning) {
             isRunning.value = false;
             status.value = 'CPU halted';
@@ -166,6 +233,11 @@ export async function initEmulator(canvasEl: HTMLCanvasElement): Promise<void> {
             if (gp && !gamepadSlotsRef.current.has(gp.index)) {
                 assignGamepad(gp.index);
             }
+        }
+
+        // Set up AdLib audio if configured
+        if (cfg.soundCard === 'adlib') {
+            void setupAdlibAudio(comp);
         }
 
         computer.value = comp;
@@ -253,6 +325,9 @@ export function applyConfig(cfg: EmulatorConfig): void {
         animationFrameRef.current = null;
     }
 
+    // Tear down AdLib audio before recreating
+    teardownAdlibAudio();
+
     // Clear gamepad assignments and connection state; they'll be re-assigned below
     gamepadSlotsRef.current.clear();
     joystickConnected.value = [false, false];
@@ -268,6 +343,11 @@ export function applyConfig(cfg: EmulatorConfig): void {
             if (gp && !gamepadSlotsRef.current.has(gp.index)) {
                 assignGamepad(gp.index);
             }
+        }
+
+        // Set up AdLib audio if configured
+        if (cfg.soundCard === 'adlib') {
+            void setupAdlibAudio(comp);
         }
 
         computer.value = comp;

@@ -19,7 +19,7 @@ pub use crate::mouse::{MouseInput, MouseState, NullMouse};
 pub use crate::serial_logger::SerialLogger;
 pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
-pub use crate::sound::adlib::AdlibRingBuffer;
+pub use crate::sound::adlib::{ADLIB_SAMPLE_RATE, Adlib, AdlibConsumer};
 pub use crate::sound::{NullSoundCard, SoundCard, SoundCardType};
 pub use crate::speaker::{NullSpeaker, SpeakerOutput};
 pub use crate::video::{
