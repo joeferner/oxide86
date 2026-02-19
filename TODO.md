@@ -17,6 +17,7 @@
 - [ ] WASM add additional hard drive support, move B: into an Accordion with additional hard drives
 - [ ] Clean up handle_bios_interrupt_direct, pending_int15_4f, interrupt chaining, etc
 - [ ] Install SvarDOS (open source dos)
+- [ ] Audio - Getting Rodio: underrun when running native-gui applications
 - [ ] Joystick
   - [X] Test Wasm
   - [ ] Test Native GUI

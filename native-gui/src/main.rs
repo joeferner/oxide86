@@ -309,8 +309,12 @@ fn step_emulator(
         // We compare get_cycle_count() (which tracks actual instruction cycles) against the
         // target after every step, so the emulator advances the correct number of CPU cycles
         // regardless of instruction mix (NOPs at 3 cycles, LOOPs at 17, etc.).
-        const MAX_CYCLES_PER_FRAME: u64 = 100_000;
-        let frame_target = target_cycles.min(current_cycles + MAX_CYCLES_PER_FRAME);
+        //
+        // The cap is ~1.5 frames worth of cycles at the target clock speed so the audio ring
+        // buffer stays full regardless of clock speed, while still bounding the per-frame
+        // compute time to ≲25 ms (invisible to the user at 60 fps).
+        let max_cycles_per_frame = (25_000_000u64 / nanos_per_cycle).max(100_000);
+        let frame_target = target_cycles.min(current_cycles + max_cycles_per_frame);
 
         while computer.get_cycle_count() < frame_target {
             if computer.is_halted() {
