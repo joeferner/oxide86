@@ -1,5 +1,10 @@
 use std::fmt::{Debug, Display};
 
+pub use crate::audio::adlib::{ADLIB_SAMPLE_RATE, Adlib, AdlibConsumer};
+pub use crate::audio::{
+    NullSoundCard, SoundCard, SoundCardType,
+    speaker::{NullSpeaker, SpeakerOutput},
+};
 pub use crate::bus::Bus;
 pub use crate::clock::{Clock, LocalDate, LocalTime};
 pub use crate::cpu::bios::{Bios, DosDevice, DriveParams, KeyPress, SharedBiosState};
@@ -19,9 +24,6 @@ pub use crate::mouse::{MouseInput, MouseState, NullMouse};
 pub use crate::serial_logger::SerialLogger;
 pub use crate::serial_mouse::SerialMouse;
 pub use crate::serial_port::{SerialDevice, SerialParams, SerialPortController, SerialStatus};
-pub use crate::sound::adlib::{ADLIB_SAMPLE_RATE, Adlib, AdlibConsumer};
-pub use crate::sound::{NullSoundCard, SoundCard, SoundCardType};
-pub use crate::speaker::{NullSpeaker, SpeakerOutput};
 pub use crate::video::{
     CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, CursorPosition, NullVideoController, Video,
     VideoController, VideoMode, colors,
@@ -31,6 +33,7 @@ pub use computer::{Computer, ComputerConfig};
 pub use font::Cp437Font;
 pub use palette::TextModePalette;
 
+pub mod audio;
 pub mod bus;
 pub mod clock;
 pub mod computer;
@@ -51,8 +54,6 @@ pub mod peripheral;
 pub mod serial_logger;
 pub mod serial_mouse;
 pub mod serial_port;
-pub mod sound;
-pub mod speaker;
 pub mod utils;
 pub mod video;
 pub mod video_card_type;

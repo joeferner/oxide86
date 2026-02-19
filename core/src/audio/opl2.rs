@@ -6,7 +6,7 @@
 /// I/O ports:
 ///   0x388 — Address port (write) / Status register (read)
 ///   0x389 — Data port (write) / Status register (read)
-use crate::sound::adlib::ADLIB_SAMPLE_RATE;
+use crate::audio::adlib::ADLIB_SAMPLE_RATE;
 use std::sync::OnceLock;
 
 // --- Constants ---

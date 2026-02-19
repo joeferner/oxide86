@@ -260,7 +260,7 @@ impl Emu86Computer {
         // Configure sound card
         let sound_card_str = config.sound_card.unwrap_or_default();
         if matches!(sound_card_str.to_lowercase().trim(), "adlib" | "adl") {
-            use emu86_core::sound::adlib::Adlib;
+            use emu86_core::audio::adlib::Adlib;
             computer.set_sound_card(Box::new(Adlib::new()));
             log::info!("AdLib (OPL2) sound card configured");
         }
@@ -1082,7 +1082,7 @@ impl Emu86Computer {
     /// Sample rate in Hz (44100). Wire this to `AudioContext({ sampleRate })`.
     #[wasm_bindgen]
     pub fn enable_adlib(&mut self) -> u32 {
-        use emu86_core::sound::adlib::ADLIB_SAMPLE_RATE;
+        use emu86_core::audio::adlib::ADLIB_SAMPLE_RATE;
         log::info!("AdLib (OPL2) audio output enabled for WASM");
         ADLIB_SAMPLE_RATE
     }

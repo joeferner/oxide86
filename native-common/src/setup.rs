@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use emu86_core::sound::adlib::{ADLIB_SAMPLE_RATE, Adlib};
+use emu86_core::audio::adlib::{ADLIB_SAMPLE_RATE, Adlib};
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
     BackedDisk, Computer, DiskController, DriveNumber, MouseInput, NullSpeaker, PartitionedDisk,

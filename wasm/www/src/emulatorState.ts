@@ -75,6 +75,11 @@ async function setupAdlibAudio(comp: Emu86Computer): Promise<void> {
     try {
         const sampleRate = comp.enable_adlib();
         const context = new AudioContext({ sampleRate });
+        if (!context.audioWorklet) {
+            console.warn('[adlib] AudioWorklet not available (requires HTTPS or localhost); AdLib audio disabled');
+            void context.close();
+            return;
+        }
         const blob = new Blob([ADLIB_WORKLET_CODE], { type: 'application/javascript' });
         const url = URL.createObjectURL(blob);
         await context.audioWorklet.addModule(url);

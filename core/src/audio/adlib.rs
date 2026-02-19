@@ -1,5 +1,5 @@
-use crate::sound::SoundCard;
-use crate::sound::opl2::Opl2;
+use crate::audio::SoundCard;
+use crate::audio::opl2::Opl2;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 

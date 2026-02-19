@@ -1,4 +1,4 @@
-use emu86_core::sound::adlib::{ADLIB_SAMPLE_RATE, AdlibConsumer};
+use emu86_core::audio::adlib::{ADLIB_SAMPLE_RATE, AdlibConsumer};
 use rodio::stream::OutputStream;
 use rodio::{OutputStreamBuilder, Sink, Source};
 use std::time::Duration;

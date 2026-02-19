@@ -5,6 +5,7 @@
 
 pub mod adlib;
 pub mod opl2;
+pub mod speaker;
 
 /// Platform-independent interface for a sound card emulation.
 ///

@@ -8,7 +8,7 @@ use crate::{
     joystick::JoystickInput,
     keyboard::KeyboardInput,
     memory::{self, Memory},
-    sound::SoundCard,
+    audio::SoundCard,
     video::text::TextBuffer,
 };
 
