@@ -22,6 +22,8 @@ struct PcmSource {
     log_samples: u32,
     /// Non-zero samples in the current log window
     log_nonzero: u32,
+    /// Underrun samples (zeros from empty ring buffer) since last log
+    underrun_count: u32,
 }
 
 impl PcmSource {
@@ -32,6 +34,7 @@ impl PcmSource {
             batch_pos: BATCH_SIZE, // start exhausted so first next() triggers a refill
             log_samples: 0,
             log_nonzero: 0,
+            underrun_count: 0,
         }
     }
 }
@@ -43,7 +46,10 @@ impl Iterator for PcmSource {
         // Refill from ring buffer when the local batch is exhausted.
         // This is the only point where the mutex is acquired.
         if self.batch_pos >= BATCH_SIZE {
-            self.consumer.drain_into(self.batch.as_mut());
+            let available = self.consumer.drain_into(self.batch.as_mut());
+            if available < BATCH_SIZE {
+                self.underrun_count += (BATCH_SIZE - available) as u32;
+            }
             self.batch_pos = 0;
         }
 
@@ -57,6 +63,12 @@ impl Iterator for PcmSource {
 
         // Log once per second (44100 samples)
         if self.log_samples >= 44100 {
+            if self.underrun_count > 0 {
+                log::debug!(
+                    "[PCM] Rodio: underrun — {} silence samples in the last ~1s (ring buffer ran dry)",
+                    self.underrun_count
+                );
+            }
             log::debug!(
                 "[PCM] Rodio: {}/{} samples non-zero ({:.1}%), ring buffer available: {}",
                 self.log_nonzero,
@@ -66,6 +78,7 @@ impl Iterator for PcmSource {
             );
             self.log_samples = 0;
             self.log_nonzero = 0;
+            self.underrun_count = 0;
         }
 
         Some(sample)
