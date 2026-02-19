@@ -111,7 +111,7 @@ function App(): React.ReactElement {
     return (
         <Container size="xl" p="md">
             <Group justify="space-between" mb="md">
-                <Title order={1}>emu86 - Intel 8086 Emulator</Title>
+                <Title order={1}><img src="/logo.png" alt="logo"/> Oxide86 - Rust-powered x86 Emulation</Title>
                 <Button
                     variant="default"
                     leftSection="⚙"

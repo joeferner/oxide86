@@ -226,7 +226,8 @@ impl Operator {
                 }
             }
             EnvPhase::Decay => {
-                let sustain_level = (15 - self.sustain as u32) * 68; // 0..1020
+                // SL=0 → sustain at peak (env_level 0); SL=15 → sustain near-silent (env_level 1020)
+                let sustain_level = self.sustain as u32 * 68; // 0..1020
                 let inc = env_increment(self.decay);
                 self.env_level = (self.env_level + inc).min(sustain_level);
                 if self.env_level >= sustain_level {
@@ -650,9 +651,10 @@ impl Opl2 {
 
         self.advance_lfos();
 
-        // Normalize: 9 channels × 32767 max = 294,903. Clamp then scale.
-        let clamped = mix.clamp(-32767 * 9, 32767 * 9);
-        clamped as f32 / (32767.0 * 9.0)
+        // Normalize to [-1.0, 1.0]. Clamp at ±32767 (single-channel max) before
+        // scaling so one channel at full amplitude = 1.0. Sums from multiple
+        // simultaneous channels will clip, which is acceptable for the common case.
+        mix.clamp(-32767, 32767) as f32 / 32767.0
     }
 
     /// Advance chip state by `cpu_cycles` and append resampled PCM to `out`.
