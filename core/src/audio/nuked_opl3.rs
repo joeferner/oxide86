@@ -443,7 +443,7 @@ pub(crate) fn envelope_calc(chip: &mut Opl3Chip, slot_idx: usize) {
     // Output attenuation: raw envelope + TL + KSL + tremolo.
     slot.eg_out = (slot.eg_rout as u32
         + ((slot.reg_tl as u32) << 2)
-        + (slot.eg_ksl >> KSLSHIFT[slot.reg_ksl as usize]) as u32
+        + ((slot.eg_ksl as u32) >> KSLSHIFT[slot.reg_ksl as usize])
         + trem as u32) as u16;
 
     let mut reset = false;
