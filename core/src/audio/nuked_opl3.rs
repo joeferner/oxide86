@@ -1362,8 +1362,23 @@ pub(crate) fn generate_4ch(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
     }
     chip.eg_state ^= 1;
 
-    // Write buffer: drain timed register writes queued by write_reg_buffered.
-    // Enabled in Public API step once write_reg is implemented.
+    // Write buffer: drain any pending register writes up to this sample count.
+    // Ported from the tail of OPL3_Generate4Ch (opl3.c line 1242).
+    loop {
+        let cur = chip.writebuf_cur as usize;
+        // Snapshot fields before the write_reg mutable borrow.
+        let wb_time = chip.writebuf[cur].time;
+        let wb_reg  = chip.writebuf[cur].reg;
+        if wb_time > chip.writebuf_samplecnt {
+            break;
+        }
+        if wb_reg & 0x200 == 0 {
+            break;
+        }
+        let wb_data = chip.writebuf[cur].data;
+        write_reg(chip, wb_reg & 0x1ff, wb_data);
+        chip.writebuf_cur = ((cur + 1) % OPL_WRITEBUF_SIZE) as u32;
+    }
     chip.writebuf_samplecnt += 1;
 }
 
@@ -1401,4 +1416,216 @@ pub fn generate_resampled(chip: &mut Opl3Chip, buf: &mut [i16; 2]) {
     generate_4ch_resampled(chip, &mut samples);
     buf[0] = samples[0];
     buf[1] = samples[1];
+}
+
+// ============================================================
+// Step 1d — Public API
+// ============================================================
+
+/// OPL_WRITEBUF_DELAY: minimum sample delay between write_reg_buffered writes.
+const OPL_WRITEBUF_DELAY: u64 = 2;
+
+/// Enable/disable 4-op channel pairing.
+/// Bits 0-5 of `data` each control one 4-op pair.
+/// Bit N=1 → channels N and N+3 become a 4-op pair; N=0 → both revert to 2-op.
+///
+/// Ported from `OPL3_ChannelSet4Op` (opl3.c line 1063).
+fn channel_set_4op(chip: &mut Opl3Chip, data: u8) {
+    for bit in 0u8..6 {
+        // For bits 0-2: chnum = bit; for bits 3-5: chnum = bit + 6 (banks 9-11).
+        let chnum = if bit >= 3 { (bit + 6) as usize } else { bit as usize };
+        if (data >> bit) & 0x01 != 0 {
+            chip.channel[chnum].chtype = CH_4OP;
+            chip.channel[chnum + 3].chtype = CH_4OP2;
+            channel_update_alg(chip, chnum);
+        } else {
+            chip.channel[chnum].chtype = CH_2OP;
+            chip.channel[chnum + 3].chtype = CH_2OP;
+            channel_update_alg(chip, chnum);
+            channel_update_alg(chip, chnum + 3);
+        }
+    }
+}
+
+/// Reset the chip to power-on state and configure the resampler for `samplerate`.
+/// Equivalent to `memset(chip, 0)` + field initialisation in the C reset function.
+/// `chip.newm` is left at 0 (OPL2 compat); it is never set to 1 in AdLib mode.
+///
+/// Ported from `OPL3_Reset` (opl3.c line 1293).
+pub fn reset(chip: &mut Opl3Chip, samplerate: u32) {
+    // Zero everything; Default impl allocates the write buffer with 1024 entries.
+    *chip = Opl3Chip::default();
+
+    // Slot initialisation: each slot starts in the release phase with full attenuation.
+    for slotnum in 0..36usize {
+        chip.slot[slotnum].eg_rout = 0x1ff;
+        chip.slot[slotnum].eg_out  = 0x1ff;
+        chip.slot[slotnum].eg_gen  = EG_NUM_RELEASE;
+        chip.slot[slotnum].slot_num = slotnum as u8;
+        // mod_input = ModInput::Zero, trem_chip = false (both from Default)
+    }
+
+    // Channel initialisation: wire slotz, pair_idx, ch_num, cha/chb, then
+    // call channel_setup_alg to configure the modulation network.
+    for channum in 0..18usize {
+        let local_ch_slot = CH_SLOT[channum] as usize;
+        chip.channel[channum].slotz[0] = local_ch_slot as u8;
+        chip.channel[channum].slotz[1] = (local_ch_slot + 3) as u8;
+        chip.slot[local_ch_slot].channel_num     = channum as u8;
+        chip.slot[local_ch_slot + 3].channel_num = channum as u8;
+
+        // pair_idx: channels 0-2 pair with 3-5, channels 9-11 pair with 12-14.
+        chip.channel[channum].pair_idx = if channum % 9 < 3 {
+            (channum + 3) as u8
+        } else if channum % 9 < 6 {
+            (channum - 3) as u8
+        } else {
+            0xFF // no pair
+        };
+
+        chip.channel[channum].ch_num = channum as u8;
+        chip.channel[channum].chtype = CH_2OP;
+        chip.channel[channum].cha    = 0xffff; // DAC1 outputs always on (OPL2)
+        chip.channel[channum].chb    = 0xffff;
+        // chc, chd remain 0 (DAC2 disabled in OPL2 compat mode)
+
+        // out[] defaults to [OutSrc::Zero; 4]; channel_setup_alg fills in the live ones.
+        channel_setup_alg(chip, channum);
+    }
+
+    chip.noise        = 1;     // LFSR must not start at 0
+    chip.rateratio    = (samplerate as i32 * (1 << RSM_FRAC)) / 49716;
+    chip.tremoloshift = 4;     // shallow tremolo by default
+    chip.vibshift     = 1;     // shallow vibrato by default
+}
+
+/// Write a value to OPL register `reg`.
+/// Dispatches to the appropriate slot/channel/chip-level handler.
+/// In OPL2 compat mode (`newm = 0`) the high bank (`reg >= 0x100`) and OPL3-only
+/// registers (0x104/0x105) are accepted but have no audible effect.
+///
+/// Ported from `OPL3_WriteReg` (opl3.c line 1362).
+pub fn write_reg(chip: &mut Opl3Chip, reg: u16, v: u8) {
+    let high = ((reg >> 8) & 0x01) as usize; // 0 = bank 0, 1 = bank 1 (OPL3 only)
+    let regm = (reg & 0xff) as u8;
+
+    match regm & 0xf0 {
+        0x00 => {
+            if high != 0 {
+                // OPL3 bank-1 global registers
+                match regm & 0x0f {
+                    0x04 => channel_set_4op(chip, v),
+                    0x05 => chip.newm = v & 0x01, // OPL3 mode enable (unused in AdLib)
+                    _ => {}
+                }
+            } else {
+                // Bank-0 global registers
+                match regm & 0x0f {
+                    0x08 => chip.nts = (v >> 6) & 0x01, // note select
+                    _ => {}
+                }
+            }
+        }
+        0x20 | 0x30 => {
+            // Slot register: AM/VIB/EGT/KSR/MULT
+            let adslot_idx = (regm & 0x1f) as usize;
+            if AD_SLOT[adslot_idx] >= 0 {
+                let slot_idx = 18 * high + AD_SLOT[adslot_idx] as usize;
+                slot_write_20(&mut chip.slot[slot_idx], v);
+            }
+        }
+        0x40 | 0x50 => {
+            // Slot register: KSL/TL
+            let adslot_idx = (regm & 0x1f) as usize;
+            if AD_SLOT[adslot_idx] >= 0 {
+                let slot_idx = 18 * high + AD_SLOT[adslot_idx] as usize;
+                slot_write_40(chip, slot_idx, v);
+            }
+        }
+        0x60 | 0x70 => {
+            // Slot register: AR/DR
+            let adslot_idx = (regm & 0x1f) as usize;
+            if AD_SLOT[adslot_idx] >= 0 {
+                let slot_idx = 18 * high + AD_SLOT[adslot_idx] as usize;
+                slot_write_60(&mut chip.slot[slot_idx], v);
+            }
+        }
+        0x80 | 0x90 => {
+            // Slot register: SL/RR
+            let adslot_idx = (regm & 0x1f) as usize;
+            if AD_SLOT[adslot_idx] >= 0 {
+                let slot_idx = 18 * high + AD_SLOT[adslot_idx] as usize;
+                slot_write_80(&mut chip.slot[slot_idx], v);
+            }
+        }
+        0xe0 | 0xf0 => {
+            // Slot register: WS (waveform select)
+            let adslot_idx = (regm & 0x1f) as usize;
+            if AD_SLOT[adslot_idx] >= 0 {
+                let slot_idx = 18 * high + AD_SLOT[adslot_idx] as usize;
+                let newm = chip.newm; // pre-read before mutable slot borrow
+                slot_write_e0(&mut chip.slot[slot_idx], v, newm);
+            }
+        }
+        0xa0 => {
+            // Channel register A0: f_num low 8 bits
+            if (regm & 0x0f) < 9 {
+                let ch_idx = 9 * high + (regm & 0x0f) as usize;
+                channel_write_a0(chip, ch_idx, v);
+            }
+        }
+        0xb0 => {
+            // Channel register B0: f_num high bits / block / key-on
+            if regm == 0xbd && high == 0 {
+                // BD register: tremolo/vibrato depth + rhythm mode
+                chip.tremoloshift = (((v >> 7) ^ 1) << 1) + 2;
+                chip.vibshift     = ((v >> 6) & 0x01) ^ 1;
+                channel_update_rhythm(chip, v);
+            } else if (regm & 0x0f) < 9 {
+                let ch_idx = 9 * high + (regm & 0x0f) as usize;
+                channel_write_b0(chip, ch_idx, v);
+                if v & 0x20 != 0 {
+                    channel_key_on(chip, ch_idx);
+                } else {
+                    channel_key_off(chip, ch_idx);
+                }
+            }
+        }
+        0xc0 => {
+            // Channel register C0: feedback / connection / output enables
+            if (regm & 0x0f) < 9 {
+                let ch_idx = 9 * high + (regm & 0x0f) as usize;
+                channel_write_c0(chip, ch_idx, v);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Queue a register write, scheduling it at least `OPL_WRITEBUF_DELAY` samples
+/// in the future for accurate timing. The write is drained by `generate_4ch`.
+///
+/// Ported from `OPL3_WriteRegBuffered` (opl3.c line 1472).
+pub fn write_reg_buffered(chip: &mut Opl3Chip, reg: u16, v: u8) {
+    let writebuf_last = chip.writebuf_last as usize;
+
+    // Snapshot writebuf[last] before the write_reg mutable borrow.
+    let wb_reg  = chip.writebuf[writebuf_last].reg;
+    let wb_data = chip.writebuf[writebuf_last].data;
+    let wb_time = chip.writebuf[writebuf_last].time;
+
+    // If the slot has a pending valid write, flush it immediately.
+    if wb_reg & 0x200 != 0 {
+        write_reg(chip, wb_reg & 0x1ff, wb_data);
+        chip.writebuf_cur        = ((writebuf_last + 1) % OPL_WRITEBUF_SIZE) as u32;
+        chip.writebuf_samplecnt  = wb_time;
+    }
+
+    // Enqueue the new write with a timestamp no earlier than the previous one.
+    chip.writebuf[writebuf_last].reg  = reg | 0x200;
+    chip.writebuf[writebuf_last].data = v;
+    let time = (chip.writebuf_lasttime + OPL_WRITEBUF_DELAY).max(chip.writebuf_samplecnt);
+    chip.writebuf[writebuf_last].time = time;
+    chip.writebuf_lasttime            = time;
+    chip.writebuf_last                = ((writebuf_last + 1) % OPL_WRITEBUF_SIZE) as u32;
 }

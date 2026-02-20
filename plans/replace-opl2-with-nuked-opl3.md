@@ -258,17 +258,12 @@ using the `ModInput`/`OutSrc` enums at call sites.
 - `pub fn generate_resampled(chip: &mut Opl3Chip, buf: &mut [i16; 2])` — DAC1 L/R output at configured rate
 - **Borrow note**: `channel_accm` takes `&Opl3Chip` (auto-reborrow from `&mut`) — safe between slot loops; `generate_4ch_resampled` uses `let mut tmp` to avoid `chip.samples` aliasing
 
-#### Public API
-- `pub fn reset(chip: &mut Opl3Chip, samplerate: u32)`
-  - `memset` → `*chip = Opl3Chip::default()` then explicit init
-  - `chip.rateratio = (samplerate as i32 * (1 << RSM_FRAC)) / 49716`
-  - Wire up slotz, pair_idx, channel_num, ch_slot, OPL3_ChannelSetupAlg for all channels
-  - **OPL2 compat**: `chip.newm = 0` (never set to 1)
-- `pub fn write_reg(chip: &mut Opl3Chip, reg: u16, v: u8)`
-  - Port `OPL3_WriteReg` — dispatch on `(reg >> 4) & 0xF` then call slot/channel writers
-  - For OPL2 mode: `high = 0` always; limit waveforms to 0-3
-- `pub fn write_reg_buffered(chip: &mut Opl3Chip, reg: u16, v: u8)`
-  - Port `OPL3_WriteRegBuffered`
+#### Public API ✅ DONE
+- `fn channel_set_4op(chip: &mut Opl3Chip, data: u8)` — bits 0-5 control 6 channel pairs
+- `pub fn reset(chip: &mut Opl3Chip, samplerate: u32)` — `*chip = default()` then wire slotz/pair_idx/channel_num/cha/chb, call channel_setup_alg; noise=1, rateratio, tremoloshift=4, vibshift=1
+- `pub fn write_reg(chip: &mut Opl3Chip, reg: u16, v: u8)` — dispatches on `regm & 0xf0`; slot registers 0x20-0xf0, channel registers 0xa0-0xc0, BD register 0xbd; pre-reads newm before slot_write_e0 borrow
+- `pub fn write_reg_buffered(chip: &mut Opl3Chip, reg: u16, v: u8)` — snapshots writebuf fields before write_reg borrow; schedules at OPL_WRITEBUF_DELAY=2 samples
+- Also enabled `generate_4ch` write buffer drain loop (was TODO until write_reg existed)
 
 ### 1e. Borrow checker patterns
 
