@@ -43,14 +43,14 @@ other modules). Keeping it in its own file satisfies this requirement.
 
 | File | Action | Status |
 |------|--------|--------|
-| `core/src/audio/nuked_opl3.rs` | **CREATE** — Rust port of `opl3.c` / `opl3.h` | 🔄 In progress |
+| `core/src/audio/nuked_opl3.rs` | **CREATE** — Rust port of `opl3.c` / `opl3.h` | ✅ Done |
 | `core/src/audio/opl2.rs` | **DELETE** | ⏳ Pending |
 | `core/src/audio/adlib.rs` | **UPDATE** — own `Opl3Chip` + timer state directly | ⏳ Pending |
 | `core/src/audio/mod.rs` | **UPDATE** — remove `pub mod opl2;`, add `pub mod nuked_opl3;` | ✅ Done (module declared) |
 
 ---
 
-## Step 1 — Create `core/src/audio/nuked_opl3.rs`
+## Step 1 — Create `core/src/audio/nuked_opl3.rs` ✅ DONE
 
 This is the bulk of the work. Port `opl3.c` to safe Rust, resolving all C raw-pointer
 patterns into index-based equivalents.

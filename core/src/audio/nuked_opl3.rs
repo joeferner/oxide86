@@ -1398,10 +1398,11 @@ fn generate_4ch_resampled(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
     }
     let ratio = chip.rateratio;
     let cnt = chip.samplecnt;
-    for i in 0..4 {
-        buf4[i] = ((chip.oldsamples[i] as i32 * (ratio - cnt)
-                   + chip.samples[i] as i32 * cnt)
-                  / ratio) as i16;
+    for ((out, &old), &cur) in buf4.iter_mut()
+        .zip(chip.oldsamples.iter())
+        .zip(chip.samples.iter())
+    {
+        *out = ((old as i32 * (ratio - cnt) + cur as i32 * cnt) / ratio) as i16;
     }
     chip.samplecnt += 1 << RSM_FRAC;
 }
@@ -1467,8 +1468,8 @@ pub fn reset(chip: &mut Opl3Chip, samplerate: u32) {
 
     // Channel initialisation: wire slotz, pair_idx, ch_num, cha/chb, then
     // call channel_setup_alg to configure the modulation network.
-    for channum in 0..18usize {
-        let local_ch_slot = CH_SLOT[channum] as usize;
+    for (channum, &ch_slot_u8) in CH_SLOT.iter().enumerate() {
+        let local_ch_slot = ch_slot_u8 as usize;
         chip.channel[channum].slotz[0] = local_ch_slot as u8;
         chip.channel[channum].slotz[1] = (local_ch_slot + 3) as u8;
         chip.slot[local_ch_slot].channel_num     = channum as u8;
@@ -1520,9 +1521,8 @@ pub fn write_reg(chip: &mut Opl3Chip, reg: u16, v: u8) {
                 }
             } else {
                 // Bank-0 global registers
-                match regm & 0x0f {
-                    0x08 => chip.nts = (v >> 6) & 0x01, // note select
-                    _ => {}
+                if regm & 0x0f == 0x08 {
+                    chip.nts = (v >> 6) & 0x01; // note select
                 }
             }
         }
