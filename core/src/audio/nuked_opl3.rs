@@ -296,3 +296,264 @@ impl Default for Opl3Chip {
         }
     }
 }
+
+// ============================================================
+// Step 1d — Envelope helpers
+// ============================================================
+
+/// Envelope generator phase constants (eg_gen field values).
+pub const EG_NUM_ATTACK:  u8 = 0;
+pub const EG_NUM_DECAY:   u8 = 1;
+pub const EG_NUM_SUSTAIN: u8 = 2;
+pub const EG_NUM_RELEASE: u8 = 3;
+
+/// Compute exponential output from a log-domain level (OPL3_EnvelopeCalcExp).
+fn envelope_calc_exp(level: u32) -> i16 {
+    let level = level.min(0x1fff);
+    let v = (EXPROM[(level & 0xff) as usize] as u32) << 1;
+    (v >> (level >> 8)) as i16
+}
+
+/// Waveform 0 — full sine, alternating sign (OPL3_EnvelopeCalcSin0).
+fn envelope_calc_sin0(phase: u16, envelope: u16) -> i16 {
+    let phase = phase & 0x3ff;
+    let neg: u16 = if phase & 0x200 != 0 { 0xffff } else { 0 };
+    let out = if phase & 0x100 != 0 {
+        LOGSINROM[((phase & 0xff) ^ 0xff) as usize]
+    } else {
+        LOGSINROM[(phase & 0xff) as usize]
+    };
+    (envelope_calc_exp(out as u32 + ((envelope as u32) << 3)) as u16 ^ neg) as i16
+}
+
+/// Waveform 1 — half sine, positive lobe only (OPL3_EnvelopeCalcSin1).
+fn envelope_calc_sin1(phase: u16, envelope: u16) -> i16 {
+    let phase = phase & 0x3ff;
+    let out: u16 = if phase & 0x200 != 0 {
+        0x1000
+    } else if phase & 0x100 != 0 {
+        LOGSINROM[((phase & 0xff) ^ 0xff) as usize]
+    } else {
+        LOGSINROM[(phase & 0xff) as usize]
+    };
+    envelope_calc_exp(out as u32 + ((envelope as u32) << 3))
+}
+
+/// Waveform 2 — absolute sine, rectified (OPL3_EnvelopeCalcSin2).
+fn envelope_calc_sin2(phase: u16, envelope: u16) -> i16 {
+    let phase = phase & 0x3ff;
+    let out = if phase & 0x100 != 0 {
+        LOGSINROM[((phase & 0xff) ^ 0xff) as usize]
+    } else {
+        LOGSINROM[(phase & 0xff) as usize]
+    };
+    envelope_calc_exp(out as u32 + ((envelope as u32) << 3))
+}
+
+/// Waveform 3 — quarter sine, positive quarter only (OPL3_EnvelopeCalcSin3).
+fn envelope_calc_sin3(phase: u16, envelope: u16) -> i16 {
+    let phase = phase & 0x3ff;
+    let out: u16 = if phase & 0x100 != 0 {
+        0x1000
+    } else {
+        LOGSINROM[(phase & 0xff) as usize]
+    };
+    envelope_calc_exp(out as u32 + ((envelope as u32) << 3))
+}
+
+/// Waveform 4 — double-frequency sine, ± (OPL3_EnvelopeCalcSin4).
+fn envelope_calc_sin4(phase: u16, envelope: u16) -> i16 {
+    let phase = phase & 0x3ff;
+    let neg: u16 = if (phase & 0x300) == 0x100 { 0xffff } else { 0 };
+    let out: u16 = if phase & 0x200 != 0 {
+        0x1000
+    } else if phase & 0x80 != 0 {
+        LOGSINROM[(((phase ^ 0xff) << 1) & 0xff) as usize]
+    } else {
+        LOGSINROM[((phase << 1) & 0xff) as usize]
+    };
+    (envelope_calc_exp(out as u32 + ((envelope as u32) << 3)) as u16 ^ neg) as i16
+}
+
+/// Waveform 5 — double-frequency half sine (OPL3_EnvelopeCalcSin5).
+fn envelope_calc_sin5(phase: u16, envelope: u16) -> i16 {
+    let phase = phase & 0x3ff;
+    let out: u16 = if phase & 0x200 != 0 {
+        0x1000
+    } else if phase & 0x80 != 0 {
+        LOGSINROM[(((phase ^ 0xff) << 1) & 0xff) as usize]
+    } else {
+        LOGSINROM[((phase << 1) & 0xff) as usize]
+    };
+    envelope_calc_exp(out as u32 + ((envelope as u32) << 3))
+}
+
+/// Waveform 6 — square wave (OPL3_EnvelopeCalcSin6).
+fn envelope_calc_sin6(phase: u16, envelope: u16) -> i16 {
+    let phase = phase & 0x3ff;
+    let neg: u16 = if phase & 0x200 != 0 { 0xffff } else { 0 };
+    (envelope_calc_exp((envelope as u32) << 3) as u16 ^ neg) as i16
+}
+
+/// Waveform 7 — derived sawtooth (OPL3_EnvelopeCalcSin7).
+fn envelope_calc_sin7(phase: u16, envelope: u16) -> i16 {
+    let mut phase = phase & 0x3ff;
+    let neg: u16;
+    if phase & 0x200 != 0 {
+        neg = 0xffff;
+        phase = (phase & 0x1ff) ^ 0x1ff;
+    } else {
+        neg = 0;
+    }
+    let out = (phase << 3) as u32;
+    (envelope_calc_exp(out + ((envelope as u32) << 3)) as u16 ^ neg) as i16
+}
+
+/// Dispatch to one of the 8 waveform functions by reg_wf (0–7).
+pub(crate) fn envelope_calc_sin(wf: u8, phase: u16, envelope: u16) -> i16 {
+    match wf & 0x07 {
+        0 => envelope_calc_sin0(phase, envelope),
+        1 => envelope_calc_sin1(phase, envelope),
+        2 => envelope_calc_sin2(phase, envelope),
+        3 => envelope_calc_sin3(phase, envelope),
+        4 => envelope_calc_sin4(phase, envelope),
+        5 => envelope_calc_sin5(phase, envelope),
+        6 => envelope_calc_sin6(phase, envelope),
+        _ => envelope_calc_sin7(phase, envelope),
+    }
+}
+
+/// Update key-scale-level attenuation from the channel's current pitch
+/// (OPL3_EnvelopeUpdateKSL).
+pub(crate) fn envelope_update_ksl(chip: &mut Opl3Chip, slot_idx: usize) {
+    let ch    = chip.slot[slot_idx].channel_num as usize;
+    let f_num = chip.channel[ch].f_num;
+    let block = chip.channel[ch].block;
+    let ksl = ((KSLROM[(f_num >> 6) as usize] as i16) << 2)
+            - ((0x08i16 - block as i16) << 5);
+    chip.slot[slot_idx].eg_ksl = ksl.max(0) as u8;
+}
+
+/// Advance the envelope state machine for one slot (OPL3_EnvelopeCalc).
+///
+/// Borrow strategy: snapshot all chip-level read-only fields into locals first,
+/// then take `&mut chip.slot[slot_idx]` — keeps chip.channel and chip.slot
+/// borrows non-overlapping from the compiler's perspective.
+pub(crate) fn envelope_calc(chip: &mut Opl3Chip, slot_idx: usize) {
+    let eg_add      = chip.eg_add;
+    let eg_state    = chip.eg_state;
+    let eg_timer_lo = chip.eg_timer_lo;
+    let ch          = chip.slot[slot_idx].channel_num as usize;
+    let ksv         = chip.channel[ch].ksv;
+    let trem        = if chip.slot[slot_idx].trem_chip { chip.tremolo } else { 0u8 };
+
+    let slot = &mut chip.slot[slot_idx];
+
+    // Output attenuation: raw envelope + TL + KSL + tremolo.
+    slot.eg_out = (slot.eg_rout as u32
+        + ((slot.reg_tl as u32) << 2)
+        + (slot.eg_ksl >> KSLSHIFT[slot.reg_ksl as usize]) as u32
+        + trem as u32) as u16;
+
+    let mut reset    = false;
+    let mut reg_rate: u8 = 0;
+
+    if slot.key != 0 && slot.eg_gen == EG_NUM_RELEASE {
+        // Key pressed while releasing → restart attack.
+        reset    = true;
+        reg_rate = slot.reg_ar;
+    } else {
+        match slot.eg_gen {
+            EG_NUM_ATTACK  => { reg_rate = slot.reg_ar; }
+            EG_NUM_DECAY   => { reg_rate = slot.reg_dr; }
+            EG_NUM_SUSTAIN => { if slot.reg_type == 0 { reg_rate = slot.reg_rr; } }
+            EG_NUM_RELEASE => { reg_rate = slot.reg_rr; }
+            _ => {}
+        }
+    }
+
+    slot.pg_reset = reset;
+
+    let ks          = ksv >> ((slot.reg_ksr ^ 1) << 1);
+    let nonzero     = reg_rate != 0;
+    let rate        = ks as u16 + ((reg_rate as u16) << 2);
+    let rate_hi_raw = (rate >> 2) as u8;
+    let rate_lo     = (rate & 0x03) as u8;
+    let rate_hi     = if rate_hi_raw & 0x10 != 0 { 0x0fu8 } else { rate_hi_raw };
+    let eg_shift    = rate_hi.wrapping_add(eg_add);
+    let mut shift: u8 = 0;
+
+    if nonzero {
+        if rate_hi < 12 {
+            if eg_state != 0 {
+                shift = match eg_shift {
+                    12 => 1,
+                    13 => (rate_lo >> 1) & 0x01,
+                    14 => rate_lo & 0x01,
+                    _  => 0,
+                };
+            }
+        } else {
+            shift = (rate_hi & 0x03)
+                .wrapping_add(EG_INCSTEP[rate_lo as usize][eg_timer_lo as usize]);
+            if shift & 0x04 != 0 { shift = 0x03; }
+            if shift == 0        { shift = eg_state; }
+        }
+    }
+
+    // Local eg_rout copy — may be overridden before writing back.
+    let mut eg_rout = slot.eg_rout;
+    let mut eg_inc: i32 = 0;
+
+    // Instant attack: rate_hi == 0x0f resets counter to 0 immediately.
+    if reset && rate_hi == 0x0f {
+        eg_rout = 0x00;
+    }
+    // Envelope fully off: top 7 bits all set (tests original slot.eg_rout).
+    let eg_off = (slot.eg_rout & 0x1f8) == 0x1f8;
+    // Non-attack phases clamp counter at max when off.
+    if slot.eg_gen != EG_NUM_ATTACK && !reset && eg_off {
+        eg_rout = 0x1ff;
+    }
+
+    match slot.eg_gen {
+        EG_NUM_ATTACK => {
+            if slot.eg_rout == 0 {
+                slot.eg_gen = EG_NUM_DECAY;
+            } else if slot.key != 0 && shift > 0 && rate_hi != 0x0f {
+                // Exponential attack curve: increment = ~rout >> (4 - shift).
+                // Uses i32 arithmetic to mirror C's signed right-shift of ~uint16.
+                eg_inc = !(slot.eg_rout as i32) >> (4u32.saturating_sub(shift as u32));
+            }
+        }
+        EG_NUM_DECAY => {
+            if (slot.eg_rout >> 4) == slot.reg_sl as u16 {
+                slot.eg_gen = EG_NUM_SUSTAIN;
+            } else if !eg_off && !reset && shift > 0 {
+                eg_inc = 1i32 << ((shift - 1) as u32);
+            }
+        }
+        EG_NUM_SUSTAIN | EG_NUM_RELEASE => {
+            if !eg_off && !reset && shift > 0 {
+                eg_inc = 1i32 << ((shift - 1) as u32);
+            }
+        }
+        _ => {}
+    }
+
+    slot.eg_rout = ((eg_rout as i32 + eg_inc) & 0x1ff) as u16;
+
+    // State transitions — ordering matches C: reset wins over key-off.
+    if reset         { slot.eg_gen = EG_NUM_ATTACK;  }
+    if slot.key == 0 { slot.eg_gen = EG_NUM_RELEASE; }
+}
+
+/// Set key-on type bits for a slot (OPL3_EnvelopeKeyOn).
+pub(crate) fn envelope_key_on(slot: &mut Opl3Slot, key_type: u8) {
+    slot.key |= key_type;
+}
+
+/// Clear key-on type bits for a slot (OPL3_EnvelopeKeyOff).
+pub(crate) fn envelope_key_off(slot: &mut Opl3Slot, key_type: u8) {
+    slot.key &= !key_type;
+}

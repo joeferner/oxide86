@@ -202,11 +202,12 @@ pub struct Opl3WriteBuf {
 Port each C function as a method or free function. Resolve pointer dereferences
 using the `ModInput`/`OutSrc` enums at call sites.
 
-#### Envelope helpers
+#### Envelope helpers ✅ DONE
 - `fn envelope_calc_exp(level: u32) -> i16`
 - `fn envelope_calc_sin0..7(phase: u16, envelope: u16) -> i16` (8 waveform functions)
-- `fn envelope_update_ksl(chip: &mut Opl3Chip, slot_idx: usize)`
-- `fn envelope_calc(chip: &mut Opl3Chip, slot_idx: usize)`
+- `pub(crate) fn envelope_calc_sin(wf: u8, phase: u16, envelope: u16) -> i16` (dispatch helper)
+- `pub(crate) fn envelope_update_ksl(chip: &mut Opl3Chip, slot_idx: usize)`
+- `pub(crate) fn envelope_calc(chip: &mut Opl3Chip, slot_idx: usize)`
   - **Borrow note**: pre-read `slot.channel_num` to fetch `channel.ksv` / `channel.block`,
     pass them as parameters so the exclusive borrow on `chip.slot[slot_idx]` is cleanly split.
 - `fn envelope_key_on(slot: &mut Opl3Slot, key_type: u8)`
