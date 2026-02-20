@@ -10,7 +10,6 @@ use std::{
 
 pub mod adlib;
 pub mod nuked_opl3;
-pub mod opl2;
 pub mod speaker;
 
 /// Platform-independent interface for a sound card emulation.

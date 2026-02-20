@@ -44,7 +44,7 @@ other modules). Keeping it in its own file satisfies this requirement.
 | File | Action | Status |
 |------|--------|--------|
 | `core/src/audio/nuked_opl3.rs` | **CREATE** — Rust port of `opl3.c` / `opl3.h` | ✅ Done |
-| `core/src/audio/opl2.rs` | **DELETE** | ⏳ Pending |
+| `core/src/audio/opl2.rs` | **DELETE** | ✅ Done |
 | `core/src/audio/adlib.rs` | **UPDATE** — own `Opl3Chip` + timer state directly | ✅ Done |
 | `core/src/audio/mod.rs` | **UPDATE** — remove `pub mod opl2;`, add `pub mod nuked_opl3;` | ✅ Done (module declared) |
 
@@ -435,7 +435,7 @@ fn reset(&mut self) {
 
 ---
 
-## Step 3 — Update `core/src/audio/mod.rs`
+## Step 3 — Update `core/src/audio/mod.rs` ✅ DONE
 
 Replace `pub mod opl2;` with `pub mod nuked_opl3;`:
 
