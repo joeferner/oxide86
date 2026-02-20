@@ -202,7 +202,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 - Ports: 0x388 (address/status), 0x389 (data)
 - Standard AdLib detection: write timer values, read status, check flags
 
-**Implementation (`core/src/sound/`):**
+**Implementation (`core/src/audio/`):**
 - `opl2.rs` — hand-rolled OPL2 emulator: ADSR envelopes, 4 waveforms, tremolo/vibrato LFOs, timers
   - Internal rate: 49716 Hz, downsampled to 44100 Hz output
   - `generate_samples(cpu_cycles, out)` — produces f32 PCM samples
