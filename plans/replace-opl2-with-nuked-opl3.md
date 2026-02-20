@@ -249,15 +249,14 @@ using the `ModInput`/`OutSrc` enums at call sites.
 - `fn slot_write_80(slot: &mut Opl3Slot, data: u8)` — SL/RR; SL=15 expanded to 31
 - `fn slot_write_e0(slot: &mut Opl3Slot, data: u8, newm: u8)` — WS; OPL2 clamps to 0-3
 
-#### Top-level generation
-- `pub fn process_slot(chip: &mut Opl3Chip, slot_idx: usize)`
-  - Calls: `slot_calc_fb`, `envelope_calc`, `phase_generate`, `slot_generate` in order
-- `pub fn generate_4ch(chip: &mut Opl3Chip, buf4: &mut [i16; 4])`
-  - Port `OPL3_Generate4Ch` exactly, including `OPL_QUIRK_CHANNELSAMPLEDELAY = 1`
-  - Channel mix: `fn channel_accm(chip: &Opl3Chip, ch: usize) -> i16` — reads all out[i]
-  - Apply `cha`/`chb`/`chc`/`chd` masking for stereo (OPL2: cha=0xFFFF, chc=0)
-- `pub fn generate_resampled(chip: &mut Opl3Chip, buf: &mut [i16; 2])`
-  - Port `OPL3_GenerateResampled` exactly (fixed-point linear interpolation)
+#### Top-level generation ✅ DONE
+- `fn clip_sample(sample: i32) -> i16` — clamp to i16 range
+- `fn channel_accm(chip: &Opl3Chip, ch: usize) -> i16` — sums 4 OutSrc outputs; immutable borrow
+- `pub(crate) fn process_slot(chip: &mut Opl3Chip, slot_idx: usize)` — feedback→envelope→phase→generate
+- `pub(crate) fn generate_4ch(chip: &mut Opl3Chip, buf4: &mut [i16; 4])` — OPL_QUIRK_CHANNELSAMPLEDELAY=1; includes tremolo/vibrato/eg_timer; write buffer TODO for Public API step
+- `fn generate_4ch_resampled(chip: &mut Opl3Chip, buf4: &mut [i16; 4])` — fixed-point linear interpolation; uses local tmp buffer to avoid chip.samples aliasing
+- `pub fn generate_resampled(chip: &mut Opl3Chip, buf: &mut [i16; 2])` — DAC1 L/R output at configured rate
+- **Borrow note**: `channel_accm` takes `&Opl3Chip` (auto-reborrow from `&mut`) — safe between slot loops; `generate_4ch_resampled` uses `let mut tmp` to avoid `chip.samples` aliasing
 
 #### Public API
 - `pub fn reset(chip: &mut Opl3Chip, samplerate: u32)`

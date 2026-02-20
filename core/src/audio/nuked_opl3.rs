@@ -1208,3 +1208,197 @@ pub(crate) fn slot_write_e0(slot: &mut Opl3Slot, data: u8, newm: u8) {
         slot.reg_wf &= 0x03; // OPL2: clamp to 4 waveforms
     }
 }
+
+// ============================================================
+// Step 1d — Top-level generation
+// ============================================================
+
+/// Fixed-point fraction bits for the resampler (RSM_FRAC from opl3.c line 52).
+const RSM_FRAC: i32 = 10;
+
+/// Write-buffer queue capacity (OPL_WRITEBUF_SIZE from opl3.h line 46).
+pub(crate) const OPL_WRITEBUF_SIZE: usize = 1024;
+
+/// Maximum value of the 36-bit envelope timer (UINT64_C(0xfffffffff) in opl3.c).
+const EG_TIMER_MAX: u64 = 0xF_FFFF_FFFF;
+
+/// Clamp a 32-bit mixed sum to the i16 output range.
+///
+/// Ported from `OPL3_ClipSample` (opl3.c line 1090).
+fn clip_sample(sample: i32) -> i16 {
+    sample.clamp(-32768, 32767) as i16
+}
+
+/// Sum all 4 output sources of channel `ch` into a single i16 value.
+/// Each `OutSrc` is either zero or the current `chip.slot[i].out`.
+/// Requires only an immutable borrow of chip; safe to call between process_slot loops.
+fn channel_accm(chip: &Opl3Chip, ch: usize) -> i16 {
+    let out = &chip.channel[ch].out;
+    let mut sum = 0i32;
+    for os in out {
+        sum += i32::from(match *os {
+            OutSrc::Zero => 0,
+            OutSrc::SlotOut(i) => chip.slot[i as usize].out,
+        });
+    }
+    sum as i16 // truncate like C's int16_t assignment
+}
+
+/// Advance one FM operator slot by one sample.
+/// Order: feedback → envelope → phase → waveform output.
+///
+/// Ported from `OPL3_ProcessSlot` (opl3.c line 1103).
+pub(crate) fn process_slot(chip: &mut Opl3Chip, slot_idx: usize) {
+    // slot_calc_fb takes (slot, fb); pre-read fb before mutable slot borrow.
+    let ch_num = chip.slot[slot_idx].channel_num as usize;
+    let fb = chip.channel[ch_num].fb;
+    slot_calc_fb(&mut chip.slot[slot_idx], fb);
+    envelope_calc(chip, slot_idx);
+    phase_generate(chip, slot_idx);
+    slot_generate(chip, slot_idx);
+}
+
+/// Generate one raw 4-channel sample frame: [L-DAC1, R-DAC1, L-DAC2, R-DAC2].
+///
+/// Uses `OPL_QUIRK_CHANNELSAMPLEDELAY = 1` (the upstream default): slots 0–14
+/// are processed before the left-channel mix; slots 15–17 after; slots 18–32
+/// before the right-channel mix; slots 33–35 after. This introduces a 1-slot
+/// delay between L and R to match real OPL3 hardware timing.
+///
+/// In OPL2 compat mode (`newm = 0`): `cha = chb = 0xFFFF`, `chc = chd = 0`,
+/// so buf4[0] ≈ buf4[1] (mono) and buf4[2] = buf4[3] = 0.
+///
+/// Ported from `OPL3_Generate4Ch` (opl3.c line 1111).
+pub(crate) fn generate_4ch(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
+    // Output the RIGHT channel results buffered from the previous call.
+    buf4[1] = clip_sample(chip.mixbuff[1]);
+    buf4[3] = clip_sample(chip.mixbuff[3]);
+
+    // OPL_QUIRK_CHANNELSAMPLEDELAY: process slots 0–14 before left mix.
+    for ii in 0..15usize {
+        process_slot(chip, ii);
+    }
+
+    // Accumulate LEFT channel (cha = DAC1-left, chc = DAC2-left).
+    let mut mix = [0i32; 2];
+    for ii in 0..18usize {
+        let accm = channel_accm(chip, ii);
+        let cha = chip.channel[ii].cha;
+        let chc = chip.channel[ii].chc;
+        // Bit-AND with u16 mask then reinterpret as i16, matching C's
+        // `(int16_t)(accm & channel->cha)` semantics.
+        mix[0] += i32::from((accm as u16 & cha) as i16);
+        mix[1] += i32::from((accm as u16 & chc) as i16);
+    }
+    chip.mixbuff[0] = mix[0];
+    chip.mixbuff[2] = mix[1];
+
+    // Slots 15–17 processed after left mix, before left output.
+    for ii in 15..18usize {
+        process_slot(chip, ii);
+    }
+
+    // Output LEFT channel.
+    buf4[0] = clip_sample(chip.mixbuff[0]);
+    buf4[2] = clip_sample(chip.mixbuff[2]);
+
+    // OPL_QUIRK: slots 18–32 before right mix.
+    for ii in 18..33usize {
+        process_slot(chip, ii);
+    }
+
+    // Accumulate RIGHT channel (chb = DAC1-right, chd = DAC2-right).
+    mix[0] = 0;
+    mix[1] = 0;
+    for ii in 0..18usize {
+        let accm = channel_accm(chip, ii);
+        let chb = chip.channel[ii].chb;
+        let chd = chip.channel[ii].chd;
+        mix[0] += i32::from((accm as u16 & chb) as i16);
+        mix[1] += i32::from((accm as u16 & chd) as i16);
+    }
+    chip.mixbuff[1] = mix[0];
+    chip.mixbuff[3] = mix[1];
+
+    // Trailing slots 33–35.
+    for ii in 33..36usize {
+        process_slot(chip, ii);
+    }
+
+    // Tremolo: triangle wave, period 210 ticks, updated every 64 chip-timer ticks.
+    if (chip.timer & 0x3f) == 0x3f {
+        chip.tremolopos = (chip.tremolopos + 1) % 210;
+    }
+    chip.tremolo = if chip.tremolopos < 105 {
+        chip.tremolopos >> chip.tremoloshift
+    } else {
+        (210 - chip.tremolopos) >> chip.tremoloshift
+    };
+
+    // Vibrato: 8-step LUT, updated every 1024 chip-timer ticks.
+    if (chip.timer & 0x3ff) == 0x3ff {
+        chip.vibpos = (chip.vibpos + 1) & 7;
+    }
+
+    chip.timer = chip.timer.wrapping_add(1);
+
+    // Envelope timer: computes eg_add shift on odd samples (eg_state = 1).
+    if chip.eg_state != 0 {
+        let mut shift = 0u8;
+        while shift < 13 && ((chip.eg_timer >> (shift as u64)) & 1) == 0 {
+            shift += 1;
+        }
+        chip.eg_add = if shift > 12 { 0 } else { shift + 1 };
+        chip.eg_timer_lo = (chip.eg_timer & 0x3) as u8;
+    }
+    if chip.eg_timerrem != 0 || chip.eg_state != 0 {
+        if chip.eg_timer == EG_TIMER_MAX {
+            chip.eg_timer = 0;
+            chip.eg_timerrem = 1;
+        } else {
+            chip.eg_timer += 1;
+            chip.eg_timerrem = 0;
+        }
+    }
+    chip.eg_state ^= 1;
+
+    // Write buffer: drain timed register writes queued by write_reg_buffered.
+    // Enabled in Public API step once write_reg is implemented.
+    chip.writebuf_samplecnt += 1;
+}
+
+/// Resample the 4-channel OPL output from the native 49716 Hz rate to the
+/// configured output sample rate using fixed-point linear interpolation.
+///
+/// Ported from `OPL3_Generate4ChResampled` (opl3.c line 1263).
+fn generate_4ch_resampled(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
+    while chip.samplecnt >= chip.rateratio {
+        chip.oldsamples = chip.samples;
+        // Must write into a temporary because chip.samples is inside chip
+        // which generate_4ch borrows mutably.
+        let mut tmp = [0i16; 4];
+        generate_4ch(chip, &mut tmp);
+        chip.samples = tmp;
+        chip.samplecnt -= chip.rateratio;
+    }
+    let ratio = chip.rateratio;
+    let cnt = chip.samplecnt;
+    for i in 0..4 {
+        buf4[i] = ((chip.oldsamples[i] as i32 * (ratio - cnt)
+                   + chip.samples[i] as i32 * cnt)
+                  / ratio) as i16;
+    }
+    chip.samplecnt += 1 << RSM_FRAC;
+}
+
+/// Generate one stereo sample [L, R] at the configured output sample rate.
+/// Wraps `generate_4ch_resampled` and returns only DAC1 outputs (buf4[0]/buf4[1]).
+/// In OPL2 compat mode DAC2 (buf4[2]/buf4[3]) is always zero.
+///
+/// Ported from `OPL3_GenerateResampled` (opl3.c line 1285).
+pub fn generate_resampled(chip: &mut Opl3Chip, buf: &mut [i16; 2]) {
+    let mut samples = [0i16; 4];
+    generate_4ch_resampled(chip, &mut samples);
+    buf[0] = samples[0];
+    buf[1] = samples[1];
+}
