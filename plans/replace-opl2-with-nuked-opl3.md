@@ -41,12 +41,12 @@ other modules). Keeping it in its own file satisfies this requirement.
 
 ## Files
 
-| File | Action |
-|------|--------|
-| `core/src/audio/nuked_opl3.rs` | **CREATE** — Rust port of `opl3.c` / `opl3.h` |
-| `core/src/audio/opl2.rs` | **DELETE** |
-| `core/src/audio/adlib.rs` | **UPDATE** — own `Opl3Chip` + timer state directly |
-| `core/src/audio/mod.rs` | **UPDATE** — remove `pub mod opl2;`, add `pub mod nuked_opl3;` |
+| File | Action | Status |
+|------|--------|--------|
+| `core/src/audio/nuked_opl3.rs` | **CREATE** — Rust port of `opl3.c` / `opl3.h` | 🔄 In progress |
+| `core/src/audio/opl2.rs` | **DELETE** | ⏳ Pending |
+| `core/src/audio/adlib.rs` | **UPDATE** — own `Opl3Chip` + timer state directly | ⏳ Pending |
+| `core/src/audio/mod.rs` | **UPDATE** — remove `pub mod opl2;`, add `pub mod nuked_opl3;` | ✅ Done (module declared) |
 
 ---
 
@@ -55,7 +55,7 @@ other modules). Keeping it in its own file satisfies this requirement.
 This is the bulk of the work. Port `opl3.c` to safe Rust, resolving all C raw-pointer
 patterns into index-based equivalents.
 
-### 1a. ROM tables (trivial — literal transcription)
+### 1a. ROM tables (trivial — literal transcription) ✅ DONE
 
 ```rust
 static LOGSINROM: [u16; 256] = [ /* ... identical to C */ ];
@@ -68,7 +68,7 @@ static AD_SLOT:   [i8; 0x20] = [ /* identical to C */ ];
 static CH_SLOT:   [u8; 18]   = [0, 1, 2, 6, 7, 8, 12, 13, 14, 18, 19, 20, 24, 25, 26, 30, 31, 32];
 ```
 
-### 1b. Pointer replacement strategy
+### 1b. Pointer replacement strategy ✅ DONE
 
 The C code uses raw pointers to wire up the modulation network at channel-setup time.
 Rust replaces each with a lightweight enum or index stored in the struct field:
@@ -102,7 +102,7 @@ pub enum OutSrc {
 }
 ```
 
-### 1c. Struct layout
+### 1c. Struct layout ✅ DONE
 
 ```rust
 pub struct Opl3Slot {
