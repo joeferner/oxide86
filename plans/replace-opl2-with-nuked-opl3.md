@@ -242,9 +242,12 @@ using the `ModInput`/`OutSrc` enums at call sites.
 - `fn channel_key_on(chip: &mut Opl3Chip, ch_idx: usize)`
 - `fn channel_key_off(chip: &mut Opl3Chip, ch_idx: usize)`
 
-#### Per-slot write handlers
-- `fn slot_write_20/40/60/80/e0(slot: &mut Opl3Slot, data: u8)` (slot borrows only, no aliasing)
-  - `slot_write_40` calls `envelope_update_ksl(chip, slot_idx)` — needs chip + idx
+#### Per-slot write handlers ✅ DONE
+- `fn slot_write_20(slot: &mut Opl3Slot, data: u8)` — AM/VIB/EGT/KSR/MULT
+- `fn slot_write_40(chip: &mut Opl3Chip, slot_idx: usize, data: u8)` — KSL/TL; calls envelope_update_ksl
+- `fn slot_write_60(slot: &mut Opl3Slot, data: u8)` — AR/DR
+- `fn slot_write_80(slot: &mut Opl3Slot, data: u8)` — SL/RR; SL=15 expanded to 31
+- `fn slot_write_e0(slot: &mut Opl3Slot, data: u8, newm: u8)` — WS; OPL2 clamps to 0-3
 
 #### Top-level generation
 - `pub fn process_slot(chip: &mut Opl3Chip, slot_idx: usize)`

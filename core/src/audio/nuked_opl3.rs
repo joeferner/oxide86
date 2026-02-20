@@ -1146,3 +1146,65 @@ pub(crate) fn channel_key_off(chip: &mut Opl3Chip, ch_idx: usize) {
         envelope_key_off(&mut chip.slot[s1], EGK_NORM);
     }
 }
+
+// ============================================================
+// Step 1d — Per-slot write handlers
+// ============================================================
+
+/// Write register 0x20–0x35: AM/VIB/EGT/KSR/MULT flags.
+/// Sets `trem_chip` (true = use chip-level tremolo, false = 0), vibrato,
+/// envelope type, key-scale rate, and frequency multiplier.
+///
+/// Ported from `OPL3_SlotWrite20` (opl3.c line 642).
+pub(crate) fn slot_write_20(slot: &mut Opl3Slot, data: u8) {
+    slot.trem_chip = (data >> 7) & 0x01 != 0; // bit 7 → AM (use chip tremolo)
+    slot.reg_vib   = (data >> 6) & 0x01;      // bit 6 → vibrato enable
+    slot.reg_type  = (data >> 5) & 0x01;      // bit 5 → envelope type (EGT)
+    slot.reg_ksr   = (data >> 4) & 0x01;      // bit 4 → key scale rate
+    slot.reg_mult  = data & 0x0f;             // bits 0-3 → frequency multiplier index
+}
+
+/// Write register 0x40–0x55: KSL/TL (key scale level / total level).
+/// Refreshes KSL attenuation immediately after updating the registers.
+/// Requires `chip` and `slot_idx` because `envelope_update_ksl` recalculates
+/// `slot.eg_ksl` from `chip.channel[ch].ksv` and `slot.reg_ksl`.
+///
+/// Ported from `OPL3_SlotWrite40` (opl3.c line 658).
+pub(crate) fn slot_write_40(chip: &mut Opl3Chip, slot_idx: usize, data: u8) {
+    chip.slot[slot_idx].reg_ksl = (data >> 6) & 0x03; // bits 6-7
+    chip.slot[slot_idx].reg_tl  = data & 0x3f;        // bits 0-5
+    envelope_update_ksl(chip, slot_idx);
+}
+
+/// Write register 0x60–0x75: AR/DR (attack rate / decay rate).
+///
+/// Ported from `OPL3_SlotWrite60` (opl3.c line 665).
+pub(crate) fn slot_write_60(slot: &mut Opl3Slot, data: u8) {
+    slot.reg_ar = (data >> 4) & 0x0f; // bits 4-7 → attack rate
+    slot.reg_dr = data & 0x0f;        // bits 0-3 → decay rate
+}
+
+/// Write register 0x80–0x95: SL/RR (sustain level / release rate).
+/// Sustain level 15 (0x0f) is expanded to 31 (0x1f) to match OPL hardware behaviour.
+///
+/// Ported from `OPL3_SlotWrite80` (opl3.c line 671).
+pub(crate) fn slot_write_80(slot: &mut Opl3Slot, data: u8) {
+    slot.reg_sl = (data >> 4) & 0x0f; // bits 4-7 → sustain level
+    if slot.reg_sl == 0x0f {
+        slot.reg_sl = 0x1f; // OPL hardware quirk: SL=15 treated as SL=31
+    }
+    slot.reg_rr = data & 0x0f; // bits 0-3 → release rate
+}
+
+/// Write register 0xE0–0xF5: WS (waveform select).
+/// In OPL2 compat mode (`newm == 0`), only waveforms 0–3 are available (bits 0-1).
+/// In OPL3 mode (`newm != 0`), all 8 waveforms are available (bits 0-2).
+/// `newm` is passed explicitly so the caller can borrow `chip.slot[slot_idx]` mutably.
+///
+/// Ported from `OPL3_SlotWriteE0` (opl3.c line 681).
+pub(crate) fn slot_write_e0(slot: &mut Opl3Slot, data: u8, newm: u8) {
+    slot.reg_wf = data & 0x07;
+    if newm == 0 {
+        slot.reg_wf &= 0x03; // OPL2: clamp to 4 waveforms
+    }
+}
