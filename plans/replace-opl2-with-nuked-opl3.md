@@ -235,7 +235,7 @@ using the `ModInput`/`OutSrc` enums at call sites.
 - `fn channel_update_alg(chip: &mut Opl3Chip, ch_idx: usize)` — OPL2: alg=con then setup_alg; OPL3 4-op paths retained
 - `fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8)` — out[] set before setup_alg (drum case doesn't overwrite out[])
 
-#### Per-channel write handlers
+#### Per-channel write handlers ✅ DONE
 - `fn channel_write_a0(chip: &mut Opl3Chip, ch_idx: usize, data: u8)`
 - `fn channel_write_b0(chip: &mut Opl3Chip, ch_idx: usize, data: u8)`
 - `fn channel_write_c0(chip: &mut Opl3Chip, ch_idx: usize, data: u8)`

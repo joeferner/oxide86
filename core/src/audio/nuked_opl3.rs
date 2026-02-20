@@ -977,3 +977,172 @@ pub(crate) fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8) {
         }
     }
 }
+
+// ============================================================
+// Step 1d — Per-channel write handlers
+// ============================================================
+
+/// Set the low 8 bits of f_num, recompute ksv, and refresh KSL attenuation.
+/// OPL3 4-op primary channels propagate the change to their paired channel.
+///
+/// Ported from `OPL3_ChannelWriteA0` (opl3.c line 806).
+pub(crate) fn channel_write_a0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
+    // OPL3 only: ch_4op2 channels are driven by their primary; ignore direct writes.
+    if chip.newm != 0 && chip.channel[ch_idx].chtype == CH_4OP2 {
+        return;
+    }
+
+    // Snapshot nts before the mutable borrow.
+    let nts = chip.nts;
+
+    // Update f_num (low 8 bits) and recompute ksv.
+    chip.channel[ch_idx].f_num = (chip.channel[ch_idx].f_num & 0x300) | u16::from(data);
+    let block = chip.channel[ch_idx].block;
+    let f_num = chip.channel[ch_idx].f_num;
+    chip.channel[ch_idx].ksv =
+        (block << 1) | (((f_num >> (0x09 - nts)) & 0x01) as u8);
+
+    // Refresh KSL on both slots.
+    let s0 = chip.channel[ch_idx].slotz[0] as usize;
+    let s1 = chip.channel[ch_idx].slotz[1] as usize;
+    envelope_update_ksl(chip, s0);
+    envelope_update_ksl(chip, s1);
+
+    // OPL3 only: propagate f_num/ksv to the paired (secondary) channel.
+    if chip.newm != 0 && chip.channel[ch_idx].chtype == CH_4OP {
+        let pair_idx = chip.channel[ch_idx].pair_idx as usize;
+        let ksv = chip.channel[ch_idx].ksv;
+        chip.channel[pair_idx].f_num = f_num;
+        chip.channel[pair_idx].ksv = ksv;
+        let ps0 = chip.channel[pair_idx].slotz[0] as usize;
+        let ps1 = chip.channel[pair_idx].slotz[1] as usize;
+        envelope_update_ksl(chip, ps0);
+        envelope_update_ksl(chip, ps1);
+    }
+}
+
+/// Set the high 2 bits of f_num and the block field, recompute ksv, refresh KSL.
+/// OPL3 4-op primary channels propagate the change to their paired channel.
+///
+/// Ported from `OPL3_ChannelWriteB0` (opl3.c line 826).
+pub(crate) fn channel_write_b0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
+    // OPL3 only: ignore direct writes to secondary 4-op channels.
+    if chip.newm != 0 && chip.channel[ch_idx].chtype == CH_4OP2 {
+        return;
+    }
+
+    let nts = chip.nts;
+
+    chip.channel[ch_idx].f_num =
+        (chip.channel[ch_idx].f_num & 0xff) | (u16::from(data & 0x03) << 8);
+    chip.channel[ch_idx].block = (data >> 2) & 0x07;
+    let block = chip.channel[ch_idx].block;
+    let f_num = chip.channel[ch_idx].f_num;
+    chip.channel[ch_idx].ksv =
+        (block << 1) | (((f_num >> (0x09 - nts)) & 0x01) as u8);
+
+    let s0 = chip.channel[ch_idx].slotz[0] as usize;
+    let s1 = chip.channel[ch_idx].slotz[1] as usize;
+    envelope_update_ksl(chip, s0);
+    envelope_update_ksl(chip, s1);
+
+    // OPL3 only: propagate to paired channel.
+    if chip.newm != 0 && chip.channel[ch_idx].chtype == CH_4OP {
+        let pair_idx = chip.channel[ch_idx].pair_idx as usize;
+        let ksv = chip.channel[ch_idx].ksv;
+        chip.channel[pair_idx].f_num = f_num;
+        chip.channel[pair_idx].block = block;
+        chip.channel[pair_idx].ksv = ksv;
+        let ps0 = chip.channel[pair_idx].slotz[0] as usize;
+        let ps1 = chip.channel[pair_idx].slotz[1] as usize;
+        envelope_update_ksl(chip, ps0);
+        envelope_update_ksl(chip, ps1);
+    }
+}
+
+/// Write feedback depth (fb), connection (con), and stereo output enables.
+/// Calls `channel_update_alg` to recompute the slot routing.
+/// In OPL2 compat mode (`newm == 0`) both DAC1 outputs are enabled and DAC2
+/// outputs are disabled.
+///
+/// Ported from `OPL3_ChannelWriteC0` (opl3.c line 977).
+pub(crate) fn channel_write_c0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
+    chip.channel[ch_idx].fb = (data & 0x0e) >> 1;
+    chip.channel[ch_idx].con = data & 0x01;
+    channel_update_alg(chip, ch_idx);
+
+    if chip.newm != 0 {
+        // OPL3: bits 4-7 individually enable the four output channels.
+        chip.channel[ch_idx].cha = if (data >> 4) & 0x01 != 0 { 0xffff } else { 0 };
+        chip.channel[ch_idx].chb = if (data >> 5) & 0x01 != 0 { 0xffff } else { 0 };
+        chip.channel[ch_idx].chc = if (data >> 6) & 0x01 != 0 { 0xffff } else { 0 };
+        chip.channel[ch_idx].chd = if (data >> 7) & 0x01 != 0 { 0xffff } else { 0 };
+    } else {
+        // OPL2 compat: DAC1 (cha/chb) always enabled, DAC2 (chc/chd) always off.
+        chip.channel[ch_idx].cha = 0xffff;
+        chip.channel[ch_idx].chb = 0xffff;
+        chip.channel[ch_idx].chc = 0;
+        chip.channel[ch_idx].chd = 0;
+    }
+}
+
+/// Trigger key-on for both slots of the channel (and pair slots in OPL3 4-op mode).
+/// 4-op secondary channels (CH_4OP2) are skipped — keyed through their primary.
+///
+/// Ported from `OPL3_ChannelKeyOn` (opl3.c line 1015).
+pub(crate) fn channel_key_on(chip: &mut Opl3Chip, ch_idx: usize) {
+    let s0 = chip.channel[ch_idx].slotz[0] as usize;
+    let s1 = chip.channel[ch_idx].slotz[1] as usize;
+
+    if chip.newm != 0 {
+        let chtype = chip.channel[ch_idx].chtype;
+        if chtype == CH_4OP {
+            // Key on primary and paired secondary slots.
+            let pair_idx = chip.channel[ch_idx].pair_idx as usize;
+            let ps0 = chip.channel[pair_idx].slotz[0] as usize;
+            let ps1 = chip.channel[pair_idx].slotz[1] as usize;
+            envelope_key_on(&mut chip.slot[s0], EGK_NORM);
+            envelope_key_on(&mut chip.slot[s1], EGK_NORM);
+            envelope_key_on(&mut chip.slot[ps0], EGK_NORM);
+            envelope_key_on(&mut chip.slot[ps1], EGK_NORM);
+        } else if chtype == CH_2OP || chtype == CH_DRUM {
+            envelope_key_on(&mut chip.slot[s0], EGK_NORM);
+            envelope_key_on(&mut chip.slot[s1], EGK_NORM);
+        }
+        // CH_4OP2: skipped — driven by primary channel's key-on.
+    } else {
+        // OPL2 compat: always key on both slots.
+        envelope_key_on(&mut chip.slot[s0], EGK_NORM);
+        envelope_key_on(&mut chip.slot[s1], EGK_NORM);
+    }
+}
+
+/// Trigger key-off for both slots of the channel (and pair slots in OPL3 4-op mode).
+/// Mirror of `channel_key_on`.
+///
+/// Ported from `OPL3_ChannelKeyOff` (opl3.c line 1039).
+pub(crate) fn channel_key_off(chip: &mut Opl3Chip, ch_idx: usize) {
+    let s0 = chip.channel[ch_idx].slotz[0] as usize;
+    let s1 = chip.channel[ch_idx].slotz[1] as usize;
+
+    if chip.newm != 0 {
+        let chtype = chip.channel[ch_idx].chtype;
+        if chtype == CH_4OP {
+            let pair_idx = chip.channel[ch_idx].pair_idx as usize;
+            let ps0 = chip.channel[pair_idx].slotz[0] as usize;
+            let ps1 = chip.channel[pair_idx].slotz[1] as usize;
+            envelope_key_off(&mut chip.slot[s0], EGK_NORM);
+            envelope_key_off(&mut chip.slot[s1], EGK_NORM);
+            envelope_key_off(&mut chip.slot[ps0], EGK_NORM);
+            envelope_key_off(&mut chip.slot[ps1], EGK_NORM);
+        } else if chtype == CH_2OP || chtype == CH_DRUM {
+            envelope_key_off(&mut chip.slot[s0], EGK_NORM);
+            envelope_key_off(&mut chip.slot[s1], EGK_NORM);
+        }
+        // CH_4OP2: skipped.
+    } else {
+        // OPL2 compat: always key off both slots.
+        envelope_key_off(&mut chip.slot[s0], EGK_NORM);
+        envelope_key_off(&mut chip.slot[s1], EGK_NORM);
+    }
+}
