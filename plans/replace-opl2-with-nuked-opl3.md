@@ -227,12 +227,13 @@ using the `ModInput`/`OutSrc` enums at call sites.
 - `fn slot_generate(chip: &mut Opl3Chip, slot_idx: usize)` — snapshots mod_input/phase/eg_out/reg_wf, then writes out
 - **Note**: added `#![allow(dead_code)]` at file top during incremental port; remove in step 2 when fully wired
 
-#### Channel setup
+#### Channel setup ✅ DONE
 - `fn channel_setup_alg(chip: &mut Opl3Chip, ch_idx: usize)`
-  - Translates the C pointer-assignment pattern into setting `slot.mod_input` and
-    `channel.out[i]` enum values
-- `fn channel_update_alg(chip: &mut Opl3Chip, ch_idx: usize)`
-- `fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8)`
+  - Drum: ch_num 7/8 → both Zero; ch_num 6 → alg&1 selects series/additive
+  - 4-op: ch_idx=secondary (alg|0x04), pair_idx=primary (alg|0x08); primary out[] zeroed; guard `pair_idx >= 18` for safety
+  - 2-op: alg&1 → series-FM or additive wiring
+- `fn channel_update_alg(chip: &mut Opl3Chip, ch_idx: usize)` — OPL2: alg=con then setup_alg; OPL3 4-op paths retained
+- `fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8)` — out[] set before setup_alg (drum case doesn't overwrite out[])
 
 #### Per-channel write handlers
 - `fn channel_write_a0(chip: &mut Opl3Chip, ch_idx: usize, data: u8)`

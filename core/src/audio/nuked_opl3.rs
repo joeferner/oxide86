@@ -728,3 +728,252 @@ pub(crate) fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize) {
     chip.rm_tc_bit5 = new_rm_tc_bit5;
     chip.noise = new_noise;
 }
+
+// ============================================================
+// Step 1d — Channel setup
+// ============================================================
+
+/// Wire up the modulation network for a channel (OPL3_ChannelSetupAlg).
+///
+/// Translates C's raw-pointer assignments into index-based enum assignments:
+/// - `slot->mod = &slot->fbmod`      → `slot.mod_input = ModInput::SlotFbMod(idx)`
+/// - `slot->mod = &other_slot->out`  → `slot.mod_input = ModInput::SlotOut(idx)`
+/// - `slot->mod = &chip->zeromod`    → `slot.mod_input = ModInput::Zero`
+/// - `chan->out[i] = &slot->out`     → `chan.out[i] = OutSrc::SlotOut(idx)`
+/// - `chan->out[i] = &chip->zeromod` → `chan.out[i] = OutSrc::Zero`
+///
+/// In the 4-op case `ch_idx` is the *secondary* channel (ch_4op2, alg | 0x04)
+/// and `pair_idx` is the *primary* channel (ch_4op, alg | 0x08). The primary's
+/// outputs are zeroed — only the secondary channel contributes to the mix.
+///
+/// Borrow strategy: snapshot all slot/channel indices into `usize` locals before
+/// any mutations so the compiler sees no overlapping exclusive borrows.
+pub(crate) fn channel_setup_alg(chip: &mut Opl3Chip, ch_idx: usize) {
+    let chtype   = chip.channel[ch_idx].chtype;
+    let alg      = chip.channel[ch_idx].alg;
+    let s0       = chip.channel[ch_idx].slotz[0] as usize;
+    let s1       = chip.channel[ch_idx].slotz[1] as usize;
+    let ch_num   = chip.channel[ch_idx].ch_num;
+    let pair_idx = chip.channel[ch_idx].pair_idx as usize;
+
+    // ── Drum channels ────────────────────────────────────────────────────────
+    if chtype == CH_DRUM {
+        if ch_num == 7 || ch_num == 8 {
+            // Hi-hat / snare-drum / top-cymbal / tom: no FM modulation input.
+            chip.slot[s0].mod_input = ModInput::Zero;
+            chip.slot[s1].mod_input = ModInput::Zero;
+            return;
+        }
+        // Bass drum (ch_num == 6): optional series-FM or additive.
+        match alg & 0x01 {
+            0x00 => {
+                chip.slot[s0].mod_input = ModInput::SlotFbMod(s0 as u8);
+                chip.slot[s1].mod_input = ModInput::SlotOut(s0 as u8);
+            }
+            _ => {
+                chip.slot[s0].mod_input = ModInput::SlotFbMod(s0 as u8);
+                chip.slot[s1].mod_input = ModInput::Zero;
+            }
+        }
+        return;
+    }
+
+    // ── 4-op primary (alg bit 3): nothing to wire here; secondary handles it.
+    if alg & 0x08 != 0 {
+        return;
+    }
+
+    // ── 4-op secondary (alg bit 2): ch_idx = secondary, pair_idx = primary. ──
+    if alg & 0x04 != 0 {
+        if pair_idx >= 18 {
+            return; // safety: no valid pair (shouldn't happen in OPL2 mode)
+        }
+        let ps0 = chip.channel[pair_idx].slotz[0] as usize;
+        let ps1 = chip.channel[pair_idx].slotz[1] as usize;
+
+        // Primary channel contributes nothing to the output mix.
+        chip.channel[pair_idx].out = [OutSrc::Zero; 4];
+
+        match alg & 0x03 {
+            0x00 => {
+                // Series: ps0 → ps1 → s0 → s1 → out
+                chip.slot[ps0].mod_input     = ModInput::SlotFbMod(ps0 as u8);
+                chip.slot[ps1].mod_input     = ModInput::SlotOut(ps0 as u8);
+                chip.slot[s0].mod_input      = ModInput::SlotOut(ps1 as u8);
+                chip.slot[s1].mod_input      = ModInput::SlotOut(s0 as u8);
+                chip.channel[ch_idx].out     =
+                    [OutSrc::SlotOut(s1 as u8), OutSrc::Zero, OutSrc::Zero, OutSrc::Zero];
+            }
+            0x01 => {
+                // ps0 → ps1 → out;  zero → s0 → s1 → out
+                chip.slot[ps0].mod_input     = ModInput::SlotFbMod(ps0 as u8);
+                chip.slot[ps1].mod_input     = ModInput::SlotOut(ps0 as u8);
+                chip.slot[s0].mod_input      = ModInput::Zero;
+                chip.slot[s1].mod_input      = ModInput::SlotOut(s0 as u8);
+                chip.channel[ch_idx].out     = [
+                    OutSrc::SlotOut(ps1 as u8), OutSrc::SlotOut(s1 as u8),
+                    OutSrc::Zero, OutSrc::Zero,
+                ];
+            }
+            0x02 => {
+                // ps0 → out;  zero → ps1 → s0 → s1 → out
+                chip.slot[ps0].mod_input     = ModInput::SlotFbMod(ps0 as u8);
+                chip.slot[ps1].mod_input     = ModInput::Zero;
+                chip.slot[s0].mod_input      = ModInput::SlotOut(ps1 as u8);
+                chip.slot[s1].mod_input      = ModInput::SlotOut(s0 as u8);
+                chip.channel[ch_idx].out     = [
+                    OutSrc::SlotOut(ps0 as u8), OutSrc::SlotOut(s1 as u8),
+                    OutSrc::Zero, OutSrc::Zero,
+                ];
+            }
+            _ => {
+                // ps0 → out;  zero → ps1 → s0 → out;  zero → s1 → out
+                chip.slot[ps0].mod_input     = ModInput::SlotFbMod(ps0 as u8);
+                chip.slot[ps1].mod_input     = ModInput::Zero;
+                chip.slot[s0].mod_input      = ModInput::SlotOut(ps1 as u8);
+                chip.slot[s1].mod_input      = ModInput::Zero;
+                chip.channel[ch_idx].out     = [
+                    OutSrc::SlotOut(ps0 as u8), OutSrc::SlotOut(s0 as u8),
+                    OutSrc::SlotOut(s1 as u8),  OutSrc::Zero,
+                ];
+            }
+        }
+        return;
+    }
+
+    // ── 2-op channel ─────────────────────────────────────────────────────────
+    match alg & 0x01 {
+        0x00 => {
+            // Series FM: s0 modulates s1; s1 → out.
+            chip.slot[s0].mod_input  = ModInput::SlotFbMod(s0 as u8);
+            chip.slot[s1].mod_input  = ModInput::SlotOut(s0 as u8);
+            chip.channel[ch_idx].out =
+                [OutSrc::SlotOut(s1 as u8), OutSrc::Zero, OutSrc::Zero, OutSrc::Zero];
+        }
+        _ => {
+            // Additive: s0 and s1 both contribute independently.
+            chip.slot[s0].mod_input  = ModInput::SlotFbMod(s0 as u8);
+            chip.slot[s1].mod_input  = ModInput::Zero;
+            chip.channel[ch_idx].out = [
+                OutSrc::SlotOut(s0 as u8), OutSrc::SlotOut(s1 as u8),
+                OutSrc::Zero, OutSrc::Zero,
+            ];
+        }
+    }
+}
+
+/// Update algorithm selection after a con/chtype change (OPL3_ChannelUpdateAlg).
+///
+/// In OPL2 mode (`newm == 0`) always reduces to: `channel.alg = channel.con`
+/// then `channel_setup_alg`. The full OPL3 4-op paths are kept so the function
+/// works correctly if `newm` is ever set to 1 by a future OPL3 wrapper.
+pub(crate) fn channel_update_alg(chip: &mut Opl3Chip, ch_idx: usize) {
+    let con = chip.channel[ch_idx].con;
+    chip.channel[ch_idx].alg = con;
+    if chip.newm != 0 {
+        let chtype = chip.channel[ch_idx].chtype;
+        if chtype == CH_4OP {
+            // Primary: give pair the composite alg; own alg = 0x08 (skip).
+            let pair_idx = chip.channel[ch_idx].pair_idx as usize;
+            let pair_con = chip.channel[pair_idx].con;
+            chip.channel[pair_idx].alg = 0x04 | (con << 1) | pair_con;
+            chip.channel[ch_idx].alg   = 0x08;
+            channel_setup_alg(chip, pair_idx);
+        } else if chtype == CH_4OP2 {
+            // Secondary: own alg = 0x04 | ...; give primary alg = 0x08.
+            let pair_idx = chip.channel[ch_idx].pair_idx as usize;
+            let pair_con = chip.channel[pair_idx].con;
+            chip.channel[ch_idx].alg   = 0x04 | (pair_con << 1) | con;
+            chip.channel[pair_idx].alg = 0x08;
+            channel_setup_alg(chip, ch_idx);
+        } else {
+            channel_setup_alg(chip, ch_idx);
+        }
+    } else {
+        channel_setup_alg(chip, ch_idx);
+    }
+}
+
+/// Handle a write to the rhythm-mode control register (OPL3_ChannelUpdateRhythm).
+///
+/// When bit 5 is set, channels 6–8 are reconfigured as drum channels with fixed
+/// output routing. The `channel.out[]` assignments here are intentionally done
+/// *before* calling `channel_setup_alg` (which only writes slot `mod_input` for
+/// drum channels, not `channel.out`), so they are preserved.
+pub(crate) fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8) {
+    chip.rhy = data & 0x3f;
+    if chip.rhy & 0x20 != 0 {
+        // Snapshot slot indices before any mutations.
+        let c6s0 = chip.channel[6].slotz[0];
+        let c6s1 = chip.channel[6].slotz[1];
+        let c7s0 = chip.channel[7].slotz[0];
+        let c7s1 = chip.channel[7].slotz[1];
+        let c8s0 = chip.channel[8].slotz[0];
+        let c8s1 = chip.channel[8].slotz[1];
+
+        // Bass drum (ch6): both outputs from slot1 (carrier).
+        chip.channel[6].out = [
+            OutSrc::SlotOut(c6s1), OutSrc::SlotOut(c6s1),
+            OutSrc::Zero, OutSrc::Zero,
+        ];
+        // Hi-hat (slot0) + snare drum (slot1) — both on L+R.
+        chip.channel[7].out = [
+            OutSrc::SlotOut(c7s0), OutSrc::SlotOut(c7s0),
+            OutSrc::SlotOut(c7s1), OutSrc::SlotOut(c7s1),
+        ];
+        // Tom (slot0) + top cymbal (slot1) — both on L+R.
+        chip.channel[8].out = [
+            OutSrc::SlotOut(c8s0), OutSrc::SlotOut(c8s0),
+            OutSrc::SlotOut(c8s1), OutSrc::SlotOut(c8s1),
+        ];
+
+        for ch in 6..9usize {
+            chip.channel[ch].chtype = CH_DRUM;
+        }
+        channel_setup_alg(chip, 6);
+        channel_setup_alg(chip, 7);
+        channel_setup_alg(chip, 8);
+
+        let rhy = chip.rhy; // copy before slot borrows
+
+        // hi-hat: ch7 slot0
+        let s = c7s0 as usize;
+        if rhy & 0x01 != 0 { envelope_key_on(&mut chip.slot[s], EGK_DRUM); }
+        else                { envelope_key_off(&mut chip.slot[s], EGK_DRUM); }
+
+        // top cymbal: ch8 slot1
+        let s = c8s1 as usize;
+        if rhy & 0x02 != 0 { envelope_key_on(&mut chip.slot[s], EGK_DRUM); }
+        else                { envelope_key_off(&mut chip.slot[s], EGK_DRUM); }
+
+        // tom: ch8 slot0
+        let s = c8s0 as usize;
+        if rhy & 0x04 != 0 { envelope_key_on(&mut chip.slot[s], EGK_DRUM); }
+        else                { envelope_key_off(&mut chip.slot[s], EGK_DRUM); }
+
+        // snare drum: ch7 slot1
+        let s = c7s1 as usize;
+        if rhy & 0x08 != 0 { envelope_key_on(&mut chip.slot[s], EGK_DRUM); }
+        else                { envelope_key_off(&mut chip.slot[s], EGK_DRUM); }
+
+        // bass drum: ch6 both slots
+        let s0 = c6s0 as usize;
+        let s1 = c6s1 as usize;
+        if rhy & 0x10 != 0 {
+            envelope_key_on(&mut chip.slot[s0], EGK_DRUM);
+            envelope_key_on(&mut chip.slot[s1], EGK_DRUM);
+        } else {
+            envelope_key_off(&mut chip.slot[s0], EGK_DRUM);
+            envelope_key_off(&mut chip.slot[s1], EGK_DRUM);
+        }
+    } else {
+        for ch in 6..9usize {
+            let s0 = chip.channel[ch].slotz[0] as usize;
+            let s1 = chip.channel[ch].slotz[1] as usize;
+            chip.channel[ch].chtype = CH_2OP;
+            channel_setup_alg(chip, ch);
+            envelope_key_off(&mut chip.slot[s0], EGK_DRUM);
+            envelope_key_off(&mut chip.slot[s1], EGK_DRUM);
+        }
+    }
+}
