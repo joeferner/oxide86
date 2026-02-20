@@ -557,3 +557,128 @@ pub(crate) fn envelope_key_on(slot: &mut Opl3Slot, key_type: u8) {
 pub(crate) fn envelope_key_off(slot: &mut Opl3Slot, key_type: u8) {
     slot.key &= !key_type;
 }
+
+// ============================================================
+// Step 1d — Phase generator
+// ============================================================
+
+/// Advance the phase accumulator for one slot and update rhythm-mode phase
+/// outputs and the noise LFSR (OPL3_PhaseGenerate).
+///
+/// Borrow strategy: snapshot all read-only fields (channel f_num/block, slot
+/// reg_vib/reg_mult/slot_num/pg_reset/pg_phase, chip vibpos/vibshift/rhy/noise
+/// and all rm_* bits) into locals, compute results, then write back the two
+/// slot fields and chip-level fields separately.
+pub(crate) fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize) {
+    // --- Snapshot ---
+    let ch        = chip.slot[slot_idx].channel_num as usize;
+    let f_num_base = chip.channel[ch].f_num;
+    let block     = chip.channel[ch].block;
+    let reg_vib   = chip.slot[slot_idx].reg_vib;
+    let reg_mult  = chip.slot[slot_idx].reg_mult;
+    let slot_num  = chip.slot[slot_idx].slot_num;
+    let pg_reset  = chip.slot[slot_idx].pg_reset;
+    let pg_phase  = chip.slot[slot_idx].pg_phase;
+    let vibpos    = chip.vibpos;
+    let vibshift  = chip.vibshift;
+    let rhy       = chip.rhy;
+    let noise     = chip.noise;
+    let rm_hh_bit2 = chip.rm_hh_bit2;
+    let rm_hh_bit3 = chip.rm_hh_bit3;
+    let rm_hh_bit7 = chip.rm_hh_bit7;
+    let rm_hh_bit8 = chip.rm_hh_bit8;
+    let rm_tc_bit3 = chip.rm_tc_bit3;
+    let rm_tc_bit5 = chip.rm_tc_bit5;
+
+    // --- Vibrato ---
+    // range is an i8: derived from bits [9:7] of f_num (0–7), then halved,
+    // shifted, and optionally negated depending on vibpos phase.
+    let mut f_num = f_num_base;
+    if reg_vib != 0 {
+        let mut range = ((f_num_base >> 7) & 7) as i8;
+        if vibpos & 3 == 0 {
+            range = 0;
+        } else if vibpos & 1 != 0 {
+            range >>= 1;
+        }
+        range >>= vibshift; // vibshift is 0 (deep) or 1 (normal)
+        if vibpos & 4 != 0 {
+            range = -range;
+        }
+        // Wrapping add mirrors C's u16 truncation of (u16 + i8 via int promotion).
+        f_num = f_num_base.wrapping_add(range as u16);
+    }
+
+    // --- Phase accumulator ---
+    // Capture the output phase BEFORE the reset/increment.
+    let phase = (pg_phase >> 9) as u16;
+    let basefreq = ((f_num as u32) << block) >> 1;
+    let base = if pg_reset { 0u32 } else { pg_phase };
+    let new_pg_phase = base.wrapping_add((MT[reg_mult as usize] as u32 * basefreq) >> 1);
+
+    // --- Rhythm-mode bit extraction ---
+    // hh (slot 13) updates its own bits; tc (slot 17) updates its bits.
+    // rm_xor is then recomputed with the freshest values so the same-slot
+    // phase override uses the bits set in this very call.
+    let mut new_rm_hh_bit2 = rm_hh_bit2;
+    let mut new_rm_hh_bit3 = rm_hh_bit3;
+    let mut new_rm_hh_bit7 = rm_hh_bit7;
+    let mut new_rm_hh_bit8 = rm_hh_bit8;
+    let mut new_rm_tc_bit3 = rm_tc_bit3;
+    let mut new_rm_tc_bit5 = rm_tc_bit5;
+
+    if slot_num == 13 {
+        new_rm_hh_bit2 = (phase >> 2) as u8 & 1;
+        new_rm_hh_bit3 = (phase >> 3) as u8 & 1;
+        new_rm_hh_bit7 = (phase >> 7) as u8 & 1;
+        new_rm_hh_bit8 = (phase >> 8) as u8 & 1;
+    }
+    if slot_num == 17 && (rhy & 0x20) != 0 {
+        new_rm_tc_bit3 = (phase >> 3) as u8 & 1;
+        new_rm_tc_bit5 = (phase >> 5) as u8 & 1;
+    }
+
+    // --- Rhythm-mode phase override ---
+    let mut pg_phase_out = phase;
+    if rhy & 0x20 != 0 {
+        let rm_xor = (new_rm_hh_bit2 ^ new_rm_hh_bit7)
+                   | (new_rm_hh_bit3 ^ new_rm_tc_bit5)
+                   | (new_rm_tc_bit3 ^ new_rm_tc_bit5);
+        match slot_num {
+            13 => {
+                // hi-hat: phase driven by rm_xor and noise LSB
+                pg_phase_out = (rm_xor as u16) << 9;
+                if rm_xor ^ (noise as u8 & 1) != 0 {
+                    pg_phase_out |= 0xd0;
+                } else {
+                    pg_phase_out |= 0x34;
+                }
+            }
+            16 => {
+                // snare drum: driven by hh_bit8 and noise LSB
+                pg_phase_out = ((new_rm_hh_bit8 as u16) << 9)
+                    | (((new_rm_hh_bit8 ^ (noise as u8 & 1)) as u16) << 8);
+            }
+            17 => {
+                // top cymbal: driven by rm_xor
+                pg_phase_out = ((rm_xor as u16) << 9) | 0x80;
+            }
+            _ => {}
+        }
+    }
+
+    // --- Noise LFSR (Galois): feedback = bit14 XOR bit0 → inserted at bit22 ---
+    let n_bit = ((noise >> 14) ^ noise) & 0x01;
+    let new_noise = (noise >> 1) | (n_bit << 22);
+
+    // --- Write back ---
+    chip.slot[slot_idx].pg_phase     = new_pg_phase;
+    chip.slot[slot_idx].pg_phase_out = pg_phase_out;
+    chip.rm_hh_bit2 = new_rm_hh_bit2;
+    chip.rm_hh_bit3 = new_rm_hh_bit3;
+    chip.rm_hh_bit7 = new_rm_hh_bit7;
+    chip.rm_hh_bit8 = new_rm_hh_bit8;
+    chip.rm_tc_bit3 = new_rm_tc_bit3;
+    chip.rm_tc_bit5 = new_rm_tc_bit5;
+    chip.noise = new_noise;
+}

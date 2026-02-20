@@ -213,8 +213,8 @@ using the `ModInput`/`OutSrc` enums at call sites.
 - `fn envelope_key_on(slot: &mut Opl3Slot, key_type: u8)`
 - `fn envelope_key_off(slot: &mut Opl3Slot, key_type: u8)`
 
-#### Phase generator
-- `fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize)`
+#### Phase generator ✅ DONE
+- `pub(crate) fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize)`
   - Reads `slot.channel_num` → `chip.channel[ch].f_num` / `.block`
   - Writes `chip.rm_hh_bit*` / `chip.rm_tc_bit*` for rhythm mode
   - Advances `chip.noise`
