@@ -45,7 +45,7 @@ other modules). Keeping it in its own file satisfies this requirement.
 |------|--------|--------|
 | `core/src/audio/nuked_opl3.rs` | **CREATE** — Rust port of `opl3.c` / `opl3.h` | ✅ Done |
 | `core/src/audio/opl2.rs` | **DELETE** | ⏳ Pending |
-| `core/src/audio/adlib.rs` | **UPDATE** — own `Opl3Chip` + timer state directly | ⏳ Pending |
+| `core/src/audio/adlib.rs` | **UPDATE** — own `Opl3Chip` + timer state directly | ✅ Done |
 | `core/src/audio/mod.rs` | **UPDATE** — remove `pub mod opl2;`, add `pub mod nuked_opl3;` | ✅ Done (module declared) |
 
 ---
@@ -292,7 +292,7 @@ let ksv       = chip.channel[ch_num].ksv;
 
 ---
 
-## Step 2 — Update `core/src/audio/adlib.rs`
+## Step 2 — Update `core/src/audio/adlib.rs` ✅ DONE
 
 `adlib.rs` becomes the thin wrapper. Delete the `use crate::audio::opl2::Opl2;` import
 and replace the `opl2: Opl2` field with `Opl3Chip` plus the timer state that used to

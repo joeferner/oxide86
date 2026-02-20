@@ -1,5 +1,3 @@
-// Dead-code suppressed during incremental port; removed when module is fully wired in step 2.
-#![allow(dead_code)]
 // Nuked OPL3 — Rust port of opl3.c / opl3.h (version 1.8)
 // Original C implementation by Nuke.YKT
 // https://github.com/nukeykt/Nuked-OPL3
@@ -11,7 +9,7 @@
 // faithful reproductions of the upstream C source.
 
 // ============================================================
-// Step 1a — ROM tables (literal transcription from opl3.c)
+// ROM tables (literal transcription from opl3.c)
 // ============================================================
 
 /// Log-sine ROM (256 entries), extracted from OPL2 die shot.
@@ -88,7 +86,7 @@ pub static CH_SLOT: [u8; 18] = [
 ];
 
 // ============================================================
-// Step 1b — Pointer replacement enums
+// Pointer replacement enums
 // ============================================================
 
 /// Channel type constants (chtype field).
@@ -121,7 +119,7 @@ pub enum OutSrc {
 }
 
 // ============================================================
-// Step 1c — Struct layout
+// Struct layout
 // ============================================================
 
 /// One FM operator (maps to `opl3_slot` in opl3.h).
@@ -265,7 +263,7 @@ impl Default for Opl3Chip {
 }
 
 // ============================================================
-// Step 1d — Envelope helpers
+// Envelope helpers
 // ============================================================
 
 /// Envelope generator phase constants (eg_gen field values).
@@ -551,7 +549,7 @@ pub(crate) fn envelope_key_off(slot: &mut Opl3Slot, key_type: u8) {
 }
 
 // ============================================================
-// Step 1d — Slot operations
+// Slot operations
 // ============================================================
 
 /// Read the phase-modulation input value for a slot (immutable borrow of chip).
@@ -605,7 +603,7 @@ pub(crate) fn slot_generate(chip: &mut Opl3Chip, slot_idx: usize) {
 }
 
 // ============================================================
-// Step 1d — Phase generator
+// Phase generator
 // ============================================================
 
 /// Advance the phase accumulator for one slot and update rhythm-mode phase
@@ -730,7 +728,7 @@ pub(crate) fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize) {
 }
 
 // ============================================================
-// Step 1d — Channel setup
+// Channel setup
 // ============================================================
 
 /// Wire up the modulation network for a channel (OPL3_ChannelSetupAlg).
@@ -749,11 +747,11 @@ pub(crate) fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize) {
 /// Borrow strategy: snapshot all slot/channel indices into `usize` locals before
 /// any mutations so the compiler sees no overlapping exclusive borrows.
 pub(crate) fn channel_setup_alg(chip: &mut Opl3Chip, ch_idx: usize) {
-    let chtype   = chip.channel[ch_idx].chtype;
-    let alg      = chip.channel[ch_idx].alg;
-    let s0       = chip.channel[ch_idx].slotz[0] as usize;
-    let s1       = chip.channel[ch_idx].slotz[1] as usize;
-    let ch_num   = chip.channel[ch_idx].ch_num;
+    let chtype = chip.channel[ch_idx].chtype;
+    let alg = chip.channel[ch_idx].alg;
+    let s0 = chip.channel[ch_idx].slotz[0] as usize;
+    let s1 = chip.channel[ch_idx].slotz[1] as usize;
+    let ch_num = chip.channel[ch_idx].ch_num;
     let pair_idx = chip.channel[ch_idx].pair_idx as usize;
 
     // ── Drum channels ────────────────────────────────────────────────────────
@@ -797,44 +795,54 @@ pub(crate) fn channel_setup_alg(chip: &mut Opl3Chip, ch_idx: usize) {
         match alg & 0x03 {
             0x00 => {
                 // Series: ps0 → ps1 → s0 → s1 → out
-                chip.slot[ps0].mod_input     = ModInput::SlotFbMod(ps0 as u8);
-                chip.slot[ps1].mod_input     = ModInput::SlotOut(ps0 as u8);
-                chip.slot[s0].mod_input      = ModInput::SlotOut(ps1 as u8);
-                chip.slot[s1].mod_input      = ModInput::SlotOut(s0 as u8);
-                chip.channel[ch_idx].out     =
-                    [OutSrc::SlotOut(s1 as u8), OutSrc::Zero, OutSrc::Zero, OutSrc::Zero];
+                chip.slot[ps0].mod_input = ModInput::SlotFbMod(ps0 as u8);
+                chip.slot[ps1].mod_input = ModInput::SlotOut(ps0 as u8);
+                chip.slot[s0].mod_input = ModInput::SlotOut(ps1 as u8);
+                chip.slot[s1].mod_input = ModInput::SlotOut(s0 as u8);
+                chip.channel[ch_idx].out = [
+                    OutSrc::SlotOut(s1 as u8),
+                    OutSrc::Zero,
+                    OutSrc::Zero,
+                    OutSrc::Zero,
+                ];
             }
             0x01 => {
                 // ps0 → ps1 → out;  zero → s0 → s1 → out
-                chip.slot[ps0].mod_input     = ModInput::SlotFbMod(ps0 as u8);
-                chip.slot[ps1].mod_input     = ModInput::SlotOut(ps0 as u8);
-                chip.slot[s0].mod_input      = ModInput::Zero;
-                chip.slot[s1].mod_input      = ModInput::SlotOut(s0 as u8);
-                chip.channel[ch_idx].out     = [
-                    OutSrc::SlotOut(ps1 as u8), OutSrc::SlotOut(s1 as u8),
-                    OutSrc::Zero, OutSrc::Zero,
+                chip.slot[ps0].mod_input = ModInput::SlotFbMod(ps0 as u8);
+                chip.slot[ps1].mod_input = ModInput::SlotOut(ps0 as u8);
+                chip.slot[s0].mod_input = ModInput::Zero;
+                chip.slot[s1].mod_input = ModInput::SlotOut(s0 as u8);
+                chip.channel[ch_idx].out = [
+                    OutSrc::SlotOut(ps1 as u8),
+                    OutSrc::SlotOut(s1 as u8),
+                    OutSrc::Zero,
+                    OutSrc::Zero,
                 ];
             }
             0x02 => {
                 // ps0 → out;  zero → ps1 → s0 → s1 → out
-                chip.slot[ps0].mod_input     = ModInput::SlotFbMod(ps0 as u8);
-                chip.slot[ps1].mod_input     = ModInput::Zero;
-                chip.slot[s0].mod_input      = ModInput::SlotOut(ps1 as u8);
-                chip.slot[s1].mod_input      = ModInput::SlotOut(s0 as u8);
-                chip.channel[ch_idx].out     = [
-                    OutSrc::SlotOut(ps0 as u8), OutSrc::SlotOut(s1 as u8),
-                    OutSrc::Zero, OutSrc::Zero,
+                chip.slot[ps0].mod_input = ModInput::SlotFbMod(ps0 as u8);
+                chip.slot[ps1].mod_input = ModInput::Zero;
+                chip.slot[s0].mod_input = ModInput::SlotOut(ps1 as u8);
+                chip.slot[s1].mod_input = ModInput::SlotOut(s0 as u8);
+                chip.channel[ch_idx].out = [
+                    OutSrc::SlotOut(ps0 as u8),
+                    OutSrc::SlotOut(s1 as u8),
+                    OutSrc::Zero,
+                    OutSrc::Zero,
                 ];
             }
             _ => {
                 // ps0 → out;  zero → ps1 → s0 → out;  zero → s1 → out
-                chip.slot[ps0].mod_input     = ModInput::SlotFbMod(ps0 as u8);
-                chip.slot[ps1].mod_input     = ModInput::Zero;
-                chip.slot[s0].mod_input      = ModInput::SlotOut(ps1 as u8);
-                chip.slot[s1].mod_input      = ModInput::Zero;
-                chip.channel[ch_idx].out     = [
-                    OutSrc::SlotOut(ps0 as u8), OutSrc::SlotOut(s0 as u8),
-                    OutSrc::SlotOut(s1 as u8),  OutSrc::Zero,
+                chip.slot[ps0].mod_input = ModInput::SlotFbMod(ps0 as u8);
+                chip.slot[ps1].mod_input = ModInput::Zero;
+                chip.slot[s0].mod_input = ModInput::SlotOut(ps1 as u8);
+                chip.slot[s1].mod_input = ModInput::Zero;
+                chip.channel[ch_idx].out = [
+                    OutSrc::SlotOut(ps0 as u8),
+                    OutSrc::SlotOut(s0 as u8),
+                    OutSrc::SlotOut(s1 as u8),
+                    OutSrc::Zero,
                 ];
             }
         }
@@ -845,18 +853,24 @@ pub(crate) fn channel_setup_alg(chip: &mut Opl3Chip, ch_idx: usize) {
     match alg & 0x01 {
         0x00 => {
             // Series FM: s0 modulates s1; s1 → out.
-            chip.slot[s0].mod_input  = ModInput::SlotFbMod(s0 as u8);
-            chip.slot[s1].mod_input  = ModInput::SlotOut(s0 as u8);
-            chip.channel[ch_idx].out =
-                [OutSrc::SlotOut(s1 as u8), OutSrc::Zero, OutSrc::Zero, OutSrc::Zero];
+            chip.slot[s0].mod_input = ModInput::SlotFbMod(s0 as u8);
+            chip.slot[s1].mod_input = ModInput::SlotOut(s0 as u8);
+            chip.channel[ch_idx].out = [
+                OutSrc::SlotOut(s1 as u8),
+                OutSrc::Zero,
+                OutSrc::Zero,
+                OutSrc::Zero,
+            ];
         }
         _ => {
             // Additive: s0 and s1 both contribute independently.
-            chip.slot[s0].mod_input  = ModInput::SlotFbMod(s0 as u8);
-            chip.slot[s1].mod_input  = ModInput::Zero;
+            chip.slot[s0].mod_input = ModInput::SlotFbMod(s0 as u8);
+            chip.slot[s1].mod_input = ModInput::Zero;
             chip.channel[ch_idx].out = [
-                OutSrc::SlotOut(s0 as u8), OutSrc::SlotOut(s1 as u8),
-                OutSrc::Zero, OutSrc::Zero,
+                OutSrc::SlotOut(s0 as u8),
+                OutSrc::SlotOut(s1 as u8),
+                OutSrc::Zero,
+                OutSrc::Zero,
             ];
         }
     }
@@ -877,13 +891,13 @@ pub(crate) fn channel_update_alg(chip: &mut Opl3Chip, ch_idx: usize) {
             let pair_idx = chip.channel[ch_idx].pair_idx as usize;
             let pair_con = chip.channel[pair_idx].con;
             chip.channel[pair_idx].alg = 0x04 | (con << 1) | pair_con;
-            chip.channel[ch_idx].alg   = 0x08;
+            chip.channel[ch_idx].alg = 0x08;
             channel_setup_alg(chip, pair_idx);
         } else if chtype == CH_4OP2 {
             // Secondary: own alg = 0x04 | ...; give primary alg = 0x08.
             let pair_idx = chip.channel[ch_idx].pair_idx as usize;
             let pair_con = chip.channel[pair_idx].con;
-            chip.channel[ch_idx].alg   = 0x04 | (pair_con << 1) | con;
+            chip.channel[ch_idx].alg = 0x04 | (pair_con << 1) | con;
             chip.channel[pair_idx].alg = 0x08;
             channel_setup_alg(chip, ch_idx);
         } else {
@@ -913,18 +927,24 @@ pub(crate) fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8) {
 
         // Bass drum (ch6): both outputs from slot1 (carrier).
         chip.channel[6].out = [
-            OutSrc::SlotOut(c6s1), OutSrc::SlotOut(c6s1),
-            OutSrc::Zero, OutSrc::Zero,
+            OutSrc::SlotOut(c6s1),
+            OutSrc::SlotOut(c6s1),
+            OutSrc::Zero,
+            OutSrc::Zero,
         ];
         // Hi-hat (slot0) + snare drum (slot1) — both on L+R.
         chip.channel[7].out = [
-            OutSrc::SlotOut(c7s0), OutSrc::SlotOut(c7s0),
-            OutSrc::SlotOut(c7s1), OutSrc::SlotOut(c7s1),
+            OutSrc::SlotOut(c7s0),
+            OutSrc::SlotOut(c7s0),
+            OutSrc::SlotOut(c7s1),
+            OutSrc::SlotOut(c7s1),
         ];
         // Tom (slot0) + top cymbal (slot1) — both on L+R.
         chip.channel[8].out = [
-            OutSrc::SlotOut(c8s0), OutSrc::SlotOut(c8s0),
-            OutSrc::SlotOut(c8s1), OutSrc::SlotOut(c8s1),
+            OutSrc::SlotOut(c8s0),
+            OutSrc::SlotOut(c8s0),
+            OutSrc::SlotOut(c8s1),
+            OutSrc::SlotOut(c8s1),
         ];
 
         for ch in 6..9usize {
@@ -938,23 +958,35 @@ pub(crate) fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8) {
 
         // hi-hat: ch7 slot0
         let s = c7s0 as usize;
-        if rhy & 0x01 != 0 { envelope_key_on(&mut chip.slot[s], EGK_DRUM); }
-        else                { envelope_key_off(&mut chip.slot[s], EGK_DRUM); }
+        if rhy & 0x01 != 0 {
+            envelope_key_on(&mut chip.slot[s], EGK_DRUM);
+        } else {
+            envelope_key_off(&mut chip.slot[s], EGK_DRUM);
+        }
 
         // top cymbal: ch8 slot1
         let s = c8s1 as usize;
-        if rhy & 0x02 != 0 { envelope_key_on(&mut chip.slot[s], EGK_DRUM); }
-        else                { envelope_key_off(&mut chip.slot[s], EGK_DRUM); }
+        if rhy & 0x02 != 0 {
+            envelope_key_on(&mut chip.slot[s], EGK_DRUM);
+        } else {
+            envelope_key_off(&mut chip.slot[s], EGK_DRUM);
+        }
 
         // tom: ch8 slot0
         let s = c8s0 as usize;
-        if rhy & 0x04 != 0 { envelope_key_on(&mut chip.slot[s], EGK_DRUM); }
-        else                { envelope_key_off(&mut chip.slot[s], EGK_DRUM); }
+        if rhy & 0x04 != 0 {
+            envelope_key_on(&mut chip.slot[s], EGK_DRUM);
+        } else {
+            envelope_key_off(&mut chip.slot[s], EGK_DRUM);
+        }
 
         // snare drum: ch7 slot1
         let s = c7s1 as usize;
-        if rhy & 0x08 != 0 { envelope_key_on(&mut chip.slot[s], EGK_DRUM); }
-        else                { envelope_key_off(&mut chip.slot[s], EGK_DRUM); }
+        if rhy & 0x08 != 0 {
+            envelope_key_on(&mut chip.slot[s], EGK_DRUM);
+        } else {
+            envelope_key_off(&mut chip.slot[s], EGK_DRUM);
+        }
 
         // bass drum: ch6 both slots
         let s0 = c6s0 as usize;
@@ -979,7 +1011,7 @@ pub(crate) fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8) {
 }
 
 // ============================================================
-// Step 1d — Per-channel write handlers
+// Per-channel write handlers
 // ============================================================
 
 /// Set the low 8 bits of f_num, recompute ksv, and refresh KSL attenuation.
@@ -999,8 +1031,7 @@ pub(crate) fn channel_write_a0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
     chip.channel[ch_idx].f_num = (chip.channel[ch_idx].f_num & 0x300) | u16::from(data);
     let block = chip.channel[ch_idx].block;
     let f_num = chip.channel[ch_idx].f_num;
-    chip.channel[ch_idx].ksv =
-        (block << 1) | (((f_num >> (0x09 - nts)) & 0x01) as u8);
+    chip.channel[ch_idx].ksv = (block << 1) | (((f_num >> (0x09 - nts)) & 0x01) as u8);
 
     // Refresh KSL on both slots.
     let s0 = chip.channel[ch_idx].slotz[0] as usize;
@@ -1038,8 +1069,7 @@ pub(crate) fn channel_write_b0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
     chip.channel[ch_idx].block = (data >> 2) & 0x07;
     let block = chip.channel[ch_idx].block;
     let f_num = chip.channel[ch_idx].f_num;
-    chip.channel[ch_idx].ksv =
-        (block << 1) | (((f_num >> (0x09 - nts)) & 0x01) as u8);
+    chip.channel[ch_idx].ksv = (block << 1) | (((f_num >> (0x09 - nts)) & 0x01) as u8);
 
     let s0 = chip.channel[ch_idx].slotz[0] as usize;
     let s1 = chip.channel[ch_idx].slotz[1] as usize;
@@ -1148,7 +1178,7 @@ pub(crate) fn channel_key_off(chip: &mut Opl3Chip, ch_idx: usize) {
 }
 
 // ============================================================
-// Step 1d — Per-slot write handlers
+// Per-slot write handlers
 // ============================================================
 
 /// Write register 0x20–0x35: AM/VIB/EGT/KSR/MULT flags.
@@ -1158,10 +1188,10 @@ pub(crate) fn channel_key_off(chip: &mut Opl3Chip, ch_idx: usize) {
 /// Ported from `OPL3_SlotWrite20` (opl3.c line 642).
 pub(crate) fn slot_write_20(slot: &mut Opl3Slot, data: u8) {
     slot.trem_chip = (data >> 7) & 0x01 != 0; // bit 7 → AM (use chip tremolo)
-    slot.reg_vib   = (data >> 6) & 0x01;      // bit 6 → vibrato enable
-    slot.reg_type  = (data >> 5) & 0x01;      // bit 5 → envelope type (EGT)
-    slot.reg_ksr   = (data >> 4) & 0x01;      // bit 4 → key scale rate
-    slot.reg_mult  = data & 0x0f;             // bits 0-3 → frequency multiplier index
+    slot.reg_vib = (data >> 6) & 0x01; // bit 6 → vibrato enable
+    slot.reg_type = (data >> 5) & 0x01; // bit 5 → envelope type (EGT)
+    slot.reg_ksr = (data >> 4) & 0x01; // bit 4 → key scale rate
+    slot.reg_mult = data & 0x0f; // bits 0-3 → frequency multiplier index
 }
 
 /// Write register 0x40–0x55: KSL/TL (key scale level / total level).
@@ -1172,7 +1202,7 @@ pub(crate) fn slot_write_20(slot: &mut Opl3Slot, data: u8) {
 /// Ported from `OPL3_SlotWrite40` (opl3.c line 658).
 pub(crate) fn slot_write_40(chip: &mut Opl3Chip, slot_idx: usize, data: u8) {
     chip.slot[slot_idx].reg_ksl = (data >> 6) & 0x03; // bits 6-7
-    chip.slot[slot_idx].reg_tl  = data & 0x3f;        // bits 0-5
+    chip.slot[slot_idx].reg_tl = data & 0x3f; // bits 0-5
     envelope_update_ksl(chip, slot_idx);
 }
 
@@ -1181,7 +1211,7 @@ pub(crate) fn slot_write_40(chip: &mut Opl3Chip, slot_idx: usize, data: u8) {
 /// Ported from `OPL3_SlotWrite60` (opl3.c line 665).
 pub(crate) fn slot_write_60(slot: &mut Opl3Slot, data: u8) {
     slot.reg_ar = (data >> 4) & 0x0f; // bits 4-7 → attack rate
-    slot.reg_dr = data & 0x0f;        // bits 0-3 → decay rate
+    slot.reg_dr = data & 0x0f; // bits 0-3 → decay rate
 }
 
 /// Write register 0x80–0x95: SL/RR (sustain level / release rate).
@@ -1210,7 +1240,7 @@ pub(crate) fn slot_write_e0(slot: &mut Opl3Slot, data: u8, newm: u8) {
 }
 
 // ============================================================
-// Step 1d — Top-level generation
+// Top-level generation
 // ============================================================
 
 /// Fixed-point fraction bits for the resampler (RSM_FRAC from opl3.c line 52).
@@ -1368,7 +1398,7 @@ pub(crate) fn generate_4ch(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
         let cur = chip.writebuf_cur as usize;
         // Snapshot fields before the write_reg mutable borrow.
         let wb_time = chip.writebuf[cur].time;
-        let wb_reg  = chip.writebuf[cur].reg;
+        let wb_reg = chip.writebuf[cur].reg;
         if wb_time > chip.writebuf_samplecnt {
             break;
         }
@@ -1398,7 +1428,8 @@ fn generate_4ch_resampled(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
     }
     let ratio = chip.rateratio;
     let cnt = chip.samplecnt;
-    for ((out, &old), &cur) in buf4.iter_mut()
+    for ((out, &old), &cur) in buf4
+        .iter_mut()
         .zip(chip.oldsamples.iter())
         .zip(chip.samples.iter())
     {
@@ -1420,7 +1451,7 @@ pub fn generate_resampled(chip: &mut Opl3Chip, buf: &mut [i16; 2]) {
 }
 
 // ============================================================
-// Step 1d — Public API
+// Public API
 // ============================================================
 
 /// OPL_WRITEBUF_DELAY: minimum sample delay between write_reg_buffered writes.
@@ -1434,7 +1465,11 @@ const OPL_WRITEBUF_DELAY: u64 = 2;
 fn channel_set_4op(chip: &mut Opl3Chip, data: u8) {
     for bit in 0u8..6 {
         // For bits 0-2: chnum = bit; for bits 3-5: chnum = bit + 6 (banks 9-11).
-        let chnum = if bit >= 3 { (bit + 6) as usize } else { bit as usize };
+        let chnum = if bit >= 3 {
+            (bit + 6) as usize
+        } else {
+            bit as usize
+        };
         if (data >> bit) & 0x01 != 0 {
             chip.channel[chnum].chtype = CH_4OP;
             chip.channel[chnum + 3].chtype = CH_4OP2;
@@ -1460,8 +1495,8 @@ pub fn reset(chip: &mut Opl3Chip, samplerate: u32) {
     // Slot initialisation: each slot starts in the release phase with full attenuation.
     for slotnum in 0..36usize {
         chip.slot[slotnum].eg_rout = 0x1ff;
-        chip.slot[slotnum].eg_out  = 0x1ff;
-        chip.slot[slotnum].eg_gen  = EG_NUM_RELEASE;
+        chip.slot[slotnum].eg_out = 0x1ff;
+        chip.slot[slotnum].eg_gen = EG_NUM_RELEASE;
         chip.slot[slotnum].slot_num = slotnum as u8;
         // mod_input = ModInput::Zero, trem_chip = false (both from Default)
     }
@@ -1472,7 +1507,7 @@ pub fn reset(chip: &mut Opl3Chip, samplerate: u32) {
         let local_ch_slot = ch_slot_u8 as usize;
         chip.channel[channum].slotz[0] = local_ch_slot as u8;
         chip.channel[channum].slotz[1] = (local_ch_slot + 3) as u8;
-        chip.slot[local_ch_slot].channel_num     = channum as u8;
+        chip.slot[local_ch_slot].channel_num = channum as u8;
         chip.slot[local_ch_slot + 3].channel_num = channum as u8;
 
         // pair_idx: channels 0-2 pair with 3-5, channels 9-11 pair with 12-14.
@@ -1486,18 +1521,18 @@ pub fn reset(chip: &mut Opl3Chip, samplerate: u32) {
 
         chip.channel[channum].ch_num = channum as u8;
         chip.channel[channum].chtype = CH_2OP;
-        chip.channel[channum].cha    = 0xffff; // DAC1 outputs always on (OPL2)
-        chip.channel[channum].chb    = 0xffff;
+        chip.channel[channum].cha = 0xffff; // DAC1 outputs always on (OPL2)
+        chip.channel[channum].chb = 0xffff;
         // chc, chd remain 0 (DAC2 disabled in OPL2 compat mode)
 
         // out[] defaults to [OutSrc::Zero; 4]; channel_setup_alg fills in the live ones.
         channel_setup_alg(chip, channum);
     }
 
-    chip.noise        = 1;     // LFSR must not start at 0
-    chip.rateratio    = (samplerate as i32 * (1 << RSM_FRAC)) / 49716;
-    chip.tremoloshift = 4;     // shallow tremolo by default
-    chip.vibshift     = 1;     // shallow vibrato by default
+    chip.noise = 1; // LFSR must not start at 0
+    chip.rateratio = (samplerate as i32 * (1 << RSM_FRAC)) / 49716;
+    chip.tremoloshift = 4; // shallow tremolo by default
+    chip.vibshift = 1; // shallow vibrato by default
 }
 
 /// Write a value to OPL register `reg`.
@@ -1579,7 +1614,7 @@ pub fn write_reg(chip: &mut Opl3Chip, reg: u16, v: u8) {
             if regm == 0xbd && high == 0 {
                 // BD register: tremolo/vibrato depth + rhythm mode
                 chip.tremoloshift = (((v >> 7) ^ 1) << 1) + 2;
-                chip.vibshift     = ((v >> 6) & 0x01) ^ 1;
+                chip.vibshift = ((v >> 6) & 0x01) ^ 1;
                 channel_update_rhythm(chip, v);
             } else if (regm & 0x0f) < 9 {
                 let ch_idx = 9 * high + (regm & 0x0f) as usize;
@@ -1610,22 +1645,22 @@ pub fn write_reg_buffered(chip: &mut Opl3Chip, reg: u16, v: u8) {
     let writebuf_last = chip.writebuf_last as usize;
 
     // Snapshot writebuf[last] before the write_reg mutable borrow.
-    let wb_reg  = chip.writebuf[writebuf_last].reg;
+    let wb_reg = chip.writebuf[writebuf_last].reg;
     let wb_data = chip.writebuf[writebuf_last].data;
     let wb_time = chip.writebuf[writebuf_last].time;
 
     // If the slot has a pending valid write, flush it immediately.
     if wb_reg & 0x200 != 0 {
         write_reg(chip, wb_reg & 0x1ff, wb_data);
-        chip.writebuf_cur        = ((writebuf_last + 1) % OPL_WRITEBUF_SIZE) as u32;
-        chip.writebuf_samplecnt  = wb_time;
+        chip.writebuf_cur = ((writebuf_last + 1) % OPL_WRITEBUF_SIZE) as u32;
+        chip.writebuf_samplecnt = wb_time;
     }
 
     // Enqueue the new write with a timestamp no earlier than the previous one.
-    chip.writebuf[writebuf_last].reg  = reg | 0x200;
+    chip.writebuf[writebuf_last].reg = reg | 0x200;
     chip.writebuf[writebuf_last].data = v;
     let time = (chip.writebuf_lasttime + OPL_WRITEBUF_DELAY).max(chip.writebuf_samplecnt);
     chip.writebuf[writebuf_last].time = time;
-    chip.writebuf_lasttime            = time;
-    chip.writebuf_last                = ((writebuf_last + 1) % OPL_WRITEBUF_SIZE) as u32;
+    chip.writebuf_lasttime = time;
+    chip.writebuf_last = ((writebuf_last + 1) % OPL_WRITEBUF_SIZE) as u32;
 }
