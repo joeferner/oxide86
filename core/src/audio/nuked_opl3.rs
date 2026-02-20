@@ -272,14 +272,18 @@ pub const EG_NUM_DECAY: u8 = 1;
 pub const EG_NUM_SUSTAIN: u8 = 2;
 pub const EG_NUM_RELEASE: u8 = 3;
 
-/// Compute exponential output from a log-domain level (OPL3_EnvelopeCalcExp).
+/// Compute exponential output from a log-domain level.
+///
+/// Ported from `OPL3_EnvelopeCalcExp`.
 fn envelope_calc_exp(level: u32) -> i16 {
     let level = level.min(0x1fff);
     let v = (EXPROM[(level & 0xff) as usize] as u32) << 1;
     (v >> (level >> 8)) as i16
 }
 
-/// Waveform 0 — full sine, alternating sign (OPL3_EnvelopeCalcSin0).
+/// Waveform 0 — full sine, alternating sign.
+///
+/// Ported from `OPL3_EnvelopeCalcSin0`.
 fn envelope_calc_sin0(phase: u16, envelope: u16) -> i16 {
     let phase = phase & 0x3ff;
     let neg: u16 = if phase & 0x200 != 0 { 0xffff } else { 0 };
@@ -291,7 +295,9 @@ fn envelope_calc_sin0(phase: u16, envelope: u16) -> i16 {
     (envelope_calc_exp(out as u32 + ((envelope as u32) << 3)) as u16 ^ neg) as i16
 }
 
-/// Waveform 1 — half sine, positive lobe only (OPL3_EnvelopeCalcSin1).
+/// Waveform 1 — half sine, positive lobe only.
+///
+/// Ported from `OPL3_EnvelopeCalcSin1`.
 fn envelope_calc_sin1(phase: u16, envelope: u16) -> i16 {
     let phase = phase & 0x3ff;
     let out: u16 = if phase & 0x200 != 0 {
@@ -304,7 +310,9 @@ fn envelope_calc_sin1(phase: u16, envelope: u16) -> i16 {
     envelope_calc_exp(out as u32 + ((envelope as u32) << 3))
 }
 
-/// Waveform 2 — absolute sine, rectified (OPL3_EnvelopeCalcSin2).
+/// Waveform 2 — absolute sine, rectified.
+///
+/// Ported from `OPL3_EnvelopeCalcSin2`.
 fn envelope_calc_sin2(phase: u16, envelope: u16) -> i16 {
     let phase = phase & 0x3ff;
     let out = if phase & 0x100 != 0 {
@@ -315,7 +323,9 @@ fn envelope_calc_sin2(phase: u16, envelope: u16) -> i16 {
     envelope_calc_exp(out as u32 + ((envelope as u32) << 3))
 }
 
-/// Waveform 3 — quarter sine, positive quarter only (OPL3_EnvelopeCalcSin3).
+/// Waveform 3 — quarter sine, positive quarter only.
+///
+/// Ported from `OPL3_EnvelopeCalcSin3`.
 fn envelope_calc_sin3(phase: u16, envelope: u16) -> i16 {
     let phase = phase & 0x3ff;
     let out: u16 = if phase & 0x100 != 0 {
@@ -326,7 +336,9 @@ fn envelope_calc_sin3(phase: u16, envelope: u16) -> i16 {
     envelope_calc_exp(out as u32 + ((envelope as u32) << 3))
 }
 
-/// Waveform 4 — double-frequency sine, ± (OPL3_EnvelopeCalcSin4).
+/// Waveform 4 — double-frequency sine, ±.
+///
+/// Ported from `OPL3_EnvelopeCalcSin4`.
 fn envelope_calc_sin4(phase: u16, envelope: u16) -> i16 {
     let phase = phase & 0x3ff;
     let neg: u16 = if (phase & 0x300) == 0x100 { 0xffff } else { 0 };
@@ -340,7 +352,9 @@ fn envelope_calc_sin4(phase: u16, envelope: u16) -> i16 {
     (envelope_calc_exp(out as u32 + ((envelope as u32) << 3)) as u16 ^ neg) as i16
 }
 
-/// Waveform 5 — double-frequency half sine (OPL3_EnvelopeCalcSin5).
+/// Waveform 5 — double-frequency half sine.
+///
+/// Ported from `OPL3_EnvelopeCalcSin5`.
 fn envelope_calc_sin5(phase: u16, envelope: u16) -> i16 {
     let phase = phase & 0x3ff;
     let out: u16 = if phase & 0x200 != 0 {
@@ -353,14 +367,18 @@ fn envelope_calc_sin5(phase: u16, envelope: u16) -> i16 {
     envelope_calc_exp(out as u32 + ((envelope as u32) << 3))
 }
 
-/// Waveform 6 — square wave (OPL3_EnvelopeCalcSin6).
+/// Waveform 6 — square wave.
+///
+/// Ported from `OPL3_EnvelopeCalcSin6`.
 fn envelope_calc_sin6(phase: u16, envelope: u16) -> i16 {
     let phase = phase & 0x3ff;
     let neg: u16 = if phase & 0x200 != 0 { 0xffff } else { 0 };
     (envelope_calc_exp((envelope as u32) << 3) as u16 ^ neg) as i16
 }
 
-/// Waveform 7 — derived sawtooth (OPL3_EnvelopeCalcSin7).
+/// Waveform 7 — derived sawtooth.
+///
+/// Ported from `OPL3_EnvelopeCalcSin7`.
 fn envelope_calc_sin7(phase: u16, envelope: u16) -> i16 {
     let mut phase = phase & 0x3ff;
     let neg: u16;
@@ -375,6 +393,8 @@ fn envelope_calc_sin7(phase: u16, envelope: u16) -> i16 {
 }
 
 /// Dispatch to one of the 8 waveform functions by reg_wf (0–7).
+///
+/// Rust dispatcher for the C `envelope_sin[]` function table.
 pub(crate) fn envelope_calc_sin(wf: u8, phase: u16, envelope: u16) -> i16 {
     match wf & 0x07 {
         0 => envelope_calc_sin0(phase, envelope),
@@ -388,8 +408,9 @@ pub(crate) fn envelope_calc_sin(wf: u8, phase: u16, envelope: u16) -> i16 {
     }
 }
 
-/// Update key-scale-level attenuation from the channel's current pitch
-/// (OPL3_EnvelopeUpdateKSL).
+/// Update key-scale-level attenuation from the channel's current pitch.
+///
+/// Ported from `OPL3_EnvelopeUpdateKSL`.
 pub(crate) fn envelope_update_ksl(chip: &mut Opl3Chip, slot_idx: usize) {
     let ch = chip.slot[slot_idx].channel_num as usize;
     let f_num = chip.channel[ch].f_num;
@@ -398,11 +419,13 @@ pub(crate) fn envelope_update_ksl(chip: &mut Opl3Chip, slot_idx: usize) {
     chip.slot[slot_idx].eg_ksl = ksl.max(0) as u8;
 }
 
-/// Advance the envelope state machine for one slot (OPL3_EnvelopeCalc).
+/// Advance the envelope state machine for one slot.
 ///
 /// Borrow strategy: snapshot all chip-level read-only fields into locals first,
 /// then take `&mut chip.slot[slot_idx]` — keeps chip.channel and chip.slot
 /// borrows non-overlapping from the compiler's perspective.
+///
+/// Ported from `OPL3_EnvelopeCalc`.
 pub(crate) fn envelope_calc(chip: &mut Opl3Chip, slot_idx: usize) {
     let eg_add = chip.eg_add;
     let eg_state = chip.eg_state;
@@ -538,12 +561,16 @@ pub(crate) fn envelope_calc(chip: &mut Opl3Chip, slot_idx: usize) {
     }
 }
 
-/// Set key-on type bits for a slot (OPL3_EnvelopeKeyOn).
+/// Set key-on type bits for a slot.
+///
+/// Ported from `OPL3_EnvelopeKeyOn`.
 pub(crate) fn envelope_key_on(slot: &mut Opl3Slot, key_type: u8) {
     slot.key |= key_type;
 }
 
-/// Clear key-on type bits for a slot (OPL3_EnvelopeKeyOff).
+/// Clear key-on type bits for a slot.
+///
+/// Ported from `OPL3_EnvelopeKeyOff`.
 pub(crate) fn envelope_key_off(slot: &mut Opl3Slot, key_type: u8) {
     slot.key &= !key_type;
 }
@@ -556,6 +583,9 @@ pub(crate) fn envelope_key_off(slot: &mut Opl3Slot, key_type: u8) {
 ///
 /// Called *before* any mutable access to `chip.slot[slot_idx]` so the
 /// exclusive borrow can follow without aliasing.
+///
+/// Rust helper: no direct C equivalent; resolves the `ModInput` enum replacing
+/// C's `*slot->mod` pointer dereference in `OPL3_SlotGenerate` / `OPL3_SlotCalcFB`.
 pub(crate) fn read_mod_input(chip: &Opl3Chip, mi: ModInput) -> i16 {
     match mi {
         ModInput::Zero => 0,
@@ -564,13 +594,15 @@ pub(crate) fn read_mod_input(chip: &Opl3Chip, mi: ModInput) -> i16 {
     }
 }
 
-/// Update the feedback modulation register for a slot (OPL3_SlotCalcFB).
+/// Update the feedback modulation register for a slot.
 ///
 /// `fb` is the channel's feedback level — must be pre-read from
 /// `chip.channel[ch].fb` by the caller to satisfy the borrow checker.
 ///
 /// The C formula: `fbmod = (prout + out) >> (9 − fb)`
 /// Both operands are `i16`; C promotes to `int` before shifting.
+///
+/// Ported from `OPL3_SlotCalcFB`.
 pub(crate) fn slot_calc_fb(slot: &mut Opl3Slot, fb: u8) {
     if fb != 0 {
         slot.fbmod = ((slot.prout as i32 + slot.out as i32) >> (0x09 - fb as u32)) as i16;
@@ -580,7 +612,7 @@ pub(crate) fn slot_calc_fb(slot: &mut Opl3Slot, fb: u8) {
     slot.prout = slot.out;
 }
 
-/// Compute the output sample for one slot (OPL3_SlotGenerate).
+/// Compute the output sample for one slot.
 ///
 /// Borrow strategy — all reads complete before the exclusive write to `out`:
 /// 1. Copy `mod_input` (enum, `Copy`) from slot.
@@ -591,6 +623,8 @@ pub(crate) fn slot_calc_fb(slot: &mut Opl3Slot, fb: u8) {
 /// C: `slot->out = envelope_sin[reg_wf](pg_phase_out + *mod, eg_out)`
 /// `pg_phase_out + *mod` — both u16/i16 are promoted to int in C; the
 /// wrapping semantics are preserved by casting mod_val to u16 before adding.
+///
+/// Ported from `OPL3_SlotGenerate`.
 pub(crate) fn slot_generate(chip: &mut Opl3Chip, slot_idx: usize) {
     let mod_input = chip.slot[slot_idx].mod_input; // Copy
     let mod_val = read_mod_input(chip, mod_input); // immutable borrow released here
@@ -607,12 +641,14 @@ pub(crate) fn slot_generate(chip: &mut Opl3Chip, slot_idx: usize) {
 // ============================================================
 
 /// Advance the phase accumulator for one slot and update rhythm-mode phase
-/// outputs and the noise LFSR (OPL3_PhaseGenerate).
+/// outputs and the noise LFSR.
 ///
 /// Borrow strategy: snapshot all read-only fields (channel f_num/block, slot
 /// reg_vib/reg_mult/slot_num/pg_reset/pg_phase, chip vibpos/vibshift/rhy/noise
 /// and all rm_* bits) into locals, compute results, then write back the two
 /// slot fields and chip-level fields separately.
+///
+/// Ported from `OPL3_PhaseGenerate`.
 pub(crate) fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize) {
     // --- Snapshot ---
     let ch = chip.slot[slot_idx].channel_num as usize;
@@ -731,7 +767,7 @@ pub(crate) fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize) {
 // Channel setup
 // ============================================================
 
-/// Wire up the modulation network for a channel (OPL3_ChannelSetupAlg).
+/// Wire up the modulation network for a channel.
 ///
 /// Translates C's raw-pointer assignments into index-based enum assignments:
 /// - `slot->mod = &slot->fbmod`      → `slot.mod_input = ModInput::SlotFbMod(idx)`
@@ -746,6 +782,8 @@ pub(crate) fn phase_generate(chip: &mut Opl3Chip, slot_idx: usize) {
 ///
 /// Borrow strategy: snapshot all slot/channel indices into `usize` locals before
 /// any mutations so the compiler sees no overlapping exclusive borrows.
+///
+/// Ported from `OPL3_ChannelSetupAlg`.
 pub(crate) fn channel_setup_alg(chip: &mut Opl3Chip, ch_idx: usize) {
     let chtype = chip.channel[ch_idx].chtype;
     let alg = chip.channel[ch_idx].alg;
@@ -876,11 +914,13 @@ pub(crate) fn channel_setup_alg(chip: &mut Opl3Chip, ch_idx: usize) {
     }
 }
 
-/// Update algorithm selection after a con/chtype change (OPL3_ChannelUpdateAlg).
+/// Update algorithm selection after a con/chtype change.
 ///
 /// In OPL2 mode (`newm == 0`) always reduces to: `channel.alg = channel.con`
 /// then `channel_setup_alg`. The full OPL3 4-op paths are kept so the function
 /// works correctly if `newm` is ever set to 1 by a future OPL3 wrapper.
+///
+/// Ported from `OPL3_ChannelUpdateAlg`.
 pub(crate) fn channel_update_alg(chip: &mut Opl3Chip, ch_idx: usize) {
     let con = chip.channel[ch_idx].con;
     chip.channel[ch_idx].alg = con;
@@ -908,12 +948,14 @@ pub(crate) fn channel_update_alg(chip: &mut Opl3Chip, ch_idx: usize) {
     }
 }
 
-/// Handle a write to the rhythm-mode control register (OPL3_ChannelUpdateRhythm).
+/// Handle a write to the rhythm-mode control register.
 ///
 /// When bit 5 is set, channels 6–8 are reconfigured as drum channels with fixed
 /// output routing. The `channel.out[]` assignments here are intentionally done
 /// *before* calling `channel_setup_alg` (which only writes slot `mod_input` for
 /// drum channels, not `channel.out`), so they are preserved.
+///
+/// Ported from `OPL3_ChannelUpdateRhythm`.
 pub(crate) fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8) {
     chip.rhy = data & 0x3f;
     if chip.rhy & 0x20 != 0 {
@@ -1017,7 +1059,7 @@ pub(crate) fn channel_update_rhythm(chip: &mut Opl3Chip, data: u8) {
 /// Set the low 8 bits of f_num, recompute ksv, and refresh KSL attenuation.
 /// OPL3 4-op primary channels propagate the change to their paired channel.
 ///
-/// Ported from `OPL3_ChannelWriteA0` (opl3.c line 806).
+/// Ported from `OPL3_ChannelWriteA0`.
 pub(crate) fn channel_write_a0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
     // OPL3 only: ch_4op2 channels are driven by their primary; ignore direct writes.
     if chip.newm != 0 && chip.channel[ch_idx].chtype == CH_4OP2 {
@@ -1055,7 +1097,7 @@ pub(crate) fn channel_write_a0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
 /// Set the high 2 bits of f_num and the block field, recompute ksv, refresh KSL.
 /// OPL3 4-op primary channels propagate the change to their paired channel.
 ///
-/// Ported from `OPL3_ChannelWriteB0` (opl3.c line 826).
+/// Ported from `OPL3_ChannelWriteB0`.
 pub(crate) fn channel_write_b0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
     // OPL3 only: ignore direct writes to secondary 4-op channels.
     if chip.newm != 0 && chip.channel[ch_idx].chtype == CH_4OP2 {
@@ -1095,7 +1137,7 @@ pub(crate) fn channel_write_b0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
 /// In OPL2 compat mode (`newm == 0`) both DAC1 outputs are enabled and DAC2
 /// outputs are disabled.
 ///
-/// Ported from `OPL3_ChannelWriteC0` (opl3.c line 977).
+/// Ported from `OPL3_ChannelWriteC0`.
 pub(crate) fn channel_write_c0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
     chip.channel[ch_idx].fb = (data & 0x0e) >> 1;
     chip.channel[ch_idx].con = data & 0x01;
@@ -1119,7 +1161,7 @@ pub(crate) fn channel_write_c0(chip: &mut Opl3Chip, ch_idx: usize, data: u8) {
 /// Trigger key-on for both slots of the channel (and pair slots in OPL3 4-op mode).
 /// 4-op secondary channels (CH_4OP2) are skipped — keyed through their primary.
 ///
-/// Ported from `OPL3_ChannelKeyOn` (opl3.c line 1015).
+/// Ported from `OPL3_ChannelKeyOn`.
 pub(crate) fn channel_key_on(chip: &mut Opl3Chip, ch_idx: usize) {
     let s0 = chip.channel[ch_idx].slotz[0] as usize;
     let s1 = chip.channel[ch_idx].slotz[1] as usize;
@@ -1150,7 +1192,7 @@ pub(crate) fn channel_key_on(chip: &mut Opl3Chip, ch_idx: usize) {
 /// Trigger key-off for both slots of the channel (and pair slots in OPL3 4-op mode).
 /// Mirror of `channel_key_on`.
 ///
-/// Ported from `OPL3_ChannelKeyOff` (opl3.c line 1039).
+/// Ported from `OPL3_ChannelKeyOff`.
 pub(crate) fn channel_key_off(chip: &mut Opl3Chip, ch_idx: usize) {
     let s0 = chip.channel[ch_idx].slotz[0] as usize;
     let s1 = chip.channel[ch_idx].slotz[1] as usize;
@@ -1185,7 +1227,7 @@ pub(crate) fn channel_key_off(chip: &mut Opl3Chip, ch_idx: usize) {
 /// Sets `trem_chip` (true = use chip-level tremolo, false = 0), vibrato,
 /// envelope type, key-scale rate, and frequency multiplier.
 ///
-/// Ported from `OPL3_SlotWrite20` (opl3.c line 642).
+/// Ported from `OPL3_SlotWrite20`.
 pub(crate) fn slot_write_20(slot: &mut Opl3Slot, data: u8) {
     slot.trem_chip = (data >> 7) & 0x01 != 0; // bit 7 → AM (use chip tremolo)
     slot.reg_vib = (data >> 6) & 0x01; // bit 6 → vibrato enable
@@ -1199,7 +1241,7 @@ pub(crate) fn slot_write_20(slot: &mut Opl3Slot, data: u8) {
 /// Requires `chip` and `slot_idx` because `envelope_update_ksl` recalculates
 /// `slot.eg_ksl` from `chip.channel[ch].ksv` and `slot.reg_ksl`.
 ///
-/// Ported from `OPL3_SlotWrite40` (opl3.c line 658).
+/// Ported from `OPL3_SlotWrite40`.
 pub(crate) fn slot_write_40(chip: &mut Opl3Chip, slot_idx: usize, data: u8) {
     chip.slot[slot_idx].reg_ksl = (data >> 6) & 0x03; // bits 6-7
     chip.slot[slot_idx].reg_tl = data & 0x3f; // bits 0-5
@@ -1208,7 +1250,7 @@ pub(crate) fn slot_write_40(chip: &mut Opl3Chip, slot_idx: usize, data: u8) {
 
 /// Write register 0x60–0x75: AR/DR (attack rate / decay rate).
 ///
-/// Ported from `OPL3_SlotWrite60` (opl3.c line 665).
+/// Ported from `OPL3_SlotWrite60`.
 pub(crate) fn slot_write_60(slot: &mut Opl3Slot, data: u8) {
     slot.reg_ar = (data >> 4) & 0x0f; // bits 4-7 → attack rate
     slot.reg_dr = data & 0x0f; // bits 0-3 → decay rate
@@ -1217,7 +1259,7 @@ pub(crate) fn slot_write_60(slot: &mut Opl3Slot, data: u8) {
 /// Write register 0x80–0x95: SL/RR (sustain level / release rate).
 /// Sustain level 15 (0x0f) is expanded to 31 (0x1f) to match OPL hardware behaviour.
 ///
-/// Ported from `OPL3_SlotWrite80` (opl3.c line 671).
+/// Ported from `OPL3_SlotWrite80`.
 pub(crate) fn slot_write_80(slot: &mut Opl3Slot, data: u8) {
     slot.reg_sl = (data >> 4) & 0x0f; // bits 4-7 → sustain level
     if slot.reg_sl == 0x0f {
@@ -1231,7 +1273,7 @@ pub(crate) fn slot_write_80(slot: &mut Opl3Slot, data: u8) {
 /// In OPL3 mode (`newm != 0`), all 8 waveforms are available (bits 0-2).
 /// `newm` is passed explicitly so the caller can borrow `chip.slot[slot_idx]` mutably.
 ///
-/// Ported from `OPL3_SlotWriteE0` (opl3.c line 681).
+/// Ported from `OPL3_SlotWriteE0`.
 pub(crate) fn slot_write_e0(slot: &mut Opl3Slot, data: u8, newm: u8) {
     slot.reg_wf = data & 0x07;
     if newm == 0 {
@@ -1243,18 +1285,18 @@ pub(crate) fn slot_write_e0(slot: &mut Opl3Slot, data: u8, newm: u8) {
 // Top-level generation
 // ============================================================
 
-/// Fixed-point fraction bits for the resampler (RSM_FRAC from opl3.c line 52).
+/// Fixed-point fraction bits for the resampler (RSM_FRAC).
 const RSM_FRAC: i32 = 10;
 
 /// Write-buffer queue capacity (OPL_WRITEBUF_SIZE from opl3.h line 46).
 pub(crate) const OPL_WRITEBUF_SIZE: usize = 1024;
 
-/// Maximum value of the 36-bit envelope timer (UINT64_C(0xfffffffff) in opl3.c).
+/// Maximum value of the 36-bit envelope timer (UINT64_C(0xfffffffff)).
 const EG_TIMER_MAX: u64 = 0xF_FFFF_FFFF;
 
 /// Clamp a 32-bit mixed sum to the i16 output range.
 ///
-/// Ported from `OPL3_ClipSample` (opl3.c line 1090).
+/// Ported from `OPL3_ClipSample`.
 fn clip_sample(sample: i32) -> i16 {
     sample.clamp(-32768, 32767) as i16
 }
@@ -1262,6 +1304,9 @@ fn clip_sample(sample: i32) -> i16 {
 /// Sum all 4 output sources of channel `ch` into a single i16 value.
 /// Each `OutSrc` is either zero or the current `chip.slot[i].out`.
 /// Requires only an immutable borrow of chip; safe to call between process_slot loops.
+///
+/// Rust helper: no direct C equivalent; replaces the inline `channel->out[]` pointer
+/// accumulation in `OPL3_Generate4Ch`.
 fn channel_accm(chip: &Opl3Chip, ch: usize) -> i16 {
     let out = &chip.channel[ch].out;
     let mut sum = 0i32;
@@ -1277,7 +1322,7 @@ fn channel_accm(chip: &Opl3Chip, ch: usize) -> i16 {
 /// Advance one FM operator slot by one sample.
 /// Order: feedback → envelope → phase → waveform output.
 ///
-/// Ported from `OPL3_ProcessSlot` (opl3.c line 1103).
+/// Ported from `OPL3_ProcessSlot`.
 pub(crate) fn process_slot(chip: &mut Opl3Chip, slot_idx: usize) {
     // slot_calc_fb takes (slot, fb); pre-read fb before mutable slot borrow.
     let ch_num = chip.slot[slot_idx].channel_num as usize;
@@ -1298,7 +1343,7 @@ pub(crate) fn process_slot(chip: &mut Opl3Chip, slot_idx: usize) {
 /// In OPL2 compat mode (`newm = 0`): `cha = chb = 0xFFFF`, `chc = chd = 0`,
 /// so buf4[0] ≈ buf4[1] (mono) and buf4[2] = buf4[3] = 0.
 ///
-/// Ported from `OPL3_Generate4Ch` (opl3.c line 1111).
+/// Ported from `OPL3_Generate4Ch`.
 pub(crate) fn generate_4ch(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
     // Output the RIGHT channel results buffered from the previous call.
     buf4[1] = clip_sample(chip.mixbuff[1]);
@@ -1393,7 +1438,7 @@ pub(crate) fn generate_4ch(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
     chip.eg_state ^= 1;
 
     // Write buffer: drain any pending register writes up to this sample count.
-    // Ported from the tail of OPL3_Generate4Ch (opl3.c line 1242).
+    // Ported from the tail of OPL3_Generate4Ch.
     loop {
         let cur = chip.writebuf_cur as usize;
         // Snapshot fields before the write_reg mutable borrow.
@@ -1415,7 +1460,7 @@ pub(crate) fn generate_4ch(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
 /// Resample the 4-channel OPL output from the native 49716 Hz rate to the
 /// configured output sample rate using fixed-point linear interpolation.
 ///
-/// Ported from `OPL3_Generate4ChResampled` (opl3.c line 1263).
+/// Ported from `OPL3_Generate4ChResampled`.
 fn generate_4ch_resampled(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
     while chip.samplecnt >= chip.rateratio {
         chip.oldsamples = chip.samples;
@@ -1442,7 +1487,7 @@ fn generate_4ch_resampled(chip: &mut Opl3Chip, buf4: &mut [i16; 4]) {
 /// Wraps `generate_4ch_resampled` and returns only DAC1 outputs (buf4[0]/buf4[1]).
 /// In OPL2 compat mode DAC2 (buf4[2]/buf4[3]) is always zero.
 ///
-/// Ported from `OPL3_GenerateResampled` (opl3.c line 1285).
+/// Ported from `OPL3_GenerateResampled`.
 pub fn generate_resampled(chip: &mut Opl3Chip, buf: &mut [i16; 2]) {
     let mut samples = [0i16; 4];
     generate_4ch_resampled(chip, &mut samples);
@@ -1461,7 +1506,7 @@ const OPL_WRITEBUF_DELAY: u64 = 2;
 /// Bits 0-5 of `data` each control one 4-op pair.
 /// Bit N=1 → channels N and N+3 become a 4-op pair; N=0 → both revert to 2-op.
 ///
-/// Ported from `OPL3_ChannelSet4Op` (opl3.c line 1063).
+/// Ported from `OPL3_ChannelSet4Op`.
 fn channel_set_4op(chip: &mut Opl3Chip, data: u8) {
     for bit in 0u8..6 {
         // For bits 0-2: chnum = bit; for bits 3-5: chnum = bit + 6 (banks 9-11).
@@ -1487,7 +1532,7 @@ fn channel_set_4op(chip: &mut Opl3Chip, data: u8) {
 /// Equivalent to `memset(chip, 0)` + field initialisation in the C reset function.
 /// `chip.newm` is left at 0 (OPL2 compat); it is never set to 1 in AdLib mode.
 ///
-/// Ported from `OPL3_Reset` (opl3.c line 1293).
+/// Ported from `OPL3_Reset`.
 pub fn reset(chip: &mut Opl3Chip, samplerate: u32) {
     // Zero everything; Default impl allocates the write buffer with 1024 entries.
     *chip = Opl3Chip::default();
@@ -1540,7 +1585,7 @@ pub fn reset(chip: &mut Opl3Chip, samplerate: u32) {
 /// In OPL2 compat mode (`newm = 0`) the high bank (`reg >= 0x100`) and OPL3-only
 /// registers (0x104/0x105) are accepted but have no audible effect.
 ///
-/// Ported from `OPL3_WriteReg` (opl3.c line 1362).
+/// Ported from `OPL3_WriteReg`.
 pub fn write_reg(chip: &mut Opl3Chip, reg: u16, v: u8) {
     let high = ((reg >> 8) & 0x01) as usize; // 0 = bank 0, 1 = bank 1 (OPL3 only)
     let regm = (reg & 0xff) as u8;
@@ -1640,7 +1685,7 @@ pub fn write_reg(chip: &mut Opl3Chip, reg: u16, v: u8) {
 /// Queue a register write, scheduling it at least `OPL_WRITEBUF_DELAY` samples
 /// in the future for accurate timing. The write is drained by `generate_4ch`.
 ///
-/// Ported from `OPL3_WriteRegBuffered` (opl3.c line 1472).
+/// Ported from `OPL3_WriteRegBuffered`.
 pub fn write_reg_buffered(chip: &mut Opl3Chip, reg: u16, v: u8) {
     let writebuf_last = chip.writebuf_last as usize;
 
