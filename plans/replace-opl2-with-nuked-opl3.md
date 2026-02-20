@@ -221,13 +221,11 @@ using the `ModInput`/`OutSrc` enums at call sites.
   - **Borrow note**: snapshot `f_num`, `block`, `reg_vib`, `channel_num` into locals, then
     access `chip.slot[slot_idx]` mutably.
 
-#### Slot operations
-- `fn slot_calc_fb(slot: &mut Opl3Slot)`  — pure slot mutation, no aliasing
-- `fn slot_generate(chip: &mut Opl3Chip, slot_idx: usize)`
-  - Reads mod input value first: `let mod_val = read_mod_input(chip, mod_input);`
-  - Reads tremolo: `let trem = if slot.trem_chip { chip.tremolo } else { 0 };`
-  - Calls the envelope_sin function for `slot.reg_wf`
-  - **Helper**: `fn read_mod_input(chip: &Opl3Chip, mi: ModInput) -> i16`
+#### Slot operations ✅ DONE
+- `fn read_mod_input(chip: &Opl3Chip, mi: ModInput) -> i16` — helper; immutable borrow
+- `fn slot_calc_fb(slot: &mut Opl3Slot, fb: u8)` — `fb` pre-read from channel to satisfy borrow checker
+- `fn slot_generate(chip: &mut Opl3Chip, slot_idx: usize)` — snapshots mod_input/phase/eg_out/reg_wf, then writes out
+- **Note**: added `#![allow(dead_code)]` at file top during incremental port; remove in step 2 when fully wired
 
 #### Channel setup
 - `fn channel_setup_alg(chip: &mut Opl3Chip, ch_idx: usize)`
