@@ -546,10 +546,10 @@ impl Cpu {
             0x6B => self.imul_imm8(bus),
 
             // INS - Input String from Port (6C-6D)
-            0x6C..=0x6D => self.ins(opcode, bus, io_device),
+            0x6C..=0x6D => self.ins(opcode, bus, bios, io_device),
 
             // OUTS - Output String to Port (6E-6F)
-            0x6E..=0x6F => self.outs(opcode, bus, io_device),
+            0x6E..=0x6F => self.outs(opcode, bus, bios, io_device),
 
             // Conditional jumps (70-7F)
             0x70..=0x7F => self.jmp_conditional(opcode, bus),

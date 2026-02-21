@@ -51,10 +51,15 @@ impl Bios {
 
         // After device-head write, update status to reflect whether the
         // selected device actually exists (driver polls this after selection).
+        // Only do this when the channel is idle — if a transfer is in progress
+        // (e.g. WaitingPacket after 0xA0) the driver may re-select the device
+        // while polling for DRQ, and we must not clobber the current status.
         if reg == 6 {
             let is_slave = value & 0x10 != 0;
             let exists = self.ata_device_at(is_slave) != AtaDeviceType::None;
-            self.shared.ata_primary.status = if exists { ata::status::DRDY } else { 0x00 };
+            if matches!(self.shared.ata_primary.transfer, ata::TransferState::Idle) {
+                self.shared.ata_primary.status = if exists { ata::status::DRDY } else { 0x00 };
+            }
         }
 
         if needs_exec {
@@ -462,7 +467,7 @@ impl Bios {
     fn atapi_test_unit_ready(&mut self, slot: u8) {
         if self.shared.drive_manager.has_cdrom(slot) {
             self.shared.ata_primary.set_sense(0, 0, 0);
-            self.shared.ata_primary.set_ok();
+            self.shared.ata_primary.atapi_set_ok();
         } else {
             // NOT READY / MEDIUM NOT PRESENT
             self.shared.ata_primary.set_sense(0x02, 0x3A, 0x00);
@@ -482,7 +487,7 @@ impl Bios {
         buf[12] = asc;
         buf[13] = ascq;
 
-        self.shared.ata_primary.load_data_out(buf.to_vec());
+        self.shared.ata_primary.atapi_load_data_out(buf.to_vec());
     }
 
     fn atapi_inquiry(&mut self, slot: u8, cdb: &[u8; 12]) {
@@ -504,18 +509,18 @@ impl Bios {
 
         let _ = slot;
         buf.truncate(alloc_len.max(36));
-        self.shared.ata_primary.load_data_out(buf);
+        self.shared.ata_primary.atapi_load_data_out(buf);
     }
 
     fn atapi_start_stop(&mut self, slot: u8, power_cond: u8) {
         // LoEj bit (bit 1) + Start bit (bit 0): we just acknowledge
         let _ = (slot, power_cond);
-        self.shared.ata_primary.set_ok();
+        self.shared.ata_primary.atapi_set_ok();
     }
 
     fn atapi_prevent_allow_removal(&mut self) {
         // Always succeed — we don't physically eject
-        self.shared.ata_primary.set_ok();
+        self.shared.ata_primary.atapi_set_ok();
     }
 
     fn atapi_read_capacity(&mut self, slot: u8) {
@@ -536,7 +541,7 @@ impl Bios {
         // Block size (big-endian)
         buf[4..8].copy_from_slice(&block_size.to_be_bytes());
 
-        self.shared.ata_primary.load_data_out(buf.to_vec());
+        self.shared.ata_primary.atapi_load_data_out(buf.to_vec());
     }
 
     fn atapi_read10(&mut self, slot: u8, cdb: &[u8; 12]) {
@@ -568,7 +573,7 @@ impl Bios {
         }
 
         log::debug!("ATAPI READ10: slot {} LBA {} count {} OK", slot, lba, count);
-        self.shared.ata_primary.load_data_out(data);
+        self.shared.ata_primary.atapi_load_data_out(data);
     }
 
     fn atapi_read_toc(&mut self, slot: u8, cdb: &[u8; 12]) {
@@ -620,7 +625,7 @@ impl Bios {
         }
 
         buf.truncate(alloc_len.max(4));
-        self.shared.ata_primary.load_data_out(buf);
+        self.shared.ata_primary.atapi_load_data_out(buf);
     }
 
     fn atapi_get_event_status(&mut self, cdb: &[u8; 12]) {
@@ -630,10 +635,10 @@ impl Bios {
         // Event header: length = 6, notification class = No Events (0x00)
         buf[0] = 0x00; // Event data length high
         buf[1] = 0x06; // Event data length low = 6
-        buf[2] = 0x00; // No events pending / NEA bit
+        buf[2] = 0x80; // NEA=1 (No Event Available, polled mode)
         buf[3] = 0x00; // Supported event classes
         buf.truncate(alloc_len.max(8));
-        self.shared.ata_primary.load_data_out(buf);
+        self.shared.ata_primary.atapi_load_data_out(buf);
     }
 
     fn atapi_mode_sense10(&mut self, slot: u8, cdb: &[u8; 12]) {
@@ -655,7 +660,7 @@ impl Bios {
 
         let _ = page_code;
         buf.truncate(alloc_len.max(8));
-        self.shared.ata_primary.load_data_out(buf);
+        self.shared.ata_primary.atapi_load_data_out(buf);
     }
 
     fn atapi_mode_sense6(&mut self, slot: u8, cdb: &[u8; 12]) {
@@ -668,7 +673,7 @@ impl Bios {
         buf[2] = 0x00; // Device-Specific
         buf[3] = 0x00; // Block Descriptor Length
         buf.truncate(alloc_len.max(4));
-        self.shared.ata_primary.load_data_out(buf);
+        self.shared.ata_primary.atapi_load_data_out(buf);
     }
 }
 

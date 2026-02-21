@@ -374,7 +374,37 @@ impl AtaChannel {
         self.packet_bytes = 0;
         self.packet_ready = false;
         self.transfer = TransferState::WaitingPacket;
+        // ATAPI interrupt reason: CoD=1 (command), IO=0 (host→device) → 0x01
+        self.sector_count = 0x01;
         self.status = status::DRDY | status::DRQ; // ready for CDB bytes
+        self.error = 0;
+    }
+
+    /// Load ATAPI data into the transfer buffer and set interrupt reason + byte count.
+    ///
+    /// Use this instead of `load_data_out()` for ATAPI data-in responses so that
+    /// drivers which poll the interrupt reason register and byte count registers get
+    /// the correct values (CoD=0, IO=1 → sector_count=0x02; lba_mid/high = length).
+    pub fn atapi_load_data_out(&mut self, buf: Vec<u8>) {
+        let len = buf.len().min(0xFFFF) as u16;
+        self.lba_mid = (len & 0xFF) as u8;
+        self.lba_high = ((len >> 8) & 0xFF) as u8;
+        // ATAPI interrupt reason: CoD=0 (data), IO=1 (device→host) → 0x02
+        self.sector_count = 0x02;
+        self.transfer = TransferState::DataOut { buf, pos: 0 };
+        self.status = status::DRDY | status::DRQ;
+        self.error = 0;
+    }
+
+    /// Signal ATAPI command completion with no data transfer.
+    ///
+    /// Sets interrupt reason to status phase (CoD=1, IO=1 → 0x03) so ATAPI
+    /// drivers correctly identify the end of a no-data command.
+    pub fn atapi_set_ok(&mut self) {
+        // ATAPI interrupt reason: CoD=1 (command), IO=1 (status phase) → 0x03
+        self.sector_count = 0x03;
+        self.transfer = TransferState::Idle;
+        self.status = status::DRDY;
         self.error = 0;
     }
 }

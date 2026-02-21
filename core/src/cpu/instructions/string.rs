@@ -1,5 +1,6 @@
 use super::super::{Cpu, RepeatPrefix, timing};
 use crate::Bus;
+use crate::cpu::bios::Bios;
 use crate::cpu::cpu_flag;
 use crate::io::IoDevice;
 
@@ -367,26 +368,42 @@ impl Cpu {
     /// 6D: INSW - Input word from port DX to ES:DI
     ///
     /// Reads data from I/O port DX into ES:DI, then increments/decrements DI based on DF.
-    pub(in crate::cpu) fn ins(&mut self, opcode: u8, bus: &mut Bus, io_device: &mut IoDevice) {
+    pub(in crate::cpu) fn ins(
+        &mut self,
+        opcode: u8,
+        bus: &mut Bus,
+        bios: &mut Bios,
+        io_device: &mut IoDevice,
+    ) {
         let is_word = opcode & 0x01 != 0;
 
         // Handle repeat prefix
         if self.repeat_prefix.is_some() {
             while self.cx != 0 {
-                self.ins_once(is_word, bus, io_device);
+                self.ins_once(is_word, bus, bios, io_device);
                 self.cx = self.cx.wrapping_sub(1);
             }
         } else {
-            self.ins_once(is_word, bus, io_device);
+            self.ins_once(is_word, bus, bios, io_device);
         }
     }
 
-    fn ins_once(&mut self, is_word: bool, bus: &mut Bus, io_device: &mut IoDevice) {
+    fn ins_once(
+        &mut self,
+        is_word: bool,
+        bus: &mut Bus,
+        bios: &mut Bios,
+        io_device: &mut IoDevice,
+    ) {
         let port = self.dx;
 
         if is_word {
-            // INSW - Input word
-            let value = io_device.read_word(port);
+            // INSW - Input word; route ATA data port through the ATA handler
+            let value = if port == 0x1F0 {
+                bios.ata_read_u16()
+            } else {
+                io_device.read_word(port)
+            };
             let addr = Self::physical_address(self.es, self.di);
             bus.write_u16(addr, value);
 
@@ -416,29 +433,45 @@ impl Cpu {
     /// 6F: OUTSW - Output word from DS:SI to port DX
     ///
     /// Writes data from DS:SI to I/O port DX, then increments/decrements SI based on DF.
-    pub(in crate::cpu) fn outs(&mut self, opcode: u8, bus: &mut Bus, io_device: &mut IoDevice) {
+    pub(in crate::cpu) fn outs(
+        &mut self,
+        opcode: u8,
+        bus: &mut Bus,
+        bios: &mut Bios,
+        io_device: &mut IoDevice,
+    ) {
         let is_word = opcode & 0x01 != 0;
 
         // Handle repeat prefix
         if self.repeat_prefix.is_some() {
             while self.cx != 0 {
-                self.outs_once(is_word, bus, io_device);
+                self.outs_once(is_word, bus, bios, io_device);
                 self.cx = self.cx.wrapping_sub(1);
             }
         } else {
-            self.outs_once(is_word, bus, io_device);
+            self.outs_once(is_word, bus, bios, io_device);
         }
     }
 
-    fn outs_once(&mut self, is_word: bool, bus: &mut Bus, io_device: &mut IoDevice) {
+    fn outs_once(
+        &mut self,
+        is_word: bool,
+        bus: &mut Bus,
+        bios: &mut Bios,
+        io_device: &mut IoDevice,
+    ) {
         let port = self.dx;
 
         if is_word {
-            // OUTSW - Output word
+            // OUTSW - Output word; route ATA data port through the ATA handler
             let src_seg = self.segment_override.unwrap_or(self.ds);
             let addr = Self::physical_address(src_seg, self.si);
             let value = bus.read_u16(addr);
-            io_device.write_word(port, value, bus.video_mut());
+            if port == 0x1F0 {
+                bios.ata_write_u16(value);
+            } else {
+                io_device.write_word(port, value, bus.video_mut());
+            }
 
             // Update SI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
