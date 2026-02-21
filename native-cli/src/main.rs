@@ -211,10 +211,10 @@ where
     // Track whether we exit from command mode quit
     let mut quit_from_command_mode = false;
 
-    while !computer.is_halted() {
+    while !computer.is_terminal_halt() {
         // Execute a batch of instructions
         for _ in 0..BATCH_SIZE {
-            if computer.is_halted() {
+            if computer.is_terminal_halt() {
                 break;
             }
             computer.step();

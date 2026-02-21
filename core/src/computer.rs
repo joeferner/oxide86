@@ -881,6 +881,16 @@ impl<V: VideoController> Computer<V> {
             }
         }
 
+        // HLT idle-wait: if CPU is halted with interrupts enabled (STI + HLT pattern),
+        // burn a small number of cycles so the PIT timer keeps advancing and eventually
+        // fires an IRQ that wakes us up. Do NOT execute the next instruction.
+        // When halted with IF=0 (true halt from INT 20h/4Ch), we also return here;
+        // the GUI distinguishes the two cases by checking IF externally.
+        if self.cpu.is_halted() {
+            self.increment_cycles(crate::cpu::timing::cycles::HLT);
+            return;
+        }
+
         // Get current IP to check what opcode we're about to execute
         let current_ip = self.cpu.ip;
         let current_cs = self.cpu.cs;
@@ -1244,6 +1254,17 @@ impl<V: VideoController> Computer<V> {
     /// Check if CPU is halted
     pub fn is_halted(&self) -> bool {
         self.cpu.is_halted()
+    }
+
+    /// Check if CPU interrupts are enabled (IF flag)
+    pub fn interrupts_enabled(&self) -> bool {
+        self.cpu.get_flag(crate::cpu::cpu_flag::INTERRUPT)
+    }
+
+    /// Returns true if this is a true terminal halt (halted with interrupts disabled).
+    /// A HLT with IF=1 is an idle wait (STI+HLT pattern) and should NOT be treated as terminal.
+    pub fn is_terminal_halt(&self) -> bool {
+        self.cpu.is_halted() && !self.cpu.get_flag(crate::cpu::cpu_flag::INTERRUPT)
     }
 
     /// Get total cycles executed

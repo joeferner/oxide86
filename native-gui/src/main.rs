@@ -317,12 +317,15 @@ fn step_emulator(
         let frame_target = target_cycles.min(current_cycles + max_cycles_per_frame);
 
         while computer.get_cycle_count() < frame_target {
-            if computer.is_halted() {
+            computer.step();
+            // Only treat as a terminal halt when IF=0 (e.g. INT 20h / INT 21h AH=4Ch exit).
+            // HLT with IF=1 (STI + HLT idle loop used by TSRs/task managers) must keep running
+            // so that pending timer IRQs can wake the CPU back up.
+            if computer.is_terminal_halt() {
                 log::info!("Computer halted");
                 halted = true;
                 break;
             }
-            computer.step();
         }
     }
 

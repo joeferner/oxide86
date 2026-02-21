@@ -533,7 +533,10 @@ impl Oxide86Computer {
         let start_cycles = self.computer.get_cycle_count();
 
         loop {
-            if self.computer.is_halted() {
+            // Only stop on a true terminal halt (HLT with IF=0, e.g. INT 20h/4Ch exit).
+            // HLT with IF=1 (STI+HLT idle loop used by TSRs/task managers) must keep
+            // stepping so pending timer IRQs can wake the CPU back up.
+            if self.computer.is_terminal_halt() {
                 // Update video one last time before returning
                 self.computer.update_video();
                 return false;
@@ -552,7 +555,7 @@ impl Oxide86Computer {
         // Update video after batch execution
         self.computer.update_video();
 
-        !self.computer.is_halted()
+        !self.computer.is_terminal_halt()
     }
 
     /// Reset the computer.
