@@ -106,7 +106,7 @@ impl AppMenu {
 
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
-                ui.menu_button("Floppy", |ui| {
+                ui.menu_button("Drives", |ui| {
                     ui.menu_button("Floppy A:", |ui| {
                         if ui
                             .add_enabled(
@@ -154,20 +154,20 @@ impl AppMenu {
                             ui.close_menu();
                         }
                     });
-                });
 
-                ui.menu_button("CD-ROM", |ui| {
-                    if ui.button("Insert ISO...").clicked() {
-                        action = Some(MenuAction::InsertCdRom);
-                        ui.close_menu();
-                    }
-                    if ui
-                        .add_enabled(self.cdrom_present, egui::Button::new("Eject CD-ROM"))
-                        .clicked()
-                    {
-                        action = Some(MenuAction::EjectCdRom);
-                        ui.close_menu();
-                    }
+                    ui.menu_button("CD-ROM", |ui| {
+                        if ui.button("Insert ISO...").clicked() {
+                            action = Some(MenuAction::InsertCdRom);
+                            ui.close_menu();
+                        }
+                        if ui
+                            .add_enabled(self.cdrom_present, egui::Button::new("Eject CD-ROM"))
+                            .clicked()
+                        {
+                            action = Some(MenuAction::EjectCdRom);
+                            ui.close_menu();
+                        }
+                    });
                 });
 
                 ui.menu_button("System", |ui| {

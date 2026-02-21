@@ -1110,7 +1110,7 @@ fn show_insert_cdrom_dialog(
     {
         match std::fs::read(&path)
             .map_err(|e| e.to_string())
-            .and_then(|data| CdRomImage::new(data))
+            .and_then(CdRomImage::new)
         {
             Ok(image) => {
                 computer.bios_mut().insert_cdrom(0, image);

@@ -348,9 +348,9 @@ impl CdRomImage {
         let second = date[5] as u16;
 
         // Clamp year to DOS range (1980-2107)
-        let dos_year = if year_1900 >= 80 { year_1900 - 80 } else { 0 };
-        let dos_month = month.max(1).min(12);
-        let dos_day = day.max(1).min(31);
+        let dos_year = year_1900.saturating_sub(80);
+        let dos_month = month.clamp(1, 12);
+        let dos_day = day.clamp(1, 31);
 
         let dos_date = (dos_year << 9) | (dos_month << 5) | dos_day;
         let dos_time = (hour << 11) | (minute << 5) | (second / 2);

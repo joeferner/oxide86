@@ -542,8 +542,8 @@ impl Cpu {
                 // Read sectors
                 // CHS → flat 512-byte LBA using CD-ROM convention (75 sectors per track)
                 let count = (self.ax & 0xFF) as u8; // AL
-                let cylinder = (self.cx >> 8) as u16; // CH
-                let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
+                let cylinder = self.cx >> 8; // CH
+                let sector = (self.cx & 0xFF) as u8; // Full CL byte (CD-ROM sectors aren't limited to 6-bit CHS encoding)
                 // lba_512 = cylinder * 75 + (sector - 1)
                 let lba_512 = cylinder as usize * 75 + sector.saturating_sub(1) as usize;
 

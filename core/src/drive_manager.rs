@@ -1131,7 +1131,7 @@ impl DriveManager {
             let entries: Vec<FindData> = iso_entries
                 .iter()
                 .filter(|e| Self::matches_pattern(&e.name, filename_pattern))
-                .map(|e| Self::iso_entry_to_find_data(e))
+                .map(Self::iso_entry_to_find_data)
                 .collect();
             if entries.is_empty() {
                 return Err(DosError::NoMoreFiles);
