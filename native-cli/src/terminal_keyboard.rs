@@ -6,8 +6,8 @@
 //! - Buffers keyboard input during polling to prevent key loss
 //! - Uses crossterm for cross-platform terminal keyboard access
 
-use emu86_core::cpu::bios::KeyPress;
-use emu86_core::keyboard::KeyboardInput;
+use oxide86_core::cpu::bios::KeyPress;
+use oxide86_core::keyboard::KeyboardInput;
 use std::collections::VecDeque;
 use std::time::Duration;
 

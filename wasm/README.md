@@ -1,6 +1,6 @@
-# emu86 WASM
+# Oxide86 WASM
 
-WebAssembly build of the emu86 8086 emulator for running in web browsers.
+WebAssembly build of the oxide86 x86 emulator for running in web browsers.
 
 ## Prerequisites
 
@@ -78,11 +78,11 @@ The WASM implementation provides browser-based versions of the platform-independ
 
 ## JavaScript API
 
-The `Emu86Computer` class exposed to JavaScript provides:
+The `Oxide86Computer` class exposed to JavaScript provides:
 
 ### Constructor
 ```javascript
-const computer = new Emu86Computer('canvas-id');
+const computer = new Oxide86Computer('canvas-id');
 ```
 
 ### Disk Management

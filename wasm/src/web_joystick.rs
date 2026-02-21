@@ -34,7 +34,7 @@
 //! }
 //! ```
 
-use emu86_core::joystick::{JoystickInput, JoystickState};
+use oxide86_core::joystick::{JoystickInput, JoystickState};
 use std::cell::RefCell;
 use std::rc::Rc;
 

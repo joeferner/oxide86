@@ -1,5 +1,5 @@
 use chrono::{Datelike, Local, Timelike};
-use emu86_core::{Clock, LocalDate, LocalTime};
+use oxide86_core::{Clock, LocalDate, LocalTime};
 
 pub struct NativeClock;
 

@@ -1,7 +1,7 @@
-use emu86_core::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
-use emu86_core::palette::TextModePalette;
-use emu86_core::video::text::{TextBuffer, TextCell};
-use emu86_core::video::{
+use oxide86_core::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
+use oxide86_core::palette::TextModePalette;
+use oxide86_core::video::text::{TextBuffer, TextCell};
+use oxide86_core::video::{
     CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, VideoController, VideoMode,
 };
 use wasm_bindgen::Clamped;
@@ -80,7 +80,7 @@ impl WebVideo {
 
     /// Render a single character to the pixel buffer
     fn render_char_to_buffer(&mut self, row: usize, col: usize, cell: &TextCell) {
-        emu86_core::video::render::render_text_cell(
+        oxide86_core::video::render::render_text_cell(
             &self.font,
             row,
             col,
@@ -102,7 +102,7 @@ impl WebVideo {
             return;
         }
 
-        emu86_core::video::render::render_cursor(cursor, CANVAS_WIDTH as usize, &mut self.buffer);
+        oxide86_core::video::render::render_cursor(cursor, CANVAS_WIDTH as usize, &mut self.buffer);
     }
 
     /// Blit the stored logo overlay into the pixel buffer (no-op if no overlay).
@@ -158,7 +158,7 @@ impl WebVideo {
         self.canvas.set_height(400);
 
         let mut image_data_buf = vec![0u8; 640 * 400 * 4];
-        emu86_core::video::render::render_cga_320x200(
+        oxide86_core::video::render::render_cga_320x200(
             pixel_data,
             &color_map,
             &self.vga_dac_palette,
@@ -185,9 +185,9 @@ impl WebVideo {
         let mut image_data_buf = vec![0u8; 640 * 400 * 4];
 
         if composite {
-            emu86_core::video::composite::render_composite_2bpp(pixel_data, &mut image_data_buf);
+            oxide86_core::video::composite::render_composite_2bpp(pixel_data, &mut image_data_buf);
         } else {
-            emu86_core::video::render::render_cga_640x200_bw(
+            oxide86_core::video::render::render_cga_640x200_bw(
                 pixel_data,
                 fg_color,
                 bg_color,
@@ -207,7 +207,7 @@ impl WebVideo {
         self.canvas.set_height(400);
 
         let mut image_data_buf = vec![0u8; 640 * 400 * 4];
-        emu86_core::video::render::render_ega_320x200x16(
+        oxide86_core::video::render::render_ega_320x200x16(
             pixel_data,
             &self.vga_dac_palette,
             &mut image_data_buf,
@@ -225,7 +225,7 @@ impl WebVideo {
         self.canvas.set_height(400);
 
         let mut image_data_buf = vec![0u8; 640 * 400 * 4];
-        emu86_core::video::render::render_vga_320x200x256(
+        oxide86_core::video::render::render_vga_320x200x256(
             pixel_data,
             &self.vga_dac_palette,
             &mut image_data_buf,

@@ -3,8 +3,8 @@ use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers};
 use crossterm::style::{Color, Print, SetBackgroundColor, SetForegroundColor};
 use crossterm::terminal::ClearType;
 use crossterm::{cursor, execute, terminal};
-use emu86_core::{BackedDisk, Computer, DriveNumber};
-use emu86_native_common::FileDiskBackend;
+use oxide86_core::{BackedDisk, Computer, DriveNumber};
+use oxide86_native_common::FileDiskBackend;
 use std::io::{self, Stdout, Write, stdout};
 
 /// Read a line of input in raw terminal mode with basic editing support
@@ -180,7 +180,7 @@ fn show_help(stdout: &mut Stdout) -> Result<()> {
 /// Returns true to continue emulation, false to halt
 pub fn handle_command_mode<V>(computer: &mut Computer<V>) -> Result<bool>
 where
-    V: emu86_core::VideoController,
+    V: oxide86_core::VideoController,
 {
     let mut stdout = stdout();
 
@@ -306,7 +306,7 @@ fn format_drive(drive: DriveNumber) -> String {
 
 fn insert_floppy<V>(computer: &mut Computer<V>, drive: DriveNumber, path: &str) -> Result<()>
 where
-    V: emu86_core::VideoController,
+    V: oxide86_core::VideoController,
 {
     // Verify drive is a floppy
     if drive.to_standard() != 0x00 && drive.to_standard() != 0x01 {
@@ -327,7 +327,7 @@ where
 
 fn eject_floppy<V>(computer: &mut Computer<V>, drive: DriveNumber) -> Result<()>
 where
-    V: emu86_core::VideoController,
+    V: oxide86_core::VideoController,
 {
     // Verify drive is a floppy
     if drive.to_standard() != 0x00 && drive.to_standard() != 0x01 {

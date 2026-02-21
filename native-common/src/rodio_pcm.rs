@@ -1,5 +1,5 @@
-use emu86_core::audio::PcmRingBuffer;
-use emu86_core::audio::adlib::ADLIB_SAMPLE_RATE;
+use oxide86_core::audio::PcmRingBuffer;
+use oxide86_core::audio::adlib::ADLIB_SAMPLE_RATE;
 use rodio::stream::OutputStream;
 use rodio::{Sink, Source};
 use std::time::Duration;

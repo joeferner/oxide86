@@ -1,7 +1,7 @@
 //! Web-based keyboard input using browser keyboard events.
 
-use emu86_core::cpu::bios::KeyPress;
-use emu86_core::keyboard::KeyboardInput;
+use oxide86_core::cpu::bios::KeyPress;
+use oxide86_core::keyboard::KeyboardInput;
 use std::cell::RefCell;
 use std::collections::VecDeque;
 use std::rc::Rc;

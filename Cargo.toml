@@ -1,5 +1,5 @@
 [package]
-name = "emu86"
+name = "oxide86"
 version = "0.1.0"
 edition = "2024"
 

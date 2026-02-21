@@ -1,13 +1,13 @@
 [package]
-name = "emu86-native-gui"
+name = "oxide86-native-gui"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
 winit = "0.29"
 pixels = "0.15"
-emu86-native-common = { path = "../native-common" }
-emu86-core = { path = "../core" }
+oxide86-native-common = { path = "../native-common" }
+oxide86-core = { path = "../core" }
 anyhow = { workspace = true }
 env_logger = "0.11"
 log = { workspace = true }

@@ -46,11 +46,11 @@ pub struct CommonCli {
     #[arg(long = "com2", value_name = "DEVICE")]
     pub com2_device: Option<String>,
 
-    /// Enable execution logging (logs each instruction to emu86.log)
+    /// Enable execution logging (logs each instruction to oxide86.log)
     #[arg(long = "exec-log")]
     pub exec_log: bool,
 
-    /// Enable interrupt logging (logs INT calls to emu86.log)
+    /// Enable interrupt logging (logs INT calls to oxide86.log)
     #[arg(long = "int-log")]
     pub int_log: bool,
 

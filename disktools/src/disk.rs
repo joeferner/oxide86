@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use emu86_core::{SECTOR_SIZE, parse_mbr};
+use oxide86_core::{SECTOR_SIZE, parse_mbr};
 use std::io::{self, Read, Seek, SeekFrom, Write};
 
 /// A cursor over a Vec<u8> that is confined to a byte range [start, start+len).

@@ -184,13 +184,13 @@ Call from both `native-cli` and `native-gui` `main.rs` after `load_disks()`.
 6. Call `load_cdroms(&mut computer, &cli.common.cdroms)?` after `load_disks()`
 
 ### `wasm/src/lib.rs`
-Add three exported methods to `Emu86Computer`:
+Add three exported methods to `Oxide86Computer`:
 ```rust
 #[wasm_bindgen] pub fn load_cdrom(&mut self, slot: u8, data: Vec<u8>) -> Result<(), JsValue>
 #[wasm_bindgen] pub fn eject_cdrom_slot(&mut self, slot: u8) -> Result<(), JsValue>
 #[wasm_bindgen] pub fn cdrom_count(&self) -> u8
 ```
-Add `use emu86_core::CdRomImage;`. If `computer.bios()` (immutable) doesn't exist in `Computer`, add it in `core/src/computer.rs`.
+Add `use oxide86_core::CdRomImage;`. If `computer.bios()` (immutable) doesn't exist in `Computer`, add it in `core/src/computer.rs`.
 
 ### `wasm/www/src/components/DriveControl.tsx`
 Add CD-ROM row after Hard Drive C: section:
@@ -228,8 +228,8 @@ int 0x2F
 
 ## Verification
 1. `./scripts/pre-commit.sh` — must pass (build + clippy)
-2. Native CLI: `cargo run -p emu86-native-cli -- --cdrom game.iso program.com`
-3. Native GUI: `cargo run -p emu86-native-gui -- --cdrom game.iso --boot --floppy-a dos.img`
+2. Native CLI: `cargo run -p oxide86-native-cli -- --cdrom game.iso program.com`
+3. Native GUI: `cargo run -p oxide86-native-gui -- --cdrom game.iso --boot --floppy-a dos.img`
    - CD-ROM menu → Insert ISO..., Eject CD-ROM
 4. WASM: load UI, use CD-ROM file picker, verify status shows "Loaded CD-ROM: name.iso"
 5. Functional: INT 2Fh AH=15h AL=00h returns AX=0xADAD; INT 13h AH=15h for 0xE0 returns AH=03h; file open/read from ISO works; file write returns AccessDenied

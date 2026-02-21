@@ -3,8 +3,8 @@ use clap::Parser;
 use crossterm::event::{DisableMouseCapture, EnableMouseCapture, KeyEventKind};
 use crossterm::execute;
 use crossterm::terminal::{LeaveAlternateScreen, disable_raw_mode};
-use emu86_core::{Computer, NullJoystick};
-use emu86_native_common::{
+use oxide86_core::{Computer, NullJoystick};
+use oxide86_native_common::{
     CommonCli, GilrsJoystick, GilrsJoystickInput, NativeClock, apply_logging_flags,
     attach_serial_device, create_audio, load_cdroms, load_disks, load_mounted_directories,
     load_program_or_boot, sync_mounted_directories,
@@ -25,7 +25,7 @@ use terminal_mouse::TerminalMouse;
 mod command_mode;
 
 #[derive(Parser)]
-#[command(name = "emu86")]
+#[command(name = "Oxide86")]
 #[command(about = "Intel 8086 CPU Emulator", long_about = None)]
 #[command(
     after_help = "During emulation:\n  Press F12 to enter command mode for floppy swapping and other runtime operations."
@@ -36,7 +36,7 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
-    let log_file = File::create("emu86.log").context("Failed to create log file")?;
+    let log_file = File::create("oxide86.log").context("Failed to create log file")?;
 
     // Initialize logger from RUST_LOG env var, or use defaults if not set
     let mut builder = env_logger::Builder::from_default_env();
@@ -45,8 +45,8 @@ fn main() -> Result<()> {
     if std::env::var("RUST_LOG").is_err() {
         builder
             .filter_level(log::LevelFilter::Error)
-            .filter_module("emu86_core", log::LevelFilter::Info)
-            .filter_module("emu86_native", log::LevelFilter::Info);
+            .filter_module("oxide86_core", log::LevelFilter::Info)
+            .filter_module("oxide86_native", log::LevelFilter::Info);
     }
 
     builder
@@ -63,11 +63,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Parse CPU type
-    let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
+    let cpu_type = oxide86_core::CpuType::parse(&cli.common.cpu_type)
         .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.common.cpu_type))?;
 
     // Parse video card type
-    let video_card_type = emu86_core::VideoCardType::parse(&cli.common.video_card)
+    let video_card_type = oxide86_core::VideoCardType::parse(&cli.common.video_card)
         .ok_or_else(|| anyhow::anyhow!("Invalid video card type: {}", cli.common.video_card))?;
 
     // Create computer with keyboard, mouse, joystick, video, and speaker
@@ -77,7 +77,7 @@ fn main() -> Result<()> {
 
     // Create joystick - only initialize gilrs if joystick flags are set
     let (joystick, mut gilrs_joystick): (
-        Box<dyn emu86_core::JoystickInput>,
+        Box<dyn oxide86_core::JoystickInput>,
         Option<GilrsJoystick>,
     ) = if cli.common.joystick_a || cli.common.joystick_b {
         log::info!("Initializing gamepad support (gilrs)");
@@ -107,7 +107,7 @@ fn main() -> Result<()> {
         clock,
         video,
         speaker,
-        emu86_core::ComputerConfig {
+        oxide86_core::ComputerConfig {
             cpu_type,
             memory_kb: cli.common.memory,
             video_card_type,
@@ -144,12 +144,12 @@ fn main() -> Result<()> {
     // Attach serial devices if specified
     if let Some(device) = &cli.common.com1_device {
         let mouse_clone =
-            Box::new(terminal_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+            Box::new(terminal_mouse.clone_shared()) as Box<dyn oxide86_core::MouseInput>;
         attach_serial_device(&mut computer, 1, device, mouse_clone);
     }
     if let Some(device) = &cli.common.com2_device {
         let mouse_clone =
-            Box::new(terminal_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+            Box::new(terminal_mouse.clone_shared()) as Box<dyn oxide86_core::MouseInput>;
         attach_serial_device(&mut computer, 2, device, mouse_clone);
     }
 
@@ -199,7 +199,7 @@ fn run<V>(
     cpu_freq: Option<u64>,
 ) -> bool
 where
-    V: emu86_core::VideoController,
+    V: oxide86_core::VideoController,
 {
     use crossterm::event::{self, Event, MouseButton, MouseEventKind};
     let start_time = cpu_freq.map(|_| Instant::now());

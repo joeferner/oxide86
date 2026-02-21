@@ -18,8 +18,8 @@
 //! `None` if no key is buffered, and will typically spin-loop calling the BIOS
 //! function repeatedly until a key becomes available.
 
-use emu86_core::cpu::bios::KeyPress;
-use emu86_core::keyboard::KeyboardInput;
+use oxide86_core::cpu::bios::KeyPress;
+use oxide86_core::keyboard::KeyboardInput;
 use std::collections::VecDeque;
 use winit::event::{ElementState, KeyEvent};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};

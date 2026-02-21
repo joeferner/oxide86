@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
-use emu86_core::audio::adlib::{ADLIB_SAMPLE_RATE, Adlib};
-use emu86_core::utils::parse_hex_or_dec;
-use emu86_core::{
+use oxide86_core::audio::adlib::{ADLIB_SAMPLE_RATE, Adlib};
+use oxide86_core::utils::parse_hex_or_dec;
+use oxide86_core::{
     BackedDisk, CdRomImage, Computer, DiskController, DriveNumber, MouseInput, NullSpeaker,
     PartitionedDisk, SerialLogger, SerialMouse, SoundCard, SpeakerOutput, VideoController,
     parse_mbr,

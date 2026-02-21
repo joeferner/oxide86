@@ -13,10 +13,10 @@ nasm -f bin joystick_test.asm -o joystick_test.com
 ### Native GUI (with gamepad support)
 ```bash
 # Enable joystick A slot (auto-detects first connected gamepad)
-cargo run -p emu86-native-gui -- --joystick-a joystick_test.com
+cargo run -p oxide86-native-gui -- --joystick-a joystick_test.com
 
 # Enable both joystick slots (A and B)
-cargo run -p emu86-native-gui -- --joystick-a --joystick-b joystick_test.com
+cargo run -p oxide86-native-gui -- --joystick-a --joystick-b joystick_test.com
 ```
 
 The GUI version uses gilrs to auto-detect connected gamepads:
@@ -26,10 +26,10 @@ The GUI version uses gilrs to auto-detect connected gamepads:
 ### Native CLI (with gamepad support)
 ```bash
 # Enable joystick A slot
-cargo run -p emu86-native-cli -- --joystick-a joystick_test.com
+cargo run -p oxide86-native-cli -- --joystick-a joystick_test.com
 
 # Enable both joystick slots
-cargo run -p emu86-native-cli -- --joystick-a --joystick-b joystick_test.com
+cargo run -p oxide86-native-cli -- --joystick-a --joystick-b joystick_test.com
 ```
 
 CLI also supports gamepad auto-detection via gilrs.

@@ -71,7 +71,7 @@ export const COM_PORT_OPTIONS = [
     { value: 'logger', label: 'Serial Logger' },
 ];
 
-const CONFIG_STORAGE_KEY = 'emu86_config';
+const CONFIG_STORAGE_KEY = 'oxide86_config';
 
 export function loadConfig(): EmulatorConfig {
     try {

@@ -1,3 +1,4 @@
+use gilrs::{Axis, Button, Event, EventType, Gilrs};
 /// Joystick implementation using gilrs library (native platforms only)
 ///
 /// Maps connected gamepads to joystick slots A and B:
@@ -8,8 +9,7 @@
 /// - LeftStickX / LeftStickY → X/Y axes
 /// - South button (A/Cross) → button 1
 /// - East button (B/Circle) → button 2
-use emu86_core::joystick::{JoystickInput, JoystickState};
-use gilrs::{Axis, Button, Event, EventType, Gilrs};
+use oxide86_core::joystick::{JoystickInput, JoystickState};
 use std::sync::{Arc, Mutex};
 
 /// Joystick implementation using gilrs for gamepad input

@@ -5,7 +5,7 @@
 ; high — a proxy for joystick position.
 ;
 ; Build: nasm -f bin joystick_test.asm -o joystick_test.com
-; Run:   cargo run -p emu86-native-gui -- --joystick-a [--joystick-b] joystick_test.com
+; Run:   cargo run -p oxide86-native-gui -- --joystick-a [--joystick-b] joystick_test.com
 ;
 ; Screen layout:
 ;   Row  0: Title

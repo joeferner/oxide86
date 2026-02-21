@@ -1,4 +1,4 @@
-use emu86_core::SpeakerOutput;
+use oxide86_core::SpeakerOutput;
 use wasm_bindgen::JsValue;
 use web_sys::{AudioContext, GainNode, OscillatorNode, OscillatorType};
 

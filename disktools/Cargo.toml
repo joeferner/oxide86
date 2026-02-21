@@ -1,14 +1,14 @@
 [package]
-name = "emu86-disktools"
+name = "oxide86-disktools"
 version = "0.1.0"
 edition = "2024"
 
 [[bin]]
-name = "emu86-disktools"
+name = "oxide86-disktools"
 path = "src/main.rs"
 
 [dependencies]
-emu86-core = { path = "../core" }
+oxide86-core = { path = "../core" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 env_logger = "0.11"

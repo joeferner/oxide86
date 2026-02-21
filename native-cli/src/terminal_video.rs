@@ -3,7 +3,7 @@ use crossterm::{
     style::{Color, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen},
 };
-use emu86_core::{
+use oxide86_core::{
     TextModePalette,
     video::{
         CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, VideoController, VideoMode,
@@ -181,8 +181,8 @@ impl VideoController for TerminalVideo {
         self.current_mode = match mode {
             0x00 | 0x01 => VideoMode::Text { cols: 40, rows: 25 },
             0x02 | 0x03 | 0x07 => VideoMode::Text { cols: 80, rows: 25 },
-            0x04 | 0x05 => emu86_core::video::VideoMode::Graphics320x200,
-            0x06 => emu86_core::video::VideoMode::Graphics640x200,
+            0x04 | 0x05 => oxide86_core::video::VideoMode::Graphics320x200,
+            0x06 => oxide86_core::video::VideoMode::Graphics640x200,
             _ => VideoMode::Text { cols: 80, rows: 25 }, // Default to text mode
         };
 

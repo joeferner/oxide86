@@ -2526,7 +2526,7 @@ print_number:
 ;=============================================================================
 section .data
 
-msg_banner: db '=== emu86 Opcode Test Suite ===', 13, 10, 0
+msg_banner: db '=== oxide86 Opcode Test Suite ===', 13, 10, 0
 
 test_mov_name: db 'MOV', 0
 test_add_name: db 'ADD', 0

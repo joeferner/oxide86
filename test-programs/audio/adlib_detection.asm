@@ -12,8 +12,8 @@
 ;       mov dx, 0x388 / out dx, al  (NOT: out 0x388, al — NASM truncates to 0x88)
 ;
 ; Build:  nasm -f bin adlib_detection.asm -o adlib_detection.com
-; Run:    cargo run -p emu86-native-gui -- --sound-card adlib adlib_detection.com
-;         cargo run -p emu86-native-cli -- --sound-card adlib adlib_detection.com
+; Run:    cargo run -p oxide86-native-gui -- --sound-card adlib adlib_detection.com
+;         cargo run -p oxide86-native-cli -- --sound-card adlib adlib_detection.com
 
 [CPU 8086]
 org 0x100

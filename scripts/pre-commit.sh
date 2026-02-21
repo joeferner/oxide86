@@ -1,5 +1,4 @@
 #!/bin/bash
-# Script to assemble and run 8086 assembly programs
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,7 +14,7 @@ cargo test --all
 
 echo ""
 echo "Building production Docker container..."
-docker build -t emu86-web:latest ./wasm/www
+docker build -t oxide86-web:latest ./wasm/www
 
 echo ""
 echo "Complete!"

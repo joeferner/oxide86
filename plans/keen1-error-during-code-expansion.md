@@ -76,7 +76,7 @@ buffer -> state machine reads zeros -> infinite loop -> watchdog -> error.
 
 Error still occurs when running KEEN1.EXE from booted DOS (hdd.img):
 ```bash
-RUST_LOG=debug cargo run -p emu86-native-gui -- --boot --hdd examples/hdd.img \
+RUST_LOG=debug cargo run -p oxide86-native-gui -- --boot --hdd examples/hdd.img \
   --boot-drive 0x80 --cpu 286 --speed 20 --memory 2048 --floppy-a examples/keen1.img
 ```
 Then: type "A:" and "keen1.exe"

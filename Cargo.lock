@@ -1029,101 +1029,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "emu86"
-version = "0.1.0"
-
-[[package]]
-name = "emu86-core"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "criterion",
- "fatfs",
- "log",
- "png 0.17.16",
- "strum",
- "strum_macros",
-]
-
-[[package]]
-name = "emu86-disktools"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "emu86-core",
- "env_logger",
- "fatfs",
- "log",
-]
-
-[[package]]
-name = "emu86-native-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "crossterm",
- "emu86-core",
- "emu86-native-common",
- "env_logger",
- "log",
-]
-
-[[package]]
-name = "emu86-native-common"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "emu86-core",
- "fatfs",
- "gilrs",
- "log",
- "rodio",
- "walkdir",
-]
-
-[[package]]
-name = "emu86-native-gui"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "chrono",
- "clap",
- "egui",
- "egui-wgpu",
- "egui-winit",
- "emu86-core",
- "emu86-native-common",
- "env_logger",
- "image",
- "log",
- "pixels",
- "rfd",
- "winit",
-]
-
-[[package]]
-name = "emu86-wasm"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "emu86-core",
- "js-sys",
- "log",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "tsify",
- "wasm-bindgen",
- "wasm-logger",
- "web-sys",
-]
-
-[[package]]
 name = "encoding_rs"
 version = "0.8.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2479,6 +2384,101 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "36820e9051aca1014ddc75770aab4d68bc1e9e632f0f5627c4086bc216fb583b"
 dependencies = [
  "ttf-parser",
+]
+
+[[package]]
+name = "oxide86"
+version = "0.1.0"
+
+[[package]]
+name = "oxide86-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "criterion",
+ "fatfs",
+ "log",
+ "png 0.17.16",
+ "strum",
+ "strum_macros",
+]
+
+[[package]]
+name = "oxide86-disktools"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "env_logger",
+ "fatfs",
+ "log",
+ "oxide86-core",
+]
+
+[[package]]
+name = "oxide86-native-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "crossterm",
+ "env_logger",
+ "log",
+ "oxide86-core",
+ "oxide86-native-common",
+]
+
+[[package]]
+name = "oxide86-native-common"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "fatfs",
+ "gilrs",
+ "log",
+ "oxide86-core",
+ "rodio",
+ "walkdir",
+]
+
+[[package]]
+name = "oxide86-native-gui"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chrono",
+ "clap",
+ "egui",
+ "egui-wgpu",
+ "egui-winit",
+ "env_logger",
+ "image",
+ "log",
+ "oxide86-core",
+ "oxide86-native-common",
+ "pixels",
+ "rfd",
+ "winit",
+]
+
+[[package]]
+name = "oxide86-wasm"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "js-sys",
+ "log",
+ "oxide86-core",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "tsify",
+ "wasm-bindgen",
+ "wasm-logger",
+ "web-sys",
 ]
 
 [[package]]

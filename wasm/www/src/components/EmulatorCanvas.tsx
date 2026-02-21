@@ -1,12 +1,12 @@
 import { useRef, useEffect, forwardRef } from 'react';
 import { useSignalEffect } from '@preact/signals-react';
-import { Emu86Computer } from '../../pkg/emu86_wasm';
+import { Oxide86Computer } from '../../pkg/oxide86_wasm';
 import { initPointerLock, isLocked, requestLock, exitLock } from '../pointerLockState';
 import { status } from '../emulatorState';
 import styles from './EmulatorCanvas.module.scss';
 
 interface EmulatorCanvasProps {
-    computer: Emu86Computer | null;
+    computer: Oxide86Computer | null;
 }
 
 export const EmulatorCanvas = forwardRef<HTMLCanvasElement, EmulatorCanvasProps>(function EmulatorCanvas(

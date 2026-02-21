@@ -25,7 +25,7 @@
 //! let bios = Bios::new(keyboard, Box::new(mouse));
 //! ```
 
-use emu86_core::mouse::{MouseInput, MouseState};
+use oxide86_core::mouse::{MouseInput, MouseState};
 use std::cell::RefCell;
 use std::rc::Rc;
 use wasm_bindgen::prelude::*;

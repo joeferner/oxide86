@@ -5,21 +5,21 @@ mod menu;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use emu86_core::NullJoystick;
-use emu86_core::{
-    BackedDisk, CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, CdRomImage, Computer,
-    DriveNumber, MEMORY_SIZE,
-};
-use emu86_native_common::{
-    AudioOutput, CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
-    apply_logging_flags, attach_serial_device, create_audio, load_cdroms, load_disks,
-    load_mounted_directories, load_program_or_boot, sync_mounted_directories,
-};
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
 use gui_video::{PixelsVideoController, SCREEN_HEIGHT, SCREEN_WIDTH};
 use log::LevelFilter;
 use menu::AppMenu;
+use oxide86_core::NullJoystick;
+use oxide86_core::{
+    BackedDisk, CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, CdRomImage, Computer,
+    DriveNumber, MEMORY_SIZE,
+};
+use oxide86_native_common::{
+    AudioOutput, CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
+    apply_logging_flags, attach_serial_device, create_audio, load_cdroms, load_disks,
+    load_mounted_directories, load_program_or_boot, sync_mounted_directories,
+};
 use pixels::{Pixels, SurfaceTexture, wgpu};
 use std::fs::File;
 use std::time::Instant;
@@ -29,10 +29,10 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, WindowBuilder};
 
-const TITLE: &str = "emu86 - 8086 Emulator";
+const TITLE: &str = "oxide86 - x86 Emulator";
 
 #[derive(Parser)]
-#[command(name = "emu86-gui")]
+#[command(name = "oxide86-gui")]
 #[command(about = "Intel 8086 CPU Emulator (GUI)", long_about = None)]
 struct Cli {
     #[command(flatten)]
@@ -41,7 +41,7 @@ struct Cli {
 
 fn main() {
     use std::io::Write;
-    let log_file = File::create("emu86.log").expect("Failed to create log file");
+    let log_file = File::create("oxide86.log").expect("Failed to create log file");
 
     // Initialize logger from RUST_LOG env var, or use defaults if not set
     let mut builder = env_logger::Builder::from_default_env();
@@ -50,8 +50,8 @@ fn main() {
     if std::env::var("RUST_LOG").is_err() {
         builder
             .filter_level(LevelFilter::Error)
-            .filter_module("emu86_core", LevelFilter::Info)
-            .filter_module("emu86_native_gui", LevelFilter::Info);
+            .filter_module("oxide86_core", LevelFilter::Info)
+            .filter_module("oxide86_native_gui", LevelFilter::Info);
     }
 
     // Always filter wgpu logs to reduce noise
@@ -123,11 +123,11 @@ fn attach_serial_devices_from_cli(
     gui_mouse: &GuiMouse,
 ) {
     if let Some(device) = &cli.common.com1_device {
-        let mouse_clone = Box::new(gui_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+        let mouse_clone = Box::new(gui_mouse.clone_shared()) as Box<dyn oxide86_core::MouseInput>;
         attach_serial_device(computer, 1, device, mouse_clone);
     }
     if let Some(device) = &cli.common.com2_device {
-        let mouse_clone = Box::new(gui_mouse.clone_shared()) as Box<dyn emu86_core::MouseInput>;
+        let mouse_clone = Box::new(gui_mouse.clone_shared()) as Box<dyn oxide86_core::MouseInput>;
         attach_serial_device(computer, 2, device, mouse_clone);
     }
 }
@@ -869,11 +869,11 @@ fn run(cli: Cli) -> Result<()> {
 
 fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
     // Parse CPU type
-    let cpu_type = emu86_core::CpuType::parse(&cli.common.cpu_type)
+    let cpu_type = oxide86_core::CpuType::parse(&cli.common.cpu_type)
         .ok_or_else(|| anyhow::anyhow!("Invalid CPU type: {}", cli.common.cpu_type))?;
 
     // Parse video card type
-    let video_card_type = emu86_core::VideoCardType::parse(&cli.common.video_card)
+    let video_card_type = oxide86_core::VideoCardType::parse(&cli.common.video_card)
         .ok_or_else(|| anyhow::anyhow!("Invalid video card type: {}", cli.common.video_card))?;
 
     // Create computer with keyboard, mouse, joystick, video, and speaker
@@ -881,7 +881,7 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
     let mouse = Box::new(gui_mouse);
 
     // Create joystick - only initialize gilrs if joystick flags are set
-    let (joystick, gilrs_joystick): (Box<dyn emu86_core::JoystickInput>, Option<GilrsJoystick>) =
+    let (joystick, gilrs_joystick): (Box<dyn oxide86_core::JoystickInput>, Option<GilrsJoystick>) =
         if cli.common.joystick_a || cli.common.joystick_b {
             log::info!("Initializing gamepad support (gilrs)");
             let gilrs = GilrsJoystick::new();
@@ -907,7 +907,7 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
         clock,
         video,
         speaker,
-        emu86_core::ComputerConfig {
+        oxide86_core::ComputerConfig {
             cpu_type,
             memory_kb: cli.common.memory,
             video_card_type,
@@ -1172,7 +1172,7 @@ fn save_screenshot(
         .set_file_name({
             let now = chrono::Local::now();
             format!(
-                "emu86_screenshot_{:04}{:02}{:02}_{:02}{:02}{:02}.png",
+                "oxide86_screenshot_{:04}{:02}{:02}_{:02}{:02}{:02}.png",
                 now.year(),
                 now.month(),
                 now.day(),
@@ -1232,7 +1232,7 @@ fn save_ram(computer: &Computer<PixelsVideoController>, notification: &mut Optio
         .set_file_name({
             let now = chrono::Local::now();
             format!(
-                "emu86_ram_{:04}{:02}{:02}_{:02}{:02}{:02}.bin",
+                "oxide86_ram_{:04}{:02}{:02}_{:02}{:02}{:02}.bin",
                 now.year(),
                 now.month(),
                 now.day(),
@@ -1289,7 +1289,7 @@ fn save_video_ram(
         .set_file_name({
             let now = chrono::Local::now();
             format!(
-                "emu86_vram_{:04}{:02}{:02}_{:02}{:02}{:02}.bin",
+                "oxide86_vram_{:04}{:02}{:02}_{:02}{:02}{:02}.bin",
                 now.year(),
                 now.month(),
                 now.day(),

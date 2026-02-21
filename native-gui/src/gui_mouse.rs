@@ -25,7 +25,7 @@
 //!
 //! Motion accumulates between calls to get_motion() and is reset when retrieved.
 
-use emu86_core::mouse::{MouseInput, MouseState};
+use oxide86_core::mouse::{MouseInput, MouseState};
 use std::sync::{Arc, Mutex};
 
 /// Shared internal state for GuiMouse.

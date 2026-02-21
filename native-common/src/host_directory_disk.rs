@@ -5,7 +5,7 @@
 //! and changes are synced back to the host on close/shutdown.
 
 use anyhow::{Context, Result, anyhow};
-use emu86_core::{
+use oxide86_core::{
     BackedDisk, DiskController, DiskGeometry, MemoryDiskBackend, SECTOR_SIZE, create_formatted_disk,
 };
 use std::collections::{HashMap, HashSet};

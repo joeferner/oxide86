@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Analyze emu86.log and recreate the last screen image from graphics operations.
+Analyze oxide86.log and recreate the last screen image from graphics operations.
 """
 
 import re
@@ -331,7 +331,7 @@ def find_last_screen(log_path):
 
 
 def main():
-    log_path = Path(__file__).parent.parent / "emu86.log"
+    log_path = Path(__file__).parent.parent / "oxide86.log"
     output_path = Path(__file__).parent.parent / "screen_output.png"
 
     if len(sys.argv) > 1:

@@ -1,6 +1,6 @@
-# emu86 Web Interface
+# Oxide86 Web Interface
 
-React-based web interface for the emu86 8086 emulator with WebAssembly support.
+React-based web interface for the Oxide86 x86 emulator with WebAssembly support.
 
 ## Development with Docker
 
@@ -123,7 +123,7 @@ The React conversion maintains the same functionality while providing better cod
 ### WASM Module Not Found
 If you see errors about missing WASM files, ensure you've built the WASM package:
 ```bash
-cd /path/to/emu86/wasm
+cd /path/to/oxide86/wasm
 sh scripts/build.sh
 ```
 

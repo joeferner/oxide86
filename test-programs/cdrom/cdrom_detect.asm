@@ -1,5 +1,5 @@
 ; cdrom_detect.asm - MSCDEX CD-ROM detection and sector read test
-; Run with: cargo run -p emu86-native-cli -- --cdrom my_disk.iso test-programs/cdrom/cdrom_detect.com
+; Run with: cargo run -p oxide86-native-cli -- --cdrom my_disk.iso test-programs/cdrom/cdrom_detect.com
 ; Build:    nasm -f bin cdrom_detect.asm -o cdrom_detect.com
 
 [CPU 8086]

@@ -7,7 +7,7 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
-#[command(name = "emu86-disktools", about = "Disk image tools for emu86")]
+#[command(name = "oxide86-disktools", about = "Disk image tools for oxide86")]
 struct Cli {
     #[command(subcommand)]
     command: Command,

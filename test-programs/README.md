@@ -12,8 +12,8 @@
 1. Run
 
     ```bash
-    cargo run -p emu86-native-cli -- hello_program.com
-    cargo run -p emu86-native-gui -- hello_program.com
+    cargo run -p oxide86-native-cli -- hello_program.com
+    cargo run -p oxide86-native-gui -- hello_program.com
     ```
 
 ## .bas
@@ -52,8 +52,8 @@ AdLib (OPL2/YM3812) sound card detection and two-note playback test. Uses the st
 
 **Running:**
 ```bash
-cargo run -p emu86-native-gui -- --sound-card adlib test-programs/audio/adlib_detection.com
-cargo run -p emu86-native-cli -- --sound-card adlib test-programs/audio/adlib_detection.com
+cargo run -p oxide86-native-gui -- --sound-card adlib test-programs/audio/adlib_detection.com
+cargo run -p oxide86-native-cli -- --sound-card adlib test-programs/audio/adlib_detection.com
 ```
 
 **Expected Output (with `--sound-card adlib`):**
@@ -78,8 +78,8 @@ MSCDEX CD-ROM detection and ISO 9660 sector-read test. Uses INT 2Fh AX=1500h to 
 nasm -f bin test-programs/cdrom/cdrom_detect.asm -o test-programs/cdrom/cdrom_detect.com
 
 # Run with an ISO image
-cargo run -p emu86-native-cli -- --cdrom my_disk.iso test-programs/cdrom/cdrom_detect.com
-cargo run -p emu86-native-gui -- --cdrom my_disk.iso test-programs/cdrom/cdrom_detect.com
+cargo run -p oxide86-native-cli -- --cdrom my_disk.iso test-programs/cdrom/cdrom_detect.com
+cargo run -p oxide86-native-gui -- --cdrom my_disk.iso test-programs/cdrom/cdrom_detect.com
 ```
 
 **Expected Output (with a valid ISO 9660 image):**
@@ -105,10 +105,10 @@ Tests both joysticks (A and B) on the IBM Game Control Adapter (port 0x201) in r
 **Running with gamepad support:**
 ```bash
 # Enable joystick A slot (requires connected gamepad)
-cargo run -p emu86-native-gui -- --joystick-a test-programs/joystick/joystick_test.com
+cargo run -p oxide86-native-gui -- --joystick-a test-programs/joystick/joystick_test.com
 
 # Enable both joystick slots
-cargo run -p emu86-native-gui -- --joystick-a --joystick-b test-programs/joystick/joystick_test.com
+cargo run -p oxide86-native-gui -- --joystick-a --joystick-b test-programs/joystick/joystick_test.com
 ```
 
 **Expected Output:**
@@ -137,15 +137,15 @@ Comprehensive test suite for validating CPU instruction implementation. Tests 55
 **Running with serial logger:**
 ```bash
 # Native CLI
-cargo run -p emu86-native-cli -- test-programs/opcode-test/op8086.com --com1-device logger
+cargo run -p oxide86-native-cli -- test-programs/opcode-test/op8086.com --com1-device logger
 
 # Native GUI
-cargo run -p emu86-native-gui -- test-programs/opcode-test/op8086.com --com1-device logger
+cargo run -p oxide86-native-gui -- test-programs/opcode-test/op8086.com --com1-device logger
 ```
 
 **Expected Output:**
 ```
-[COM1] === emu86 Opcode Test Suite ===
+[COM1] === oxide86 Opcode Test Suite ===
 [COM1] MOV: PASS
 [COM1] ADD: PASS
 [COM1] SUB: PASS
@@ -314,10 +314,10 @@ Tests serial port logger functionality by writing debug output to COM1. Initiali
 **Running with serial logger:**
 ```bash
 # Native CLI
-cargo run -p emu86-native-cli -- test-programs/serial/serial_logger_test.com --com1-device logger
+cargo run -p oxide86-native-cli -- test-programs/serial/serial_logger_test.com --com1-device logger
 
 # Native GUI
-cargo run -p emu86-native-gui -- test-programs/serial/serial_logger_test.com --com1-device logger
+cargo run -p oxide86-native-gui -- test-programs/serial/serial_logger_test.com --com1-device logger
 ```
 
 **Expected Log Output:**
@@ -396,7 +396,7 @@ VGA graphics mode 0x13 test program. Switches to 320x200, 256-color mode using t
 
 **Running (requires VGA card):**
 ```bash
-cargo run -p emu86-native-gui -- --video-card vga test-programs/video/mode_13h_vga_320x200x256.com
+cargo run -p oxide86-native-gui -- --video-card vga test-programs/video/mode_13h_vga_320x200x256.com
 ```
 
 **Expected Output:**

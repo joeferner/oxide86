@@ -12,7 +12,7 @@ CheckIt 2.1 hangs indefinitely during "Determine System Components" phase. The p
 
 ## Root Cause
 
-The Interrupt Flag (IF) was stuck at 0, preventing INT 0x08 timer hardware interrupts from firing. The timer tick mechanism in emu86 works as follows:
+The Interrupt Flag (IF) was stuck at 0, preventing INT 0x08 timer hardware interrupts from firing. The timer tick mechanism in oxide86 works as follows:
 
 1. CPU executes instructions, accumulating cycles
 2. `increment_cycles()` queues timer IRQs when cycle threshold reached (~262088 cycles = 1 tick at 18.2 Hz)

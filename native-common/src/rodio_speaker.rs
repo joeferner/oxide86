@@ -1,4 +1,4 @@
-use emu86_core::SpeakerOutput;
+use oxide86_core::SpeakerOutput;
 use rodio::stream::OutputStream;
 use rodio::{Sink, Source};
 use std::sync::{Arc, Mutex};

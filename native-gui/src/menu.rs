@@ -1,4 +1,4 @@
-use emu86_core::DriveNumber;
+use oxide86_core::DriveNumber;
 
 /// Menu actions that can be triggered
 #[derive(Debug, Clone, Copy)]

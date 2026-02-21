@@ -5,7 +5,7 @@
 // This file is licensed under the GNU Lesser General Public License v2.1.
 // See <https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html>.
 //
-// Ported to Rust for emu86 — structural changes only; all algorithms are
+// Ported to Rust for oxide86 — structural changes only; all algorithms are
 // faithful reproductions of the upstream C source.
 
 // ============================================================

@@ -1,7 +1,7 @@
 ; Serial Logger Test Program
 ; Writes debug output to COM1 to verify serial logger functionality
 ; Build: nasm -f bin serial_logger_test.asm -o serial_logger_test.com
-; Run: cargo run -p emu86-native-cli -- test-programs/serial/serial_logger_test.com --com1-device logger
+; Run: cargo run -p oxide86-native-cli -- test-programs/serial/serial_logger_test.com --com1-device logger
 
 [CPU 8086]
 org 0x100

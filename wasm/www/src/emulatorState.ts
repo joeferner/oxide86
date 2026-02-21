@@ -1,5 +1,5 @@
 import { signal } from '@preact/signals-react';
-import wasmInit, { Emu86Computer } from '../pkg/emu86_wasm';
+import wasmInit, { Oxide86Computer } from '../pkg/oxide86_wasm';
 import { EmulatorConfig, loadConfig } from './components/ConfigDialog.consts';
 
 export interface PerformanceStats {
@@ -21,7 +21,7 @@ interface SoundCardStatsMessage {
 }
 
 // Module-level signals — always current, no stale closures
-export const computer = signal<Emu86Computer | null>(null);
+export const computer = signal<Oxide86Computer | null>(null);
 export const status = signal('Initializing...');
 export const isRunning = signal(false);
 export const perfStats = signal<PerformanceStats>({ target: 0, actual: 0 });
@@ -39,8 +39,8 @@ const gamepadSlotsRef = { current: new Map<number, number>() };
 // Sound card Web Audio state
 const sourceCardAudioRef = { current: null as { context: AudioContext; node: AudioWorkletNode } | null };
 
-function createComputer(cfg: EmulatorConfig): Emu86Computer {
-    return new Emu86Computer({
+function createComputer(cfg: EmulatorConfig): Oxide86Computer {
+    return new Oxide86Computer({
         canvas_id: 'display',
         cpu_type: cfg.cpuType,
         memory_kb: cfg.memoryKb,
@@ -111,7 +111,7 @@ class SoundCardProcessor extends AudioWorkletProcessor {
 registerProcessor('sound-card-processor', SoundCardProcessor);
 `;
 
-async function setupSoundCardAudio(comp: Emu86Computer): Promise<void> {
+async function setupSoundCardAudio(comp: Oxide86Computer): Promise<void> {
     teardownSoundCardAudio();
     try {
         const sampleRate = comp.get_sound_card_sample_rate();
@@ -164,7 +164,7 @@ function teardownSoundCardAudio(): void {
     }
 }
 
-function setJoystickConnectedSlot(comp: Emu86Computer | null | undefined, slot: number, connected: boolean): void {
+function setJoystickConnectedSlot(comp: Oxide86Computer | null | undefined, slot: number, connected: boolean): void {
     const label = slot === 0 ? 'A' : 'B';
     console.log(`[joystick] Joystick ${label} (slot ${slot}): ${connected ? 'connected' : 'disconnected'}`);
     comp?.gamepad_connected(slot, connected);
@@ -191,7 +191,7 @@ function assignGamepad(gamepadIndex: number): void {
     }
 }
 
-function pollGamepads(comp: Emu86Computer): void {
+function pollGamepads(comp: Oxide86Computer): void {
     const cfg = config.value;
     if (!cfg.joystickA && !cfg.joystickB) {
         return;

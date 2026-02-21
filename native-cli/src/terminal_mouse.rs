@@ -19,7 +19,7 @@
 //! Conversion: Multiply terminal coords by 8 (character cell size in pixels)
 //! - Example: Column 40, Row 12 → X=320, Y=96
 
-use emu86_core::mouse::{MouseInput, MouseState};
+use oxide86_core::mouse::{MouseInput, MouseState};
 use std::sync::{Arc, Mutex};
 
 /// Shared internal state for TerminalMouse.

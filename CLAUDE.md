@@ -1,6 +1,6 @@
-# emu86 - 8086 Emulator
+# Oxide86 - x86 Emulator
 
-Intel 8086 CPU emulator in Rust with native and WebAssembly support.
+Intel x86 CPU emulator in Rust with native and WebAssembly support.
 
 ## Coding Rules
 
@@ -10,12 +10,12 @@ Intel 8086 CPU emulator in Rust with native and WebAssembly support.
 - No backwards compatibility
 - Run ./scripts/pre-commit.sh when done; update CLAUDE.md for future edits
 - Instead of running cargo build or clippy run ./scripts/pre-commit.sh instead
-- logs are written to emu86.log
+- logs are written to oxide86.log
 - use Rust crates when possible
 - when logging unimplemented features use log::warn!
 - always write plans to the plans directory with a meaningful name
 - when create test-programs place them in the appropriate directory and update test-programs/README.md
-- when updating wasm use wasm/www/pkg/emu86_wasm.d.ts interfaces instead of creating your own
+- when updating wasm use wasm/www/pkg/oxide86_wasm.d.ts interfaces instead of creating your own
 - If the code you are creating is a major feature update README.md
 
 ### Logging Configuration
@@ -24,20 +24,20 @@ Control log levels via the `RUST_LOG` environment variable:
 
 ```bash
 # Set everything to debug
-RUST_LOG=debug cargo run -p emu86-native-cli -- program.com
+RUST_LOG=debug cargo run -p oxide86-native-cli -- program.com
 
 # Set specific module to debug
-RUST_LOG=emu86_core=debug cargo run -p emu86-native-cli -- program.com
+RUST_LOG=oxide86_core=debug cargo run -p oxide86-native-cli -- program.com
 
 # Multiple modules with different levels
-RUST_LOG=emu86_core=debug,emu86_native=trace cargo run -p emu86-native-gui -- --boot --floppy-a dos.img
+RUST_LOG=oxide86_core=debug,oxide86_native=trace cargo run -p oxide86-native-gui -- --boot --floppy-a dos.img
 
 # Trace everything (very verbose)
-RUST_LOG=trace cargo run -p emu86-native-cli -- program.com
+RUST_LOG=trace cargo run -p oxide86-native-cli -- program.com
 ```
 
 Default levels when `RUST_LOG` is not set:
-- CLI/GUI: Error globally, Info for emu86 modules
+- CLI/GUI: Error globally, Info for oxide86 modules
 - GUI also filters wgpu_core=Info and wgpu_hal=Error to reduce graphics noise
 
 ## Architecture
@@ -226,8 +226,8 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 
 **CLI Usage:**
 ```bash
-cargo run -p emu86-native-gui -- --sound-card adlib test-programs/audio/adlib_detection.com
-cargo run -p emu86-native-gui -- --sound-card adlib --boot --floppy-a dos.img
+cargo run -p oxide86-native-gui -- --sound-card adlib test-programs/audio/adlib_detection.com
+cargo run -p oxide86-native-gui -- --sound-card adlib --boot --floppy-a dos.img
 ```
 
 **Native Platform (`native-common/src/`):**
@@ -236,7 +236,7 @@ cargo run -p emu86-native-gui -- --sound-card adlib --boot --floppy-a dos.img
 - `rodio_adlib.rs::RodioAdlib` — Rodio `Sink` with `AdlibSource` draining via `AdlibConsumer`
 
 **WASM Platform:**
-- Sound card created at `Emu86Computer::new()` when `sound_card: "adlib"` is in config
+- Sound card created at `Oxide86Computer::new()` when `sound_card: "adlib"` is in config
 - `enable_adlib() -> u32` — satisfies browser autoplay policy; returns sample rate (44100)
 - `get_adlib_samples(count) -> Float32Array` — pops samples from the Adlib's internal buffer
 - `wasm/www/src/emulatorState.ts`: `setupAdlibAudio()` creates AudioWorklet at 44100 Hz; posts 2048 samples/frame via MessagePort
@@ -321,26 +321,26 @@ Both native-cli and native-gui support two modes: loading programs or booting fr
 **Load a program (.COM file):**
 ```bash
 # CLI version
-cargo run -p emu86-native-cli -- program.com
+cargo run -p oxide86-native-cli -- program.com
 
 # GUI version
-cargo run -p emu86-native-gui -- program.com
+cargo run -p oxide86-native-gui -- program.com
 
 # With custom segment:offset
-cargo run -p emu86-native-cli -- program.com --segment 0x1000 --offset 0x0000
+cargo run -p oxide86-native-cli -- program.com --segment 0x1000 --offset 0x0000
 ```
 
 **Boot from disk:**
 ```bash
 # Boot from floppy A:
-cargo run -p emu86-native-cli -- --boot --floppy-a dos.img
-cargo run -p emu86-native-gui -- --boot --floppy-a dos.img
+cargo run -p oxide86-native-cli -- --boot --floppy-a dos.img
+cargo run -p oxide86-native-gui -- --boot --floppy-a dos.img
 
 # Boot from hard drive C: with floppy in B:
-cargo run -p emu86-native-cli -- --boot --boot-drive 0x80 --hdd drive_c.img --floppy-b disk2.img
+cargo run -p oxide86-native-cli -- --boot --boot-drive 0x80 --hdd drive_c.img --floppy-b disk2.img
 
 # Multiple hard drives
-cargo run -p emu86-native-cli -- --boot --hdd drive_c.img --hdd drive_d.img
+cargo run -p oxide86-native-cli -- --boot --hdd drive_c.img --hdd drive_d.img
 ```
 
 **CLI Options:**
@@ -358,14 +358,14 @@ cargo run -p emu86-native-cli -- --boot --hdd drive_c.img --hdd drive_d.img
 
 **Load a program:**
 ```javascript
-const computer = new Emu86Computer("canvas-id");
+const computer = new Oxide86Computer("canvas-id");
 const programData = new Uint8Array([...]); // Your .COM file bytes
 computer.load_program(programData, 0x0000, 0x0100); // segment:offset
 ```
 
 **Boot from disk:**
 ```javascript
-const computer = new Emu86Computer("canvas-id");
+const computer = new Oxide86Computer("canvas-id");
 const diskImage = new Uint8Array([...]); // Your disk image bytes
 computer.load_floppy(0, diskImage); // Load into drive A:
 computer.boot(0x00); // Boot from drive A:
@@ -390,7 +390,7 @@ Future work may add support for protected mode and 32-bit instructions on 286+/3
 
 ```bash
 cargo build                          # all crates
-cargo run -p emu86-native-cli -- <args>  # run native
+cargo run -p oxide86-native-cli -- <args>  # run native
 cargo clippy                         # lint
 ```
 

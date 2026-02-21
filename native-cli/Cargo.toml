@@ -1,11 +1,11 @@
 [package]
-name = "emu86-native-cli"
+name = "oxide86-native-cli"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-emu86-native-common = { path = "../native-common" }
-emu86-core = { path = "../core" }
+oxide86-native-common = { path = "../native-common" }
+oxide86-core = { path = "../core" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 env_logger = "0.11"

@@ -1,4 +1,4 @@
-![Logo](docs/emu86-logo-pixel-art.png)
+![Logo](docs/oxide86-logo-pixel-art.png)
 
 # About
 
@@ -33,25 +33,25 @@ Despite that, what came out the other end is something I'm genuinely impressed b
 
 1. Download MS-DOS 5.0
 1. Create a hard drive `dd if=/dev/zero of=examples/hdd.img bs=1M count=32`
-1. Run `RUST_LOG=info cargo run -p emu86-native-cli -- --boot --floppy-a examples/msdos-5.0/Disk01.img --hdd examples/hdd.img`
+1. Run `RUST_LOG=info cargo run -p oxide86-native-cli -- --boot --floppy-a examples/msdos-5.0/Disk01.img --hdd examples/hdd.img`
 
 ## Running
 
 In both the CLI and GUI pressing F12 will exit exclusive mode.
 
 `
-RUST_LOG=info cargo run -p emu86-native-cli -- --boot --hdd examples/hdd.img --boot-drive 0x80
-RUST_LOG=info cargo run -p emu86-native-gui -- --boot --hdd examples/hdd.img --boot-drive 0x80 --com1 mouse
+RUST_LOG=info cargo run -p oxide86-native-cli -- --boot --hdd examples/hdd.img --boot-drive 0x80
+RUST_LOG=info cargo run -p oxide86-native-gui -- --boot --hdd examples/hdd.img --boot-drive 0x80 --com1 mouse
 `
 
 # Creating a floppy with files
 
 ```bash
 # Create a blank 1.44MB image
-emu86-disktools -- format --floppy-1440 test.img
+oxide86-disktools -- format --floppy-1440 test.img
 
 # Copy the file into the image
-emu86-disktools -- copy -i test.img my-files/* ::/
+oxide86-disktools -- copy -i test.img my-files/* ::/
 ```
 
 # Compatibility
@@ -117,4 +117,4 @@ emu86-disktools -- copy -i test.img my-files/* ::/
 
 ## Shorter logs
 
-`cat emu86.log | grep -v ' naga::' | grep -v 'Port 0x0064' | grep -v 'Serial I/O' | grep -v 'IVT Write' | grep -v 'emu86_core' > emu86.log.new; mv emu86.log.new emu86.log`
+`cat oxide86.log | grep -v ' naga::' | grep -v 'Port 0x0064' | grep -v 'Serial I/O' | grep -v 'IVT Write' | grep -v 'oxide86_core' > oxide86.log.new; mv oxide86.log.new oxide86.log`

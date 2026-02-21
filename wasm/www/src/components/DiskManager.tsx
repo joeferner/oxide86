@@ -14,7 +14,7 @@ import {
     Select,
     TextInput,
 } from '@mantine/core';
-import { create_floppy_image, create_hdd_image } from '../../pkg/emu86_wasm';
+import { create_floppy_image, create_hdd_image } from '../../pkg/oxide86_wasm';
 import { computer, status } from '../emulatorState';
 
 interface FileEntry {

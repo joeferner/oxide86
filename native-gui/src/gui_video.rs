@@ -1,6 +1,6 @@
-use emu86_core::video::VideoMode;
-use emu86_core::video::text::{TextBuffer, TextCell};
-use emu86_core::{
+use oxide86_core::video::VideoMode;
+use oxide86_core::video::text::{TextBuffer, TextCell};
+use oxide86_core::{
     Cp437Font, TextModePalette,
     font::{CHAR_HEIGHT, CHAR_WIDTH},
     video::{CursorPosition, TEXT_MODE_COLS, TEXT_MODE_ROWS, VideoController},
@@ -98,7 +98,7 @@ impl PixelsVideoController {
 
     /// Render a single character cell at the given screen position
     fn render_cell(&self, frame: &mut [u8], row: usize, col: usize, cell: &TextCell) {
-        emu86_core::video::render::render_text_cell(
+        oxide86_core::video::render::render_text_cell(
             &self.font,
             row,
             col,
@@ -111,14 +111,14 @@ impl PixelsVideoController {
 
     /// Render cursor at the given position
     fn render_cursor_at(&self, frame: &mut [u8], position: CursorPosition) {
-        emu86_core::video::render::render_cursor(&position, SCREEN_WIDTH, frame);
+        oxide86_core::video::render::render_cursor(&position, SCREEN_WIDTH, frame);
     }
 
     /// Render graphics mode 320x200 (4-color) to framebuffer
     fn render_graphics_320x200(&self, frame: &mut [u8]) {
         if let (Some(pixel_data), Some(color_map)) = (&self.graphics_data, &self.graphics_color_map)
         {
-            emu86_core::video::render::render_cga_320x200(
+            oxide86_core::video::render::render_cga_320x200(
                 pixel_data,
                 color_map,
                 &self.vga_dac_palette,
@@ -134,9 +134,9 @@ impl PixelsVideoController {
     fn render_graphics_640x200(&self, frame: &mut [u8]) {
         if let Some(pixel_data) = &self.graphics_data {
             if self.graphics_composite {
-                emu86_core::video::composite::render_composite_2bpp(pixel_data, frame);
+                oxide86_core::video::composite::render_composite_2bpp(pixel_data, frame);
             } else {
-                emu86_core::video::render::render_cga_640x200_bw(
+                oxide86_core::video::render::render_cga_640x200_bw(
                     pixel_data,
                     self.graphics_fg_color,
                     self.graphics_bg_color,
@@ -149,7 +149,7 @@ impl PixelsVideoController {
     /// Render EGA graphics mode 320x200 (16-color) to framebuffer
     fn render_graphics_320x200x16(&self, frame: &mut [u8]) {
         if let Some(pixel_data) = &self.graphics_data {
-            emu86_core::video::render::render_ega_320x200x16(
+            oxide86_core::video::render::render_ega_320x200x16(
                 pixel_data,
                 &self.vga_dac_palette,
                 frame,
@@ -160,7 +160,7 @@ impl PixelsVideoController {
     /// Render VGA graphics mode 320x200 (256-color, mode 13h) to framebuffer
     fn render_graphics_320x200x256(&self, frame: &mut [u8]) {
         if let Some(pixel_data) = &self.graphics_data {
-            emu86_core::video::render::render_vga_320x200x256(
+            oxide86_core::video::render::render_vga_320x200x256(
                 pixel_data,
                 &self.vga_dac_palette,
                 frame,

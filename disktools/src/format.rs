@@ -1,6 +1,6 @@
 use anyhow::Result;
 use clap::{ArgGroup, Args};
-use emu86_core::{DiskGeometry, create_formatted_disk};
+use oxide86_core::{DiskGeometry, create_formatted_disk};
 use std::fs;
 
 #[derive(Args)]

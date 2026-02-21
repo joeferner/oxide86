@@ -1,10 +1,10 @@
-//! WebAssembly bindings for emu86 8086 emulator.
+//! WebAssembly bindings for Oxide86 x86 emulator.
 //!
 //! This crate provides browser-based implementations of the emulator's
 //! platform-independent traits (KeyboardInput, MouseInput, VideoController, SpeakerOutput)
 //! and exposes a JavaScript API for controlling the emulator from web applications.
 
-use emu86_core::{
+use oxide86_core::{
     BackedDisk, CdRomImage, Computer, DiskController, DiskGeometry, DriveNumber, JoystickInput,
     KeyPress, KeyboardInput, MemoryDiskBackend, MouseInput, MouseState, NullSpeaker,
     PartitionedDisk, SECTOR_SIZE, cpu::bios::FileAccess, create_formatted_disk, parse_mbr,
@@ -28,7 +28,7 @@ use web_speaker::WebSpeaker;
 use web_video::WebVideo;
 
 /// Wrapper around WebKeyboard that shares ownership via Rc<RefCell<>>
-/// This allows both the Computer and Emu86Computer to access the keyboard
+/// This allows both the Computer and Oxide86Computer to access the keyboard
 struct SharedKeyboard(Rc<RefCell<WebKeyboard>>);
 
 impl KeyboardInput for SharedKeyboard {
@@ -54,7 +54,7 @@ impl KeyboardInput for SharedKeyboard {
 }
 
 /// Wrapper around WebMouse that shares ownership via Rc<RefCell<>>
-/// This allows both the Computer and Emu86Computer to access the mouse
+/// This allows both the Computer and Oxide86Computer to access the mouse
 struct SharedMouse(Rc<RefCell<WebMouse>>);
 
 impl MouseInput for SharedMouse {
@@ -76,7 +76,7 @@ impl MouseInput for SharedMouse {
 }
 
 /// Wrapper around WebJoystick that shares ownership via Rc<RefCell<>>
-/// This allows both the Computer and Emu86Computer to access the joystick
+/// This allows both the Computer and Oxide86Computer to access the joystick
 struct SharedJoystick(Rc<RefCell<WebJoystick>>);
 
 impl JoystickInput for SharedJoystick {
@@ -102,7 +102,7 @@ pub fn init() {
     // Initialize logging to browser console (default to info level)
     wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
 
-    log::info!("emu86 WASM module initialized");
+    log::info!("oxide86 WASM module initialized");
 }
 
 /// Configuration for creating a new emulator instance.
@@ -142,7 +142,7 @@ pub struct ComputerConfig {
 
 /// WASM wrapper for the Computer emulator
 #[wasm_bindgen]
-pub struct Emu86Computer {
+pub struct Oxide86Computer {
     computer: Computer<WebVideo>,
     mouse: Rc<RefCell<WebMouse>>,
     joystick: Rc<RefCell<WebJoystick>>,
@@ -156,13 +156,13 @@ pub struct Emu86Computer {
 }
 
 #[wasm_bindgen]
-impl Emu86Computer {
+impl Oxide86Computer {
     /// Create a new emulator instance with custom configuration.
     ///
     /// # Arguments
     /// * `config` - Configuration object with canvas_id and optional settings
     #[wasm_bindgen(constructor)]
-    pub fn new(config: ComputerConfig) -> Result<Emu86Computer, JsValue> {
+    pub fn new(config: ComputerConfig) -> Result<Oxide86Computer, JsValue> {
         let canvas_id = config.canvas_id.as_str();
         let cpu_type_str = config.cpu_type.unwrap_or_else(|| "8086".to_string());
         let cpu_type = cpu_type_str.as_str();
@@ -199,7 +199,7 @@ impl Emu86Computer {
 
         // Try to initialize Web Audio API, fall back to NullSpeaker if disabled or unavailable
         let audio_enabled = config.audio_enabled.unwrap_or(true);
-        let speaker: Box<dyn emu86_core::SpeakerOutput> = if !audio_enabled {
+        let speaker: Box<dyn oxide86_core::SpeakerOutput> = if !audio_enabled {
             log::info!("PC speaker disabled (audio_enabled: false)");
             Box::new(NullSpeaker)
         } else {
@@ -219,13 +219,14 @@ impl Emu86Computer {
         };
 
         let resolved_cpu_type = match cpu_type {
-            "286" => emu86_core::CpuType::I80286,
-            "386" => emu86_core::CpuType::I80386,
-            "486" => emu86_core::CpuType::I80486,
-            _ => emu86_core::CpuType::I8086,
+            "286" => oxide86_core::CpuType::I80286,
+            "386" => oxide86_core::CpuType::I80386,
+            "486" => oxide86_core::CpuType::I80486,
+            _ => oxide86_core::CpuType::I8086,
         };
 
-        let resolved_video_card = emu86_core::VideoCardType::parse(video_card).unwrap_or_default();
+        let resolved_video_card =
+            oxide86_core::VideoCardType::parse(video_card).unwrap_or_default();
 
         // Clamp memory: 256 KB minimum, 64 MB maximum (extended memory requires 286+)
         let memory_kb = memory_kb.clamp(256, 65536);
@@ -250,7 +251,7 @@ impl Emu86Computer {
             clock,
             video,
             speaker,
-            emu86_core::ComputerConfig {
+            oxide86_core::ComputerConfig {
                 cpu_type: resolved_cpu_type,
                 memory_kb,
                 video_card_type: resolved_video_card,
@@ -261,7 +262,7 @@ impl Emu86Computer {
         // Configure sound card
         let sound_card_str = config.sound_card.unwrap_or_default();
         if matches!(sound_card_str.to_lowercase().trim(), "adlib" | "adl") {
-            use emu86_core::audio::adlib::Adlib;
+            use oxide86_core::audio::adlib::Adlib;
             let cpu_freq = (clock_mhz * 1_000_000.0) as u64;
             computer.set_sound_card(Box::new(Adlib::new(cpu_freq)));
             log::info!("AdLib (OPL2) sound card configured");
@@ -273,26 +274,26 @@ impl Emu86Computer {
 
         // Attach devices to COM1
         if com1_device_str == "mouse" {
-            use emu86_core::SerialMouse;
+            use oxide86_core::SerialMouse;
             let mouse_clone =
-                Box::new(SharedMouse(mouse.clone())) as Box<dyn emu86_core::MouseInput>;
+                Box::new(SharedMouse(mouse.clone())) as Box<dyn oxide86_core::MouseInput>;
             computer.set_com1_device(Box::new(SerialMouse::new(mouse_clone)));
             log::info!("Serial mouse attached to COM1");
         } else if com1_device_str == "logger" {
-            use emu86_core::SerialLogger;
+            use oxide86_core::SerialLogger;
             computer.set_com1_device(Box::new(SerialLogger::new(0)));
             log::info!("Serial logger attached to COM1");
         }
 
         // Attach devices to COM2
         if com2_device_str == "mouse" {
-            use emu86_core::SerialMouse;
+            use oxide86_core::SerialMouse;
             let mouse_clone =
-                Box::new(SharedMouse(mouse.clone())) as Box<dyn emu86_core::MouseInput>;
+                Box::new(SharedMouse(mouse.clone())) as Box<dyn oxide86_core::MouseInput>;
             computer.set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
             log::info!("Serial mouse attached to COM2");
         } else if com2_device_str == "logger" {
-            use emu86_core::SerialLogger;
+            use oxide86_core::SerialLogger;
             computer.set_com2_device(Box::new(SerialLogger::new(1)));
             log::info!("Serial logger attached to COM2");
         }
@@ -646,9 +647,9 @@ impl Emu86Computer {
     /// Programs like CTMOUSE.EXE and CUTE.COM will detect the mouse on this port.
     #[wasm_bindgen]
     pub fn attach_serial_mouse_com1(&mut self) {
-        use emu86_core::SerialMouse;
+        use oxide86_core::SerialMouse;
         let mouse_clone =
-            Box::new(SharedMouse(self.mouse.clone())) as Box<dyn emu86_core::MouseInput>;
+            Box::new(SharedMouse(self.mouse.clone())) as Box<dyn oxide86_core::MouseInput>;
         self.computer
             .set_com1_device(Box::new(SerialMouse::new(mouse_clone)));
         log::info!("Serial mouse attached to COM1");
@@ -660,9 +661,9 @@ impl Emu86Computer {
     /// Programs like CTMOUSE.EXE and CUTE.COM will detect the mouse on this port.
     #[wasm_bindgen]
     pub fn attach_serial_mouse_com2(&mut self) {
-        use emu86_core::SerialMouse;
+        use oxide86_core::SerialMouse;
         let mouse_clone =
-            Box::new(SharedMouse(self.mouse.clone())) as Box<dyn emu86_core::MouseInput>;
+            Box::new(SharedMouse(self.mouse.clone())) as Box<dyn oxide86_core::MouseInput>;
         self.computer
             .set_com2_device(Box::new(SerialMouse::new(mouse_clone)));
         log::info!("Serial mouse attached to COM2");
@@ -1083,7 +1084,7 @@ impl Emu86Computer {
     /// Sample rate in Hz (44100). Wire this to `AudioContext({ sampleRate })`.
     #[wasm_bindgen]
     pub fn get_sound_card_sample_rate(&mut self) -> u32 {
-        use emu86_core::audio::adlib::ADLIB_SAMPLE_RATE;
+        use oxide86_core::audio::adlib::ADLIB_SAMPLE_RATE;
         ADLIB_SAMPLE_RATE
     }
 

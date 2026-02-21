@@ -4,7 +4,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}/../wasm/www"
 
-echo "Starting emu86 web development server..."
+echo "Starting oxide86 web development server..."
 echo ""
 echo "This will:"
 echo "  1. Build the Docker development image"
@@ -13,7 +13,7 @@ echo "  3. Mount source files for instant updates"
 echo ""
 
 # Check if WASM package exists
-if [ ! -d "pkg" ] || [ ! -f "pkg/emu86_wasm.js" ]; then
+if [ ! -d "pkg" ] || [ ! -f "pkg/oxide86_wasm.js" ]; then
     echo "WARNING: WASM package not found in pkg/"
     echo "Please build the WASM package first:"
     echo ""
