@@ -54,6 +54,10 @@ pub struct Cpu {
     /// When > 0, Computer's step() will burn cycles instead of executing instructions
     pub(super) pending_sleep_cycles: u64,
 
+    /// CPU clock frequency in Hz (e.g. 4_770_000 for 4.77 MHz)
+    /// Used by interrupt handlers that need to convert real time to cycles
+    pub(super) cpu_freq: u64,
+
     /// Pending CPU exception interrupt number (e.g. 0 = divide error)
     /// Set by instructions that trigger CPU exceptions; fired by Computer::step()
     pub(super) pending_exception: Option<u8>,
@@ -136,6 +140,7 @@ impl Cpu {
             log_interrupts_enabled: false,
             last_instruction_cycles: 0,
             pending_sleep_cycles: 0,
+            cpu_freq: 4_770_000,
             pending_exception: None,
             irq_chain_context: None,
         }

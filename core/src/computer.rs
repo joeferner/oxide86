@@ -32,17 +32,6 @@ pub struct ComputerConfig {
     pub cpu_freq: u64,
 }
 
-impl Default for ComputerConfig {
-    fn default() -> Self {
-        Self {
-            cpu_type: CpuType::I8086,
-            memory_kb: 1024,
-            video_card_type: VideoCardType::default(),
-            cpu_freq: 4_770_000,
-        }
-    }
-}
-
 pub struct Computer<V: VideoController = NullVideoController> {
     cpu: Cpu,
     cpu_type: CpuType,
@@ -74,6 +63,8 @@ pub struct Computer<V: VideoController = NullVideoController> {
     boot_drive: Option<DriveNumber>,
     /// Loaded program for reset/reload operations
     loaded_program: Option<LoadedProgram>,
+    /// CPU clock frequency in Hz (from ComputerConfig)
+    cpu_freq: u64,
 }
 
 impl<V: VideoController> Computer<V> {
@@ -142,12 +133,13 @@ impl<V: VideoController> Computer<V> {
         let video = Video::new_with_card_type(video_card_type);
         let bus = Bus::new(memory, video);
 
+        let cpu_freq = config.cpu_freq;
         let mut computer = Self {
             cpu: Cpu::new(),
             cpu_type,
             bus,
             bios,
-            io_device: IoDevice::new(joystick, config.cpu_freq),
+            io_device: IoDevice::new(joystick, cpu_freq),
             video_controller,
             speaker,
             cycle_count: 0,
@@ -161,7 +153,9 @@ impl<V: VideoController> Computer<V> {
             speaker_update_cycles: 0,
             boot_drive: None,
             loaded_program: None,
+            cpu_freq,
         };
+        computer.cpu.cpu_freq = cpu_freq;
 
         computer.draw_bios_splash();
         computer
@@ -1423,8 +1417,8 @@ impl<V: VideoController> Computer<V> {
     }
 
     /// Calculate CPU cycles per timer tick from PIT Channel 0's count register.
-    /// PIT base frequency is 1,193,182 Hz. CPU runs at 4,770,000 Hz.
-    /// cycles_per_tick = pit_count * (4_770_000 / 1_193_182)
+    /// PIT base frequency is 1,193,182 Hz.
+    /// cycles_per_tick = pit_count * (cpu_freq / 1_193_182)
     fn get_cycles_per_tick(&self) -> u64 {
         let pit_count = self.io_device.pit().get_channel_count(0);
         let count = if pit_count == 0 {
@@ -1432,9 +1426,7 @@ impl<V: VideoController> Computer<V> {
         } else {
             pit_count as u64
         };
-        // Use integer math: count * 4_770_000 / 1_193_182
-        // For default count 65536: 65536 * 4770000 / 1193182 = 261,887 (~262K cycles)
-        (count * 4_770_000) / 1_193_182
+        (count * self.cpu_freq) / 1_193_182
     }
 
     /// Increment pending timer IRQs

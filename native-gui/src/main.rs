@@ -428,6 +428,7 @@ struct AppState {
     perf_tracker: PerformanceTracker,
     notification: Option<Notification>,
     halted: bool,
+    target_mhz: f64,
 }
 
 fn process_egui_frame(
@@ -478,7 +479,7 @@ fn process_egui_frame(
 
         // Render performance overlay outside exclusive mode check so it's always visible
         if app_state.show_performance_overlay {
-            render_performance_overlay(ctx, app_state.perf_tracker.get_mhz());
+            render_performance_overlay(ctx, app_state.target_mhz, app_state.perf_tracker.get_mhz());
         }
 
         // Render notification if present and not expired (unless halted)
@@ -495,7 +496,7 @@ fn process_egui_frame(
     full_output
 }
 
-fn render_performance_overlay(ctx: &egui::Context, actual_mhz: f64) {
+fn render_performance_overlay(ctx: &egui::Context, target_mhz: f64, actual_mhz: f64) {
     egui::Window::new("Performance")
         .anchor(egui::Align2::RIGHT_TOP, egui::vec2(-10.0, 10.0))
         .title_bar(false)
@@ -504,7 +505,7 @@ fn render_performance_overlay(ctx: &egui::Context, actual_mhz: f64) {
         .collapsible(false)
         .show(ctx, |ui| {
             ui.vertical(|ui| {
-                ui.label("Target: 4.77 MHz");
+                ui.label(format!("Target: {:.2} MHz", target_mhz));
                 ui.label(format!("Actual: {:.2} MHz", actual_mhz));
             });
         });
@@ -664,6 +665,7 @@ fn run(cli: Cli) -> Result<()> {
         perf_tracker: PerformanceTracker::new(),
         notification: None,
         halted: false,
+        target_mhz: cli.common.speed,
     };
 
     // Speed throttling state

@@ -398,4 +398,3 @@ impl Pit {
         log::trace!("PIT: Channel {} gate = {}", channel, gate);
     }
 }
-

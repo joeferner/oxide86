@@ -135,9 +135,8 @@ impl Cpu {
         let wait_microseconds = (wait_time_high << 16) | wait_time_low;
 
         // Calculate cycles to simulate for the wait
-        // At 4.77 MHz: exactly 4.77 cycles per microsecond
-        // Formula: cycles = microseconds * 4.77 = (microseconds * 477) / 100
-        let wait_cycles = (wait_microseconds * 477) / 100;
+        // Formula: cycles = microseconds * (cpu_freq / 1_000_000)
+        let wait_cycles = (wait_microseconds * self.cpu_freq) / 1_000_000;
 
         // Request a busy-wait by setting pending_sleep_cycles
         // Computer::step() will burn these cycles without executing instructions
