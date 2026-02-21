@@ -1096,7 +1096,8 @@ impl Oxide86Computer {
     #[wasm_bindgen]
     pub fn load_cdrom(&mut self, slot: u8, data: Vec<u8>) -> Result<(), JsValue> {
         let image = CdRomImage::new(data).map_err(|e| JsValue::from_str(&e))?;
-        self.computer.bios_mut().insert_cdrom(slot, image);
+        let drive_num = self.computer.bios_mut().insert_cdrom(slot, image);
+        log::info!("Loaded CD-ROM slot {} (drive {})", slot, drive_num);
         Ok(())
     }
 

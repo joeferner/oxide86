@@ -40,30 +40,33 @@ export function DriveControl({
         }
 
         const remount = async (): Promise<void> => {
-            if (floppyAFile.value) {
+            // Use .peek() to read file signals without subscribing to them.
+            // This effect should only rerun when `computer.value` changes (e.g. on reset),
+            // not when the user loads a new drive (which is handled by the handlers directly).
+            if (floppyAFile.peek()) {
                 try {
-                    comp.load_floppy(0, await loadFile(floppyAFile.value));
+                    comp.load_floppy(0, await loadFile(floppyAFile.peek()!));
                 } catch {
                     floppyAFile.value = null;
                 }
             }
-            if (floppyBFile.value) {
+            if (floppyBFile.peek()) {
                 try {
-                    comp.load_floppy(1, await loadFile(floppyBFile.value));
+                    comp.load_floppy(1, await loadFile(floppyBFile.peek()!));
                 } catch {
                     floppyBFile.value = null;
                 }
             }
-            if (hddFile.value) {
+            if (hddFile.peek()) {
                 try {
-                    comp.add_hard_drive(await loadFile(hddFile.value));
+                    comp.add_hard_drive(await loadFile(hddFile.peek()!));
                 } catch {
                     hddFile.value = null;
                 }
             }
-            if (cdromFile.value) {
+            if (cdromFile.peek()) {
                 try {
-                    comp.load_cdrom(0, await loadFile(cdromFile.value));
+                    comp.load_cdrom(0, await loadFile(cdromFile.peek()!));
                 } catch {
                     cdromFile.value = null;
                 }
