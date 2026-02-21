@@ -1,4 +1,4 @@
-![Logo](docs/oxide86-logo-pixel-art.png)
+![Logo](docs/oxide86-logo-pixel-art-256x256.png)
 
 # About
 
