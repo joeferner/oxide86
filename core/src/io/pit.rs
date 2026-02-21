@@ -251,7 +251,9 @@ impl Pit {
                     }
                     log::trace!(
                         "PIT: Read-back ch{}: latch_count={} latch_status={}",
-                        ch_idx, latch_count, latch_status
+                        ch_idx,
+                        latch_count,
+                        latch_status
                     );
                 }
             }

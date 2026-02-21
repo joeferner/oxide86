@@ -25,6 +25,7 @@ Despite that, what came out the other end is something I'm genuinely impressed b
 - AdLib sound card
 - Mouse support
 - Joystick support
+- ATA/ATAPI support
 - CD-ROM/ISO support
 
 # Getting Started

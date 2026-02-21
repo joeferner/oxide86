@@ -1,3 +1,4 @@
+pub mod ata;
 mod cga_ports;
 mod joystick_port;
 mod pit;

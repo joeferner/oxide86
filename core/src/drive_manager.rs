@@ -1725,4 +1725,36 @@ impl DriveManager {
             .filter(|d| d.cdrom_slot.is_none())
             .count()
     }
+
+    /// Write a single 512-byte sector at the given LBA on a hard drive.
+    pub fn disk_write_sectors_lba(
+        &mut self,
+        drive: DriveNumber,
+        start_lba: u32,
+        data: &[u8],
+    ) -> Result<(), DiskError> {
+        let drive_state = self.get_drive_mut(drive).ok_or(DiskError::DriveNotReady)?;
+        let adapter = drive_state
+            .adapter
+            .as_mut()
+            .ok_or(DiskError::DriveNotReady)?;
+
+        let count = data.len() / SECTOR_SIZE;
+        for i in 0..count {
+            let lba = start_lba as usize + i;
+            let sector: &[u8; SECTOR_SIZE] = data[i * SECTOR_SIZE..(i + 1) * SECTOR_SIZE]
+                .try_into()
+                .map_err(|_| DiskError::SectorNotFound)?;
+            adapter
+                .disk_mut()
+                .write_sector_lba(lba, sector)
+                .map_err(|_| DiskError::WriteProtected)?;
+        }
+        Ok(())
+    }
+
+    /// Return an immutable reference to a CD-ROM image by slot index (0–3).
+    pub fn cdrom_image(&self, slot: u8) -> Option<&crate::cdrom::CdRomImage> {
+        self.cdrom_drives.get(slot as usize)?.as_ref()
+    }
 }

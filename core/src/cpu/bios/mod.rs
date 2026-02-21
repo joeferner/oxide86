@@ -1,6 +1,7 @@
 // BIOS and DOS interrupt handler trait and implementation
 // The core provides the interrupt dispatch mechanism, but I/O is handled via callbacks
 
+mod ata;
 pub mod disk_error;
 pub mod dos_error;
 mod int08;
@@ -31,7 +32,7 @@ use crate::{
     MemoryAllocator, MouseInput, MouseState, SerialParams, SerialPortController, SerialStatus,
     cdrom::CdRomImage,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
-    io::PIT_FREQUENCY_HZ,
+    io::{PIT_FREQUENCY_HZ, ata::AtaChannel},
     peripheral,
 };
 pub use int17::PrinterStatus;
@@ -144,6 +145,8 @@ pub struct SharedBiosState {
     /// Current DTA (Disk Transfer Area) physical address, set by INT 21h AH=1Ah
     /// Default is 0 (unset); DOS programs must set it before calling FindFirst/FindNext
     pub current_dta: usize,
+    /// Primary ATA channel (ports 0x1F0–0x1F7, 0x3F6)
+    pub ata_primary: AtaChannel,
 }
 
 impl SharedBiosState {
@@ -156,6 +159,7 @@ impl SharedBiosState {
             next_device_handle: 3, // 0, 1, 2 are reserved for stdin/stdout/stderr
             last_disk_status: 0x00, // Success
             current_dta: 0,
+            ata_primary: AtaChannel::new(),
         }
     }
 

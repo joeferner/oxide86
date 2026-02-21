@@ -97,6 +97,49 @@ No CD-ROM / MSCDEX not found
 **Technical Details:**
 INT 2Fh AX=1500h (MSCDEX install check) returns AX=0xADAD and BX=drive count when the MSCDEX shim is active. INT 2Fh AX=150Ch returns the MSCDEX version in BX (BH=major, BL=minor). INT 13h AH=02h reads sectors from drive 0xE0 (first CD-ROM slot); since CD sectors are 2048 bytes but INT 13h uses 512-byte addressing, LBA sector 16 (ISO PVD) maps to INT 13h sector 65 (CHS cylinder=0, head=0, sector=65 using 1-based sector numbering).
 
+### cdrom/ata_identify.asm
+ATA IDENTIFY DEVICE test. Selects primary master, waits for DRDY, issues IDENTIFY (0xECh), reads the 512-byte response and prints the model string (words 27-46). If the device returns the ATAPI signature in the cylinder registers (lba_mid=0x14, lba_high=0xEB), prints "ATAPI device detected" instead.
+
+**Running:**
+```bash
+nasm -f bin test-programs/cdrom/ata_identify.asm -o test-programs/cdrom/ata_identify.com
+
+# With a hard drive attached
+cargo run -p oxide86-native-cli -- --hdd drive.img test-programs/cdrom/ata_identify.com
+
+# With a CD-ROM (shows ATAPI detected)
+cargo run -p oxide86-native-cli -- --cdrom game.iso test-programs/cdrom/ata_identify.com
+```
+
+**Expected Output (with HDD):**
+```
+ATA Model: Oxide86 ATA Hard Drive
+IDENTIFY OK
+```
+
+**Expected Output (with CD-ROM only):**
+```
+ATAPI device detected on primary master
+```
+
+### cdrom/atapi_read_toc.asm
+ATAPI READ TOC test via PIO-mode ATA ports. Selects primary slave, issues PACKET command (0xA0) followed by a READ TOC CDB (0x43) with MSF format, reads the 20-byte response and prints track 1 and lead-out MSF addresses.
+
+**Running:**
+```bash
+nasm -f bin test-programs/cdrom/atapi_read_toc.asm -o test-programs/cdrom/atapi_read_toc.com
+
+# CD-ROM on primary slave (HDD on master)
+cargo run -p oxide86-native-cli -- --hdd drive.img --cdrom game.iso test-programs/cdrom/atapi_read_toc.com
+```
+
+**Expected Output:**
+```
+TOC Track 1 MSF: 00:02:00
+Lead-out MSF:    mm:ss:ff
+```
+(Lead-out depends on ISO size)
+
 ## Joystick
 
 ### joystick/joystick_test.asm

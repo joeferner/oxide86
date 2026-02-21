@@ -8,7 +8,8 @@
 - [X] native-gui/wasm add logo on startup
 - [X] AdLib support
 - [X] Install SvarDOS (open source dos)
-- [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE
+- [X] Implement ATA/ATAPI (see plans/ata-atapi-support.md)
+- [X] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (se plans/cdrom-support.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons

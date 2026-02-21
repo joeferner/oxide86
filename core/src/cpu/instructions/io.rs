@@ -13,10 +13,17 @@ impl Cpu {
     ) {
         let port = self.fetch_byte(bus) as u16;
         let value = match port {
+            // Primary ATA channel registers (0x1F0-0x1F7)
+            0x1F0 => bios.ata_read_u8(0),
+            0x1F1..=0x1F7 => bios.ata_read_u8((port - 0x1F0) as u8),
+            // Primary ATA alternate status (0x3F6-0x3F7)
+            0x3F6 | 0x3F7 => bios.ata_read_alt_status(),
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => bios.serial_io_read(0, port - 0x3F8),
             // COM2 registers (0x2F8-0x2FF)
             0x2F8..=0x2FF => bios.serial_io_read(1, port - 0x2F8),
+            // Secondary ATA channel (0x170-0x177, 0x376) — not implemented, return 0x7F (not busy)
+            0x170..=0x177 | 0x376 => 0x7F,
             // Other ports use existing io_device
             _ => io_device.read_byte(port),
         };
@@ -34,6 +41,8 @@ impl Cpu {
     ) {
         let port = self.fetch_byte(bus) as u16;
         let value = match port {
+            // Primary ATA data port word read (0x1F0)
+            0x1F0 => bios.ata_read_u16(),
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => {
                 let low = bios.serial_io_read(0, port - 0x3F8);
@@ -63,10 +72,17 @@ impl Cpu {
         let port = self.fetch_byte(bus) as u16;
         let value = (self.ax & 0xFF) as u8;
         match port {
+            // Primary ATA channel registers (0x1F0-0x1F7)
+            0x1F0 => bios.ata_write_u8(0, value),
+            0x1F1..=0x1F7 => bios.ata_write_u8((port - 0x1F0) as u8, value),
+            // Primary ATA device control (0x3F6)
+            0x3F6 => bios.ata_write_control(value),
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => bios.serial_io_write(0, port - 0x3F8, value),
             // COM2 registers (0x2F8-0x2FF)
             0x2F8..=0x2FF => bios.serial_io_write(1, port - 0x2F8, value),
+            // Secondary ATA (0x170-0x177, 0x376) — silently ignore
+            0x170..=0x177 | 0x376 => {}
             // Other ports use existing io_device
             _ => io_device.write_byte(port, value, bus.video_mut()),
         }
@@ -82,6 +98,8 @@ impl Cpu {
     ) {
         let port = self.fetch_byte(bus) as u16;
         match port {
+            // Primary ATA data port word write (0x1F0)
+            0x1F0 => bios.ata_write_u16(self.ax),
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => {
                 let bytes = self.ax.to_le_bytes();
@@ -108,10 +126,17 @@ impl Cpu {
     ) {
         let port = self.dx;
         let value = match port {
+            // Primary ATA channel registers (0x1F0-0x1F7)
+            0x1F0 => bios.ata_read_u8(0),
+            0x1F1..=0x1F7 => bios.ata_read_u8((port - 0x1F0) as u8),
+            // Primary ATA alternate status (0x3F6-0x3F7)
+            0x3F6 | 0x3F7 => bios.ata_read_alt_status(),
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => bios.serial_io_read(0, port - 0x3F8),
             // COM2 registers (0x2F8-0x2FF)
             0x2F8..=0x2FF => bios.serial_io_read(1, port - 0x2F8),
+            // Secondary ATA channel (0x170-0x177, 0x376) — not implemented, return 0x7F (not busy)
+            0x170..=0x177 | 0x376 => 0x7F,
             // Other ports use existing io_device
             _ => io_device.read_byte(port),
         };
@@ -128,6 +153,8 @@ impl Cpu {
     ) {
         let port = self.dx;
         let value = match port {
+            // Primary ATA data port word read (0x1F0)
+            0x1F0 => bios.ata_read_u16(),
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => {
                 let low = bios.serial_io_read(0, port - 0x3F8);
@@ -157,10 +184,17 @@ impl Cpu {
         let port = self.dx;
         let value = (self.ax & 0xFF) as u8;
         match port {
+            // Primary ATA channel registers (0x1F0-0x1F7)
+            0x1F0 => bios.ata_write_u8(0, value),
+            0x1F1..=0x1F7 => bios.ata_write_u8((port - 0x1F0) as u8, value),
+            // Primary ATA device control (0x3F6)
+            0x3F6 => bios.ata_write_control(value),
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => bios.serial_io_write(0, port - 0x3F8, value),
             // COM2 registers (0x2F8-0x2FF)
             0x2F8..=0x2FF => bios.serial_io_write(1, port - 0x2F8, value),
+            // Secondary ATA (0x170-0x177, 0x376) — silently ignore
+            0x170..=0x177 | 0x376 => {}
             // Other ports use existing io_device
             _ => io_device.write_byte(port, value, bus.video_mut()),
         }
@@ -176,6 +210,8 @@ impl Cpu {
     ) {
         let port = self.dx;
         match port {
+            // Primary ATA data port word write (0x1F0)
+            0x1F0 => bios.ata_write_u16(self.ax),
             // COM1 registers (0x3F8-0x3FF)
             0x3F8..=0x3FF => {
                 let bytes = self.ax.to_le_bytes();
