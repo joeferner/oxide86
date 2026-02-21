@@ -3,6 +3,7 @@
         "Adlib",
         "bindgen",
         "blit",
+        "cdrom",
         "changeline",
         "CHDIR",
         "Checkit",

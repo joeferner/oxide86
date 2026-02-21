@@ -43,30 +43,38 @@ export function DriveControl({
             // Use .peek() to read file signals without subscribing to them.
             // This effect should only rerun when `computer.value` changes (e.g. on reset),
             // not when the user loads a new drive (which is handled by the handlers directly).
-            if (floppyAFile.peek()) {
+
+            const floppyAFilePeek = floppyAFile.peek();
+            if (floppyAFilePeek) {
                 try {
-                    comp.load_floppy(0, await loadFile(floppyAFile.peek()!));
+                    comp.load_floppy(0, await loadFile(floppyAFilePeek));
                 } catch {
                     floppyAFile.value = null;
                 }
             }
-            if (floppyBFile.peek()) {
+
+            const floppyBFilePeek = floppyBFile.peek();
+            if (floppyBFilePeek) {
                 try {
-                    comp.load_floppy(1, await loadFile(floppyBFile.peek()!));
+                    comp.load_floppy(1, await loadFile(floppyBFilePeek));
                 } catch {
                     floppyBFile.value = null;
                 }
             }
-            if (hddFile.peek()) {
+
+            const hddFilePeek = hddFile.peek();
+            if (hddFilePeek) {
                 try {
-                    comp.add_hard_drive(await loadFile(hddFile.peek()!));
+                    comp.add_hard_drive(await loadFile(hddFilePeek));
                 } catch {
                     hddFile.value = null;
                 }
             }
-            if (cdromFile.peek()) {
+
+            const cdromFilePeek = cdromFile.peek();
+            if (cdromFilePeek) {
                 try {
-                    comp.load_cdrom(0, await loadFile(cdromFile.peek()!));
+                    comp.load_cdrom(0, await loadFile(cdromFilePeek));
                 } catch {
                     cdromFile.value = null;
                 }

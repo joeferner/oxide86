@@ -47,12 +47,26 @@ impl Cpu {
             0x15 => self.int10_return_physical_display_params(bus),
             0x1A => self.int10_display_combination_code(bus),
             0x1B => self.int10_functionality_state_info(bus),
+            0x4F => self.int10_vbe(),
             0xFA => self.int10_installation_checks(),
             0xFE => self.int10_get_video_buffer(bus),
             _ => {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
             }
         }
+    }
+
+    /// INT 10h, AH=4Fh - VESA BIOS Extensions (VBE)
+    /// Returns AX=0x014F (function failed) for all subfunctions,
+    /// signalling to callers that VBE is not supported.
+    fn int10_vbe(&mut self) {
+        let subfunction = (self.ax & 0xFF) as u8;
+        log::warn!(
+            "INT 10h AH=4Fh (VBE): AL=0x{:02X} not supported, returning failure",
+            subfunction
+        );
+        // AH=0x01 (failed), AL=0x4F (function recognized)
+        self.ax = 0x014F;
     }
 
     /// INT 10h, AH=00h - Set Video Mode

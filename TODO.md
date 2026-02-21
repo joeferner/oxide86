@@ -7,7 +7,7 @@
 - [X] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio. The default should be enable.
 - [X] native-gui/wasm add logo on startup
 - [X] AdLib support
-- [X] CD-ROM support (iso files). Native GUI add menu options to insert/eject CD-ROM. WASM add UI to insert/eject CD-ROM.
+- [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE
 - [ ] Install SvarDOS (open source dos)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)

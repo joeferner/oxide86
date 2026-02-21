@@ -36,6 +36,7 @@ impl Cpu {
             0x15 => self.int13_get_disk_type(io),
             0x16 => self.int13_detect_disk_change(io),
             0x18 => self.int13_set_dasd_type(bus, io),
+            0x41 => self.int13_check_extensions_present(io),
             _ => {
                 log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -514,6 +515,20 @@ impl Cpu {
                 io.set_last_disk_status(DiskError::InvalidCommand as u8);
             }
         }
+    }
+
+    /// INT 13h, AH=41h - Check Extensions Present
+    /// Input:
+    ///   BX = 0x55AA (magic)
+    ///   DL = drive number
+    /// Output:
+    ///   CF = set if extensions not supported (we report no LBA support)
+    ///   CF = clear + BX=0xAA55 + AH=version + CX=feature bits if supported
+    fn int13_check_extensions_present(&mut self, io: &mut super::Bios) {
+        // We don't implement LBA extensions; tell callers to use CHS mode
+        self.ax = (self.ax & 0x00FF) | ((DiskError::InvalidCommand as u16) << 8);
+        self.set_flag(cpu_flag::CARRY, true);
+        io.set_last_disk_status(DiskError::InvalidCommand as u8);
     }
 
     /// INT 13h CD-ROM handler for drives 0xE0-0xE3.

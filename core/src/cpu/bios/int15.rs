@@ -20,6 +20,8 @@ impl Cpu {
             }
             0xC0 => self.int15_get_system_config(bus),
             0xC1 => self.int15_get_ebda_segment(),
+            0x4F => self.int15_keyboard_intercept(),
+            0x53 => self.int15_apm_not_present(),
             0xD8 => self.int15_eisa_not_supported(),
             _ => {
                 log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
@@ -248,5 +250,33 @@ impl Cpu {
         // Return function not supported
         self.set_flag(cpu_flag::CARRY, true);
         log::info!("INT 15h AH=C1h: EBDA not present (8086/PC/XT system)");
+    }
+
+    /// INT 15h AH=4Fh - Keyboard Intercept
+    ///
+    /// Input:
+    ///   AL = scan code
+    ///
+    /// Output:
+    ///   CF = 0: proceed to buffer key in BDA
+    ///   CF = 1: key intercepted, skip BDA buffering
+    ///
+    /// Called by INT 09h before buffering a keystroke. Multitaskers (DESQview, etc.)
+    /// install a custom INT 15h to route keystrokes to the active task.
+    fn int15_keyboard_intercept(&mut self) {
+        // Default: clear CF to indicate key should proceed to BDA buffer
+        self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 15h AH=53h - APM (Advanced Power Management) Interface
+    ///
+    /// Output:
+    ///   CF = 1, AH = 86h (function not supported)
+    ///
+    /// APM is not present in this emulation; programs that check for APM
+    /// should gracefully fall back to non-APM operation.
+    fn int15_apm_not_present(&mut self) {
+        self.ax = (self.ax & 0x00FF) | 0x8600; // AH = 0x86 (function not supported)
+        self.set_flag(cpu_flag::CARRY, true);
     }
 }
