@@ -1,5 +1,22 @@
 ![Logo](docs/emu86-logo-pixel-art.png)
 
+# About
+
+**oxide86** is an Intel x86 CPU emulator written in Rust, capable of running real MS-DOS software including early PC games and productivity applications. It supports CGA, EGA, and VGA video modes, AdLib FM sound, mouse and joystick input, floppy and hard drive images, and CD-ROM/ISO support. The emulator targets three platforms: a native CLI, a native GUI, and a WebAssembly build for the browser.
+
+This project started in February 2026 as part of a video coding challenge at my company [RazorX2](https://razorx2.com/), where we wanted to see what AI-assisted development was capable of. I chose to write an x86 emulator as a stress test — something with well-defined correctness requirements, hardware-level complexity, and a long debugging tail. In hindsight it may not have been the fairest benchmark for AI, since there are plenty of existing x86 implementations out there and the models have likely learned from them. That said, adapting that knowledge to a clean Rust architecture with native and WASM targets, correct interrupt handling, and working DOS compatibility was far from trivial.
+
+The process required a lot of hand-holding. The AI made plenty of mistakes — some subtle, some embarrassingly obvious — and code reviews were essential at every step. Debugging the harder issues was particularly challenging since I didn't build up a natural understanding of the code and where the problems might occur, which meant I had to reason through the emulator's behavior from the outside. Despite that, what came out the other end is something I'm genuinely impressed by: a working emulator that boots MS-DOS, runs classic games, and plays AdLib music.
+
+# Features
+
+- CLI, Native GUI, and Web Interfaces
+- CGA, EGA, VGA Video
+- AdLib sound card
+- Mouse support
+- Joystick support
+- CD-ROM/ISO support
+
 # Getting Started
 
 ## MS-DOS 5.0
@@ -45,6 +62,9 @@ emu86-disktools -- copy -i test.img my-files/* ::/
   - :white_check_mark: Kings Quest 1
   - :white_check_mark: Flight Simulator 1
   - :white_check_mark: Battle Chess
+
+- Other
+  - :white_check_mark: AdLib Jukebox
 
 # History
 
