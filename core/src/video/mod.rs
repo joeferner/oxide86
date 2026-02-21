@@ -143,29 +143,6 @@ pub trait VideoController {
         let _ = color;
         // Default implementation: do nothing
     }
-
-    /// Store a graphical logo overlay to be blended on top of the rendered frame.
-    ///
-    /// `pixels` is a `width × height` RGBA (4 bytes/pixel) buffer.  The overlay
-    /// is drawn at the top-left corner (0, 0) of the screen and persists until
-    /// `clear_logo_overlay` is called.  CLI renderers leave this as a no-op.
-    fn draw_logo_overlay(&mut self, pixels: &[u8], width: usize, height: usize) {
-        let _ = (pixels, width, height);
-    }
-
-    /// Remove the logo overlay stored by `draw_logo_overlay`.
-    ///
-    /// Called automatically when a program changes the video mode.
-    fn clear_logo_overlay(&mut self) {}
-
-    /// Returns `true` if this renderer will display the logo overlay.
-    ///
-    /// CLI renderers return `false` (default); GUI / WASM renderers override
-    /// to `true`.  Used by `Computer::draw_bios_splash` to decide whether to
-    /// indent the system info text to the right of the logo.
-    fn shows_logo_overlay(&self) -> bool {
-        false
-    }
 }
 
 /// Null video controller (no display)
@@ -200,8 +177,6 @@ pub struct Video {
     dirty: bool,
     /// Flag to track if mode changed (needs controller notification)
     mode_changed: bool,
-    /// Set when any scroll operation occurs; cleared by `take_scroll_occurred`.
-    scroll_occurred: bool,
     /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
     vga_dac_palette: [[u8; 3]; 256],
     /// EGA Sequencer Map Mask (register 2): bitmask of planes to write (default 0x0F = all)
@@ -292,7 +267,6 @@ impl Video {
             border_color: 0, // Black border by default
             dirty: false,
             mode_changed: false,
-            scroll_occurred: false,
             vga_dac_palette: default_vga_palette(),
             ega_map_mask: 0x0F, // All 4 planes enabled
             ega_read_plane: 0,  // Read from plane 0
@@ -993,18 +967,6 @@ impl Video {
         let changed = self.mode_changed;
         self.mode_changed = false;
         changed
-    }
-
-    /// Check if a scroll has occurred since the last call, and clear the flag.
-    pub fn take_scroll_occurred(&mut self) -> bool {
-        let v = self.scroll_occurred;
-        self.scroll_occurred = false;
-        v
-    }
-
-    /// Mark that a scroll operation has occurred (called from BIOS int10 scroll handlers).
-    pub fn set_scroll_occurred(&mut self) {
-        self.scroll_occurred = true;
     }
 
     /// Rebuild text buffer cache from VRAM

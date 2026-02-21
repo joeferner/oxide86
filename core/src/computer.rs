@@ -170,9 +170,6 @@ impl<V: VideoController> Computer<V> {
     fn draw_bios_splash(&mut self) {
         const INFO1_ATTR: u8 = 0x0B; // Bright cyan on black
         const INFO2_ATTR: u8 = 0x07; // Light gray on black
-        // Each text-mode character cell is 8 px wide and 16 px tall
-        const CHAR_WIDTH_PX: usize = 8;
-        const CHAR_HEIGHT_PX: usize = 16;
 
         // Gather system data before borrowing the bus mutably
         let cpu_name = self.cpu_type.name();
@@ -180,49 +177,28 @@ impl<V: VideoController> Computer<V> {
         let line1 = format!("Oxide86 {} (C)2026", cpu_name);
         let line2 = format!("{} KB OK", memory_kb);
 
-        let (logo_pixels, logo_w, logo_h) = crate::bios_logo::generate_bios_logo();
-
-        // In GUI/WASM the PNG logo overlays the top-left, so indent the text
-        // to start right of the logo.  In CLI there is no overlay so start at 0.
-        let text_start_col = if self.video_controller.shows_logo_overlay() {
-            logo_w.div_ceil(CHAR_WIDTH_PX) + 1 // +1 col padding after the logo
-        } else {
-            0
-        };
-
-        // Number of text rows the logo occupies (rounded up), at minimum 2 for
-        // the two info lines written below.
-        let cursor_row = logo_h.div_ceil(CHAR_HEIGHT_PX).max(2);
-
         {
             let video = self.bus.video_mut();
 
             // Write system info beside (or at start of) the logo
             for (i, ch) in line1.bytes().enumerate() {
-                let offset = (text_start_col + i) * 2;
+                let offset = i * 2;
                 video.write_byte(offset, ch);
                 video.write_byte(offset + 1, INFO1_ATTR);
             }
             for (i, ch) in line2.bytes().enumerate() {
-                let offset = (80 + text_start_col + i) * 2;
+                let offset = (80 + i) * 2;
                 video.write_byte(offset, ch);
                 video.write_byte(offset + 1, INFO2_ATTR);
             }
 
             // Position cursor below the logo so program output starts there
-            video.set_cursor(cursor_row, 0);
+            video.set_cursor(3, 0);
         }
 
         // Sync BDA cursor position for page 0 (high byte = row, low byte = col)
-        self.bus.write_u16(
-            memory::BDA_START + memory::BDA_CURSOR_POS,
-            (cursor_row as u16) << 8,
-        );
-
-        // GUI / WASM: push the graphical pixel overlay.
-        // CLI renderers use the default no-op.
-        self.video_controller
-            .draw_logo_overlay(logo_pixels, logo_w, logo_h);
+        self.bus
+            .write_u16(memory::BDA_START + memory::BDA_CURSOR_POS, 3 << 8);
     }
 
     pub fn load_bios(&mut self, bios_data: &[u8]) -> Result<()> {
@@ -428,6 +404,8 @@ impl<V: VideoController> Computer<V> {
         } else {
             log::info!("Reset called but no boot drive or program stored");
         }
+
+        self.draw_bios_splash();
     }
 
     /// Queue a keyboard IRQ to be processed before the next instruction
@@ -1122,11 +1100,6 @@ impl<V: VideoController> Computer<V> {
 
     /// Update video display if needed (call periodically or after step)
     pub fn update_video(&mut self) {
-        // Hide the BIOS logo the first time the screen scrolls
-        if self.bus.video_mut().take_scroll_occurred() {
-            self.video_controller.clear_logo_overlay();
-        }
-
         // Check if video mode changed and notify controller
         if self.bus.video_mut().take_mode_changed() {
             let mode = self.bus.video().get_mode();
@@ -1135,7 +1108,6 @@ impl<V: VideoController> Computer<V> {
                 mode
             );
             // A program-initiated mode change clears the BIOS logo overlay
-            self.video_controller.clear_logo_overlay();
             self.video_controller.set_video_mode(mode);
             // Update VGA DAC palette when mode changes (palette is reset on mode change)
             log::info!("Computer: Passing palette to renderer (mode change)");
