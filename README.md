@@ -6,7 +6,17 @@
 
 This project started in February 2026 as part of a video coding challenge at my company [RazorX2](https://razorx2.com/), where we wanted to see what AI-assisted development was capable of. I chose to write an x86 emulator as a stress test — something with well-defined correctness requirements, hardware-level complexity, and a long debugging tail. In hindsight it may not have been the fairest benchmark for AI, since there are plenty of existing x86 implementations out there and the models have likely learned from them. That said, adapting that knowledge to a clean Rust architecture with native and WASM targets, correct interrupt handling, and working DOS compatibility was far from trivial.
 
-The process required a lot of hand-holding. The AI made plenty of mistakes — some subtle, some embarrassingly obvious — and code reviews were essential at every step. Debugging the harder issues was particularly challenging since I didn't build up a natural understanding of the code and where the problems might occur, which meant I had to reason through the emulator's behavior from the outside. Despite that, what came out the other end is something I'm genuinely impressed by: a working emulator that boots MS-DOS, runs classic games, and plays AdLib music.
+I started with Claude Opus, which produced better results, but the cost added up quickly and I switched to Claude Sonnet. Sonnet turned out to be good enough for the majority of tasks — routine implementation, bug fixes, and incremental improvements.
+
+The process required a lot of hand-holding. The AI made plenty of mistakes — some subtle, some embarrassingly obvious — and code reviews were essential at every step. Debugging the harder issues was particularly challenging since I didn't build up a natural understanding of the code and where the problems might occur, which meant I had to reason through the emulator's behavior from the outside.
+
+When the AI couldn't figure something out, a recurring pattern emerged: it would keep adding code rather than reasoning through the problem. Often the new code wasn't even in the execution path being hit — it was shooting in the dark, likely because the training data didn't closely match the specific problem at hand. This was most visible with deep hardware emulation issues where the AI's pattern-matching broke down entirely.
+
+Two examples stand out. Commander Keen, after many hours of debugging sessions, still doesn't work. The AI had no clear idea where to look, and without having built up my own understanding of the project, I couldn't effectively guide it either. We were both stuck. The AdLib OPL2 implementation followed a similar arc — the AI's hand-rolled attempt was never going to be accurate enough, and eventually I had it port nuked-opl3 instead, which is a well-regarded open source implementation.
+
+Despite that, what came out the other end is something I'm genuinely impressed by: a working emulator that boots MS-DOS, runs classic games, and plays AdLib music.
+
+**Conclusion:** I'll continue using AI as a coding assistant — it's genuinely useful for the majority of day-to-day work. But pure vibe coding, where you hand over full control and stop following along, isn't there yet. The deeper problem is that losing your own understanding of the project creates a compounding debt. When something goes wrong in unfamiliar territory, neither you nor the AI can find solid footing, and the further you drift from understanding, the harder it becomes to course-correct. That's a problem that will only get worse as the project grows and gets more complex.
 
 # Features
 

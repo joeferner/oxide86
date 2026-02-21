@@ -7,7 +7,7 @@
 - [X] add option to native-cli, native-gui, and wasm to enable/disable pc speaker/audio. The default should be enable.
 - [X] native-gui/wasm add logo on startup
 - [X] AdLib support
-- [ ] CD-ROM support (iso files). Native GUI add menu options to insert/eject CD-ROM. WASM add UI to insert/eject CD-ROM.
+- [X] CD-ROM support (iso files). Native GUI add menu options to insert/eject CD-ROM. WASM add UI to insert/eject CD-ROM.
 - [ ] Update name from emu86 to oxide86
 - [ ] Install SvarDOS (open source dos)
 - [ ] Boot logo not going away if you type "edit config.sys" immediately

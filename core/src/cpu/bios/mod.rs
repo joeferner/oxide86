@@ -382,6 +382,10 @@ impl Bios {
         self.shared.drive_manager.disk_get_type(drive)
     }
 
+    pub fn is_cdrom_drive(&self, drive: DriveNumber) -> bool {
+        self.shared.drive_manager.is_cdrom_drive(drive)
+    }
+
     pub fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, DiskError> {
         self.shared.drive_manager.disk_detect_change(drive)
     }

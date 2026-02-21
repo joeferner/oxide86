@@ -753,6 +753,15 @@ impl Cpu {
 
         log::debug!("INT 21h AH=36h: Get Disk Free Space for drive {}", drive);
 
+        // CD-ROM: read-only, 0 free clusters
+        if io.is_cdrom_drive(drive) {
+            self.ax = 1; // 1 sector per cluster
+            self.bx = 0; // 0 free clusters
+            self.cx = 2048; // 2048 bytes per CD-ROM sector
+            self.dx = 0; // total clusters (irrelevant - 0 free)
+            return;
+        }
+
         // Get drive parameters to check if drive exists
         match io.disk_get_params(drive) {
             Ok(_params) => {

@@ -167,7 +167,7 @@ impl Seek for DiskAdapter {
 
 /// State for a single drive slot
 pub struct DriveState {
-    /// The disk adapter for filesystem operations (None for empty floppy slot)
+    /// The disk adapter for filesystem operations (None for empty floppy slot or CD-ROM)
     adapter: Option<DiskAdapter>,
     /// Raw disk adapter for INT 13h BIOS operations (Some for partitioned hard drives)
     /// This allows reading the MBR which is not part of the partition
@@ -178,6 +178,9 @@ pub struct DriveState {
     disk_changed: bool,
     /// Whether this is a removable drive (floppy)
     removable: bool,
+    /// If Some(slot), this DriveState is a placeholder for a CD-ROM drive.
+    /// The actual image is stored in DriveManager::cdrom_drives[slot].
+    pub cdrom_slot: Option<u8>,
 }
 
 impl DriveState {
@@ -189,6 +192,7 @@ impl DriveState {
             current_dir: String::from("/"),
             disk_changed: false,
             removable,
+            cdrom_slot: None,
         }
     }
 
@@ -205,6 +209,20 @@ impl DriveState {
             current_dir: String::from("/"),
             disk_changed: false,
             removable,
+            cdrom_slot: None,
+        }
+    }
+
+    /// Create a placeholder DriveState for a CD-ROM drive.
+    /// The CD-ROM image lives in DriveManager::cdrom_drives[slot].
+    pub fn new_cdrom(slot: u8) -> Self {
+        Self {
+            adapter: None,
+            raw_adapter: None,
+            current_dir: String::from("/"),
+            disk_changed: false,
+            removable: true,
+            cdrom_slot: Some(slot),
         }
     }
 
@@ -216,6 +234,7 @@ impl DriveState {
             current_dir: String::from("/"),
             disk_changed: false,
             removable: true,
+            cdrom_slot: None,
         }
     }
 
@@ -395,21 +414,55 @@ impl DriveManager {
     // === CD-ROM Management ===
 
     /// Insert a CD-ROM ISO image into a slot (0-3).
-    /// Returns the assigned drive number (0xE0-0xE3).
+    ///
+    /// Assigns the CD-ROM the next sequential DOS drive letter after all hard drives.
+    /// If the slot already has a DriveState placeholder in hard_drives (e.g. after eject),
+    /// the image is simply restored without adding a new placeholder.
+    ///
+    /// Returns the assigned sequential DOS drive number (e.g. 0x81 = D:).
     pub fn insert_cdrom(&mut self, slot: u8, image: CdRomImage) -> DriveNumber {
-        let slot = slot.min(3) as usize;
-        let drive = DriveNumber::cdrom(slot as u8);
-        self.close_files_on_drive(drive);
-        self.cdrom_drives[slot] = Some(image);
-        drive
+        let slot = slot.min(3);
+        // Close files using the old-style 0xE0+ drive number (for any open handles)
+        let cdrom_drive = DriveNumber::cdrom(slot);
+        self.close_files_on_drive(cdrom_drive);
+
+        // Store the image
+        self.cdrom_drives[slot as usize] = Some(image);
+
+        // Ensure a DriveState placeholder exists in hard_drives for this slot.
+        // If it already exists (e.g. after a previous insert or eject), reuse it.
+        if !self.hard_drives.iter().any(|d| d.cdrom_slot == Some(slot)) {
+            self.hard_drives.push(DriveState::new_cdrom(slot));
+        }
+
+        // Return the sequential DriveNumber for this slot's hard_drives entry
+        let hd_idx = self
+            .hard_drives
+            .iter()
+            .position(|d| d.cdrom_slot == Some(slot))
+            .unwrap();
+        DriveNumber::from_hard_drive_index(hd_idx)
     }
 
     /// Eject a CD-ROM from a slot, returning the image if present.
+    ///
+    /// The DriveState placeholder in hard_drives is kept so the drive letter
+    /// remains valid (accessing it returns DriveNotReady, matching real hardware).
     pub fn eject_cdrom(&mut self, slot: u8) -> Option<CdRomImage> {
-        let slot = slot.min(3) as usize;
-        let drive = DriveNumber::cdrom(slot as u8);
-        self.close_files_on_drive(drive);
-        self.cdrom_drives[slot].take()
+        let slot = slot.min(3);
+        // Close files by 0xE0+ drive number
+        let cdrom_drive = DriveNumber::cdrom(slot);
+        self.close_files_on_drive(cdrom_drive);
+        // Also close files by the sequential drive number if a placeholder exists
+        if let Some(hd_idx) = self
+            .hard_drives
+            .iter()
+            .position(|d| d.cdrom_slot == Some(slot))
+        {
+            let seq_drive = DriveNumber::from_hard_drive_index(hd_idx);
+            self.close_files_on_drive(seq_drive);
+        }
+        self.cdrom_drives[slot as usize].take()
     }
 
     /// Check if a CD-ROM slot has a disc inserted.
@@ -421,6 +474,27 @@ impl DriveManager {
     /// Return the number of CD-ROM drives with a disc inserted.
     pub fn cdrom_count(&self) -> u8 {
         self.cdrom_drives.iter().filter(|d| d.is_some()).count() as u8
+    }
+
+    /// Return the CD-ROM slot for a given drive number, if it is a CD-ROM drive.
+    ///
+    /// Handles both the old-style 0xE0+ internal numbers and the sequential
+    /// DOS drive letters assigned by insert_cdrom (e.g. 0x81 = D:).
+    fn get_cdrom_slot_for_drive(&self, drive: DriveNumber) -> Option<u8> {
+        if drive.is_cdrom() {
+            Some(drive.cdrom_slot())
+        } else if drive.is_hard_drive() {
+            let hd_idx = drive.to_hard_drive_index();
+            self.hard_drives.get(hd_idx)?.cdrom_slot
+        } else {
+            None
+        }
+    }
+
+    /// Return true if the given drive number refers to a CD-ROM drive
+    /// (either by sequential letter or old-style 0xE0+ number).
+    pub fn is_cdrom_drive(&self, drive: DriveNumber) -> bool {
+        self.get_cdrom_slot_for_drive(drive).is_some()
     }
 
     /// Read a 512-byte sub-sector from a CD-ROM drive.
@@ -670,9 +744,8 @@ impl DriveManager {
         );
 
         // CD-ROM: buffer the entire file at open time
-        if drive.is_cdrom() {
-            let slot = drive.cdrom_slot() as usize;
-            let image = self.cdrom_drives[slot]
+        if let Some(cdrom_slot) = self.get_cdrom_slot_for_drive(drive) {
+            let image = self.cdrom_drives[cdrom_slot as usize]
                 .as_ref()
                 .ok_or(DosError::InvalidDrive)?;
             let data = image.read_file(&path).map_err(|_| DosError::FileNotFound)?;
@@ -737,7 +810,7 @@ impl DriveManager {
         let path = self.resolve_path(drive, &path_part);
 
         // CD-ROM is read-only
-        if drive.is_cdrom() {
+        if self.get_cdrom_slot_for_drive(drive).is_some() {
             return Err(DosError::AccessDenied);
         }
 
@@ -856,7 +929,7 @@ impl DriveManager {
                 .get(&handle)
                 .ok_or(DosError::InvalidHandle)?;
             // CD-ROM is read-only
-            if file_handle.drive.is_cdrom() {
+            if self.get_cdrom_slot_for_drive(file_handle.drive).is_some() {
                 return Err(DosError::AccessDenied);
             }
             (
@@ -999,7 +1072,7 @@ impl DriveManager {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
 
-        if drive.is_cdrom() {
+        if self.get_cdrom_slot_for_drive(drive).is_some() {
             return Err(DosError::AccessDenied);
         }
 
@@ -1020,7 +1093,7 @@ impl DriveManager {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
 
-        if drive.is_cdrom() {
+        if self.get_cdrom_slot_for_drive(drive).is_some() {
             return Err(DosError::AccessDenied);
         }
 
@@ -1041,7 +1114,7 @@ impl DriveManager {
         let (drive, path_part) = self.parse_path(filename);
         let path = self.resolve_path(drive, &path_part);
 
-        if drive.is_cdrom() {
+        if self.get_cdrom_slot_for_drive(drive).is_some() {
             return Err(DosError::AccessDenied);
         }
 
@@ -1062,8 +1135,20 @@ impl DriveManager {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
 
-        if drive.is_cdrom() {
-            return Err(DosError::AccessDenied);
+        // CD-ROM: verify the directory exists on the ISO image
+        if let Some(cdrom_slot) = self.get_cdrom_slot_for_drive(drive) {
+            let image = self.cdrom_drives[cdrom_slot as usize]
+                .as_ref()
+                .ok_or(DosError::InvalidDrive)?;
+            // Root always exists; for subdirs, verify via list_directory
+            if path != "/" {
+                image
+                    .list_directory(&path)
+                    .map_err(|_| DosError::PathNotFound)?;
+            }
+            let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+            drive_state.current_dir = path;
+            return Ok(());
         }
 
         // First verify directory exists
@@ -1118,10 +1203,9 @@ impl DriveManager {
         }
 
         // CD-ROM: list directory using ISO 9660
-        if drive.is_cdrom() {
-            let slot = drive.cdrom_slot() as usize;
+        if let Some(cdrom_slot) = self.get_cdrom_slot_for_drive(drive) {
             let iso_entries = {
-                let image = self.cdrom_drives[slot]
+                let image = self.cdrom_drives[cdrom_slot as usize]
                     .as_ref()
                     .ok_or(DosError::InvalidDrive)?;
                 image
@@ -1422,6 +1506,19 @@ impl DriveManager {
     }
 
     pub fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError> {
+        // CD-ROM: return nominal params so callers can detect the drive exists
+        if let Some(cdrom_slot) = self.get_cdrom_slot_for_drive(drive) {
+            if self.cdrom_drives[cdrom_slot as usize].is_some() {
+                return Ok(DriveParams {
+                    max_cylinder: 0,
+                    max_head: 0,
+                    max_sector: 0,
+                    drive_count: self.cdrom_count(),
+                });
+            }
+            return Err(DiskError::DriveNotReady);
+        }
+
         let drive_state = self.get_drive(drive).ok_or(DiskError::DriveNotReady)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
@@ -1436,12 +1533,12 @@ impl DriveManager {
 
         let geometry = adapter.disk().geometry();
 
-        // Count drives of this type
+        // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
         let drive_count = if drive.is_floppy() {
             // Count floppy drives with disks
             self.floppy_drives.iter().filter(|d| d.has_disk()).count() as u8
         } else {
-            self.hard_drives.len() as u8
+            self.hard_drive_count() as u8
         };
 
         Ok(DriveParams {
@@ -1453,6 +1550,18 @@ impl DriveManager {
     }
 
     pub fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError> {
+        // CD-ROM: report type 5 with nominal sector count
+        if let Some(cdrom_slot) = self.get_cdrom_slot_for_drive(drive) {
+            match &self.cdrom_drives[cdrom_slot as usize] {
+                Some(image) => {
+                    // Type 5 = CD-ROM; size expressed as 512-byte sub-sectors
+                    let size_in_512 = (image.size() / 512) as u32;
+                    return Ok((5u8, size_in_512));
+                }
+                None => return Err(DiskError::DriveNotReady),
+            }
+        }
+
         let drive_state = self.get_drive(drive).ok_or(DiskError::DriveNotReady)?;
 
         // Use raw_adapter for INT 13h if available (partitioned hard drives)
@@ -1608,8 +1717,12 @@ impl DriveManager {
             })
     }
 
-    /// Get the number of hard drives
+    /// Get the number of real hard drives (excludes CD-ROM placeholders).
+    /// Used by MSCDEX to compute the first CD-ROM DOS drive letter.
     pub fn hard_drive_count(&self) -> usize {
-        self.hard_drives.len()
+        self.hard_drives
+            .iter()
+            .filter(|d| d.cdrom_slot.is_none())
+            .count()
     }
 }
