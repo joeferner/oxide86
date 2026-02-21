@@ -541,8 +541,9 @@ impl Cpu {
             // PUSH immediate (68: imm16, 6A: imm8 sign-extended)
             0x68 | 0x6A => self.push_imm(opcode, bus),
 
-            // IMUL - Signed Multiply with Immediate (69: imm16)
+            // IMUL - Signed Multiply with Immediate (69: imm16, 6B: imm8 sign-extended)
             0x69 => self.imul_imm16(bus),
+            0x6B => self.imul_imm8(bus),
 
             // INS - Input String from Port (6C-6D)
             0x6C..=0x6D => self.ins(opcode, bus, io_device),

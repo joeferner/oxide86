@@ -1051,4 +1051,30 @@ impl Cpu {
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
         };
     }
+
+    /// IMUL - Signed Multiply with Immediate (opcode 0x6B)
+    /// IMUL r16, r/m16, imm8 (sign-extended)
+    /// Multiplies r/m16 by sign-extended imm8 and stores result in r16
+    pub(in crate::cpu) fn imul_imm8(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
+        let src = self.read_rm16(mode, rm, addr, bus) as i16;
+        let imm = self.fetch_byte(bus) as i8 as i16; // sign-extend 8→16
+
+        let result = (src as i32) * (imm as i32);
+
+        self.set_reg16(reg, result as u16);
+
+        let sign_extended = ((result as u16) as i16) as i32;
+        let overflow = sign_extended != result;
+        self.set_flag(cpu_flag::CARRY, overflow);
+        self.set_flag(cpu_flag::OVERFLOW, overflow);
+
+        self.last_instruction_cycles = if mode == 0b11 {
+            timing::cycles::IMUL_IMM_REG
+        } else {
+            timing::cycles::IMUL_IMM_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
+    }
 }
