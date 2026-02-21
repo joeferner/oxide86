@@ -32,6 +32,9 @@ pub struct PitChannel {
     /// Latched count value (for read-back operations)
     latch_value: Option<u32>,
 
+    /// Latched status byte (from read-back command)
+    status_latch: Option<u8>,
+
     /// Gate input (true = enabled, false = disabled)
     /// For Channel 2: controlled by port 0x61 bit 0
     gate: bool,
@@ -66,6 +69,7 @@ impl PitChannel {
             mode: 3,        // Mode 3: Square wave generator (typical BIOS default)
             access_mode: 3, // LSB then MSB (typical BIOS default)
             latch_value: None,
+            status_latch: None,
             gate: true, // Channels 0 and 1 default to enabled
             bcd_mode: false,
             write_lsb_next: true,
@@ -74,6 +78,17 @@ impl PitChannel {
             output_toggle: false,
             null_count: true,
         }
+    }
+
+    /// Build the status byte (used by read-back command)
+    /// Bit 7: OUT pin state, Bit 6: null_count, Bits 5-4: access_mode, Bits 3-1: mode, Bit 0: BCD
+    fn status_byte(&self) -> u8 {
+        let out = if self.output { 0x80 } else { 0 };
+        let null = if self.null_count { 0x40 } else { 0 };
+        let access = (self.access_mode & 0x03) << 4;
+        let mode = (self.mode & 0x07) << 1;
+        let bcd = if self.bcd_mode { 0x01 } else { 0 };
+        out | null | access | mode | bcd
     }
 
     /// Reload counter from count_register
@@ -219,8 +234,27 @@ impl Pit {
         let bcd = (command & 0x01) != 0;
 
         if channel == 3 {
-            // Read-back command (8254 only)
-            log::warn!("PIT: Read-back command not implemented");
+            // Read-back command (8254 only): bits 7-6 = 11
+            // Bit 5: 0 = latch count, 1 = don't latch count
+            // Bit 4: 0 = latch status, 1 = don't latch status
+            // Bits 3-1: channel select (bit 3 = ch2, bit 2 = ch1, bit 1 = ch0)
+            let latch_count = (command & 0x20) == 0;
+            let latch_status = (command & 0x10) == 0;
+            for ch_idx in 0u8..3 {
+                if (command >> (ch_idx + 1)) & 0x01 != 0 {
+                    let ch = &mut self.channels[ch_idx as usize];
+                    if latch_count && ch.latch_value.is_none() {
+                        ch.latch_value = Some(ch.counter);
+                    }
+                    if latch_status && ch.status_latch.is_none() {
+                        ch.status_latch = Some(ch.status_byte());
+                    }
+                    log::trace!(
+                        "PIT: Read-back ch{}: latch_count={} latch_status={}",
+                        ch_idx, latch_count, latch_status
+                    );
+                }
+            }
             return;
         }
 
@@ -302,6 +336,12 @@ impl Pit {
     /// Read current count from channel (ports 0x40-0x42)
     pub fn read_channel(&mut self, channel: u8) -> u8 {
         let ch = &mut self.channels[channel as usize];
+
+        // Status latch takes priority (read-back command result)
+        if let Some(status) = ch.status_latch.take() {
+            log::trace!("PIT: Channel {} status = 0x{:02X}", channel, status);
+            return status;
+        }
 
         // Use latched value if available, otherwise current counter
         let count = ch.latch_value.unwrap_or(ch.counter);

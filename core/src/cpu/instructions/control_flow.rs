@@ -68,6 +68,54 @@ impl Cpu {
         };
     }
 
+    /// ENTER - Make Stack Frame (opcode C8, 80186+)
+    /// Creates a procedure stack frame for high-level language support.
+    /// Encoding: C8 iw ib (imm16 = local frame size, imm8 = nesting level 0-31)
+    pub(in crate::cpu) fn enter(&mut self, bus: &mut Bus) {
+        let size = self.fetch_word(bus);
+        let level = (self.fetch_byte(bus) & 0x1F) as u16;
+
+        // Push caller's frame pointer
+        self.push(self.bp, bus);
+
+        // frame_temp = SP after push (address of saved BP; becomes new BP)
+        let frame_temp = self.sp;
+
+        // For nested procedures (Pascal-style), push display entries
+        if level > 0 {
+            for _ in 1..level {
+                // Walk caller's display chain (BP still holds caller's BP)
+                self.bp = self.bp.wrapping_sub(2);
+                let addr = Self::physical_address(self.ss, self.bp);
+                let val = bus.read_u16(addr);
+                self.push(val, bus);
+            }
+            // Push current frame's display entry
+            self.push(frame_temp, bus);
+        }
+
+        // Set new frame pointer and allocate locals
+        self.bp = frame_temp;
+        self.sp = self.sp.wrapping_sub(size);
+
+        self.last_instruction_cycles = if level == 0 {
+            timing::cycles::ENTER_LEVEL0
+        } else {
+            timing::cycles::ENTER_LEVEL_BASE + timing::cycles::ENTER_LEVEL_PER * level as u64
+        };
+    }
+
+    /// LEAVE - High Level Procedure Exit (opcode C9, 80186+)
+    /// Tears down the stack frame created by ENTER.
+    /// Equivalent to: MOV SP, BP / POP BP
+    pub(in crate::cpu) fn leave(&mut self, bus: &Bus) {
+        // Restore SP to frame pointer, then pop caller's BP
+        self.sp = self.bp;
+        self.bp = self.pop(bus);
+
+        self.last_instruction_cycles = timing::cycles::LEAVE;
+    }
+
     /// Conditional jumps - short relative (opcodes 70-7F)
     /// Jump to IP + signed 8-bit displacement if condition is met
     pub(in crate::cpu) fn jmp_conditional(&mut self, opcode: u8, bus: &Bus) {

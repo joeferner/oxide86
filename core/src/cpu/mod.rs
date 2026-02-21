@@ -642,6 +642,12 @@ impl Cpu {
             // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
             0xC6..=0xC7 => self.mov_imm_to_rm(opcode, bus),
 
+            // ENTER - Make Stack Frame (C8, 80186+)
+            0xC8 => self.enter(bus),
+
+            // LEAVE - High Level Procedure Exit (C9, 80186+)
+            0xC9 => self.leave(bus),
+
             // RET far (CA: with imm16, CB: without)
             0xCA..=0xCB => self.retf(opcode, bus),
 

@@ -603,6 +603,14 @@ pub mod cycles {
     /// BOUND (80186+): 33-35 cycles if in bounds, 48-51 if out of bounds
     pub const BOUND_IN: u64 = 35;
     pub const BOUND_OUT: u64 = 51;
+
+    /// ENTER (80186+): 15 cycles (level=0), 25+16*level cycles (level>0)
+    pub const ENTER_LEVEL0: u64 = 15;
+    pub const ENTER_LEVEL_BASE: u64 = 25;
+    pub const ENTER_LEVEL_PER: u64 = 16;
+
+    /// LEAVE (80186+): 8 cycles
+    pub const LEAVE: u64 = 8;
 }
 
 #[cfg(test)]

@@ -16,7 +16,6 @@
 - [ ] WASM add additional hard drive support, move B: into an Accordion with additional hard drives
 - [ ] SoundBlaster support
 - [ ] Clean up handle_bios_interrupt_direct, pending_int15_4f, interrupt chaining, etc
-- [ ] Audio - Getting Rodio: underrun when running native-gui applications
 - [ ] Joystick
   - [X] Test Wasm
   - [ ] Test Native GUI
