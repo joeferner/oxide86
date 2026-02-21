@@ -29,7 +29,7 @@ use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{CursorGrabMode, WindowBuilder};
 
-const TITLE: &str = "oxide86 - x86 Emulator";
+const TITLE: &str = "Oxide86 - x86 Emulator";
 
 #[derive(Parser)]
 #[command(name = "oxide86-gui")]
