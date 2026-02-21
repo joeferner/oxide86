@@ -63,7 +63,10 @@ impl Iterator for PcmSource {
 
         // Log once per second (44100 samples)
         if self.log_samples >= 44100 {
-            if self.underrun_count > 0 {
+            // Only warn on underrun when the card was actively producing sound in this
+            // window; if log_nonzero == 0 the buffer has been perpetually empty (no
+            // program is using the AdLib right now) which is expected, not an error.
+            if self.underrun_count > 0 && self.log_nonzero > 0 {
                 log::warn!(
                     "[PCM] Rodio: underrun — {} silence samples in the last ~1s (ring buffer ran dry)",
                     self.underrun_count

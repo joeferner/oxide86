@@ -782,7 +782,12 @@ impl Cpu {
                     2 | 3 => self.call_indirect(bus),      // CALL near/far
                     4 | 5 => self.jmp_indirect(bus),       // JMP near/far
                     6 => self.push_rm16(bus),              // PUSH r/m16
-                    _ => log::warn!("Invalid FF /{}  at {:04X}:{:04X} (undefined, skipping)", reg_field, self.cs, self.ip.wrapping_sub(1)),
+                    _ => log::warn!(
+                        "Invalid FF /{}  at {:04X}:{:04X} (undefined, skipping)",
+                        reg_field,
+                        self.cs,
+                        self.ip.wrapping_sub(1)
+                    ),
                 }
             }
 

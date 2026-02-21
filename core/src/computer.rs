@@ -842,7 +842,10 @@ impl<V: VideoController> Computer<V> {
                 }
                 // Fall through to execute the next instruction
             } else {
-                // Still waiting - return without executing
+                // Still waiting — burn a few idle cycles so that cycle-based host
+                // loops (e.g., the while-loop in step_emulator) always make progress
+                // and the event loop gets a chance to deliver keyboard events.
+                self.increment_cycles(3);
                 return;
             }
         }
