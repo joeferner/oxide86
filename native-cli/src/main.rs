@@ -89,11 +89,11 @@ fn main() -> Result<()> {
     };
 
     // Initialize audio BEFORE video so ALSA messages appear before alternate screen
-    let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
+    let cpu_freq = (cli.common.speed * 1_000_000.0) as u64;
     let (speaker, sound_card, _audio_output) = create_audio(
         !cli.common.disable_pc_speaker,
         &cli.common.sound_card,
-        clock_hz,
+        cpu_freq,
     );
 
     // Video init switches to alternate screen - must come after audio init
@@ -111,6 +111,7 @@ fn main() -> Result<()> {
             cpu_type,
             memory_kb: cli.common.memory,
             video_card_type,
+            cpu_freq,
         },
     );
 
@@ -154,9 +155,9 @@ fn main() -> Result<()> {
 
     // Run the program with optional speed throttling
     let quit_from_command_mode = {
-        let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
-        log::info!("Running at {:.2} MHz ({} Hz)", cli.common.speed, clock_hz);
-        run(&mut computer, gilrs_joystick.as_mut(), Some(clock_hz))
+        let cpu_freq = (cli.common.speed * 1_000_000.0) as u64;
+        log::info!("Running at {:.2} MHz ({} Hz)", cli.common.speed, cpu_freq);
+        run(&mut computer, gilrs_joystick.as_mut(), Some(cpu_freq))
     };
 
     // Disable mouse capture before exiting
@@ -187,19 +188,19 @@ fn main() -> Result<()> {
 }
 
 /// Run the emulator with F12 command mode support, mouse input, and joystick polling
-/// If clock_hz is Some, throttles to that speed; if None, runs at maximum speed
+/// If cpu_freq is Some, throttles to that speed; if None, runs at maximum speed
 /// Returns true if user quit from command mode, false if computer halted naturally
 fn run<V>(
     computer: &mut Computer<V>,
     mut joystick: Option<&mut GilrsJoystick>,
-    clock_hz: Option<u64>,
+    cpu_freq: Option<u64>,
 ) -> bool
 where
     V: emu86_core::VideoController,
 {
     use crossterm::event::{self, Event, MouseButton, MouseEventKind};
-    let start_time = clock_hz.map(|_| Instant::now());
-    let nanos_per_cycle = clock_hz.map(|hz| 1_000_000_000u64 / hz);
+    let start_time = cpu_freq.map(|_| Instant::now());
+    let nanos_per_cycle = cpu_freq.map(|hz| 1_000_000_000u64 / hz);
 
     // Run instructions in batches to reduce timing overhead
     const BATCH_SIZE: u32 = 1000;

@@ -667,11 +667,11 @@ fn run(cli: Cli) -> Result<()> {
     };
 
     // Speed throttling state
-    let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
-    let nanos_per_cycle = 1_000_000_000u64 / clock_hz;
+    let cpu_freq = (cli.common.speed * 1_000_000.0) as u64;
+    let nanos_per_cycle = 1_000_000_000u64 / cpu_freq;
     let throttle_start = Instant::now();
 
-    log::info!("Running at {:.2} MHz ({} Hz)", cli.common.speed, clock_hz);
+    log::info!("Running at {:.2} MHz ({} Hz)", cli.common.speed, cpu_freq);
 
     // Update menu states
     app_state
@@ -866,11 +866,11 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
         };
 
     let video = PixelsVideoController::new();
-    let clock_hz = (cli.common.speed * 1_000_000.0) as u64;
+    let cpu_freq = (cli.common.speed * 1_000_000.0) as u64;
     let (speaker, sound_card, audio_output) = create_audio(
         !cli.common.disable_pc_speaker,
         &cli.common.sound_card,
-        clock_hz,
+        cpu_freq,
     );
 
     let clock = Box::new(NativeClock);
@@ -885,6 +885,7 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
             cpu_type,
             memory_kb: cli.common.memory,
             video_card_type,
+            cpu_freq,
         },
     );
 

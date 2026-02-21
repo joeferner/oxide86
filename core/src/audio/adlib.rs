@@ -33,7 +33,7 @@ const FLUSH_SIZE: usize = 128;
 /// **before** boxing the `Adlib` into `Box<dyn SoundCard>`.
 pub struct Adlib {
     chip: Opl3Chip,
-    // Timer state (moved from the old hand-rolled Opl2; not part of opl3.c)
+    // Timer state
     pending_address: u8,
     timer1_value: u8,
     timer2_value: u8,

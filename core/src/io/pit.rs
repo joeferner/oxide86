@@ -184,13 +184,17 @@ pub struct Pit {
     /// Accumulated fractional cycles for precise timing
     /// PIT runs at 1.193182 MHz, but our cycle counter may differ
     cycle_accumulator: f64,
+
+    /// Emulated CPU frequency in Hz; used to convert CPU cycles to PIT cycles.
+    cpu_freq: u64,
 }
 
 impl Pit {
-    pub fn new() -> Self {
+    pub fn new(cpu_freq: u64) -> Self {
         let mut pit = Self {
             channels: [PitChannel::new(), PitChannel::new(), PitChannel::new()],
             cycle_accumulator: 0.0,
+            cpu_freq,
         };
 
         // Initialize channel 0 for 18.2 Hz system timer (standard BIOS configuration)
@@ -337,12 +341,9 @@ impl Pit {
         // PIT base frequency: 1.193182 MHz
         const PIT_FREQUENCY: f64 = 1_193_182.0;
 
-        // CPU frequency: 4.77 MHz (from Computer)
-        const CPU_FREQUENCY: f64 = 4_770_000.0;
-
         // Convert CPU cycles to PIT cycles
         let pit_cycles_f64 =
-            (cpu_cycles as f64) * (PIT_FREQUENCY / CPU_FREQUENCY) + self.cycle_accumulator;
+            (cpu_cycles as f64) * (PIT_FREQUENCY / self.cpu_freq as f64) + self.cycle_accumulator;
         let pit_cycles = pit_cycles_f64 as u64;
         self.cycle_accumulator = pit_cycles_f64 - (pit_cycles as f64);
 
@@ -398,8 +399,3 @@ impl Pit {
     }
 }
 
-impl Default for Pit {
-    fn default() -> Self {
-        Self::new()
-    }
-}

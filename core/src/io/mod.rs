@@ -62,17 +62,19 @@ pub struct IoDevice {
     dac_component: u8,
     /// VGA DAC accumulation buffer while writing R/G/B components
     dac_write_buf: [u8; 3],
+    /// Emulated CPU frequency in Hz (preserved across resets for PIT re-init)
+    cpu_freq: u64,
 }
 
 impl IoDevice {
-    pub fn new(joystick: Box<dyn JoystickInput>) -> Self {
+    pub fn new(joystick: Box<dyn JoystickInput>, cpu_freq: u64) -> Self {
         let mut ega_sequencer_regs = [0u8; 8];
         ega_sequencer_regs[2] = 0x0F; // Map Mask: all 4 planes enabled by default
 
         Self {
             last_write: HashMap::new(),
             system_control_port: SystemControlPort::new(),
-            pit: Pit::new(),
+            pit: Pit::new(cpu_freq),
             joystick: JoystickPort::new(joystick),
             current_cycle: 0,
             cga_mode_control: CgaModeControl::new(),
@@ -93,6 +95,7 @@ impl IoDevice {
             dac_read_index: 0,
             dac_component: 0,
             dac_write_buf: [0u8; 3],
+            cpu_freq,
         }
     }
 
@@ -571,7 +574,7 @@ impl IoDevice {
     pub fn reset(&mut self) {
         self.last_write.clear();
         self.system_control_port = SystemControlPort::new();
-        self.pit = Pit::new();
+        self.pit = Pit::new(self.cpu_freq);
         // Keep joystick - it's "hardware" that persists across resets
         self.current_cycle = 0;
         self.cga_mode_control = CgaModeControl::new();

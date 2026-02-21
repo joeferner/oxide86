@@ -27,6 +27,9 @@ pub struct ComputerConfig {
     pub memory_kb: u32,
     /// Video card type (default: VideoCardType::default())
     pub video_card_type: VideoCardType,
+    /// Target CPU clock frequency in Hz (e.g. 4_770_000 for 4.77 MHz).
+    /// Used by the PIT to correctly scale timer intervals relative to emulated cycles.
+    pub cpu_freq: u64,
 }
 
 impl Default for ComputerConfig {
@@ -35,6 +38,7 @@ impl Default for ComputerConfig {
             cpu_type: CpuType::I8086,
             memory_kb: 1024,
             video_card_type: VideoCardType::default(),
+            cpu_freq: 4_770_000,
         }
     }
 }
@@ -143,7 +147,7 @@ impl<V: VideoController> Computer<V> {
             cpu_type,
             bus,
             bios,
-            io_device: IoDevice::new(joystick),
+            io_device: IoDevice::new(joystick, config.cpu_freq),
             video_controller,
             speaker,
             cycle_count: 0,

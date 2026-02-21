@@ -254,6 +254,7 @@ impl Emu86Computer {
                 cpu_type: resolved_cpu_type,
                 memory_kb,
                 video_card_type: resolved_video_card,
+                cpu_freq: (clock_mhz * 1_000_000.0) as u64,
             },
         );
 
