@@ -8,7 +8,7 @@ use crate::joystick::JoystickInput;
 use crate::video::Video;
 use cga_ports::CgaModeControl;
 use joystick_port::JoystickPort;
-pub use pit::Pit;
+pub use pit::{PIT_FREQUENCY_HZ, Pit};
 use std::collections::HashMap;
 pub use system_control_port::SystemControlPort;
 

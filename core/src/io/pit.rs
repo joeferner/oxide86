@@ -6,7 +6,10 @@
 //! - Channel 2: PC speaker control
 //!
 //! Base frequency: 1.193182 MHz
-//! Output frequency = 1193182 / count_register
+//! Output frequency = PIT_FREQUENCY_HZ / count_register
+
+/// PIT oscillator frequency in Hz (Intel 8253/8254 standard)
+pub const PIT_FREQUENCY_HZ: u64 = 1_193_182;
 
 /// Represents a single PIT channel (Intel 8253/8254)
 pub struct PitChannel {
@@ -198,7 +201,7 @@ impl Pit {
         };
 
         // Initialize channel 0 for 18.2 Hz system timer (standard BIOS configuration)
-        // Count of 0 means 65536, which gives 1193182 / 65536 ≈ 18.2 Hz
+        // Count of 0 means 65536, which gives PIT_FREQUENCY_HZ / 65536 ≈ 18.2 Hz
         pit.channels[0].count_register = 0; // 0 = 65536
         pit.channels[0].reload_counter(); // Set counter and clear null_count flag
 
@@ -338,12 +341,9 @@ impl Pit {
     /// Update all channels based on CPU cycles
     /// Called from Computer::increment_cycles()
     pub fn update(&mut self, cpu_cycles: u64) {
-        // PIT base frequency: 1.193182 MHz
-        const PIT_FREQUENCY: f64 = 1_193_182.0;
-
         // Convert CPU cycles to PIT cycles
-        let pit_cycles_f64 =
-            (cpu_cycles as f64) * (PIT_FREQUENCY / self.cpu_freq as f64) + self.cycle_accumulator;
+        let pit_cycles_f64 = (cpu_cycles as f64) * (PIT_FREQUENCY_HZ as f64 / self.cpu_freq as f64)
+            + self.cycle_accumulator;
         let pit_cycles = pit_cycles_f64 as u64;
         self.cycle_accumulator = pit_cycles_f64 - (pit_cycles as f64);
 

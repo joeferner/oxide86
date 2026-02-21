@@ -7,7 +7,7 @@ org 0x100
 mov al, 0xB6        ; Channel 2, LSB+MSB, Mode 3, Binary
 out 0x43, al
 
-; Set count = 1193 for ~1000 Hz (1193182 / 1193 ≈ 1000)
+; Set count = 1193 for ~1000 Hz (PIT_FREQUENCY_HZ / 1193 ≈ 1000)
 mov ax, 1193
 out 0x42, al        ; LSB
 mov al, ah

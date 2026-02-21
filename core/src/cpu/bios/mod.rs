@@ -30,6 +30,7 @@ use crate::{
     Bus, Clock, DiskController, DriveManager, DriveNumber, KeyboardInput, LocalDate, LocalTime,
     MemoryAllocator, MouseInput, MouseState, SerialParams, SerialPortController, SerialStatus,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
+    io::PIT_FREQUENCY_HZ,
     peripheral,
 };
 pub use int17::PrinterStatus;
@@ -825,9 +826,9 @@ impl Bios {
             (seconds_since_midnight as u64 * 1000) + (time.milliseconds as u64);
 
         // Convert to BIOS ticks using exact timer frequency
-        // Timer frequency: 1193182 / 65536 = 18.2065 Hz (NOT 18.2!)
-        // Formula: ticks = milliseconds * 1193182 / 65536 / 1000
-        let ticks = (millis_since_midnight * 1193182 / 65536 / 1000) as u32;
+        // Timer frequency: PIT_FREQUENCY_HZ / 65536 = 18.2065 Hz (NOT 18.2!)
+        // Formula: ticks = milliseconds * PIT_FREQUENCY_HZ / 65536 / 1000
+        let ticks = (millis_since_midnight * PIT_FREQUENCY_HZ / 65536 / 1000) as u32;
 
         // Ensure we don't exceed the maximum tick count for a day
         ticks.min(0x001800B0)

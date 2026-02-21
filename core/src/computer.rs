@@ -5,7 +5,7 @@ use crate::{
     SpeakerOutput, Video, VideoCardType, VideoController,
     audio::SoundCard,
     cpu::{Cpu, bios::KeyPress},
-    io::IoDevice,
+    io::{IoDevice, PIT_FREQUENCY_HZ},
     joystick::JoystickInput,
     keyboard::KeyboardInput,
     memory::{self, Memory},
@@ -1418,7 +1418,7 @@ impl<V: VideoController> Computer<V> {
 
     /// Calculate CPU cycles per timer tick from PIT Channel 0's count register.
     /// PIT base frequency is 1,193,182 Hz.
-    /// cycles_per_tick = pit_count * (cpu_freq / 1_193_182)
+    /// cycles_per_tick = pit_count * (cpu_freq / PIT_FREQUENCY_HZ)
     fn get_cycles_per_tick(&self) -> u64 {
         let pit_count = self.io_device.pit().get_channel_count(0);
         let count = if pit_count == 0 {
@@ -1426,7 +1426,7 @@ impl<V: VideoController> Computer<V> {
         } else {
             pit_count as u64
         };
-        (count * self.cpu_freq) / 1_193_182
+        (count * self.cpu_freq) / PIT_FREQUENCY_HZ
     }
 
     /// Increment pending timer IRQs
@@ -1520,11 +1520,11 @@ impl<V: VideoController> Computer<V> {
         if enabled && pit_ready {
             let count = self.io_device.pit().get_channel_count(2);
             if count > 0 {
-                let frequency = 1193182.0 / (count as f32);
+                let frequency = PIT_FREQUENCY_HZ as f32 / (count as f32);
                 self.speaker.set_frequency(true, frequency);
             } else {
                 // count of 0 means 65536 (lowest frequency ~18.2 Hz)
-                let frequency = 1193182.0 / 65536.0;
+                let frequency = PIT_FREQUENCY_HZ as f32 / 65536.0;
                 self.speaker.set_frequency(true, frequency);
             }
         } else {

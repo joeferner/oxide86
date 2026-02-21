@@ -162,7 +162,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 **Hardware Overview:**
 - PC speaker controlled via Intel 8253/8254 Programmable Interval Timer (PIT)
 - Base frequency: 1.193182 MHz
-- Output frequency: `1193182 / count_register` Hz
+- Output frequency: `PIT_FREQUENCY_HZ / count_register` Hz
 - Enabled via Port 0x61 bits: 0x01 (PIT Ch2 gate) + 0x02 (speaker data)
 
 **Implementation (`core/src/io/pit.rs`):**

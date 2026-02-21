@@ -7,7 +7,7 @@ org 0x100
 mov al, 0xB6        ; 10 11 011 0 = Channel 2, LSB+MSB, Mode 3, Binary
 out 0x43, al
 
-; Load count: 1193 (1193182 / 1193 ≈ 1000 Hz)
+; Load count: 1193 (PIT_FREQUENCY_HZ / 1193 ≈ 1000 Hz)
 mov al, 0xA9        ; LSB of 1193 (0x04A9)
 out 0x42, al
 mov al, 0x04        ; MSB of 1193

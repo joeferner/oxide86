@@ -7,6 +7,7 @@ use crate::{
         bios::{ExecParams, FindData, SeekMethod, dos_error::DosError},
         cpu_flag,
     },
+    io::PIT_FREQUENCY_HZ,
 };
 
 /// File access modes for INT 21h, AH=3Dh
@@ -1062,10 +1063,10 @@ impl Cpu {
         let tick_count = bus.read_u32(counter_addr);
 
         // Convert ticks to time
-        // Timer frequency: 18.2065 Hz (exactly 1193182 / 65536)
-        // More precisely: ticks = seconds * 1193182 / 65536
-        // So: seconds = ticks * 65536 / 1193182
-        let total_centiseconds = (tick_count as u64 * 6553600) / 1193182;
+        // Timer frequency: 18.2065 Hz (exactly PIT_FREQUENCY_HZ / 65536)
+        // More precisely: ticks = seconds * PIT_FREQUENCY_HZ / 65536
+        // So: seconds = ticks * 65536 / PIT_FREQUENCY_HZ
+        let total_centiseconds = (tick_count as u64 * 6553600) / PIT_FREQUENCY_HZ;
         let total_seconds = (total_centiseconds / 100) as u32;
         let hundredths = (total_centiseconds % 100) as u8;
 
