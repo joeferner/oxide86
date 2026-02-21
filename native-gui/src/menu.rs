@@ -7,6 +7,8 @@ pub enum MenuAction {
     EjectFloppyA,
     InsertFloppyB,
     EjectFloppyB,
+    InsertCdRom,
+    EjectCdRom,
     Reset,
     SaveScreenshot,
     SaveRam,
@@ -23,16 +25,7 @@ impl MenuAction {
         match self {
             MenuAction::InsertFloppyA | MenuAction::EjectFloppyA => DriveNumber::floppy_a(),
             MenuAction::InsertFloppyB | MenuAction::EjectFloppyB => DriveNumber::floppy_b(),
-            MenuAction::Reset
-            | MenuAction::SaveScreenshot
-            | MenuAction::SaveRam
-            | MenuAction::SaveVideoRam
-            | MenuAction::ToggleExecutionLogging
-            | MenuAction::ToggleInterruptLogging
-            | MenuAction::TogglePause
-            | MenuAction::TogglePerformanceOverlay => {
-                unreachable!("drive_number() called on non-floppy action")
-            }
+            _ => unreachable!("drive_number() called on non-floppy action"),
         }
     }
 
@@ -61,6 +54,7 @@ impl MenuAction {
 pub struct AppMenu {
     floppy_a_present: bool,
     floppy_b_present: bool,
+    cdrom_present: bool,
     exec_logging_enabled: bool,
     interrupt_logging_enabled: bool,
     is_paused: bool,
@@ -73,6 +67,7 @@ impl AppMenu {
         Self {
             floppy_a_present: false,
             floppy_b_present: false,
+            cdrom_present: false,
             exec_logging_enabled: false,
             interrupt_logging_enabled: false,
             is_paused: false,
@@ -84,6 +79,11 @@ impl AppMenu {
     pub fn update_menu_states(&mut self, floppy_a_present: bool, floppy_b_present: bool) {
         self.floppy_a_present = floppy_a_present;
         self.floppy_b_present = floppy_b_present;
+    }
+
+    /// Update CD-ROM present state
+    pub fn update_cdrom_state(&mut self, present: bool) {
+        self.cdrom_present = present;
     }
 
     /// Update debug menu states
@@ -154,6 +154,20 @@ impl AppMenu {
                             ui.close_menu();
                         }
                     });
+                });
+
+                ui.menu_button("CD-ROM", |ui| {
+                    if ui.button("Insert ISO...").clicked() {
+                        action = Some(MenuAction::InsertCdRom);
+                        ui.close_menu();
+                    }
+                    if ui
+                        .add_enabled(self.cdrom_present, egui::Button::new("Eject CD-ROM"))
+                        .clicked()
+                    {
+                        action = Some(MenuAction::EjectCdRom);
+                        ui.close_menu();
+                    }
                 });
 
                 ui.menu_button("System", |ui| {

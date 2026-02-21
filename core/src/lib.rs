@@ -6,6 +6,7 @@ pub use crate::audio::{
     speaker::{NullSpeaker, SpeakerOutput},
 };
 pub use crate::bus::Bus;
+pub use crate::cdrom::{CD_SECTOR_SIZE, CdRomImage};
 pub use crate::clock::{Clock, LocalDate, LocalTime};
 pub use crate::cpu::bios::{Bios, DosDevice, DriveParams, KeyPress, SharedBiosState};
 pub use crate::cpu_type::CpuType;
@@ -36,6 +37,7 @@ pub use palette::TextModePalette;
 pub mod audio;
 pub mod bios_logo;
 pub mod bus;
+pub mod cdrom;
 pub mod clock;
 pub mod computer;
 pub mod cpu;
@@ -64,6 +66,10 @@ pub mod video_card_type;
 /// - 0x01 = Floppy B:
 /// - 0x80 = Hard drive C:
 /// - 0x81 = Hard drive D:
+/// - 0xE0 = CD-ROM slot 0
+/// - 0xE1 = CD-ROM slot 1
+/// - 0xE2 = CD-ROM slot 2
+/// - 0xE3 = CD-ROM slot 3
 #[derive(PartialEq, PartialOrd, Clone, Copy)]
 pub struct DriveNumber(u8);
 
@@ -146,12 +152,35 @@ impl DriveNumber {
         }
     }
 
+    /// Base drive number for CD-ROM drives
+    pub const CDROM_BASE: u8 = 0xE0;
+
+    /// Maximum number of CD-ROM slots
+    pub const CDROM_MAX_SLOTS: u8 = 4;
+
+    /// Create a CD-ROM drive number for the given slot (0-3)
+    pub fn cdrom(slot: u8) -> Self {
+        debug_assert!(slot < Self::CDROM_MAX_SLOTS, "CD-ROM slot must be 0-3");
+        Self(Self::CDROM_BASE + slot)
+    }
+
     pub fn is_floppy(&self) -> bool {
         self.0 < 0x80
     }
 
     pub fn is_hard_drive(&self) -> bool {
-        self.0 >= 0x80
+        self.0 >= 0x80 && self.0 < Self::CDROM_BASE
+    }
+
+    /// Returns true if this is a CD-ROM drive (0xE0-0xE3)
+    pub fn is_cdrom(&self) -> bool {
+        self.0 >= Self::CDROM_BASE && self.0 < Self::CDROM_BASE + Self::CDROM_MAX_SLOTS
+    }
+
+    /// Returns the CD-ROM slot index (0-3). Panics if not a CD-ROM drive.
+    pub fn cdrom_slot(&self) -> u8 {
+        debug_assert!(self.is_cdrom(), "cdrom_slot() called on non-CD-ROM drive");
+        self.0 - Self::CDROM_BASE
     }
 
     pub fn to_hard_drive_index(&self) -> usize {
@@ -185,6 +214,10 @@ impl DriveNumber {
     pub fn to_letter(&self) -> char {
         if self.is_floppy() {
             (b'A' + self.0) as char
+        } else if self.is_cdrom() {
+            // CD-ROMs don't have a fixed DOS drive letter (MSCDEX assigns them)
+            // Use placeholder letters Q+ for logging purposes
+            (b'Q' + (self.0 - Self::CDROM_BASE)) as char
         } else {
             (b'C' + (self.0 - 0x80)) as char
         }

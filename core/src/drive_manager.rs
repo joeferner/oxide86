@@ -7,6 +7,7 @@
 //! - Disk change detection flags for floppies
 
 use crate::DriveNumber;
+use crate::cdrom::{CdRomImage, IsoEntry};
 use crate::cpu::bios::disk_error::DiskError;
 use crate::cpu::bios::dos_error::DosError;
 use crate::cpu::bios::{DriveParams, FileAccess, FindData, SeekMethod};
@@ -234,6 +235,10 @@ struct FileHandle {
     position: u64,
     /// Access mode (read/write/both)
     access_mode: FileAccess,
+    /// For CD-ROM files: entire file content buffered at open time
+    cdrom_data: Option<Vec<u8>>,
+    /// Total size of the CD-ROM file (for SeekMethod::FromEnd)
+    cdrom_size: u64,
 }
 
 /// Search state for directory iteration
@@ -253,6 +258,8 @@ struct SearchState {
 /// - 0x01 = Floppy B:
 /// - 0x80 = Hard drive C:
 /// - 0x81 = Hard drive D:
+/// - 0xE0 = CD-ROM slot 0
+/// - 0xE1 = CD-ROM slot 1
 /// - etc.
 pub struct DriveManager {
     /// Floppy drive slots (A: = 0, B: = 1)
@@ -260,6 +267,9 @@ pub struct DriveManager {
 
     /// Hard drives (C: = 0x80, D: = 0x81, etc.)
     hard_drives: Vec<DriveState>,
+
+    /// CD-ROM drives (0xE0 = slot 0, 0xE1 = slot 1, etc.)
+    cdrom_drives: [Option<CdRomImage>; 4],
 
     /// Current default drive (0 = A:, 1 = B:, 0x80 = C:, etc.)
     current_drive: DriveNumber,
@@ -289,6 +299,7 @@ impl DriveManager {
         Self {
             floppy_drives: [DriveState::empty(), DriveState::empty()],
             hard_drives: Vec::new(),
+            cdrom_drives: [None, None, None, None],
             current_drive: DriveNumber::from_standard(0),
             open_files: HashMap::new(),
             searches: HashMap::new(),
@@ -379,6 +390,78 @@ impl DriveManager {
         self.hard_drives
             .push(DriveState::new_with_partition(partition, raw_disk, false));
         drive_number
+    }
+
+    // === CD-ROM Management ===
+
+    /// Insert a CD-ROM ISO image into a slot (0-3).
+    /// Returns the assigned drive number (0xE0-0xE3).
+    pub fn insert_cdrom(&mut self, slot: u8, image: CdRomImage) -> DriveNumber {
+        let slot = slot.min(3) as usize;
+        let drive = DriveNumber::cdrom(slot as u8);
+        self.close_files_on_drive(drive);
+        self.cdrom_drives[slot] = Some(image);
+        drive
+    }
+
+    /// Eject a CD-ROM from a slot, returning the image if present.
+    pub fn eject_cdrom(&mut self, slot: u8) -> Option<CdRomImage> {
+        let slot = slot.min(3) as usize;
+        let drive = DriveNumber::cdrom(slot as u8);
+        self.close_files_on_drive(drive);
+        self.cdrom_drives[slot].take()
+    }
+
+    /// Check if a CD-ROM slot has a disc inserted.
+    pub fn has_cdrom(&self, slot: u8) -> bool {
+        let slot = slot as usize;
+        slot < 4 && self.cdrom_drives[slot].is_some()
+    }
+
+    /// Return the number of CD-ROM drives with a disc inserted.
+    pub fn cdrom_count(&self) -> u8 {
+        self.cdrom_drives.iter().filter(|d| d.is_some()).count() as u8
+    }
+
+    /// Read a 512-byte sub-sector from a CD-ROM drive.
+    ///
+    /// CD-ROM sectors are 2048 bytes; this maps 512-byte LBA indices by dividing
+    /// by 4 (cd_lba = lba_512 / 4, offset_in_cd_sector = (lba_512 % 4) * 512).
+    pub fn cdrom_read_sector_as_512(
+        &self,
+        drive: DriveNumber,
+        lba_512: usize,
+    ) -> Result<[u8; SECTOR_SIZE], DiskError> {
+        if !drive.is_cdrom() {
+            return Err(DiskError::DriveNotReady);
+        }
+        let slot = drive.cdrom_slot() as usize;
+        let image = self.cdrom_drives[slot]
+            .as_ref()
+            .ok_or(DiskError::DriveNotReady)?;
+
+        let cd_lba = lba_512 / 4;
+        let offset_in_cd = (lba_512 % 4) * SECTOR_SIZE;
+
+        let cd_sector = image
+            .read_sector(cd_lba as u32)
+            .map_err(|_| DiskError::SectorNotFound)?;
+
+        let mut out = [0u8; SECTOR_SIZE];
+        out.copy_from_slice(&cd_sector[offset_in_cd..offset_in_cd + SECTOR_SIZE]);
+        Ok(out)
+    }
+
+    /// Convert an ISO entry to FindData for directory searches.
+    fn iso_entry_to_find_data(entry: &IsoEntry) -> FindData {
+        let (dos_date, dos_time) = CdRomImage::dos_date_from_iso(&entry.recording_date);
+        FindData {
+            attributes: if entry.is_dir { 0x10 } else { 0x01 }, // DIR or ReadOnly
+            time: dos_time,
+            date: dos_date,
+            size: entry.data_length,
+            filename: entry.name.clone(),
+        }
     }
 
     /// Sync a drive's changes to backing storage (e.g., for host directory mounts)
@@ -586,6 +669,29 @@ impl DriveManager {
             path
         );
 
+        // CD-ROM: buffer the entire file at open time
+        if drive.is_cdrom() {
+            let slot = drive.cdrom_slot() as usize;
+            let image = self.cdrom_drives[slot]
+                .as_ref()
+                .ok_or(DosError::InvalidDrive)?;
+            let data = image.read_file(&path).map_err(|_| DosError::FileNotFound)?;
+            let size = data.len() as u64;
+            let handle = self.allocate_handle();
+            self.open_files.insert(
+                handle,
+                FileHandle {
+                    drive,
+                    path,
+                    position: 0,
+                    access_mode,
+                    cdrom_data: Some(data),
+                    cdrom_size: size,
+                },
+            );
+            return Ok(handle);
+        }
+
         // Verify file exists - scope the filesystem access
         {
             let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
@@ -618,6 +724,8 @@ impl DriveManager {
                 path,
                 position: 0,
                 access_mode,
+                cdrom_data: None,
+                cdrom_size: 0,
             },
         );
 
@@ -627,6 +735,11 @@ impl DriveManager {
     pub fn file_create(&mut self, filename: &str, _attributes: u8) -> Result<u16, DosError> {
         let (drive, path_part) = self.parse_path(filename);
         let path = self.resolve_path(drive, &path_part);
+
+        // CD-ROM is read-only
+        if drive.is_cdrom() {
+            return Err(DosError::AccessDenied);
+        }
 
         // Create the file - scope the filesystem access
         {
@@ -653,6 +766,8 @@ impl DriveManager {
                 path,
                 position: 0,
                 access_mode: FileAccess::ReadWrite,
+                cdrom_data: None,
+                cdrom_size: 0,
             },
         );
 
@@ -668,7 +783,7 @@ impl DriveManager {
 
     pub fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, DosError> {
         // Get file info first, then release borrow
-        let (drive, path, position) = {
+        let (drive, path, position, is_cdrom) = {
             let file_handle = self
                 .open_files
                 .get(&handle)
@@ -677,8 +792,29 @@ impl DriveManager {
                 file_handle.drive,
                 file_handle.path.clone(),
                 file_handle.position,
+                file_handle.cdrom_data.is_some(),
             )
         };
+
+        // CD-ROM: serve from buffered data
+        if is_cdrom {
+            let (result, bytes_read) = {
+                let file_handle = self.open_files.get(&handle).unwrap();
+                let data = file_handle.cdrom_data.as_ref().unwrap();
+                let pos = position as usize;
+                let end = (pos + max_bytes as usize).min(data.len());
+                let result = if pos >= data.len() {
+                    Vec::new()
+                } else {
+                    data[pos..end].to_vec()
+                };
+                let bytes_read = result.len();
+                (result, bytes_read)
+            };
+            let file_handle = self.open_files.get_mut(&handle).unwrap();
+            file_handle.position += bytes_read as u64;
+            return Ok(result);
+        }
 
         // Read from filesystem - scope the filesystem access
         let (buffer, bytes_read) = {
@@ -719,6 +855,10 @@ impl DriveManager {
                 .open_files
                 .get(&handle)
                 .ok_or(DosError::InvalidHandle)?;
+            // CD-ROM is read-only
+            if file_handle.drive.is_cdrom() {
+                return Err(DosError::AccessDenied);
+            }
             (
                 file_handle.drive,
                 file_handle.path.clone(),
@@ -761,7 +901,7 @@ impl DriveManager {
         method: SeekMethod,
     ) -> Result<u32, DosError> {
         // Get file info first
-        let (drive, path, current_position) = {
+        let (drive, path, current_position, cdrom_size_opt) = {
             let file_handle = self
                 .open_files
                 .get(&handle)
@@ -770,27 +910,41 @@ impl DriveManager {
                 file_handle.drive,
                 file_handle.path.clone(),
                 file_handle.position,
+                if file_handle.cdrom_data.is_some() {
+                    Some(file_handle.cdrom_size)
+                } else {
+                    None
+                },
             )
         };
 
         // Calculate new position
-        let new_position = match method {
-            SeekMethod::FromStart => offset as i64,
-            SeekMethod::FromCurrent => current_position as i64 + offset as i64,
-            SeekMethod::FromEnd => {
-                // Need to get file size by seeking to end
-                let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
-                let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
+        let new_position = if let Some(cdrom_size) = cdrom_size_opt {
+            // CD-ROM: use buffered size for FromEnd seeks
+            match method {
+                SeekMethod::FromStart => offset as i64,
+                SeekMethod::FromCurrent => current_position as i64 + offset as i64,
+                SeekMethod::FromEnd => cdrom_size as i64 + offset as i64,
+            }
+        } else {
+            match method {
+                SeekMethod::FromStart => offset as i64,
+                SeekMethod::FromCurrent => current_position as i64 + offset as i64,
+                SeekMethod::FromEnd => {
+                    // Need to get file size by seeking to end
+                    let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
+                    let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
-                adapter.reset_position();
-                let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
-                    .map_err(Self::map_error)?;
-                let root_dir = fs.root_dir();
-                let mut file = root_dir.open_file(&path).map_err(Self::map_error)?;
-                let size = file
-                    .seek(SeekFrom::End(0))
-                    .map_err(|_| DosError::InvalidFunction)? as i64;
-                size + offset as i64
+                    adapter.reset_position();
+                    let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
+                        .map_err(Self::map_error)?;
+                    let root_dir = fs.root_dir();
+                    let mut file = root_dir.open_file(&path).map_err(Self::map_error)?;
+                    let size =
+                        file.seek(SeekFrom::End(0))
+                            .map_err(|_| DosError::InvalidFunction)? as i64;
+                    size + offset as i64
+                }
             }
         };
 
@@ -806,7 +960,7 @@ impl DriveManager {
 
     pub fn file_duplicate(&mut self, handle: u16) -> Result<u16, DosError> {
         // Get file info first, then release borrow
-        let (drive, path, position, access_mode) = {
+        let (drive, path, position, access_mode, cdrom_data, cdrom_size) = {
             let file_handle = self
                 .open_files
                 .get(&handle)
@@ -816,6 +970,8 @@ impl DriveManager {
                 file_handle.path.clone(),
                 file_handle.position,
                 file_handle.access_mode,
+                file_handle.cdrom_data.clone(),
+                file_handle.cdrom_size,
             )
         };
 
@@ -829,6 +985,8 @@ impl DriveManager {
                 path,
                 position,
                 access_mode,
+                cdrom_data,
+                cdrom_size,
             },
         );
 
@@ -840,6 +998,10 @@ impl DriveManager {
     pub fn dir_create(&mut self, dirname: &str) -> Result<(), DosError> {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
+
+        if drive.is_cdrom() {
+            return Err(DosError::AccessDenied);
+        }
 
         let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
         let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
@@ -858,6 +1020,10 @@ impl DriveManager {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
 
+        if drive.is_cdrom() {
+            return Err(DosError::AccessDenied);
+        }
+
         let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
         let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
@@ -875,6 +1041,10 @@ impl DriveManager {
         let (drive, path_part) = self.parse_path(filename);
         let path = self.resolve_path(drive, &path_part);
 
+        if drive.is_cdrom() {
+            return Err(DosError::AccessDenied);
+        }
+
         let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
         let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
 
@@ -891,6 +1061,10 @@ impl DriveManager {
     pub fn dir_change(&mut self, dirname: &str) -> Result<(), DosError> {
         let (drive, path_part) = self.parse_path(dirname);
         let path = self.resolve_path(drive, &path_part);
+
+        if drive.is_cdrom() {
+            return Err(DosError::AccessDenied);
+        }
 
         // First verify directory exists
         {
@@ -941,6 +1115,39 @@ impl DriveManager {
         // Normalize "/." to "/" since fatfs doesn't understand current directory notation
         if path == "/." {
             path = String::from("/");
+        }
+
+        // CD-ROM: list directory using ISO 9660
+        if drive.is_cdrom() {
+            let slot = drive.cdrom_slot() as usize;
+            let iso_entries = {
+                let image = self.cdrom_drives[slot]
+                    .as_ref()
+                    .ok_or(DosError::InvalidDrive)?;
+                image
+                    .list_directory(&path)
+                    .map_err(|_| DosError::FileNotFound)?
+            };
+            let entries: Vec<FindData> = iso_entries
+                .iter()
+                .filter(|e| Self::matches_pattern(&e.name, filename_pattern))
+                .map(|e| Self::iso_entry_to_find_data(e))
+                .collect();
+            if entries.is_empty() {
+                return Err(DosError::NoMoreFiles);
+            }
+            let search_id = self.next_search_id;
+            self.next_search_id += 1;
+            let first_entry = entries[0].clone();
+            self.searches.insert(
+                search_id,
+                SearchState {
+                    drive,
+                    entries,
+                    index: 1,
+                },
+            );
+            return Ok((search_id, first_entry));
         }
 
         // Collect entries in a scoped block so fs is dropped before we access self.next_search_id

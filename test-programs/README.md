@@ -67,6 +67,36 @@ Two tones (A4 then D5) play through the audio output, approximately 0.5 seconds 
 AdLib not found (status check failed)
 ```
 
+## CD-ROM
+
+### cdrom/cdrom_detect.asm
+MSCDEX CD-ROM detection and ISO 9660 sector-read test. Uses INT 2Fh AX=1500h to check for MSCDEX (Microsoft CD-ROM Extension), prints the drive count and MSCDEX version, then reads sector 16 (the Primary Volume Descriptor) via INT 13h on drive 0xE0 and verifies the "CD001" ISO 9660 signature.
+
+**Running:**
+```bash
+# Build first
+nasm -f bin test-programs/cdrom/cdrom_detect.asm -o test-programs/cdrom/cdrom_detect.com
+
+# Run with an ISO image
+cargo run -p emu86-native-cli -- --cdrom my_disk.iso test-programs/cdrom/cdrom_detect.com
+cargo run -p emu86-native-gui -- --cdrom my_disk.iso test-programs/cdrom/cdrom_detect.com
+```
+
+**Expected Output (with a valid ISO 9660 image):**
+```
+MSCDEX detected: 1 CD-ROM drive(s)
+MSCDEX version: 2.00
+Reading ISO 9660 PVD (sector 16)... OK - CD001 signature found
+```
+
+**Expected Output (without --cdrom):**
+```
+No CD-ROM / MSCDEX not found
+```
+
+**Technical Details:**
+INT 2Fh AX=1500h (MSCDEX install check) returns AX=0xADAD and BX=drive count when the MSCDEX shim is active. INT 2Fh AX=150Ch returns the MSCDEX version in BX (BH=major, BL=minor). INT 13h AH=02h reads sectors from drive 0xE0 (first CD-ROM slot); since CD sectors are 2048 bytes but INT 13h uses 512-byte addressing, LBA sector 16 (ISO PVD) maps to INT 13h sector 65 (CHS cylinder=0, head=0, sector=65 using 1-based sector numbering).
+
 ## Joystick
 
 ### joystick/joystick_test.asm

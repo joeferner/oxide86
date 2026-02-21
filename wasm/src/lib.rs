@@ -5,9 +5,9 @@
 //! and exposes a JavaScript API for controlling the emulator from web applications.
 
 use emu86_core::{
-    BackedDisk, Computer, DiskController, DiskGeometry, DriveNumber, JoystickInput, KeyPress,
-    KeyboardInput, MemoryDiskBackend, MouseInput, MouseState, NullSpeaker, PartitionedDisk,
-    SECTOR_SIZE, cpu::bios::FileAccess, create_formatted_disk, parse_mbr,
+    BackedDisk, CdRomImage, Computer, DiskController, DiskGeometry, DriveNumber, JoystickInput,
+    KeyPress, KeyboardInput, MemoryDiskBackend, MouseInput, MouseState, NullSpeaker,
+    PartitionedDisk, SECTOR_SIZE, cpu::bios::FileAccess, create_formatted_disk, parse_mbr,
 };
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -1085,6 +1085,34 @@ impl Emu86Computer {
     pub fn get_sound_card_sample_rate(&mut self) -> u32 {
         use emu86_core::audio::adlib::ADLIB_SAMPLE_RATE;
         ADLIB_SAMPLE_RATE
+    }
+
+    /// Load a CD-ROM ISO image into a slot (0-3).
+    ///
+    /// # Arguments
+    /// * `slot` - CD-ROM slot index (0-3)
+    /// * `data` - Raw ISO 9660 image bytes
+    #[wasm_bindgen]
+    pub fn load_cdrom(&mut self, slot: u8, data: Vec<u8>) -> Result<(), JsValue> {
+        let image = CdRomImage::new(data).map_err(|e| JsValue::from_str(&e))?;
+        self.computer.bios_mut().insert_cdrom(slot, image);
+        Ok(())
+    }
+
+    /// Eject the CD-ROM disc from a slot.
+    ///
+    /// # Arguments
+    /// * `slot` - CD-ROM slot index (0-3)
+    #[wasm_bindgen]
+    pub fn eject_cdrom_slot(&mut self, slot: u8) -> Result<(), JsValue> {
+        self.computer.bios_mut().eject_cdrom(slot);
+        Ok(())
+    }
+
+    /// Return the number of CD-ROM slots with a disc inserted.
+    #[wasm_bindgen]
+    pub fn cdrom_count(&self) -> u8 {
+        self.computer.bios().cdrom_count()
     }
 }
 

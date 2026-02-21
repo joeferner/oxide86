@@ -1,4 +1,4 @@
-use crate::cpu::Cpu;
+use crate::{Bus, cpu::Cpu};
 
 impl Cpu {
     /// INT 0x2F - DOS Multiplex Interrupt
@@ -7,13 +7,14 @@ impl Cpu {
     ///
     /// This interrupt is used for inter-program communication and checking
     /// if various DOS features, TSRs, and extensions are installed.
-    pub(super) fn handle_int2f(&mut self) {
+    pub(super) fn handle_int2f(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         let multiplex_num = (self.ax >> 8) as u8; // Get AH
         let subfunction = (self.ax & 0xFF) as u8; // Get AL
 
         match multiplex_num {
             0x11 => self.int2f_network_redirector(subfunction),
             0x12 => self.int2f_dos_internal(subfunction),
+            0x15 => self.int2f_mscdex(bus, io, subfunction),
             0x16 => self.int2f_windows_enhanced_mode(subfunction),
             0x43 => self.int2f_xms(subfunction),
             0x4A => self.int2f_hma_query(subfunction),
@@ -27,6 +28,66 @@ impl Cpu {
                     multiplex_num,
                     subfunction
                 );
+            }
+        }
+    }
+
+    /// AH=15h - MSCDEX (Microsoft CD-ROM Extension)
+    /// Minimal shim so DOS programs can detect CD-ROM drives.
+    ///
+    /// AL=00h: Installation check → AX=0xADAD, BX=drive_count (or AX=0, BX=0)
+    /// AL=0Bh: Drive check → AX=0xADAD, BX=0 if DOS drive is a CD-ROM, else AX=0
+    /// AL=0Ch: Version → BX=0x0200, CX=0x0000
+    /// AL=0Dh: Drive letters → write first DOS letter for each active slot to ES:BX
+    fn int2f_mscdex(&mut self, bus: &mut Bus, io: &mut super::Bios, subfunction: u8) {
+        let count = io.cdrom_count();
+        // First CD-ROM DOS drive letter = 2 (A,B) + hard_drive_count + slot_index
+        let hd_count = io.shared.drive_manager.hard_drive_count() as u8;
+        let first_cdrom_dos = 2u8 + hd_count; // DOS drive index (0=A, 1=B, 2=C...)
+
+        match subfunction {
+            0x00 => {
+                // Installation check
+                if count > 0 {
+                    self.ax = 0xADAD;
+                    self.bx = count as u16;
+                } else {
+                    self.ax = 0x0000;
+                    self.bx = 0x0000;
+                }
+            }
+            0x0B => {
+                // Drive check: BX = DOS drive index to check (0=A, 1=B, 2=C...)
+                let dos_drive = self.bx as u8;
+                let is_cdrom = dos_drive >= first_cdrom_dos
+                    && dos_drive < first_cdrom_dos + 4
+                    && io.has_cdrom(dos_drive - first_cdrom_dos);
+                if is_cdrom {
+                    self.ax = 0xADAD;
+                    self.bx = 0x0000;
+                } else {
+                    self.ax = 0x0000;
+                }
+            }
+            0x0C => {
+                // Get MSCDEX version: 2.00
+                self.bx = 0x0200;
+                self.cx = 0x0000;
+            }
+            0x0D => {
+                // Get drive letters: write one byte per slot to ES:BX buffer
+                // Each byte is the DOS drive letter index (0=A, 1=B, 2=C...)
+                let buf_addr = Self::physical_address(self.es, self.bx);
+                let mut written = 0usize;
+                for slot in 0u8..4 {
+                    if io.has_cdrom(slot) {
+                        bus.write_u8(buf_addr + written, first_cdrom_dos + slot);
+                        written += 1;
+                    }
+                }
+            }
+            _ => {
+                log::warn!("Unhandled INT 2Fh AH=15h (MSCDEX) AL=0x{:02X}", subfunction);
             }
         }
     }

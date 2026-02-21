@@ -2,8 +2,9 @@ use anyhow::{Context, Result};
 use emu86_core::audio::adlib::{ADLIB_SAMPLE_RATE, Adlib};
 use emu86_core::utils::parse_hex_or_dec;
 use emu86_core::{
-    BackedDisk, Computer, DiskController, DriveNumber, MouseInput, NullSpeaker, PartitionedDisk,
-    SerialLogger, SerialMouse, SoundCard, SpeakerOutput, VideoController, parse_mbr,
+    BackedDisk, CdRomImage, Computer, DiskController, DriveNumber, MouseInput, NullSpeaker,
+    PartitionedDisk, SerialLogger, SerialMouse, SoundCard, SpeakerOutput, VideoController,
+    parse_mbr,
 };
 use rodio::OutputStreamBuilder;
 use rodio::stream::OutputStream;
@@ -365,6 +366,27 @@ pub fn load_mounted_directories<V: VideoController>(
     }
 
     Ok(mounted_drives)
+}
+
+/// Load CD-ROM ISO images into the computer (slots 0-3).
+pub fn load_cdroms<V: VideoController>(
+    computer: &mut Computer<V>,
+    cdroms: &[String],
+) -> Result<()> {
+    for (slot, path) in cdroms.iter().enumerate().take(4) {
+        let data = std::fs::read(path)
+            .with_context(|| format!("Failed to read CD-ROM image: {}", path))?;
+        let image = CdRomImage::new(data)
+            .map_err(|e| anyhow::anyhow!("Invalid ISO image {}: {}", path, e))?;
+        let drive_num = computer.bios_mut().insert_cdrom(slot as u8, image);
+        log::info!(
+            "Loaded CD-ROM slot {} (drive {}) from {}",
+            slot,
+            drive_num,
+            path
+        );
+    }
+    Ok(())
 }
 
 /// Sync all mounted directories to the host filesystem.

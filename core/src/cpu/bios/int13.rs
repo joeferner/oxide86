@@ -15,6 +15,14 @@ impl Cpu {
         // This allows timer IRQs to fire even during extended disk operations
         self.set_flag(cpu_flag::INTERRUPT, true);
 
+        // Route CD-ROM drives (0xE0-0xE3) to separate handler
+        let dl = (self.dx & 0xFF) as u8;
+        let drive = DriveNumber::from_standard(dl);
+        if drive.is_cdrom() {
+            self.handle_int13_cdrom(bus, io, drive);
+            return;
+        }
+
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
@@ -502,6 +510,99 @@ impl Cpu {
                     log::info!("INT 13h AH=18h: Drive {} not present", drive);
                 }
                 self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
+                self.set_flag(cpu_flag::CARRY, true);
+                io.set_last_disk_status(DiskError::InvalidCommand as u8);
+            }
+        }
+    }
+
+    /// INT 13h CD-ROM handler for drives 0xE0-0xE3.
+    ///
+    /// AH=00h: reset → success
+    /// AH=01h: get status
+    /// AH=02h: read sectors (CHS mapped to CD 512-byte sub-sectors)
+    /// AH=15h: get disk type → AH=0x03 (CD-ROM), CX:DX=0
+    fn handle_int13_cdrom(&mut self, bus: &mut Bus, io: &mut super::Bios, drive: DriveNumber) {
+        let function = (self.ax >> 8) as u8; // AH
+
+        match function {
+            0x00 => {
+                // Reset — always success for CD-ROM
+                self.ax &= 0x00FF; // AH = 0
+                self.set_flag(cpu_flag::CARRY, false);
+                io.set_last_disk_status(DiskError::Success as u8);
+            }
+            0x01 => {
+                // Get status of last operation
+                let status = io.shared.last_disk_status;
+                self.ax = (self.ax & 0x00FF) | ((status as u16) << 8);
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x02 => {
+                // Read sectors
+                // CHS → flat 512-byte LBA using CD-ROM convention (75 sectors per track)
+                let count = (self.ax & 0xFF) as u8; // AL
+                let cylinder = (self.cx >> 8) as u16; // CH
+                let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
+                // lba_512 = cylinder * 75 + (sector - 1)
+                let lba_512 = cylinder as usize * 75 + sector.saturating_sub(1) as usize;
+
+                let buffer_addr = Self::physical_address(self.es, self.bx);
+                let mut sectors_read = 0u8;
+                let mut error: Option<DiskError> = None;
+
+                for i in 0..count as usize {
+                    match io
+                        .shared
+                        .drive_manager
+                        .cdrom_read_sector_as_512(drive, lba_512 + i)
+                    {
+                        Ok(sector_data) => {
+                            let dest = buffer_addr + i * 512;
+                            for (j, &b) in sector_data.iter().enumerate() {
+                                bus.write_u8(dest + j, b);
+                            }
+                            sectors_read += 1;
+                        }
+                        Err(e) => {
+                            error = Some(e);
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(e) = error {
+                    self.ax = (sectors_read as u16) | ((e as u16) << 8);
+                    self.set_flag(cpu_flag::CARRY, true);
+                    io.set_last_disk_status(e as u8);
+                } else {
+                    self.ax = sectors_read as u16; // AH=0, AL=count
+                    self.set_flag(cpu_flag::CARRY, false);
+                    io.set_last_disk_status(DiskError::Success as u8);
+                }
+            }
+            0x15 => {
+                // Get disk type
+                // AH=0x03 = CD-ROM, CX:DX=0 (sector count not meaningful)
+                if io.has_cdrom(drive.cdrom_slot()) {
+                    self.ax = (self.ax & 0x00FF) | (0x03u16 << 8); // AH = 3 (CD-ROM)
+                    self.cx = 0;
+                    self.dx = 0;
+                    self.set_flag(cpu_flag::CARRY, false);
+                    io.set_last_disk_status(DiskError::Success as u8);
+                } else {
+                    self.ax &= 0x00FF; // AH = 0 (not present)
+                    self.set_flag(cpu_flag::CARRY, true);
+                    io.set_last_disk_status(DiskError::InvalidCommand as u8);
+                }
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 13h CD-ROM function: AH=0x{:02X} drive={}",
+                    function,
+                    drive
+                );
+                self.ax = (self.ax & 0x00FF) | ((DiskError::InvalidCommand as u16) << 8);
                 self.set_flag(cpu_flag::CARRY, true);
                 io.set_last_disk_status(DiskError::InvalidCommand as u8);
             }

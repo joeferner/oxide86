@@ -29,6 +29,7 @@ use super::Cpu;
 use crate::{
     Bus, Clock, DiskController, DriveManager, DriveNumber, KeyboardInput, LocalDate, LocalTime,
     MemoryAllocator, MouseInput, MouseState, SerialParams, SerialPortController, SerialStatus,
+    cdrom::CdRomImage,
     cpu::bios::{disk_error::DiskError, dos_error::DosError},
     io::PIT_FREQUENCY_HZ,
     peripheral,
@@ -293,6 +294,26 @@ impl Bios {
         self.shared
             .drive_manager
             .add_hard_drive_with_partition(partition, raw_disk)
+    }
+
+    /// Insert a CD-ROM ISO image into a slot (0-3). Returns assigned drive number.
+    pub fn insert_cdrom(&mut self, slot: u8, image: CdRomImage) -> DriveNumber {
+        self.shared.drive_manager.insert_cdrom(slot, image)
+    }
+
+    /// Eject a CD-ROM from a slot, returning the image if present.
+    pub fn eject_cdrom(&mut self, slot: u8) -> Option<CdRomImage> {
+        self.shared.drive_manager.eject_cdrom(slot)
+    }
+
+    /// Check if a CD-ROM slot has a disc inserted.
+    pub fn has_cdrom(&self, slot: u8) -> bool {
+        self.shared.drive_manager.has_cdrom(slot)
+    }
+
+    /// Return the number of CD-ROM slots with a disc inserted.
+    pub fn cdrom_count(&self) -> u8 {
+        self.shared.drive_manager.cdrom_count()
     }
 
     /// Sync a drive's changes to backing storage (e.g., for host directory mounts)
@@ -907,7 +928,7 @@ impl Cpu {
             0x28 => self.handle_int28(),
             0x29 => self.handle_int29(bus),
             0x2A => self.handle_int2a(),
-            0x2F => self.handle_int2f(),
+            0x2F => self.handle_int2f(bus, io),
             0x33 => self.handle_int33(bus, io),
             0x35..=0x3F => self.handle_int35_3f(int_num),
             // Other BIOS interrupts can be added here

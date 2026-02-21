@@ -30,6 +30,7 @@ export function DriveControl({
     const floppyAFile = useSignal<File | null>(null);
     const floppyBFile = useSignal<File | null>(null);
     const hddFile = useSignal<File | null>(null);
+    const cdromFile = useSignal<File | null>(null);
 
     // Re-mount previously loaded drives whenever the computer instance is replaced
     useSignalEffect(() => {
@@ -58,6 +59,13 @@ export function DriveControl({
                     comp.add_hard_drive(await loadFile(hddFile.value));
                 } catch {
                     hddFile.value = null;
+                }
+            }
+            if (cdromFile.value) {
+                try {
+                    comp.load_cdrom(0, await loadFile(cdromFile.value));
+                } catch {
+                    cdromFile.value = null;
                 }
             }
         };
@@ -171,6 +179,34 @@ export function DriveControl({
             status.value = `Error loading hard drive: ${e}`;
             console.error(e);
             hddFile.value = null;
+        }
+    };
+
+    const handleCdRomChange = async (file: File | null): Promise<void> => {
+        if (!file) {
+            return;
+        }
+        cdromFile.value = file;
+        try {
+            status.value = 'Loading CD-ROM...';
+            const data = await loadFile(file);
+            computer.value?.load_cdrom(0, data);
+            status.value = `Loaded CD-ROM: ${file.name} (${data.length} bytes)`;
+        } catch (e) {
+            status.value = `Error loading CD-ROM: ${e}`;
+            console.error(e);
+            cdromFile.value = null;
+        }
+    };
+
+    const handleEjectCdRom = (): void => {
+        try {
+            computer.value?.eject_cdrom_slot(0);
+            cdromFile.value = null;
+            status.value = 'CD-ROM ejected';
+        } catch (e) {
+            status.value = `Error ejecting CD-ROM: ${e}`;
+            console.error(e);
         }
     };
 
@@ -335,6 +371,37 @@ export function DriveControl({
                             color="blue"
                         >
                             <i className="bi bi-download"></i>
+                        </ActionIcon>
+                    </Tooltip>
+                </Group>
+            </div>
+
+            <div className={styles.controlGroup}>
+                <Text fw={700} c="dimmed" style={{ minWidth: 150, textAlign: 'right' }}>
+                    CD-ROM Drive:
+                </Text>
+                <Group gap="xs">
+                    <FileButton
+                        key={cdromFile.value?.name ?? 'empty-cdrom'}
+                        onChange={(v) => {
+                            void handleCdRomChange(v);
+                        }}
+                        accept=".iso"
+                    >
+                        {(props) => (
+                            <Button {...props} size="compact-sm" variant="default">
+                                {cdromFile.value ? cdromFile.value.name : 'Choose ISO'}
+                            </Button>
+                        )}
+                    </FileButton>
+                    <Tooltip label="Eject CD-ROM">
+                        <ActionIcon
+                            onClick={handleEjectCdRom}
+                            size="md"
+                            color="red"
+                            disabled={cdromFile.value === null}
+                        >
+                            <i className="bi bi-eject"></i>
                         </ActionIcon>
                     </Tooltip>
                 </Group>

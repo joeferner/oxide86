@@ -7,13 +7,13 @@ use anyhow::{Context, Result};
 use clap::Parser;
 use emu86_core::NullJoystick;
 use emu86_core::{
-    BackedDisk, CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, Computer, DriveNumber,
-    MEMORY_SIZE,
+    BackedDisk, CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, CdRomImage, Computer,
+    DriveNumber, MEMORY_SIZE,
 };
 use emu86_native_common::{
     AudioOutput, CommonCli, FileDiskBackend, GilrsJoystick, GilrsJoystickInput, NativeClock,
-    apply_logging_flags, attach_serial_device, create_audio, load_disks, load_mounted_directories,
-    load_program_or_boot, sync_mounted_directories,
+    apply_logging_flags, attach_serial_device, create_audio, load_cdroms, load_disks,
+    load_mounted_directories, load_program_or_boot, sync_mounted_directories,
 };
 use gui_keyboard::GuiKeyboard;
 use gui_mouse::GuiMouse;
@@ -422,6 +422,7 @@ struct AppState {
     menu: AppMenu,
     floppy_a_present: bool,
     floppy_b_present: bool,
+    cdrom_present: bool,
     is_paused: bool,
     interrupt_logging_enabled: bool,
     show_performance_overlay: bool,
@@ -453,26 +454,47 @@ fn process_egui_frame(
             let action = app_state.menu.render(ctx);
 
             if let Some(action) = action {
-                if action.is_insert() {
-                    show_insert_dialog(
-                        action.drive_number(),
-                        computer,
-                        &mut app_state.floppy_a_present,
-                        &mut app_state.floppy_b_present,
-                        &mut app_state.menu,
-                        &mut app_state.notification,
-                    );
-                } else if action.is_debug_action() {
-                    handle_debug_action(action, computer, app_state);
-                } else {
-                    eject_disk(
-                        action.drive_number(),
-                        computer,
-                        &mut app_state.floppy_a_present,
-                        &mut app_state.floppy_b_present,
-                        &mut app_state.menu,
-                        &mut app_state.notification,
-                    );
+                use menu::MenuAction;
+                match action {
+                    MenuAction::InsertCdRom => {
+                        show_insert_cdrom_dialog(
+                            computer,
+                            &mut app_state.cdrom_present,
+                            &mut app_state.menu,
+                            &mut app_state.notification,
+                        );
+                    }
+                    MenuAction::EjectCdRom => {
+                        eject_cdrom(
+                            computer,
+                            &mut app_state.cdrom_present,
+                            &mut app_state.menu,
+                            &mut app_state.notification,
+                        );
+                    }
+                    _ if action.is_insert() => {
+                        show_insert_dialog(
+                            action.drive_number(),
+                            computer,
+                            &mut app_state.floppy_a_present,
+                            &mut app_state.floppy_b_present,
+                            &mut app_state.menu,
+                            &mut app_state.notification,
+                        );
+                    }
+                    _ if action.is_debug_action() => {
+                        handle_debug_action(action, computer, app_state);
+                    }
+                    _ => {
+                        eject_disk(
+                            action.drive_number(),
+                            computer,
+                            &mut app_state.floppy_a_present,
+                            &mut app_state.floppy_b_present,
+                            &mut app_state.menu,
+                            &mut app_state.notification,
+                        );
+                    }
                 }
             }
         }
@@ -659,6 +681,7 @@ fn run(cli: Cli) -> Result<()> {
         menu: AppMenu::new(),
         floppy_a_present: cli.common.floppy_a.is_some(),
         floppy_b_present: cli.common.floppy_b.is_some(),
+        cdrom_present: !cli.common.cdroms.is_empty(),
         is_paused: false,
         interrupt_logging_enabled: cli.common.int_log,
         show_performance_overlay: false,
@@ -667,6 +690,7 @@ fn run(cli: Cli) -> Result<()> {
         halted: false,
         target_mhz: cli.common.speed,
     };
+    app_state.menu.update_cdrom_state(app_state.cdrom_present);
 
     // Speed throttling state
     let cpu_freq = (cli.common.speed * 1_000_000.0) as u64;
@@ -907,6 +931,9 @@ fn create_computer(cli: &Cli, gui_mouse: GuiMouse) -> Result<ComputerSetup> {
         &cli.common.hard_disks,
     )?;
 
+    // Load CD-ROM images
+    load_cdroms(&mut computer, &cli.common.cdroms)?;
+
     // Load mounted directories
     let mounted_drives = load_mounted_directories(&mut computer, &cli.common.mount_dirs)?;
 
@@ -1065,6 +1092,67 @@ fn eject_disk(
             // Show error notification
             *notification = Some(Notification::new(
                 format!("Failed to eject disk from {}: {}", drive_label, e),
+                NotificationType::Error,
+            ));
+        }
+    }
+}
+
+fn show_insert_cdrom_dialog(
+    computer: &mut Computer<PixelsVideoController>,
+    cdrom_present: &mut bool,
+    menu: &mut AppMenu,
+    notification: &mut Option<Notification>,
+) {
+    if let Some(path) = rfd::FileDialog::new()
+        .add_filter("ISO Images", &["iso"])
+        .pick_file()
+    {
+        match std::fs::read(&path)
+            .map_err(|e| e.to_string())
+            .and_then(|data| CdRomImage::new(data))
+        {
+            Ok(image) => {
+                computer.bios_mut().insert_cdrom(0, image);
+                *cdrom_present = true;
+                menu.update_cdrom_state(true);
+                let label = path.file_name().unwrap_or_default().to_string_lossy();
+                *notification = Some(Notification::new(
+                    format!("Inserted CD-ROM: {}", label),
+                    NotificationType::Success,
+                ));
+                log::info!("Inserted CD-ROM from {}", path.display());
+            }
+            Err(e) => {
+                *notification = Some(Notification::new(
+                    format!("Failed to load ISO: {}", e),
+                    NotificationType::Error,
+                ));
+                log::error!("Failed to load CD-ROM image: {}", e);
+            }
+        }
+    }
+}
+
+fn eject_cdrom(
+    computer: &mut Computer<PixelsVideoController>,
+    cdrom_present: &mut bool,
+    menu: &mut AppMenu,
+    notification: &mut Option<Notification>,
+) {
+    match computer.bios_mut().eject_cdrom(0) {
+        Some(_) => {
+            *cdrom_present = false;
+            menu.update_cdrom_state(false);
+            *notification = Some(Notification::new(
+                "CD-ROM ejected".to_string(),
+                NotificationType::Success,
+            ));
+            log::info!("Ejected CD-ROM");
+        }
+        None => {
+            *notification = Some(Notification::new(
+                "No CD-ROM to eject".to_string(),
                 NotificationType::Error,
             ));
         }

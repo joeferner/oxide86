@@ -86,4 +86,8 @@ pub struct CommonCli {
     /// Sound card to emulate (none, adlib)
     #[arg(long = "sound-card", default_value = "adlib")]
     pub sound_card: String,
+
+    /// CD-ROM ISO image(s) - can be specified multiple times (up to 4 slots)
+    #[arg(long = "cdrom", action = clap::ArgAction::Append)]
+    pub cdroms: Vec<String>,
 }
