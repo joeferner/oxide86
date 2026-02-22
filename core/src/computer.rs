@@ -246,6 +246,25 @@ impl<V: VideoController> Computer<V> {
     /// 3. Set CS:IP to 0x0000:0x7C00
     /// 4. Set DL to boot drive number
     pub fn boot(&mut self, drive: DriveNumber) -> Result<()> {
+        // If floppy boot fails, fall back to hard drive C — same behavior as a real BIOS.
+        if drive.is_floppy() {
+            let hdd = DriveNumber::hard_drive_c();
+            return match self.boot_from(drive) {
+                Ok(()) => Ok(()),
+                Err(e) => {
+                    log::warn!(
+                        "Boot from {} failed ({}), falling back to hard drive C:",
+                        drive.to_letter(),
+                        e
+                    );
+                    self.boot_from(hdd)
+                }
+            };
+        }
+        self.boot_from(drive)
+    }
+
+    fn boot_from(&mut self, drive: DriveNumber) -> Result<()> {
         // Read boot sector using BIOS disk services
         // Boot sector is at cylinder 0, head 0, sector 1
         let boot_sector = self
@@ -399,21 +418,7 @@ impl<V: VideoController> Computer<V> {
         } else if let Some(drive) = self.boot_drive {
             log::info!("Rebooting from drive {}", drive.to_letter());
             if let Err(e) = self.boot(drive) {
-                // If the original boot drive failed (e.g. floppy ejected after install),
-                // fall back to hard drive C — same behavior as a real BIOS.
-                if drive.is_floppy() {
-                    log::warn!(
-                        "Boot from {} failed ({}), falling back to hard drive C:",
-                        drive.to_letter(),
-                        e
-                    );
-                    let hdd = DriveNumber::hard_drive_c();
-                    if let Err(e2) = self.boot(hdd) {
-                        log::error!("Failed to reboot from hard drive C: {}", e2);
-                    }
-                } else {
-                    log::error!("Failed to reboot during reset: {}", e);
-                }
+                log::error!("Failed to reboot during reset: {}", e);
             }
         } else {
             log::info!("Reset called but no boot drive or program stored");
