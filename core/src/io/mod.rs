@@ -63,6 +63,12 @@ pub struct IoDevice {
     dac_component: u8,
     /// VGA DAC accumulation buffer while writing R/G/B components
     dac_write_buf: [u8; 3],
+    /// CRTC index register (port 0x3D4): selects which CRTC register to access
+    crtc_index: u8,
+    /// CRTC cursor address high byte (CRTC register 0x0E)
+    crtc_cursor_high: u8,
+    /// CRTC cursor address low byte (CRTC register 0x0F)
+    crtc_cursor_low: u8,
     /// Emulated CPU frequency in Hz (preserved across resets for PIT re-init)
     cpu_freq: u64,
 }
@@ -96,6 +102,9 @@ impl IoDevice {
             dac_read_index: 0,
             dac_component: 0,
             dac_write_buf: [0u8; 3],
+            crtc_index: 0,
+            crtc_cursor_high: 0,
+            crtc_cursor_low: 0,
             cpu_freq,
         }
     }
@@ -144,6 +153,16 @@ impl IoDevice {
                 }
                 value
             }
+
+            // CRTC index register (write-only, return current index on read)
+            0x3D4 => self.crtc_index,
+
+            // CRTC data register - returns cursor location registers
+            0x3D5 => match self.crtc_index {
+                0x0E => self.crtc_cursor_high,
+                0x0F => self.crtc_cursor_low,
+                _ => 0xFF,
+            },
 
             // CGA Mode Control Register (read-only in practice)
             0x3D8 => self.cga_mode_control.read(),
@@ -379,6 +398,34 @@ impl IoDevice {
                 self.ac_flip_flop = !self.ac_flip_flop;
             }
 
+            // CRTC index register
+            0x3D4 => {
+                self.crtc_index = value;
+            }
+
+            // CRTC data register - cursor location
+            0x3D5 => match self.crtc_index {
+                0x0E => {
+                    self.crtc_cursor_high = value;
+                }
+                0x0F => {
+                    self.crtc_cursor_low = value;
+                    let offset =
+                        ((self.crtc_cursor_high as u16) << 8) | (self.crtc_cursor_low as u16);
+                    let cols = video.get_cols();
+                    let row = (offset as usize) / cols;
+                    let col = (offset as usize) % cols;
+                    video.set_cursor(row, col);
+                    log::debug!(
+                        "CRTC cursor set to row={}, col={} (offset={})",
+                        row,
+                        col,
+                        offset
+                    );
+                }
+                _ => {}
+            },
+
             // CGA Mode Control Register
             0x3D8 => {
                 self.cga_mode_control.write(value);
@@ -575,6 +622,13 @@ impl IoDevice {
         (self.keyboard_output_port & 0x02) != 0
     }
 
+    /// Update the CRTC cursor address registers to reflect the current video cursor position.
+    /// Called after BIOS interrupts (e.g., INT 10h) that may move the cursor.
+    pub fn set_crtc_cursor(&mut self, offset: u16) {
+        self.crtc_cursor_high = (offset >> 8) as u8;
+        self.crtc_cursor_low = (offset & 0xFF) as u8;
+    }
+
     /// Update the current cycle count (for joystick timing)
     /// Called from Computer::increment_cycles()
     pub fn update_cycles(&mut self, total_cycles: u64) {
@@ -601,6 +655,9 @@ impl IoDevice {
         self.ega_sequencer_regs[2] = 0x0F; // Map Mask default
         self.ega_graphics_index = 0;
         self.ega_graphics_regs = [0u8; 16];
+        self.crtc_index = 0;
+        self.crtc_cursor_high = 0;
+        self.crtc_cursor_low = 0;
         self.sound_card.reset();
     }
 }

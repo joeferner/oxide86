@@ -1116,6 +1116,13 @@ impl<V: VideoController> Computer<V> {
                 if self.cpu.last_instruction_cycles == 0 {
                     self.cpu.last_instruction_cycles = crate::cpu::timing::cycles::INT;
                 }
+                // Sync CRTC cursor registers from Video state (INT 10h may have moved the cursor)
+                {
+                    let cursor = self.bus.video().get_cursor();
+                    let cols = self.bus.video().get_cols();
+                    let offset = (cursor.row * cols + cursor.col) as u16;
+                    self.io_device.set_crtc_cursor(offset);
+                }
             }
             0xCC => {
                 // INT 3 - advance IP and execute INT 3

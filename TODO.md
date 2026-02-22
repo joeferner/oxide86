@@ -9,6 +9,7 @@
 - [X] AdLib support
 - [X] Install SvarDOS (open source dos)
 - [X] Implement ATA/ATAPI (see plans/ata-atapi-support.md)
+- [ ] Update README.md to get SvarDos environment up and running
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
