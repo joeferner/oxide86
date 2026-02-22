@@ -360,6 +360,15 @@ pub fn parse_mbr(sector_0: &[u8; SECTOR_SIZE]) -> Option<[Option<PartitionEntry>
         return None;
     }
 
+    // FAT volume boot records also end with 0x55AA, so guard against false
+    // positives.  A valid FAT BPB always stores bytes_per_sector (a power-of-two
+    // in {512, 1024, 2048, 4096}) at offset 11-12.  Real MBR bootstrap code
+    // never has those values at that position.
+    let bytes_per_sector = u16::from_le_bytes([sector_0[11], sector_0[12]]);
+    if matches!(bytes_per_sector, 512 | 1024 | 2048 | 4096) {
+        return None;
+    }
+
     // Partition table starts at offset 0x1BE (446)
     let mut partitions = [None; 4];
     for (i, partition) in partitions.iter_mut().enumerate() {
