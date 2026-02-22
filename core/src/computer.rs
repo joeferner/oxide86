@@ -156,6 +156,7 @@ impl<V: VideoController> Computer<V> {
             cpu_freq,
         };
         computer.cpu.cpu_freq = cpu_freq;
+        computer.cpu.cpu_type = cpu_type;
 
         computer.draw_bios_splash();
         computer

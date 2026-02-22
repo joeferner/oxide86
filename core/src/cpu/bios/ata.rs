@@ -56,9 +56,19 @@ impl Bios {
         // while polling for DRQ, and we must not clobber the current status.
         if reg == 6 {
             let is_slave = value & 0x10 != 0;
-            let exists = self.ata_device_at(is_slave) != AtaDeviceType::None;
+            let device = self.ata_device_at(is_slave);
+            let exists = device != AtaDeviceType::None;
             if matches!(self.shared.ata_primary.transfer, ata::TransferState::Idle) {
                 self.shared.ata_primary.status = if exists { ata::status::DRDY } else { 0x00 };
+                // Update cylinder registers with device signature so drivers can
+                // identify ATAPI devices by reading 0x1F4/0x1F5 after selection.
+                if matches!(device, AtaDeviceType::CdRom(_)) {
+                    self.shared.ata_primary.lba_mid = ata::ATAPI_SIG_LBA_MID;
+                    self.shared.ata_primary.lba_high = ata::ATAPI_SIG_LBA_HIGH;
+                } else {
+                    self.shared.ata_primary.lba_mid = 0x00;
+                    self.shared.ata_primary.lba_high = 0x00;
+                }
             }
         }
 
@@ -154,6 +164,8 @@ impl Bios {
         );
 
         match cmd {
+            // NOP — return success without doing anything
+            0x00 => self.shared.ata_primary.set_ok(),
             // IDENTIFY DEVICE (ATA hard drive)
             0xEC => self.ata_cmd_identify(device),
             // IDENTIFY PACKET DEVICE (ATAPI)

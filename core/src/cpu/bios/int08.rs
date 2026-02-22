@@ -37,6 +37,7 @@ impl Cpu {
         // Write updated tick count back to BDA
         bus.write_u16(counter_addr, (tick_count & 0xFFFF) as u16);
         bus.write_u16(counter_addr + 2, (tick_count >> 16) as u16);
+        log::trace!("BDA timer tick: {}", tick_count);
 
         // Chaining to INT 0x1C is handled by Computer::process_timer_irq()
         // which has access to the full execution context needed for proper chaining

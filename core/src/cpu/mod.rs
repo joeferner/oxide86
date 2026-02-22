@@ -1,4 +1,4 @@
-use crate::{Bus, io::IoDevice};
+use crate::{Bus, CpuType, io::IoDevice};
 
 pub mod bios;
 mod instructions;
@@ -66,6 +66,9 @@ pub struct Cpu {
     /// None = normal execution
     /// Some(IrqChainContext) = currently processing a chained interrupt
     irq_chain_context: Option<IrqChainContext>,
+
+    /// CPU type for behavior differences (e.g., PUSH SP semantics)
+    pub cpu_type: CpuType,
 }
 
 /// IRQ chain context - tracks state when one interrupt chains to another
@@ -143,6 +146,7 @@ impl Cpu {
             cpu_freq: 4_770_000,
             pending_exception: None,
             irq_chain_context: None,
+            cpu_type: CpuType::I8086,
         }
     }
 

@@ -80,8 +80,8 @@ impl Cpu {
     /// 80286+ PUSH SP behavior: pushes original SP value
     pub(in crate::cpu) fn push_reg16(&mut self, opcode: u8, bus: &mut Bus) {
         let reg = opcode & 0x07;
-        if reg == 4 {
-            // PUSH SP - true 8086 behavior: push the decremented value
+        if reg == 4 && self.cpu_type == crate::CpuType::I8086 {
+            // PUSH SP on 8086: push the decremented value (post-decrement SP)
             self.sp = self.sp.wrapping_sub(2);
             let value = self.sp;
             let addr = Self::physical_address(self.ss, self.sp);
