@@ -164,6 +164,25 @@ impl Memory {
         self.data[addr]
     }
 
+    /// Read a byte from a physical address, bypassing the A20 gate.
+    /// Used by INT 15h AH=87h (Move Extended Memory Block) to access
+    /// memory above 1 MB regardless of A20 state.
+    pub fn read_physical_u8(&self, address: usize) -> u8 {
+        if address >= self.data.len() {
+            return 0xFF;
+        }
+        self.data[address]
+    }
+
+    /// Write a byte to a physical address, bypassing the A20 gate.
+    /// Used by INT 15h AH=87h (Move Extended Memory Block) to access
+    /// memory above 1 MB regardless of A20 state.
+    pub fn write_physical_u8(&mut self, address: usize, value: u8) {
+        if address < self.data.len() {
+            self.data[address] = value;
+        }
+    }
+
     pub fn write_u8(&mut self, address: usize, value: u8) {
         let addr = self.apply_a20_gate(address);
         if addr >= self.data.len() {
