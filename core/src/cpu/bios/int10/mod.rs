@@ -112,6 +112,12 @@ impl Cpu {
                     cols as u16,
                 );
 
+                // EGA/VGA rows-1 register: programs (e.g. Turbo Pascal, dBASE) read BDA[0x84] to get row count
+                bus.write_u8(
+                    crate::memory::BDA_START + crate::memory::BDA_EGA_ROWS,
+                    (rows - 1) as u8,
+                );
+
                 // Page size = cols * rows * 2 (char + attr)
                 let page_size = cols * rows * 2;
                 bus.write_u16(

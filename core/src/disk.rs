@@ -179,6 +179,7 @@ pub trait DiskController {
 
     /// Sync changes to backing storage (no-op for most implementations)
     fn sync(&mut self) -> Result<()> {
+        log::debug!("adapter sync no-op");
         Ok(()) // Default: no-op
     }
 }
@@ -592,6 +593,11 @@ impl<D: DiskController> DiskController for PartitionedDisk<D> {
     fn is_read_only(&self) -> bool {
         self.disk.is_read_only()
     }
+
+    /// Forward sync to the inner disk (e.g., so HostDirectoryDisk can write back to host).
+    fn sync(&mut self) -> Result<()> {
+        self.disk.sync()
+    }
 }
 
 /// Memory-backed disk storage for WASM and testing.
@@ -818,5 +824,9 @@ impl DiskController for Box<dyn DiskController> {
 
     fn is_read_only(&self) -> bool {
         (**self).is_read_only()
+    }
+
+    fn sync(&mut self) -> Result<()> {
+        (**self).sync()
     }
 }

@@ -346,7 +346,12 @@ pub fn load_mounted_directories<V: VideoController>(
         );
 
         let host_disk = HostDirectoryDisk::new(host_path, false)?;
-        let drive_num = computer.bios_mut().add_hard_drive(Box::new(host_disk));
+        let partition_sectors = host_disk.partition_sectors();
+        let raw_disk = host_disk.create_raw_disk();
+        let partitioned = PartitionedDisk::new(host_disk, 63, partition_sectors as u32);
+        let drive_num = computer
+            .bios_mut()
+            .add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk));
 
         if drive_num.to_letter() != drive_letter {
             log::warn!(

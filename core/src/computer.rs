@@ -466,6 +466,11 @@ impl<V: VideoController> Computer<V> {
             return false;
         }
 
+        // Wake CPU from HLT state (STI + HLT idle-wait pattern)
+        if self.cpu.is_halted() {
+            self.cpu.clear_halt();
+        }
+
         // Set keyboard data:
         // 1. Port 0x60 for custom INT 09h handlers that read the keyboard controller
         // 2. BIOS pending fields for the default BIOS INT 09h handler
@@ -586,6 +591,11 @@ impl<V: VideoController> Computer<V> {
             return false;
         }
 
+        // Wake CPU from HLT state
+        if self.cpu.is_halted() {
+            self.cpu.clear_halt();
+        }
+
         let int_num: u8 = 0x76;
         let is_bios_handler = Cpu::is_bios_handler(&mut self.bus, int_num);
 
@@ -637,6 +647,11 @@ impl<V: VideoController> Computer<V> {
         if !self.cpu.get_flag(cpu_flag::INTERRUPT) {
             // Return false - caller should NOT remove from queue
             return false;
+        }
+
+        // Wake CPU from HLT state
+        if self.cpu.is_halted() {
+            self.cpu.clear_halt();
         }
 
         // COM1 = IRQ4 = INT 0x0C, COM2 = IRQ3 = INT 0x0B

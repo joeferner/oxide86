@@ -540,6 +540,7 @@ impl DriveManager {
 
     /// Sync a drive's changes to backing storage (e.g., for host directory mounts)
     pub fn sync_drive(&mut self, drive: DriveNumber) -> Result<(), String> {
+        log::debug!("syncing drive {drive}");
         let drive_state = self
             .get_drive_mut(drive)
             .ok_or_else(|| format!("Drive {} not found", drive))?;
@@ -549,6 +550,8 @@ impl DriveManager {
                 .disk_mut()
                 .sync()
                 .map_err(|e| format!("Failed to sync drive {}: {}", drive, e))?;
+        } else {
+            log::debug!("skipping adapter was None");
         }
 
         Ok(())
@@ -806,6 +809,8 @@ impl DriveManager {
     }
 
     pub fn file_create(&mut self, filename: &str, _attributes: u8) -> Result<u16, DosError> {
+        log::debug!("file_create filename: {filename}");
+
         let (drive, path_part) = self.parse_path(filename);
         let path = self.resolve_path(drive, &path_part);
 
@@ -848,6 +853,8 @@ impl DriveManager {
     }
 
     pub fn file_close(&mut self, handle: u16) -> Result<(), DosError> {
+        log::debug!("file_close handle: {handle}");
+
         self.open_files
             .remove(&handle)
             .ok_or(DosError::InvalidHandle)?;
@@ -855,6 +862,8 @@ impl DriveManager {
     }
 
     pub fn file_read(&mut self, handle: u16, max_bytes: u16) -> Result<Vec<u8>, DosError> {
+        log::debug!("file_read handle: {handle}, max_bytes: {max_bytes}");
+
         // Get file info first, then release borrow
         let (drive, path, position, is_cdrom) = {
             let file_handle = self
@@ -922,6 +931,8 @@ impl DriveManager {
     }
 
     pub fn file_write(&mut self, handle: u16, data: &[u8]) -> Result<u16, DosError> {
+        log::debug!("file_write handle: {handle}, data.len: {}", data.len());
+
         // Get file info first, then release borrow
         let (drive, path, position) = {
             let file_handle = self

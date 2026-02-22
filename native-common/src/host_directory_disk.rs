@@ -31,8 +31,10 @@ struct FileEntry {
 pub struct HostDirectoryDisk {
     host_path: PathBuf,
     fat_image: BackedDisk<MemoryDiskBackend>,
-    dirty_sectors: HashSet<usize>,
     read_only: bool,
+    /// Maps DOS path (e.g. ".GIT/HOOKS/APPLYPAT.SAM") → original host path.
+    /// Used during sync to write files back to their original names/casing.
+    name_map: HashMap<String, PathBuf>,
 }
 
 impl HostDirectoryDisk {
@@ -62,54 +64,79 @@ impl HostDirectoryDisk {
             geometry.total_size / 1024 / 1024
         );
 
-        // 3. Create and format FAT image with MBR (hard drives need partition table for DOS)
+        // 3. Create disk image with MBR at sector 0 and FAT partition starting at sector 63.
+        // The MBR is required so DOS can probe the drive via INT 13h and recognise it as a
+        // valid hard drive with a partition. The FAT partition itself is accessed by wrapping
+        // this disk in a PartitionedDisk (see load_mounted_directories in setup.rs), which
+        // offsets all sector reads/writes by PARTITION_START so that fatfs sees the FAT
+        // boot sector at its logical sector 0.
         let disk_data = create_formatted_disk(geometry, Some("HOST_DIR"))?;
         let backend = MemoryDiskBackend::new(disk_data);
         let mut disk = BackedDisk::new(backend)?;
 
         // 4. Populate FAT image with files from host
-        let file_count = populate_fat_image(&mut disk, files)?;
+        let file_count = populate_fat_image(&mut disk, &files)?;
         log::info!("Populated FAT image with {} files", file_count);
+
+        // Build name_map: DOS path → original host path (for both files and dirs)
+        let name_map: HashMap<String, PathBuf> = files
+            .into_iter()
+            .map(|e| (e.dos_path, e.host_path))
+            .collect();
 
         Ok(Self {
             host_path,
             fat_image: disk,
-            dirty_sectors: HashSet::new(),
             read_only,
+            name_map,
         })
+    }
+
+    /// Number of sectors in the FAT partition (total sectors minus MBR reserved sectors).
+    pub fn partition_sectors(&self) -> usize {
+        const PARTITION_START: usize = 63;
+        self.fat_image.geometry().total_sectors() - PARTITION_START
+    }
+
+    /// Create a raw (full-disk) view of the underlying memory for INT 13h access.
+    /// This shares the same memory as the FAT image, so writes through the partition
+    /// view (PartitionedDisk) are immediately visible here.
+    pub fn create_raw_disk(&self) -> BackedDisk<MemoryDiskBackend> {
+        let backend = self.fat_image.backend().clone();
+        BackedDisk::new(backend).expect("HostDirectoryDisk: raw disk view creation failed")
     }
 
     /// Sync changes from the FAT image back to the host directory.
     /// This extracts all files from the FAT image and writes them to the host.
     pub fn sync_to_host(&mut self) -> Result<()> {
-        if self.read_only || self.dirty_sectors.is_empty() {
+        if self.read_only {
             return Ok(());
         }
 
-        log::info!(
-            "Syncing {} dirty sectors to host: {}",
-            self.dirty_sectors.len(),
-            self.host_path.display()
-        );
+        log::info!("Syncing to host: {}", self.host_path.display());
 
-        // Extract all files from the FAT partition using fatfs
+        // FAT partition starts at sector 63 (after MBR).
+        // When booted DOS uses INT 13h directly, writes go to the shared raw_adapter memory
+        // (same Rc as fat_image), so we always read the current FAT state unconditionally.
         const PARTITION_START: usize = 63;
-        const SECTOR_SIZE: usize = 512;
         let partition_offset = PARTITION_START * SECTOR_SIZE;
 
         let backend = self.fat_image.backend().clone();
         let disk_data = backend.get_data();
-        let partition_data = &disk_data[partition_offset..];
-        let mut cursor: std::io::Cursor<Vec<u8>> = std::io::Cursor::new(partition_data.to_vec());
+        let partition_data = disk_data[partition_offset..].to_vec();
+        let mut cursor: std::io::Cursor<Vec<u8>> = std::io::Cursor::new(partition_data);
 
         let fs = fatfs::FileSystem::new(&mut cursor, fatfs::FsOptions::new())
             .context("Failed to mount FAT partition for sync")?;
 
-        sync_directory(&fs.root_dir(), &self.host_path, "")?;
+        let (files_written, dirs_created) =
+            sync_directory(&fs.root_dir(), &self.host_path, "", &self.name_map)?;
 
-        // Clear dirty sectors after successful sync
-        self.dirty_sectors.clear();
-        log::info!("Sync complete");
+        log::info!(
+            "Sync complete: {} file(s) written, {} director(ies) created",
+            files_written,
+            dirs_created
+        );
 
         Ok(())
     }
@@ -136,11 +163,7 @@ impl DiskController for HostDirectoryDisk {
     }
 
     fn write_sector_lba(&mut self, lba: usize, data: &[u8; SECTOR_SIZE]) -> Result<()> {
-        self.fat_image.write_sector_lba(lba, data)?;
-        if !self.read_only {
-            self.dirty_sectors.insert(lba);
-        }
-        Ok(())
+        self.fat_image.write_sector_lba(lba, data)
     }
 
     fn geometry(&self) -> &DiskGeometry {
@@ -281,25 +304,22 @@ fn calculate_geometry(data_bytes: u64) -> Result<DiskGeometry> {
 /// Populate a FAT image with files from the host directory.
 fn populate_fat_image(
     disk: &mut BackedDisk<MemoryDiskBackend>,
-    files: Vec<FileEntry>,
+    files: &[FileEntry],
 ) -> Result<usize> {
     let mut file_count = 0;
 
-    // For hard drives, FAT partition starts at sector 63 (after MBR)
+    // FAT partition starts at sector 63 (after MBR).
     const PARTITION_START: usize = 63;
-    const SECTOR_SIZE: usize = 512;
-    let partition_offset = PARTITION_START * SECTOR_SIZE;
+    const SECTOR_SIZE_LOCAL: usize = 512;
+    let partition_offset = PARTITION_START * SECTOR_SIZE_LOCAL;
 
-    // Get full disk data
     let backend = disk.backend().clone();
     let disk_data = backend.get_data();
-
-    // Create a cursor view of just the partition
-    let partition_data = &disk_data[partition_offset..];
-    let mut cursor: std::io::Cursor<Vec<u8>> = std::io::Cursor::new(partition_data.to_vec());
+    let partition_data = disk_data[partition_offset..].to_vec();
+    let mut cursor: std::io::Cursor<Vec<u8>> = std::io::Cursor::new(partition_data);
 
     let fs = fatfs::FileSystem::new(&mut cursor, fatfs::FsOptions::new())
-        .context("Failed to mount FAT partition")?;
+        .context("Failed to mount FAT partition for population")?;
 
     let root = fs.root_dir();
 
@@ -307,7 +327,8 @@ fn populate_fat_image(
     let mut dirs: Vec<_> = files.iter().filter(|e| e.is_dir).collect();
     dirs.sort_by_key(|e| e.dos_path.matches('/').count()); // Create shallow dirs first
 
-    for entry in dirs {
+    for entry in &dirs {
+        log::debug!("  Adding dir:  {}", entry.dos_path);
         match root.create_dir(&entry.dos_path) {
             Ok(_) => {}
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
@@ -323,6 +344,7 @@ fn populate_fat_image(
 
     // Create files
     for entry in files.iter().filter(|e| !e.is_dir) {
+        log::debug!("  Adding file: {} ({} bytes)", entry.dos_path, entry.size);
         let host_data = fs::read(&entry.host_path)
             .with_context(|| format!("Failed to read {}", entry.host_path.display()))?;
 
@@ -340,12 +362,11 @@ fn populate_fat_image(
     drop(root);
     drop(fs);
 
-    // Copy the updated partition data back into the full disk (preserving MBR)
+    // Copy updated partition data back into the full disk image (preserving MBR).
     let updated_partition = cursor.into_inner();
-    let mut full_disk_data = disk_data.clone();
-    let end_offset = partition_offset + updated_partition.len();
-    full_disk_data[partition_offset..end_offset].copy_from_slice(&updated_partition);
-
+    let mut full_disk_data = disk_data;
+    full_disk_data[partition_offset..partition_offset + updated_partition.len()]
+        .copy_from_slice(&updated_partition);
     let new_backend = MemoryDiskBackend::new(full_disk_data);
     *disk = BackedDisk::new(new_backend)?;
 
@@ -353,53 +374,96 @@ fn populate_fat_image(
 }
 
 /// Sync a FAT directory recursively to the host filesystem.
-fn sync_directory<IO>(fat_dir: &fatfs::Dir<IO>, host_base: &Path, rel_path: &str) -> Result<()>
+///
+/// `host_dir` is the actual host path for the current directory.
+/// `dos_rel_path` is the DOS-relative path used as key into `name_map`.
+/// `name_map` maps DOS paths → original host paths for files/dirs that existed at mount time.
+///
+/// Returns (files_written, dirs_created).
+fn sync_directory<IO>(
+    fat_dir: &fatfs::Dir<IO>,
+    host_dir: &Path,
+    dos_rel_path: &str,
+    name_map: &HashMap<String, PathBuf>,
+) -> Result<(usize, usize)>
 where
     IO: std::io::Read + std::io::Write + std::io::Seek,
 {
-    let host_dir = if rel_path.is_empty() {
-        host_base.to_path_buf()
-    } else {
-        host_base.join(rel_path.replace('/', std::path::MAIN_SEPARATOR_STR))
-    };
+    let mut files_written = 0usize;
+    let mut dirs_created = 0usize;
 
-    // Ensure directory exists
-    fs::create_dir_all(&host_dir)
-        .with_context(|| format!("Failed to create directory: {}", host_dir.display()))?;
+    // Ensure the current directory exists on the host (root always exists)
+    if !host_dir.exists() {
+        log::info!("  Creating dir: {}", host_dir.display());
+        fs::create_dir_all(host_dir)
+            .with_context(|| format!("Failed to create directory: {}", host_dir.display()))?;
+        dirs_created += 1;
+    }
 
     for entry in fat_dir.iter() {
         let entry = entry.context("Failed to read FAT directory entry")?;
         let name = entry.file_name();
 
-        // Skip volume labels and special entries
         if name == "." || name == ".." {
             continue;
         }
 
-        let rel_entry_path = if rel_path.is_empty() {
+        // Build the DOS-relative path for this entry (used as name_map key)
+        let child_dos_path = if dos_rel_path.is_empty() {
             name.clone()
         } else {
-            format!("{}/{}", rel_path, name)
+            format!("{}/{}", dos_rel_path, name)
+        };
+
+        // Resolve the host path: use the original path from name_map if available
+        // (preserves original casing and long filenames), otherwise lowercase the DOS name.
+        let child_host_path = if let Some(original) = name_map.get(&child_dos_path) {
+            original.clone()
+        } else {
+            host_dir.join(name.to_lowercase())
         };
 
         if entry.is_dir() {
-            // Recurse into subdirectory
             let subdir = entry.to_dir();
-            sync_directory(&subdir, host_base, &rel_entry_path)?;
+            let (f, d) = sync_directory(&subdir, &child_host_path, &child_dos_path, name_map)?;
+            files_written += f;
+            dirs_created += d;
         } else {
-            // Write file to host
-            let host_file_path =
-                host_base.join(rel_entry_path.replace('/', std::path::MAIN_SEPARATOR_STR));
             let mut fat_file = entry.to_file();
             let mut contents = Vec::new();
             fat_file
                 .read_to_end(&mut contents)
                 .context("Failed to read FAT file")?;
 
-            fs::write(&host_file_path, &contents)
-                .with_context(|| format!("Failed to write file: {}", host_file_path.display()))?;
+            // Only write if content has changed (or file is new)
+            let changed = match fs::read(&child_host_path) {
+                Ok(host_contents) => host_contents != contents,
+                Err(_) => true,
+            };
+
+            if changed {
+                // Ensure parent directory exists for new files in new dirs
+                if let Some(parent) = child_host_path.parent()
+                    && !parent.exists()
+                {
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!("Failed to create parent dir: {}", parent.display())
+                    })?;
+                }
+                log::info!(
+                    "  Writing file: {} ({} bytes)",
+                    child_host_path.display(),
+                    contents.len()
+                );
+                fs::write(&child_host_path, &contents).with_context(|| {
+                    format!("Failed to write file: {}", child_host_path.display())
+                })?;
+                files_written += 1;
+            } else {
+                log::debug!("  Unchanged: {}", child_host_path.display());
+            }
         }
     }
 
-    Ok(())
+    Ok((files_written, dirs_created))
 }
