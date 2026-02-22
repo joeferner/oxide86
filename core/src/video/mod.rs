@@ -1,4 +1,5 @@
 use crate::video_card_type::VideoCardType;
+use std::cell::Cell;
 
 pub mod cga;
 pub mod composite;
@@ -183,6 +184,14 @@ pub struct Video {
     ega_map_mask: u8,
     /// EGA Graphics Controller Read Map Select (register 4): which plane to read (0-3)
     ega_read_plane: u8,
+    /// EGA Graphics Controller Write Mode (register 5 bits 1:0): 0=direct, 2=color fill
+    ega_write_mode: u8,
+    /// EGA Graphics Controller Bit Mask (register 8): which bits can be updated by writes
+    /// Bit = 1: update from CPU/write-mode expansion; Bit = 0: preserve latch value
+    ega_bit_mask: u8,
+    /// EGA internal latches (one per plane). Loaded on every EGA read, used in writes with
+    /// bit_mask != 0xFF to preserve bits not targeted by the current write.
+    ega_latches: Cell<[u8; 4]>,
     /// CGA composite mode: render 640x200 as composite artifact colors (160x200 16-color)
     /// Set when mode switches to 640x200 via port 0x3D8 (e.g., AGI games); cleared by INT 10h
     composite_mode: bool,
@@ -270,6 +279,9 @@ impl Video {
             vga_dac_palette: default_vga_palette(),
             ega_map_mask: 0x0F, // All 4 planes enabled
             ega_read_plane: 0,  // Read from plane 0
+            ega_write_mode: 0,  // Write Mode 0 (direct write)
+            ega_bit_mask: 0xFF, // All bits updatable by default
+            ega_latches: Cell::new([0u8; 4]),
             composite_mode: false,
             card_type,
             ac_palette: Self::default_ac_palette(),
@@ -815,34 +827,88 @@ impl Video {
     }
 
     /// Write a byte to EGA planar memory (A000 segment).
-    /// Writes value to each plane enabled by the current Map Mask register.
+    ///
+    /// Supports EGA Write Mode 0 (direct/set-reset) and Write Mode 2 (color fill).
+    /// The Bit Mask register (GC reg 8) controls which bits within each plane byte are
+    /// updated; masked-off bits come from the internal latches loaded by the last EGA read.
     pub fn write_byte_ega(&mut self, offset: usize, value: u8) {
         if offset >= 8000 {
             return;
         }
-        for plane in 0..4usize {
-            if self.ega_map_mask & (1 << plane) != 0 {
-                self.vram[plane * 8000 + offset] = value;
-                log::debug!(
-                    "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} (ega_p{})",
-                    offset,
-                    (offset % 40) * 8,
-                    offset / 40,
-                    value,
-                    plane
-                );
+        let bit_mask = self.ega_bit_mask;
+        let latches = self.ega_latches.get();
+
+        match self.ega_write_mode {
+            2 => {
+                // Write Mode 2: bits 3:0 of `value` are a 4-bit color index.
+                // Each plane N gets 0xFF if color bit N is set, else 0x00, combined
+                // with the latch via the bit mask.
+                let color = value & 0x0F;
+                for (plane, &latch) in latches.iter().enumerate() {
+                    if self.ega_map_mask & (1 << plane) != 0 {
+                        let expanded: u8 = if (color >> plane) & 1 != 0 {
+                            0xFF
+                        } else {
+                            0x00
+                        };
+                        let new_val = (expanded & bit_mask) | (latch & !bit_mask);
+                        self.vram[plane * 8000 + offset] = new_val;
+                        log::debug!(
+                            "Graphics write: offset=0x{:04X} (x={}, y={}), color=0x{:X} \
+                             mask=0x{:02X} -> p{} = 0x{:02X}",
+                            offset,
+                            (offset % 40) * 8,
+                            offset / 40,
+                            color,
+                            bit_mask,
+                            plane,
+                            new_val
+                        );
+                    }
+                }
+            }
+            _ => {
+                // Write Mode 0 (default): write `value` directly to each enabled plane,
+                // combined with the latch via the bit mask.
+                for (plane, &latch) in latches.iter().enumerate() {
+                    if self.ega_map_mask & (1 << plane) != 0 {
+                        let new_val = if bit_mask == 0xFF {
+                            value
+                        } else {
+                            (value & bit_mask) | (latch & !bit_mask)
+                        };
+                        self.vram[plane * 8000 + offset] = new_val;
+                        log::debug!(
+                            "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} (ega_p{})",
+                            offset,
+                            (offset % 40) * 8,
+                            offset / 40,
+                            value,
+                            plane
+                        );
+                    }
+                }
             }
         }
         self.dirty = true;
     }
 
     /// Read a byte from EGA planar memory (A000 segment).
-    /// Reads from the plane selected by the Read Map Select register.
+    /// Loads all four internal latches (one per plane) and returns the byte from
+    /// the plane selected by the Read Map Select register (GC reg 4).
     pub fn read_byte_ega(&self, offset: usize) -> u8 {
         let plane = (self.ega_read_plane & 3) as usize;
         if offset >= 8000 {
             return 0;
         }
+        // Load all 4 latches from the current offset.
+        let latches = [
+            self.vram[offset],
+            self.vram[8000 + offset],
+            self.vram[16000 + offset],
+            self.vram[24000 + offset],
+        ];
+        self.ega_latches.set(latches);
         self.vram[plane * 8000 + offset]
     }
 
@@ -854,6 +920,18 @@ impl Video {
     /// Set EGA Graphics Controller Read Map Select (register 4): which plane to read
     pub fn set_ega_read_plane(&mut self, value: u8) {
         self.ega_read_plane = value & 0x03;
+    }
+
+    /// Set EGA Graphics Controller Write Mode (GC register 5, bits 1:0)
+    pub fn set_ega_write_mode(&mut self, value: u8) {
+        self.ega_write_mode = value & 0x03;
+        log::debug!("EGA Write Mode: {}", self.ega_write_mode);
+    }
+
+    /// Set EGA Graphics Controller Bit Mask (GC register 8)
+    pub fn set_ega_bit_mask(&mut self, value: u8) {
+        self.ega_bit_mask = value;
+        log::debug!("EGA Bit Mask: 0x{:02X}", value);
     }
 
     /// Get palette (for rendering)

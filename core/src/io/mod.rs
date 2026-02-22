@@ -475,10 +475,21 @@ impl IoDevice {
                 let idx = self.ega_graphics_index as usize;
                 if idx < self.ega_graphics_regs.len() {
                     self.ega_graphics_regs[idx] = value;
-                    // Register 4: Read Map Select - which plane to read
-                    if idx == 4 {
-                        video.set_ega_read_plane(value);
-                        log::debug!("EGA Graphics Read Map Select: plane {}", value & 3);
+                    match idx {
+                        // Register 4: Read Map Select - which plane to read
+                        4 => {
+                            video.set_ega_read_plane(value);
+                            log::debug!("EGA Graphics Read Map Select: plane {}", value & 3);
+                        }
+                        // Register 5: Mode Register (bits 1:0 = Write Mode)
+                        5 => {
+                            video.set_ega_write_mode(value & 0x03);
+                        }
+                        // Register 8: Bit Mask
+                        8 => {
+                            video.set_ega_bit_mask(value);
+                        }
+                        _ => {}
                     }
                 }
             }
