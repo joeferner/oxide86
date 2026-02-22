@@ -967,7 +967,7 @@ fn show_insert_dialog(
     };
 
     let result = rfd::FileDialog::new()
-        .add_filter("Disk Images", &["img"])
+        .add_filter("Disk Images", &["ima", "img"])
         .set_directory(".")
         .set_title(format!("Select Disk for Floppy {}", drive_label))
         .pick_file();
