@@ -23,11 +23,27 @@ use alloc::vec::Vec;
 pub struct DiskAdapter {
     disk: Box<dyn DiskController>,
     position: u64,
+    /// Patched sector 0 served in place of the real sector 0, used to fix non-standard BPBs
+    /// without modifying the underlying disk data.
+    sector_0_override: Option<Box<[u8; 512]>>,
 }
 
 impl DiskAdapter {
     pub fn new(disk: Box<dyn DiskController>) -> Self {
-        Self { disk, position: 0 }
+        Self {
+            disk,
+            position: 0,
+            sector_0_override: None,
+        }
+    }
+
+    /// Create adapter with a patched sector 0 that overrides reads without touching disk data.
+    pub fn new_with_sector0_override(disk: Box<dyn DiskController>, sector0: [u8; 512]) -> Self {
+        Self {
+            disk,
+            position: 0,
+            sector_0_override: Some(Box::new(sector0)),
+        }
     }
 
     /// Get the total size of the disk in bytes
@@ -71,10 +87,19 @@ impl Read for DiskAdapter {
         let mut buf_offset = 0;
 
         while bytes_read < bytes_to_read {
-            let sector_data = self
-                .disk
-                .read_sector_lba(current_sector)
-                .map_err(|e| Error::other(e.to_string()))?;
+            let sector_data = if current_sector == 0 {
+                match &self.sector_0_override {
+                    Some(override_sector) => **override_sector,
+                    None => self
+                        .disk
+                        .read_sector_lba(0)
+                        .map_err(|e| Error::other(e.to_string()))?,
+                }
+            } else {
+                self.disk
+                    .read_sector_lba(current_sector)
+                    .map_err(|e| Error::other(e.to_string()))?
+            };
 
             let sector_offset = if bytes_read == 0 { offset_in_sector } else { 0 };
             let bytes_in_sector = (SECTOR_SIZE - sector_offset).min(bytes_to_read - bytes_read);
@@ -203,8 +228,33 @@ impl DriveState {
         raw_disk: Box<dyn DiskController>,
         removable: bool,
     ) -> Self {
+        // fatfs 0.3 requires exactly one of total_sectors_16/total_sectors_32 to be non-zero
+        // (condition: (ts16==0) == (ts32==0) triggers error when both are set).
+        // Some formatters (e.g. FreeDOS) set both fields to the same value, which violates this.
+        // Fix: serve a patched sector 0 that clears the redundant field, without modifying disk data.
+        let partition_adapter = match partition.read_sector_lba(0) {
+            Ok(mut sector0) => {
+                let total16 = u16::from_le_bytes([sector0[19], sector0[20]]);
+                let total32 =
+                    u32::from_le_bytes([sector0[32], sector0[33], sector0[34], sector0[35]]);
+                if total16 != 0 && total32 != 0 {
+                    sector0[32] = 0;
+                    sector0[33] = 0;
+                    sector0[34] = 0;
+                    sector0[35] = 0;
+                    log::info!(
+                        "Patching non-standard FAT BPB: cleared redundant total_sectors_32 (both fields were {})",
+                        total16
+                    );
+                    DiskAdapter::new_with_sector0_override(partition, sector0)
+                } else {
+                    DiskAdapter::new(partition)
+                }
+            }
+            Err(_) => DiskAdapter::new(partition),
+        };
         Self {
-            adapter: Some(DiskAdapter::new(partition)),
+            adapter: Some(partition_adapter),
             raw_adapter: Some(DiskAdapter::new(raw_disk)),
             current_dir: String::from("/"),
             disk_changed: false,
@@ -685,6 +735,7 @@ impl DriveManager {
 
     /// Convert IO error to DOS error code
     fn map_error(err: io::Error) -> DosError {
+        log::warn!("DriveManager IO error: {:?} - {}", err.kind(), err);
         match err.kind() {
             ErrorKind::NotFound => DosError::FileNotFound,
             ErrorKind::AlreadyExists => DosError::AccessDenied,
@@ -1247,9 +1298,24 @@ impl DriveManager {
 
         // Collect entries in a scoped block so fs is dropped before we access self.next_search_id
         let entries = {
-            let drive_state = self.get_drive_mut(drive).ok_or(DosError::InvalidDrive)?;
-            let adapter = drive_state.adapter.as_mut().ok_or(DosError::FileNotFound)?;
+            let drive_state = self.get_drive_mut(drive).ok_or_else(|| {
+                log::warn!("find_first: drive {:?} not found (InvalidDrive)", drive);
+                DosError::InvalidDrive
+            })?;
+            let adapter = drive_state.adapter.as_mut().ok_or_else(|| {
+                log::warn!(
+                    "find_first: drive {:?} has no adapter (no disk inserted)",
+                    drive
+                );
+                DosError::FileNotFound
+            })?;
 
+            log::info!(
+                "find_first: opening FAT fs on drive {:?}, path='{}', pattern='{}'",
+                drive,
+                path,
+                filename_pattern
+            );
             adapter.reset_position();
             let fs = fatfs::FileSystem::new(adapter, fatfs::FsOptions::new())
                 .map_err(Self::map_error)?;
@@ -1295,6 +1361,12 @@ impl DriveManager {
         };
 
         if entries.is_empty() {
+            log::warn!(
+                "find_first: no entries found for drive {:?} path='{}' pattern='{}'",
+                drive,
+                path,
+                filename_pattern
+            );
             return Err(DosError::NoMoreFiles);
         }
 

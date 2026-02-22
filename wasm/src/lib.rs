@@ -401,10 +401,43 @@ impl Oxide86Computer {
 
         // Check if disk has MBR and partitions
         let sector_0 = disk.read_sector_lba(0).ok();
-        let has_partitions = sector_0
+        let mbr_partition = sector_0
             .as_ref()
             .and_then(parse_mbr)
             .and_then(|parts| parts[0]);
+
+        // Validate the partition: check that the sector at the claimed partition
+        // start actually contains a valid FAT BPB.  Some disk images are FAT-
+        // formatted without a partition table but still trigger parse_mbr (e.g.
+        // when the MBR bytes_per_sector guard doesn't catch a non-standard
+        // bytes_per_sector value).  If the FAT signature isn't there, fall back
+        // to treating the disk as unpartitioned.
+        let has_partitions = mbr_partition.filter(|p| {
+            let fat_sector = disk.read_sector_lba(p.start_sector as usize).ok();
+            let valid = fat_sector
+                .as_ref()
+                .map(|s| {
+                    let bps = u16::from_le_bytes([s[11], s[12]]);
+                    let total16 = u16::from_le_bytes([s[19], s[20]]);
+                    let total32 = u32::from_le_bytes([s[32], s[33], s[34], s[35]]);
+                    let valid_bps = matches!(bps, 512 | 1024 | 2048 | 4096);
+                    let valid_total = total16 != 0 || total32 != 0;
+                    log::info!(
+                        "Partition sector {}: bytes_per_sector={}, total16={}, total32={}, oem={:?}",
+                        p.start_sector, bps, total16, total32,
+                        core::str::from_utf8(&s[3..11]).unwrap_or("?")
+                    );
+                    valid_bps && valid_total
+                })
+                .unwrap_or(false);
+            if !valid {
+                log::warn!(
+                    "MBR claims partition at sector {} but no valid FAT BPB found there; treating disk as unpartitioned",
+                    p.start_sector
+                );
+            }
+            valid
+        });
 
         let drive_number = if let Some(partition) = has_partitions {
             log::info!(

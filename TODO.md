@@ -10,16 +10,18 @@
 - [X] Install SvarDOS (open source dos)
 - [X] Implement ATA/ATAPI (see plans/ata-atapi-support.md)
 - [X] Update README.md to get SvarDos environment up and running
+- [ ] Changing hard drive images in wasm isn't reflected in the disk manager dialog
+- [ ] Add an opcode test for 286 instructions (test-programs/opcode-test/op286.asm), you do not need to test instructions which are already tested in test-programs/opcode-test/op8086.asm unless the behavior is different between 8086 and 286. Look at cpu_type for any special handling of 286.
+- [ ] In the wasm interface fetch a file called "images.json" which contains a list of floppy, hard drive, and cd rom images with descriptions that can be loaded from the server. Add this file to wasm/www. Add some interface next to the file buttons to choose from an existing image from images.json if there are any available for that type of device floppy, hard drive, cd-rom.
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
 - [ ] King's Quest 2 soft locks on title screen (see docs/kq2-timer-softlock-investigation.md)
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
-- [ ] WASM add additional hard drive support, move B: into an Accordion with additional hard drives
+- [ ] WASM add additional hard drives, floppy, or cdrom. Remove "Floppy Drive B:" by default and add a button to add additional drives.
 - [ ] SoundBlaster support
 - [ ] Clean up handle_bios_interrupt_direct, pending_int15_4f, interrupt chaining, etc
-- [ ] Changing hard drive images in wasm isn't reflected in the disk manager dialog
 - [ ] Joystick
   - [X] Test Wasm
   - [ ] Test Native GUI
