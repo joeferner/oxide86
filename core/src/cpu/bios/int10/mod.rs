@@ -636,6 +636,10 @@ impl Cpu {
         let start_line = (self.cx >> 8) as u8; // CH
         let end_line = (self.cx & 0xFF) as u8; // CL
 
+        // CH bit 5 = cursor disable (hidden). Standard CGA/EGA/VGA behaviour.
+        let visible = (start_line & 0x20) == 0;
+        bus.video_mut().set_cursor_visible(visible);
+
         // Store cursor shape in BDA
         bus.write_u8(
             crate::memory::BDA_START + crate::memory::BDA_CURSOR_START_LINE,
@@ -644,6 +648,13 @@ impl Cpu {
         bus.write_u8(
             crate::memory::BDA_START + crate::memory::BDA_CURSOR_END_LINE,
             end_line,
+        );
+
+        log::debug!(
+            "INT 10h/AH=01h: cursor shape CH={:02X}h CL={:02X}h visible={}",
+            start_line,
+            end_line,
+            visible
         );
     }
 
@@ -835,8 +846,14 @@ impl Cpu {
             }
             0x03 => {
                 // Toggle intensity/blinking bit
-                // BL = 0 enable intensity, 1 enable blinking
-                log::warn!("INT 10h/AH=10h/AL=03h: Toggle blink/intensity");
+                // BL = 0: bit 7 = high-intensity background (16 bg colors, no blink)
+                // BL = 1: bit 7 = character blink (8 bg colors, blink enabled, default)
+                let blink_enabled = (self.bx & 0xFF) as u8 != 0;
+                bus.video_mut().set_blink_enabled(blink_enabled);
+                log::debug!(
+                    "INT 10h/AH=10h/AL=03h: {} mode",
+                    if blink_enabled { "blink" } else { "intensity" }
+                );
             }
             0x10 => {
                 // Set individual DAC register

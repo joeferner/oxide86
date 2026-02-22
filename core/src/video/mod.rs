@@ -202,6 +202,13 @@ pub struct Video {
     /// On CGA mode changes, AC[0-3] are synced from the CGA palette EGA indices
     /// Programs can reprogram these via port 0x3C0 for custom color mapping
     ac_palette: [u8; 16],
+    /// Blink/intensity mode for text attribute bit 7.
+    /// true  = bit 7 enables character blinking (8 background colors, default)
+    /// false = bit 7 selects high-intensity background (16 background colors, no blink)
+    blink_enabled: bool,
+    /// Whether the text cursor is visible.
+    /// Hidden when INT 10h AH=01h is called with CH bit 5 set (cursor off).
+    cursor_visible: bool,
     /// Raw video RAM (64KB).
     /// In CGA/text modes: framebuffer at B8000-BFFFF.
     /// In EGA mode 0x0D: 4 planes × 8000 bytes (plane N at vram[N*8000..N*8000+8000]).
@@ -285,6 +292,8 @@ impl Video {
             composite_mode: false,
             card_type,
             ac_palette: Self::default_ac_palette(),
+            blink_enabled: true,
+            cursor_visible: true,
             vram: Box::new([0; VIDEO_MEMORY_SIZE]),
         }
     }
@@ -1013,6 +1022,30 @@ impl Video {
         self.vga_dac_palette[index as usize]
     }
 
+    /// Get blink/intensity mode for text attribute bit 7
+    pub fn blink_enabled(&self) -> bool {
+        self.blink_enabled
+    }
+
+    /// Set blink/intensity mode for text attribute bit 7.
+    /// true  = bit 7 enables character blinking (8 background colors, default)
+    /// false = bit 7 selects high-intensity background (16 background colors, no blink)
+    pub fn set_blink_enabled(&mut self, enabled: bool) {
+        self.blink_enabled = enabled;
+        self.dirty = true;
+    }
+
+    /// Whether the text cursor is currently visible
+    pub fn cursor_visible(&self) -> bool {
+        self.cursor_visible
+    }
+
+    /// Set text cursor visibility.
+    /// Mirrors INT 10h AH=01h: cursor is hidden when CH bit 5 is set.
+    pub fn set_cursor_visible(&mut self, visible: bool) {
+        self.cursor_visible = visible;
+    }
+
     /// Set border color (overscan) for text modes
     pub fn set_border_color(&mut self, color: u8) {
         self.border_color = color & 0x0F;
@@ -1057,7 +1090,7 @@ impl Video {
             if offset < self.vram.len() && cell_index < self.text_buffer.len() {
                 self.text_buffer[cell_index].character = self.vram[offset];
                 self.text_buffer[cell_index].attribute =
-                    text::TextAttribute::from_byte(self.vram[offset + 1]);
+                    text::TextAttribute::from_byte(self.vram[offset + 1], self.blink_enabled);
             }
         }
     }

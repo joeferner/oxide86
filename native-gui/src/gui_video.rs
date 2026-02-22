@@ -39,6 +39,8 @@ pub struct PixelsVideoController {
     vga_dac_palette: [[u8; 3]; 256],
     /// CGA composite rendering mode for 640x200
     graphics_composite: bool,
+    /// Whether the text cursor is visible (mirrors INT 10h AH=01h CH bit 5)
+    cursor_visible: bool,
 }
 
 impl PixelsVideoController {
@@ -62,6 +64,7 @@ impl PixelsVideoController {
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
             graphics_composite: false,
+            cursor_visible: true,
         }
     }
 
@@ -199,7 +202,9 @@ impl PixelsVideoController {
         }
 
         // Render cursor if visible
-        if let Some(pos) = self.current_cursor {
+        if self.cursor_visible
+            && let Some(pos) = self.current_cursor
+        {
             self.render_cursor_at(&mut buffer, pos);
         }
 
@@ -271,9 +276,14 @@ impl PixelsVideoController {
             }
         }
 
-        // Render cursor
-        if self.current_cursor != self.last_rendered_cursor {
-            // Clear old cursor by redrawing the cell
+        // Render cursor (re-evaluate whenever position or visibility may have changed)
+        let desired_cursor = if self.cursor_visible {
+            self.current_cursor
+        } else {
+            None
+        };
+        if desired_cursor != self.last_rendered_cursor {
+            // Clear old cursor by redrawing the cell at the old position
             if let Some(old_pos) = self.last_rendered_cursor {
                 let idx = old_pos.row * TEXT_MODE_COLS + old_pos.col;
                 if idx < self.current_buffer.len() {
@@ -281,12 +291,12 @@ impl PixelsVideoController {
                 }
             }
 
-            // Draw new cursor
-            if let Some(new_pos) = self.current_cursor {
+            // Draw new cursor (only when visible)
+            if let Some(new_pos) = desired_cursor {
                 self.render_cursor_at(frame, new_pos);
             }
 
-            self.last_rendered_cursor = self.current_cursor;
+            self.last_rendered_cursor = desired_cursor;
         }
     }
 }
@@ -311,6 +321,7 @@ impl Default for PixelsVideoController {
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
             graphics_composite: false,
+            cursor_visible: true,
         }
     }
 }
@@ -325,6 +336,13 @@ impl VideoController for PixelsVideoController {
         // Only mark as pending if cursor actually moved
         if self.current_cursor != Some(position) {
             self.current_cursor = Some(position);
+            self.has_pending_updates = true;
+        }
+    }
+
+    fn set_cursor_visible(&mut self, visible: bool) {
+        if self.cursor_visible != visible {
+            self.cursor_visible = visible;
             self.has_pending_updates = true;
         }
     }

@@ -26,6 +26,8 @@ pub struct WebVideo {
     graphics_color_map: Option<[u8; 4]>,
     /// VGA DAC palette (256 colors, RGB 6-bit values 0-63)
     vga_dac_palette: [[u8; 3]; 256],
+    /// Whether the text cursor is visible (mirrors INT 10h AH=01h CH bit 5)
+    cursor_visible: bool,
 }
 
 impl WebVideo {
@@ -71,6 +73,7 @@ impl WebVideo {
             },
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
+            cursor_visible: true,
         })
     }
 
@@ -238,19 +241,22 @@ impl VideoController for WebVideo {
             return;
         }
 
-        // We need to redraw the character at the old cursor position to erase it,
-        // then draw the new cursor. However, we don't have the buffer here.
-        // For now, just store the cursor position and draw it when we update the display.
-        // A more efficient implementation would store the buffer and redraw only affected cells.
         self.last_cursor = Some(cursor);
 
-        // Draw cursor on current buffer
-        self.draw_cursor(&cursor);
+        // Only draw cursor when visible
+        if self.cursor_visible {
+            self.draw_cursor(&cursor);
 
-        // Flush to canvas
-        if let Err(e) = self.flush_to_canvas() {
-            log::error!("Failed to update cursor: {:?}", e);
+            if let Err(e) = self.flush_to_canvas() {
+                log::error!("Failed to update cursor: {:?}", e);
+            }
         }
+    }
+
+    fn set_cursor_visible(&mut self, visible: bool) {
+        // Just update the flag. The cursor pixel overlay (if any) will be cleared
+        // on the next update_display call which repaints all cells.
+        self.cursor_visible = visible;
     }
 
     fn set_video_mode(&mut self, mode: u8) {

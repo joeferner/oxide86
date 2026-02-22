@@ -450,5 +450,24 @@ cargo run -p oxide86-native-gui -- --video-card vga test-programs/video/mode_13h
 **Technical Details:**
 Demonstrates VGA mode 0x13 (INT 10h AH=00h AL=13h) with direct linear framebuffer access via A000:0000. Unlike CGA (interlaced) or EGA (planar), mode 13h uses simple linear addressing: one byte per pixel, each byte is a color index (0-255) into the VGA DAC palette. Shows both direct memory writes for graphics and INT 10h AH=0Eh text output in graphics mode. The default VGA DAC palette maps indices 0-15 to standard EGA colors and 16-255 to other colors. Waits for keypress then returns to text mode.
 
+### blink_intensity_toggle.asm
+Tests INT 10h / AH=10h / AL=03h: Toggle blink/intensity mode for text attribute bit 7.
+
+**Running:**
+```bash
+cargo run -p oxide86-native-gui -- test-programs/video/blink_intensity_toggle.com
+```
+
+**Expected Output:**
+- **Row A (bit7=0):** 8 solid color bars with standard backgrounds 0-7
+- **Row B (bit7=1, default BLINK MODE):** 8 bars with the SAME background colors as Row A (bit 7 only flags blink, background unchanged)
+- **After pressing SPACE (INTENSITY MODE):** Row B bars change to BRIGHT background colors 8-15 — clearly different from Row A
+- Cursor is hidden throughout (validates INT 10h AH=01h CH bit 5 = cursor disable)
+
+Press SPACE to toggle between blink and intensity mode. Press ESC to exit.
+
+**Technical Details:**
+Writes attribute bytes directly to B8000 for Row A (attrs 0x0F–0x7F, bit7=0) and Row B (attrs 0x8F–0xFF, bit7=1). Calls INT 10h AH=10h AL=03h with BL=1 (blink) or BL=0 (intensity) to switch modes. In blink mode, `TextAttribute::from_byte` treats bit 7 as a blink flag and leaves background at bits 4–6 (0–7). In intensity mode, bit 7 becomes the high bit of the background (0–15). The Row B bar color change is the visual proof.
+
 ### color.bas
 QBasic program that demonstrates text mode color capabilities. Displays all 16 foreground colors (0-15) with black background, then shows standard background colors (0-7) with white foreground. Illustrates COLOR command usage and text mode color attribute handling.

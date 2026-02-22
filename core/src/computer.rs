@@ -1289,7 +1289,9 @@ impl<V: VideoController> Computer<V> {
             }
             self.bus.video_mut().clear_dirty();
         }
-        // Always update cursor position (cursor moves don't dirty the buffer)
+        // Always update cursor position and visibility (cursor moves don't dirty the buffer)
+        self.video_controller
+            .set_cursor_visible(self.bus.video().cursor_visible());
         self.video_controller
             .update_cursor(self.bus.video().get_cursor());
     }
@@ -1339,6 +1341,8 @@ impl<V: VideoController> Computer<V> {
             }
         }
         self.bus.video_mut().clear_dirty();
+        self.video_controller
+            .set_cursor_visible(self.bus.video().cursor_visible());
         self.video_controller
             .update_cursor(self.bus.video().get_cursor());
     }
