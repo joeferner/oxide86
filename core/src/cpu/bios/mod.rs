@@ -286,21 +286,27 @@ impl Bios {
         self.shared.drive_manager.eject_floppy(slot)
     }
 
-    /// Add a hard drive (returns assigned drive number: 0x80, 0x81, etc.)
-    pub fn add_hard_drive(&mut self, disk: Box<dyn DiskController>) -> DriveNumber {
-        self.shared.drive_manager.add_hard_drive(disk)
+    /// Set the hard drive for the given drive number.
+    /// Replaces the existing disk if the drive already exists, or appends if it is the next slot.
+    pub fn set_hard_drive(
+        &mut self,
+        drive: DriveNumber,
+        disk: Box<dyn DiskController>,
+    ) -> anyhow::Result<DriveNumber> {
+        self.shared.drive_manager.set_hard_drive(drive, disk)
     }
 
-    /// Add a partitioned hard drive with both partition and raw disk views
-    /// This allows INT 13h to read the MBR while DOS file operations use the partition
-    pub fn add_hard_drive_with_partition(
+    /// Set a partitioned hard drive for the given drive number.
+    /// Replaces the existing disk if the drive already exists, or appends if it is the next slot.
+    pub fn set_hard_drive_with_partition(
         &mut self,
+        drive: DriveNumber,
         partition: Box<dyn DiskController>,
         raw_disk: Box<dyn DiskController>,
-    ) -> DriveNumber {
+    ) -> anyhow::Result<DriveNumber> {
         self.shared
             .drive_manager
-            .add_hard_drive_with_partition(partition, raw_disk)
+            .set_hard_drive_with_partition(drive, partition, raw_disk)
     }
 
     /// Insert a CD-ROM ISO image into a slot (0-3). Returns assigned drive number.

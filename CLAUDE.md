@@ -116,7 +116,7 @@ DiskAdapter<D>     // Wraps DiskController for fatfs Read/Write/Seek traits
 - This is initialized in `Computer::new()` to the count at that moment
 - **CRITICAL**: After adding/removing hard drives at runtime, you MUST call `computer.update_bda_hard_drive_count()`
 - Failure to update the BDA causes boot failures (BIOS functions check this value)
-- This is automatically done in WASM `add_hard_drive()` and native startup
+- This is automatically done in WASM `set_hard_drive()` and native startup
 
 **Floppy Hot-Swap:**
 - `insert_floppy(slot, disk)` - Sets `disk_changed = true`

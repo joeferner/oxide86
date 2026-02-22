@@ -12,6 +12,7 @@ use crate::cpu::bios::disk_error::DiskError;
 use crate::cpu::bios::dos_error::DosError;
 use crate::cpu::bios::{DriveParams, FileAccess, FindData, SeekMethod};
 use crate::disk::{DiskController, SECTOR_SIZE};
+use anyhow::Result;
 use std::collections::HashMap;
 use std::io::{self, Error, ErrorKind, Read, Seek, SeekFrom, Write};
 
@@ -439,26 +440,61 @@ impl DriveManager {
 
     // === Hard Drive Management ===
 
-    /// Add a hard drive (returns the assigned drive number: 0x80, 0x81, etc.)
-    pub fn add_hard_drive(&mut self, disk: Box<dyn DiskController>) -> DriveNumber {
-        let drive_number = DriveNumber::from_hard_drive_index(self.hard_drives.len());
-        self.hard_drives
-            .push(DriveState::new_with_disk(disk, false));
-        drive_number
+    /// Set the hard drive for the given drive number (must be a hard drive, e.g. 0x80 = C:).
+    ///
+    /// - If the drive already exists: closes open files on it and replaces the disk.
+    /// - If the drive is the next sequential slot: appends a new drive.
+    /// - Otherwise: returns an error (drives must be added sequentially).
+    pub fn set_hard_drive(
+        &mut self,
+        drive: DriveNumber,
+        disk: Box<dyn DiskController>,
+    ) -> Result<DriveNumber> {
+        let index = drive.to_hard_drive_index();
+        if index < self.hard_drives.len() {
+            self.close_files_on_drive(drive);
+            self.hard_drives[index] = DriveState::new_with_disk(disk, false);
+        } else if index == self.hard_drives.len() {
+            self.hard_drives
+                .push(DriveState::new_with_disk(disk, false));
+        } else {
+            anyhow::bail!(
+                "Cannot set hard drive {}: only {} drives present (drives must be added sequentially)",
+                drive.to_letter(),
+                self.hard_drives.len()
+            );
+        }
+        Ok(drive)
     }
 
-    /// Add a partitioned hard drive with both partition and raw disk views
+    /// Set a partitioned hard drive for the given drive number.
     /// partition: Disk with partition offset (for DOS filesystem operations)
     /// raw_disk: Raw disk without offset (for INT 13h MBR access)
-    pub fn add_hard_drive_with_partition(
+    ///
+    /// - If the drive already exists: closes open files on it and replaces the disk.
+    /// - If the drive is the next sequential slot: appends a new drive.
+    /// - Otherwise: returns an error.
+    pub fn set_hard_drive_with_partition(
         &mut self,
+        drive: DriveNumber,
         partition: Box<dyn DiskController>,
         raw_disk: Box<dyn DiskController>,
-    ) -> DriveNumber {
-        let drive_number = DriveNumber::from_hard_drive_index(self.hard_drives.len());
-        self.hard_drives
-            .push(DriveState::new_with_partition(partition, raw_disk, false));
-        drive_number
+    ) -> Result<DriveNumber> {
+        let index = drive.to_hard_drive_index();
+        if index < self.hard_drives.len() {
+            self.close_files_on_drive(drive);
+            self.hard_drives[index] = DriveState::new_with_partition(partition, raw_disk, false);
+        } else if index == self.hard_drives.len() {
+            self.hard_drives
+                .push(DriveState::new_with_partition(partition, raw_disk, false));
+        } else {
+            anyhow::bail!(
+                "Cannot set hard drive {}: only {} drives present (drives must be added sequentially)",
+                drive.to_letter(),
+                self.hard_drives.len()
+            );
+        }
+        Ok(drive)
     }
 
     // === CD-ROM Management ===

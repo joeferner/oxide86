@@ -10,7 +10,7 @@
 - [X] Install SvarDOS (open source dos)
 - [X] Implement ATA/ATAPI (see plans/ata-atapi-support.md)
 - [X] Update README.md to get SvarDos environment up and running
-- [ ] Changing hard drive images in wasm isn't reflected in the disk manager dialog
+- [X] Changing hard drive images in wasm isn't reflected in the disk manager dialog
 - [ ] Add an opcode test for 286 instructions (test-programs/opcode-test/op286.asm), you do not need to test instructions which are already tested in test-programs/opcode-test/op8086.asm unless the behavior is different between 8086 and 286. Look at cpu_type for any special handling of 286.
 - [ ] In the wasm interface fetch a file called "images.json" which contains a list of floppy, hard drive, and cd rom images with descriptions that can be loaded from the server. Add this file to wasm/www. Add some interface next to the file buttons to choose from an existing image from images.json if there are any available for that type of device floppy, hard drive, cd-rom.
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)

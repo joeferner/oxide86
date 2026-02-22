@@ -112,7 +112,8 @@ pub fn load_disks<V: VideoController>(
     }
 
     // Load hard drives (C:, D:, etc.)
-    for path in hard_disks.iter() {
+    for (i, path) in hard_disks.iter().enumerate() {
+        let drive = DriveNumber::from_hard_drive_index(i);
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
@@ -170,10 +171,14 @@ pub fn load_disks<V: VideoController>(
                 PartitionedDisk::new(disk, partition.start_sector, partition.sector_count);
             computer
                 .bios_mut()
-                .add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk))
+                .set_hard_drive_with_partition(drive, Box::new(partitioned), Box::new(raw_disk))
+                .with_context(|| format!("Failed to set hard drive from: {}", path))?
         } else {
             log::info!("No MBR detected on {}, using raw disk", path);
-            computer.bios_mut().add_hard_drive(Box::new(disk))
+            computer
+                .bios_mut()
+                .set_hard_drive(drive, Box::new(disk))
+                .with_context(|| format!("Failed to set hard drive from: {}", path))?
         };
 
         log::info!(
@@ -375,13 +380,16 @@ pub fn load_mounted_directories<V: VideoController>(
             drive_letter
         );
 
+        let drive = DriveNumber::from_letter(drive_letter)
+            .ok_or_else(|| anyhow::anyhow!("Invalid drive letter: {}", drive_letter))?;
         let host_disk = HostDirectoryDisk::new(host_path, false)?;
         let partition_sectors = host_disk.partition_sectors();
         let raw_disk = host_disk.create_raw_disk();
         let partitioned = PartitionedDisk::new(host_disk, 63, partition_sectors as u32);
         let drive_num = computer
             .bios_mut()
-            .add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk));
+            .set_hard_drive_with_partition(drive, Box::new(partitioned), Box::new(raw_disk))
+            .with_context(|| format!("Failed to mount directory as drive {}", drive_letter))?;
 
         if drive_num.to_letter() != drive_letter {
             log::warn!(

@@ -379,12 +379,16 @@ impl Oxide86Computer {
         Ok(())
     }
 
-    /// Load a hard drive image from a byte array.
+    /// Set a hard drive image for the given drive number.
+    ///
+    /// If a drive already exists at that slot it is replaced; otherwise the
+    /// drive is appended as the next sequential slot.
     ///
     /// # Arguments
+    /// * `drive_number` - Drive number (0x80 = C:, 0x81 = D:, etc.)
     /// * `data` - Disk image data as Uint8Array from JavaScript
     #[wasm_bindgen]
-    pub fn add_hard_drive(&mut self, data: Vec<u8>) -> Result<(), JsValue> {
+    pub fn set_hard_drive(&mut self, drive_number: u8, data: Vec<u8>) -> Result<(), JsValue> {
         let geometry = DiskGeometry::from_size(data.len())
             .ok_or_else(|| JsValue::from_str("Invalid hard drive size"))?;
 
@@ -393,6 +397,8 @@ impl Oxide86Computer {
                 "Image size is too small for a hard drive",
             ));
         }
+
+        let drive = DriveNumber::from_standard(drive_number);
 
         // MemoryDiskBackend now uses Rc<RefCell<>> internally, so cloning shares the data
         let backend = MemoryDiskBackend::new(data);
@@ -439,7 +445,7 @@ impl Oxide86Computer {
             valid
         });
 
-        let drive_number = if let Some(partition) = has_partitions {
+        let assigned = if let Some(partition) = has_partitions {
             log::info!(
                 "Detected MBR: partition 1 at sector {}, {} sectors",
                 partition.start_sector,
@@ -462,14 +468,18 @@ impl Oxide86Computer {
 
             self.computer
                 .bios_mut()
-                .add_hard_drive_with_partition(Box::new(partitioned), Box::new(raw_disk))
+                .set_hard_drive_with_partition(drive, Box::new(partitioned), Box::new(raw_disk))
+                .map_err(|e| JsValue::from_str(&e.to_string()))?
         } else {
-            self.computer.bios_mut().add_hard_drive(Box::new(disk))
+            self.computer
+                .bios_mut()
+                .set_hard_drive(drive, Box::new(disk))
+                .map_err(|e| JsValue::from_str(&e.to_string()))?
         };
 
         log::info!(
-            "Added hard drive {}: ({} bytes)",
-            drive_number.to_letter(),
+            "Set hard drive {}: ({} bytes)",
+            assigned.to_letter(),
             geometry.total_size
         );
 

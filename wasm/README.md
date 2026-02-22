@@ -89,7 +89,7 @@ const computer = new Oxide86Computer('canvas-id');
 ```javascript
 computer.load_floppy(drive, data);  // drive: 0=A:, 1=B:; data: Uint8Array
 computer.eject_floppy(drive);       // drive: 0=A:, 1=B:
-computer.add_hard_drive(data);      // data: Uint8Array
+computer.set_hard_drive(drive, data); // drive: 0x80=C:, 0x81=D:; data: Uint8Array
 ```
 
 ### Execution Control

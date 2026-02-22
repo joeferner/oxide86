@@ -65,7 +65,7 @@ export function DriveControl({
             const hddFilePeek = hddFile.peek();
             if (hddFilePeek) {
                 try {
-                    comp.add_hard_drive(await loadFile(hddFilePeek));
+                    comp.set_hard_drive(0x80, await loadFile(hddFilePeek));
                 } catch {
                     hddFile.value = null;
                 }
@@ -184,7 +184,7 @@ export function DriveControl({
         try {
             status.value = 'Loading hard drive C...';
             const data = await loadFile(file);
-            computer.value?.add_hard_drive(data);
+            computer.value?.set_hard_drive(0x80, data);
             status.value = `Loaded hard drive C: ${file.name} (${data.length} bytes)`;
         } catch (e) {
             status.value = `Error loading hard drive: ${e}`;
