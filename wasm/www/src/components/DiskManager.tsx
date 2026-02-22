@@ -1,4 +1,5 @@
 import { useSignal } from '@preact/signals-react';
+import { useEffect } from 'react';
 import {
     Modal,
     Table,
@@ -110,9 +111,13 @@ export function DiskManager({ opened, onClose, driveNumber, onFloppyCreated }: D
     };
 
     // Refresh when dialog opens or drive/path changes
-    if (opened && computer.value) {
-        browseDisk(driveNumber, currentPath.value);
-    }
+    useEffect(() => {
+        if (opened && computer.value) {
+            browseDisk(driveNumber, currentPath.value);
+        }
+        // currentPath.value in deps: signal change triggers re-render, React detects diff and re-runs effect
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [opened, driveNumber, currentPath.value]);
 
     const downloadFile = (drive: number, filePath: string, fileName: string): void => {
         const comp = computer.value;
