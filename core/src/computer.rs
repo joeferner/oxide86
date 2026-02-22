@@ -556,6 +556,48 @@ impl<V: VideoController> Computer<V> {
         true
     }
 
+    /// Fire INT 0x76 (ATA primary channel IRQ14).
+    ///
+    /// Called after ATA/ATAPI command completion when nIEN=0.
+    /// Returns true if the IRQ was fired, false if IF=0.
+    fn fire_ata_irq(&mut self) -> bool {
+        use crate::cpu::cpu_flag;
+
+        if !self.cpu.get_flag(cpu_flag::INTERRUPT) {
+            return false;
+        }
+
+        let int_num: u8 = 0x76;
+        let is_bios_handler = Cpu::is_bios_handler(&mut self.bus, int_num);
+
+        log::debug!("INT 0x76: Firing ATA IRQ14");
+
+        if is_bios_handler {
+            // Standard AT BIOS IRQ14 handler — sets BDA 0x8E = 0xFF
+            self.cpu.handle_bios_interrupt_direct(
+                int_num,
+                &mut self.bus,
+                &mut self.bios,
+                self.cpu_type,
+            );
+        } else {
+            // Custom handler installed by driver
+            let ivt_addr = (int_num as usize) * 4;
+            let offset = self.bus.read_u16(ivt_addr);
+            let segment = self.bus.read_u16(ivt_addr + 2);
+
+            self.cpu.push(self.cpu.flags, &mut self.bus);
+            self.cpu.push(self.cpu.cs, &mut self.bus);
+            self.cpu.push(self.cpu.ip, &mut self.bus);
+            self.cpu.set_flag(cpu_flag::INTERRUPT, false);
+            self.cpu.set_flag(cpu_flag::TRAP, false);
+            self.cpu.cs = segment;
+            self.cpu.ip = offset;
+        }
+
+        true
+    }
+
     /// Queue a serial port interrupt (IRQ3 for COM2, IRQ4 for COM1)
     ///
     /// This should be called when serial data arrives and interrupts are enabled.
@@ -873,6 +915,12 @@ impl<V: VideoController> Computer<V> {
             return;
         }
         // If IF=0, leave the IRQ in queue for later
+
+        // Process pending ATA IRQ14 (INT 0x76)
+        if self.bios.shared.pending_ata_irq && self.fire_ata_irq() {
+            self.bios.shared.pending_ata_irq = false;
+            return;
+        }
 
         // Process pending timer IRQs (INT 0x08)
         // Timer has lowest priority among hardware interrupts

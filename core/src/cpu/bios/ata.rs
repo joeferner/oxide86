@@ -82,6 +82,10 @@ impl Bios {
                 // DataIn complete — write sector to disk
                 self.ata_flush_data_in();
             }
+            // Fire IRQ14 after CDB/sector transfer completes (if interrupts enabled)
+            if (self.shared.ata_primary.control & 0x02) == 0 {
+                self.shared.pending_ata_irq = true;
+            }
         }
     }
 
@@ -190,6 +194,19 @@ impl Bios {
                 self.shared.ata_primary.set_error_bits(ata::error::ABRT);
             }
         }
+
+        // Fire ATA IRQ14 after command completion unless:
+        //  - PACKET (0xA0): waiting for CDB — IRQ fires later via atapi_dispatch()
+        //  - DEVICE RESET (0x08): resets don't generate interrupts
+        //  - nIEN=1 (bit 1 of control register): driver has disabled interrupts
+        let waiting_for_cdb = matches!(
+            self.shared.ata_primary.transfer,
+            ata::TransferState::WaitingPacket
+        );
+        let nien = (self.shared.ata_primary.control & 0x02) != 0;
+        if !waiting_for_cdb && cmd != 0x08 && !nien {
+            self.shared.pending_ata_irq = true;
+        }
     }
 
     // ── ATA hard-drive commands ──────────────────────────────────────────────
@@ -198,13 +215,16 @@ impl Bios {
         let drive_num = match device {
             AtaDeviceType::HardDrive(n) => n,
             _ => {
-                // Not a hard drive — could be ATAPI or None
-                // Write ATAPI signature if ATAPI so driver can re-issue IDENTIFY PACKET DEVICE
+                // Not a hard drive — could be ATAPI or None.
+                // ATAPI-4 spec: IDENTIFY DEVICE (0xEC) sent to an ATAPI device must
+                // respond with DRQ=1 and 512 bytes of IDENTIFY PACKET DEVICE data,
+                // identical to IDENTIFY PACKET DEVICE (0xA1).  Older ATAPI-1 behavior
+                // (ABRT + signature) is not accepted by Windows 9x-era drivers.
                 if matches!(device, AtaDeviceType::CdRom(_)) {
-                    self.shared.ata_primary.lba_mid = ata::ATAPI_SIG_LBA_MID;
-                    self.shared.ata_primary.lba_high = ata::ATAPI_SIG_LBA_HIGH;
+                    self.ata_cmd_identify_packet(device);
+                } else {
+                    self.shared.ata_primary.set_error_bits(ata::error::ABRT);
                 }
-                self.shared.ata_primary.set_error_bits(ata::error::ABRT);
                 return;
             }
         };

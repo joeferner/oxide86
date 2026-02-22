@@ -147,6 +147,8 @@ pub struct SharedBiosState {
     pub current_dta: usize,
     /// Primary ATA channel (ports 0x1F0–0x1F7, 0x3F6)
     pub ata_primary: AtaChannel,
+    /// Pending ATA interrupt (IRQ14 / INT 0x76) — set after command completion when nIEN=0
+    pub pending_ata_irq: bool,
 }
 
 impl SharedBiosState {
@@ -160,6 +162,7 @@ impl SharedBiosState {
             last_disk_status: 0x00, // Success
             current_dta: 0,
             ata_primary: AtaChannel::new(),
+            pending_ata_irq: false,
         }
     }
 
@@ -939,10 +942,24 @@ impl Cpu {
             0x2F => self.handle_int2f(bus, io),
             0x33 => self.handle_int33(bus, io),
             0x35..=0x3F => self.handle_int35_3f(int_num),
+            // ATA IRQ14 (primary channel) and IRQ15 (secondary channel)
+            0x76 | 0x77 => self.handle_int76(bus),
             // Other BIOS interrupts can be added here
             _ => {
                 log::warn!("Unhandled BIOS interrupt: 0x{:02X}", int_num);
             }
         }
+    }
+
+    /// INT 0x76 / INT 0x77 — ATA IRQ14/IRQ15 BIOS handler.
+    ///
+    /// Sets BDA hard-disk-interrupt flag (0x0040:0x8E) to 0xFF so that drivers
+    /// polling this location know the command has completed.
+    pub(super) fn handle_int76(&mut self, bus: &mut Bus) {
+        // BDA segment 0x0040, offset 0x8E = physical 0x048E
+        // This is the "hard disk interrupt received" flag polled by ATA drivers.
+        const BDA_HD_INTERRUPT: usize = 0x0040 * 16 + 0x8E;
+        bus.write_u8(BDA_HD_INTERRUPT, 0xFF);
+        log::debug!("INT 0x76: ATA IRQ14 — set BDA[0x8E] = 0xFF");
     }
 }
