@@ -398,9 +398,22 @@ impl<V: VideoController> Computer<V> {
             }
         } else if let Some(drive) = self.boot_drive {
             log::info!("Rebooting from drive {}", drive.to_letter());
-            // Ignore boot errors during reset - just log them
             if let Err(e) = self.boot(drive) {
-                log::error!("Failed to reboot during reset: {}", e);
+                // If the original boot drive failed (e.g. floppy ejected after install),
+                // fall back to hard drive C — same behavior as a real BIOS.
+                if drive.is_floppy() {
+                    log::warn!(
+                        "Boot from {} failed ({}), falling back to hard drive C:",
+                        drive.to_letter(),
+                        e
+                    );
+                    let hdd = DriveNumber::hard_drive_c();
+                    if let Err(e2) = self.boot(hdd) {
+                        log::error!("Failed to reboot from hard drive C: {}", e2);
+                    }
+                } else {
+                    log::error!("Failed to reboot during reset: {}", e);
+                }
             }
         } else {
             log::info!("Reset called but no boot drive or program stored");
@@ -946,6 +959,18 @@ impl<V: VideoController> Computer<V> {
         // Get current IP to check what opcode we're about to execute
         let current_ip = self.cpu.ip;
         let current_cs = self.cpu.cs;
+
+        // Check if we're at the 8086 reset vector (FFFF:0000 = physical 0xFFFF0).
+        // Programs reboot by writing 0x1234 to 0040:0072 (warm-boot flag) and jumping here.
+        if current_cs == 0xFFFF {
+            log::info!(
+                "Reset vector executed at {:04X}:{:04X} — triggering reboot",
+                current_cs,
+                current_ip
+            );
+            self.reset();
+            return;
+        }
 
         // Check if we're executing in BIOS ROM area (0xF000 segment)
         // This handles DOS interrupt handlers that chain back to BIOS via PUSHF + CALL FAR

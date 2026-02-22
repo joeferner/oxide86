@@ -30,11 +30,9 @@ Despite that, what came out the other end is something I'm genuinely impressed b
 
 # Getting Started
 
-## MS-DOS 5.0
-
-1. Download MS-DOS 5.0
-1. Create a hard drive `dd if=/dev/zero of=examples/hdd.img bs=1M count=32`
-1. Run `RUST_LOG=info cargo run -p oxide86-native-cli -- --boot --floppy-a examples/msdos-5.0/Disk01.img --hdd examples/hdd.img`
+1. Download [SvarDOS 1.44M Floppy](http://svardos.org/)
+2. Create a blank hard drive `dd if=/dev/zero of=hdd.img bs=1M count=32`
+3. Run `cargo run -p oxide86-native-gui -- --boot --floppy-a svdos-1.44M-disk-1.img --hdd hdd.img`
 
 ## Running
 
