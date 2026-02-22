@@ -12,11 +12,13 @@
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
+- [ ] King's Quest 2 soft locks on title screen (see docs/kq2-timer-softlock-investigation.md)
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] WASM add additional hard drive support, move B: into an Accordion with additional hard drives
 - [ ] SoundBlaster support
 - [ ] Clean up handle_bios_interrupt_direct, pending_int15_4f, interrupt chaining, etc
+- [ ] Changing hard drive images in wasm isn't reflected in the disk manager dialog
 - [ ] Joystick
   - [X] Test Wasm
   - [ ] Test Native GUI
