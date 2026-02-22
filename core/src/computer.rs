@@ -1012,8 +1012,21 @@ impl<V: VideoController> Computer<V> {
             // - Case 2: We restore the DOS handler's PUSHF'd FLAGS (IF=0), and the
             //           DOS handler will later do IRET to restore the original caller's FLAGS
             let saved_flags = self.cpu.pop(&self.bus);
+            let old_if = (self.cpu.flags & crate::cpu::cpu_flag::INTERRUPT) != 0;
             // Restore IF, TF, DF from saved flags (keep CF, ZF, etc. from BIOS handler)
             self.cpu.flags = (self.cpu.flags & 0xF8FF) | (saved_flags & 0x0700);
+            if self.exec_logging_enabled {
+                let new_if = (self.cpu.flags & crate::cpu::cpu_flag::INTERRUPT) != 0;
+                if old_if != new_if {
+                    log::debug!(
+                        "IF: {} -> {} (F000 return) at {:04X}:{:04X}",
+                        old_if as u8,
+                        new_if as u8,
+                        self.cpu.cs,
+                        self.cpu.ip,
+                    );
+                }
+            }
 
             // Return to caller
             self.cpu.ip = ret_offset;
@@ -1595,6 +1608,7 @@ impl<V: VideoController> Computer<V> {
 
     pub fn set_exec_logging(&mut self, enable: bool) {
         self.exec_logging_enabled = enable;
+        self.cpu.exec_logging_enabled = enable;
         log::info!(
             "exec logging {}",
             if enable { "enabled" } else { "disabled" }

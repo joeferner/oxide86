@@ -425,10 +425,23 @@ impl Cpu {
         let new_cs = self.pop(bus);
         let new_flags = self.pop(bus);
 
+        let old_if = (self.flags & cpu_flag::INTERRUPT) != 0;
         self.ip = new_ip;
         self.cs = new_cs;
         // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
         self.flags = (new_flags & 0x0FFF) | 0x0002;
+        if self.exec_logging_enabled {
+            let new_if = (self.flags & cpu_flag::INTERRUPT) != 0;
+            if old_if != new_if {
+                log::debug!(
+                    "IF: {} -> {} (IRET) -> {:04X}:{:04X}",
+                    old_if as u8,
+                    new_if as u8,
+                    self.cs,
+                    self.ip,
+                );
+            }
+        }
 
         // Check if this completes an IRQ chain (e.g., INT 08h -> INT 1Ch)
         if let Some(context) = self.complete_irq_chain() {

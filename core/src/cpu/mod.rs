@@ -46,6 +46,9 @@ pub struct Cpu {
     /// if true logs interrupts at info level
     pub log_interrupts_enabled: bool,
 
+    /// if set to true, opcode execution will be logged as info level
+    pub exec_logging_enabled: bool,
+
     /// Cycle count for the last executed instruction
     /// Used by Computer::step() to accurately track CPU cycles
     pub(super) last_instruction_cycles: u64,
@@ -141,6 +144,7 @@ impl Cpu {
             segment_override: None,
             repeat_prefix: None,
             log_interrupts_enabled: false,
+            exec_logging_enabled: false,
             last_instruction_cycles: 0,
             pending_sleep_cycles: 0,
             cpu_freq: 4_770_000,
@@ -899,6 +903,18 @@ impl Cpu {
 
     // Set a specific flag
     pub(super) fn set_flag(&mut self, flag: u16, value: bool) {
+        if self.exec_logging_enabled && flag == cpu_flag::INTERRUPT {
+            let old_if = (self.flags & cpu_flag::INTERRUPT) != 0;
+            if old_if != value {
+                log::debug!(
+                    "IF: {} -> {} at {:04X}:{:04X}",
+                    old_if as u8,
+                    value as u8,
+                    self.cs,
+                    self.ip,
+                );
+            }
+        }
         if value {
             self.flags |= flag;
         } else {

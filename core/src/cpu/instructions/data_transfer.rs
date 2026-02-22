@@ -1,4 +1,4 @@
-use super::super::{Cpu, timing};
+use super::super::{Cpu, cpu_flag, timing};
 use crate::Bus;
 
 impl Cpu {
@@ -298,8 +298,21 @@ impl Cpu {
     /// On 8086: only bits 0-11 can be modified, bit 1 is always 1
     pub(in crate::cpu) fn popf(&mut self, bus: &mut Bus) {
         let value = self.pop(bus);
+        let old_if = (self.flags & cpu_flag::INTERRUPT) != 0;
         // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
         self.flags = (value & 0x0FFF) | 0x0002;
+        if self.exec_logging_enabled {
+            let new_if = (self.flags & cpu_flag::INTERRUPT) != 0;
+            if old_if != new_if {
+                log::debug!(
+                    "IF: {} -> {} (POPF) at {:04X}:{:04X}",
+                    old_if as u8,
+                    new_if as u8,
+                    self.cs,
+                    self.ip,
+                );
+            }
+        }
 
         // POPF: 8 cycles
         self.last_instruction_cycles = timing::cycles::POPF;
