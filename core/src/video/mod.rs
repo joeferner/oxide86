@@ -520,7 +520,15 @@ impl Video {
     /// Scroll a text-cell window up in graphics mode.
     /// Dispatches to the appropriate buffer (CGA interlaced or EGA planar).
     /// `lines == 0` clears the entire window.
-    pub fn scroll_up_window(&mut self, lines: u8, top: u8, left: u8, bottom: u8, right: u8) {
+    pub fn scroll_up_window(
+        &mut self,
+        lines: u8,
+        top: u8,
+        left: u8,
+        bottom: u8,
+        right: u8,
+        fill_attr: u8,
+    ) {
         let (lines, top, left, bottom, right) = (
             lines as usize,
             top as usize,
@@ -528,6 +536,7 @@ impl Video {
             bottom as usize,
             right as usize,
         );
+        let bg_color = fill_attr >> 4;
         match self.mode_type {
             VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
                 // bytes per character cell column (2bpp=2 for 320x200, 1bpp=1 for 640x200)
@@ -564,6 +573,12 @@ impl Video {
                 let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
                 for plane in 0..4usize {
                     let base = plane * 8000;
+                    // Fill byte for this plane: 0xFF if bit `plane` of bg_color is set
+                    let fill_byte = if (bg_color >> plane) & 1 == 1 {
+                        0xFFu8
+                    } else {
+                        0x00
+                    };
                     for row in top..=bottom {
                         let src_row = row + scroll_lines;
                         for py in 0..PIXELS_PER_ROW {
@@ -578,7 +593,7 @@ impl Video {
                                 }
                             } else {
                                 for cx in left..=right {
-                                    self.vram[base + dst_base + cx] = 0;
+                                    self.vram[base + dst_base + cx] = fill_byte;
                                 }
                             }
                         }
@@ -618,7 +633,15 @@ impl Video {
     /// Scroll a text-cell window down in graphics mode.
     /// Dispatches to the appropriate buffer (CGA interlaced or EGA planar).
     /// `lines == 0` clears the entire window.
-    pub fn scroll_down_window(&mut self, lines: u8, top: u8, left: u8, bottom: u8, right: u8) {
+    pub fn scroll_down_window(
+        &mut self,
+        lines: u8,
+        top: u8,
+        left: u8,
+        bottom: u8,
+        right: u8,
+        fill_attr: u8,
+    ) {
         let (lines, top, left, bottom, right) = (
             lines as usize,
             top as usize,
@@ -626,6 +649,7 @@ impl Video {
             bottom as usize,
             right as usize,
         );
+        let bg_color = fill_attr >> 4;
         match self.mode_type {
             VideoMode::Graphics320x200 | VideoMode::Graphics640x200 => {
                 let bpc = if matches!(self.mode_type, VideoMode::Graphics320x200) {
@@ -665,6 +689,11 @@ impl Video {
                 let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
                 for plane in 0..4usize {
                     let base = plane * 8000;
+                    let fill_byte = if (bg_color >> plane) & 1 == 1 {
+                        0xFFu8
+                    } else {
+                        0x00
+                    };
                     for row in (top..=bottom).rev() {
                         let src_row = if row >= top + scroll_lines {
                             row - scroll_lines
@@ -683,7 +712,7 @@ impl Video {
                                 }
                             } else {
                                 for cx in left..=right {
-                                    self.vram[base + dst_base + cx] = 0;
+                                    self.vram[base + dst_base + cx] = fill_byte;
                                 }
                             }
                         }

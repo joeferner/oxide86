@@ -215,7 +215,7 @@ impl Cpu {
 
         if bus.video().is_graphics_mode() {
             bus.video_mut()
-                .scroll_up_window(lines, top, left, bottom, right);
+                .scroll_up_window(lines, top, left, bottom, right, attr);
             return;
         }
 
@@ -291,7 +291,7 @@ impl Cpu {
 
         if bus.video().is_graphics_mode() {
             bus.video_mut()
-                .scroll_down_window(lines, top, left, bottom, right);
+                .scroll_down_window(lines, top, left, bottom, right, attr);
             return;
         }
 
