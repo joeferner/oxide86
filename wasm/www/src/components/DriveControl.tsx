@@ -1,6 +1,7 @@
 import { useSignal, useSignalEffect } from '@preact/signals-react';
 import { Group, Button, FileButton, Text, ActionIcon, Tooltip } from '@mantine/core';
 import { computer, status } from '../emulatorState';
+import { ImageLibraryPicker } from './ImageLibraryPicker';
 import styles from './ControlGroup.module.scss';
 
 interface DriveControlProps {
@@ -221,6 +222,54 @@ export function DriveControl({
         }
     };
 
+    const handleFloppyAFromServer = (data: Uint8Array, name: string): void => {
+        try {
+            floppyAFile.value = new File([data.buffer as ArrayBuffer], name);
+            computer.value?.load_floppy(0, data);
+            status.value = `Loaded floppy A: ${name} (${data.length} bytes)`;
+        } catch (e) {
+            status.value = `Error loading floppy A: ${e}`;
+            console.error(e);
+            floppyAFile.value = null;
+        }
+    };
+
+    const handleFloppyBFromServer = (data: Uint8Array, name: string): void => {
+        try {
+            floppyBFile.value = new File([data.buffer as ArrayBuffer], name);
+            computer.value?.load_floppy(1, data);
+            status.value = `Loaded floppy B: ${name} (${data.length} bytes)`;
+        } catch (e) {
+            status.value = `Error loading floppy B: ${e}`;
+            console.error(e);
+            floppyBFile.value = null;
+        }
+    };
+
+    const handleHDDFromServer = (data: Uint8Array, name: string): void => {
+        try {
+            hddFile.value = new File([data.buffer as ArrayBuffer], name);
+            computer.value?.set_hard_drive(0x80, data);
+            status.value = `Loaded hard drive C: ${name} (${data.length} bytes)`;
+        } catch (e) {
+            status.value = `Error loading hard drive: ${e}`;
+            console.error(e);
+            hddFile.value = null;
+        }
+    };
+
+    const handleCdRomFromServer = (data: Uint8Array, name: string): void => {
+        try {
+            cdromFile.value = new File([data.buffer as ArrayBuffer], name);
+            computer.value?.load_cdrom(0, data);
+            status.value = `Loaded CD-ROM: ${name} (${data.length} bytes)`;
+        } catch (e) {
+            status.value = `Error loading CD-ROM: ${e}`;
+            console.error(e);
+            cdromFile.value = null;
+        }
+    };
+
     if (!computer.value) {
         return null;
     }
@@ -251,6 +300,7 @@ export function DriveControl({
                             )}
                         </FileButton>
                     )}
+                    <ImageLibraryPicker driveType="floppy" onLoad={handleFloppyAFromServer} />
                     <Tooltip label="Eject A:">
                         <ActionIcon
                             onClick={handleEjectFloppyA}
@@ -310,6 +360,7 @@ export function DriveControl({
                             )}
                         </FileButton>
                     )}
+                    <ImageLibraryPicker driveType="floppy" onLoad={handleFloppyBFromServer} />
                     <Tooltip label="Eject B:">
                         <ActionIcon
                             onClick={handleEjectFloppyB}
@@ -362,6 +413,7 @@ export function DriveControl({
                             </Button>
                         )}
                     </FileButton>
+                    <ImageLibraryPicker driveType="hdd" onLoad={handleHDDFromServer} />
                     <Tooltip label="Manage Drive C:">
                         <ActionIcon
                             onClick={() => {
@@ -405,6 +457,7 @@ export function DriveControl({
                             </Button>
                         )}
                     </FileButton>
+                    <ImageLibraryPicker driveType="cdrom" onLoad={handleCdRomFromServer} />
                     <Tooltip label="Eject CD-ROM">
                         <ActionIcon
                             onClick={handleEjectCdRom}

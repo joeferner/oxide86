@@ -12,7 +12,7 @@
 - [X] Update README.md to get SvarDos environment up and running
 - [X] Changing hard drive images in wasm isn't reflected in the disk manager dialog
 - [X] Add an opcode test for 286 instructions (test-programs/opcode-test/op286.asm).
-- [ ] wasm hosted images. (see plans/images-json-server-library.md)
+- [X] wasm hosted images. (see plans/images-json-server-library.md)
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)

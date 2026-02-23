@@ -53,6 +53,14 @@ export default defineConfig([
         },
     },
     {
+        files: ['vite.config.ts'],
+        rules: {
+            '@typescript-eslint/no-unsafe-call': 'off',
+            '@typescript-eslint/no-unsafe-member-access': 'off',
+            '@typescript-eslint/no-unsafe-assignment': 'off',
+        },
+    },
+    {
         files: ['src/wasm/**/*', 'src/api/**/*'],
         linterOptions: {
             reportUnusedDisableDirectives: false,

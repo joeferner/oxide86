@@ -75,6 +75,7 @@
         "STOSB",
         "STOSW",
         "subfunc",
+        "Svar",
         "tsify",
         "wgpu",
         "winit",

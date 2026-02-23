@@ -1,0 +1,11 @@
+{
+    "floppy": [
+        {
+            "name": "SvarDOS 20250427",
+            "description": "Open-source DOS distribution able to run on a 8086 PC",
+            "url": "/images/floppy/svardos-20250427-1.44M-disk-1.img"
+        }
+    ],
+    "hdd": [],
+    "cdrom": []
+}

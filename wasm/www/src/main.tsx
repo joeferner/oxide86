@@ -1,6 +1,8 @@
 import ReactDOM from 'react-dom/client';
 import { MantineProvider, createTheme } from '@mantine/core';
+import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
+import '@mantine/notifications/styles.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
 import App from './App';
 import './styles/global.scss';
@@ -31,6 +33,7 @@ if (!root) {
 }
 ReactDOM.createRoot(root).render(
     <MantineProvider theme={theme} defaultColorScheme="dark">
+        <Notifications position="top-right" autoClose={4000} />
         <App />
     </MantineProvider>
 );
