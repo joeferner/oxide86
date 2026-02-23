@@ -20,13 +20,46 @@ Despite that, what came out the other end is something I'm genuinely impressed b
 
 # Features
 
-- CLI, Native GUI, and Web Interfaces
-- CGA, EGA, VGA Video
-- AdLib sound card
-- Mouse support
-- Joystick support
-- ATA/ATAPI support
-- CD-ROM/ISO support
+### 🖥️ CPU
+- Intel 8086 and 80286 instruction sets
+- Accurate interrupt handling: hardware IRQs, software INTs, IRET, and flag restoration
+- Programmable Interval Timer (PIT 8253/8254) with accurate cycle-based timing
+- 8042 Keyboard Controller with A20 line gate support
+- Interrupt Vector Table (IVT) and BIOS Data Area (BDA) fully initialized
+
+### 🎨 Video
+- **CGA**: Text (40×25, 80×25), graphics (320×200 4-color, 640×200 2-color), composite NTSC artifact color emulation
+- **EGA**: 320×200 16-color (mode 0x0D) with planar memory, write modes 0 and 2, bit mask, and latch support
+- **VGA**: 320×200 256-color (mode 0x13) with linear framebuffer and full DAC palette programming
+- VGA DAC palette with accurate 6-bit to 8-bit color scaling; palette resets on mode change
+- CGA hardware-accurate palette colors (Brown, Light Gray) matching real IBM CGA hardware and DOSBox
+- Text rendering in graphics modes with opaque/transparent and XOR drawing modes
+
+### 🔊 Audio
+- **AdLib (OPL2/YM3812)**: 9-channel FM synthesis with ADSR envelopes, 4 waveforms, tremolo/vibrato LFOs, and hardware timers
+- **PC Speaker**: Square-wave output driven by PIT Channel 2, with accurate frequency generation
+- Native audio via Rodio; browser audio via Web Audio API AudioWorklet
+
+### 💾 Storage
+- Floppy drive images (360KB, 720KB, 1.2MB, 1.44MB) with hot-swap support
+- Hard drive images with MBR partition table detection
+- ATA/ATAPI interface with CD-ROM/ISO support
+- FAT filesystem via fatfs with full file, directory, and handle management
+
+### 🖱️ Input
+- Mouse (COM port serial mouse protocol)
+- Joystick (game port, port 0x201)
+- Keyboard with scan code translation, shift state tracking, and BDA buffer management
+
+### 🤝 DOS Compatibility
+- BIOS interrupts: INT 09h, 10h, 12h, 13h, 14h, 15h, 16h, 17h, 1Ah, 20h, 21h, 28h, 29h, 2Ah, 2Fh
+- INT 21h DOS services: console I/O, file operations, directories, memory allocation, process execution
+- Program loader for .COM files with PSP setup; full boot sequence from floppy or hard drive
+
+### 🌐 Platforms
+- **Native CLI** 🖥️: Terminal-based output, useful for scripting and headless testing
+- **Native GUI** 🪟: Hardware-accelerated rendering via wgpu; exclusive input mode with F12 to exit
+- **WebAssembly** 🌍: Runs in-browser on an HTML5 Canvas with Web Audio and pointer lock support
 
 # Getting Started
 
@@ -39,8 +72,8 @@ Despite that, what came out the other end is something I'm genuinely impressed b
 In both the CLI and GUI pressing F12 will exit exclusive mode.
 
 `
-RUST_LOG=info cargo run -p oxide86-native-cli -- --boot --hdd examples/hdd.img --boot-drive 0x80
-RUST_LOG=info cargo run -p oxide86-native-gui -- --boot --hdd examples/hdd.img --boot-drive 0x80 --com1 mouse
+RUST_LOG=info cargo run -p oxide86-native-cli -- --boot --hdd hdd.img --boot-drive 0x80
+RUST_LOG=info cargo run -p oxide86-native-gui -- --boot --hdd hdd.img --boot-drive 0x80 --com1 mouse
 `
 
 # Creating a floppy with files
@@ -64,6 +97,7 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
   - :white_check_mark: MS-DOS 3.31
   - :white_check_mark: MS-DOS 4.01
   - :white_check_mark: MS-DOS 5.0
+  - :white_check_mark: SvarDOS
 
 - Games
   - :white_check_mark: Zork 1
