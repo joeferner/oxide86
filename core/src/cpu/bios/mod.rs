@@ -220,8 +220,6 @@ pub struct Bios {
     pub pending_scan_code: u8,
     /// Pending keyboard ASCII code (set by fire_keyboard_irq(), read by INT 09h handler)
     pub pending_ascii_code: u8,
-    /// Flag: true if we pre-buffered this key for a custom handler (to avoid duplicates when chaining)
-    pub key_was_prebuffered: bool,
 }
 
 impl Bios {
@@ -239,7 +237,6 @@ impl Bios {
             serial_ports: [SerialPortController::new(0), SerialPortController::new(1)],
             pending_scan_code: 0,
             pending_ascii_code: 0,
-            key_was_prebuffered: false,
         }
     }
 

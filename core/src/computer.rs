@@ -502,47 +502,6 @@ impl<V: VideoController> Computer<V> {
         let is_bios_handler = Cpu::is_bios_handler(&mut self.bus, int_num);
 
         if !is_bios_handler {
-            // Custom INT 09h handler installed by program (e.g., CheckIt, edit.exe)
-            //
-            // Pre-buffer the key for custom handlers (like real PC hardware behavior).
-            // Custom handlers expect the BIOS to have already processed the key.
-            // If they chain to F000:0009, our BIOS handler will detect the duplicate
-            // and skip re-adding it.
-            //
-            // Skip key releases (bit 7 set) - only buffer key presses
-            if key.scan_code & 0x80 == 0 {
-                use memory::{BDA_KEYBOARD_BUFFER_HEAD, BDA_KEYBOARD_BUFFER_TAIL, BDA_START};
-
-                let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
-                let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-                let head = self.bus.read_u16(head_addr);
-                let tail = self.bus.read_u16(tail_addr);
-
-                // Calculate what tail would be after adding this key
-                let buffer_start: u16 = 0x001E; // Relative to BDA
-                let new_tail = if tail == buffer_start + 30 {
-                    buffer_start // Wrap around
-                } else {
-                    tail + 2
-                };
-
-                // Check if buffer would become full
-                if new_tail != head {
-                    // Add key to buffer
-                    let char_addr = BDA_START + tail as usize;
-                    self.bus.write_u8(char_addr, key.scan_code);
-                    self.bus.write_u8(char_addr + 1, key.ascii_code);
-                    self.bus.write_u16(tail_addr, new_tail);
-                    self.bios.key_was_prebuffered = true; // Mark as pre-buffered
-                    log::debug!("INT 09h: Pre-buffered key for custom handler");
-                } else {
-                    log::warn!("INT 09h: Keyboard buffer full, discarding key");
-                }
-            } else {
-                // Key release - not pre-buffered
-                self.bios.key_was_prebuffered = false;
-            }
-
             // Call the custom INT 09h handler
             let ivt_addr = (int_num as usize) * 4;
             let offset = self.bus.read_u16(ivt_addr);
@@ -578,8 +537,6 @@ impl<V: VideoController> Computer<V> {
             self.cpu.ip = offset;
         } else {
             // BIOS INT 09h handler - call Rust handler directly
-            // The Rust handler will add the key to the buffer (no pre-buffering)
-            self.bios.key_was_prebuffered = false; // Not pre-buffered for default handler
             log::debug!("INT 09h: Calling default BIOS handler");
             self.cpu.handle_bios_interrupt_direct(
                 int_num,

@@ -35,16 +35,6 @@ impl Cpu {
             return;
         }
 
-        // Check if this key was already pre-buffered by a custom handler
-        // If so, skip adding it again (prevents duplicates when custom handlers chain to us)
-        if io.key_was_prebuffered {
-            log::debug!(
-                "INT 09h (BIOS): Key already pre-buffered (chained from custom handler), skipping"
-            );
-            io.key_was_prebuffered = false; // Reset flag
-            return;
-        }
-
         // Add key press to BIOS keyboard buffer
         let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
         let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
