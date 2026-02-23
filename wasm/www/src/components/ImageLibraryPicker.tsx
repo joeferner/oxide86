@@ -11,10 +11,7 @@ interface ImageLibraryPickerProps {
     onLoad: (data: Uint8Array, name: string) => void;
 }
 
-export function ImageLibraryPicker({
-    driveType,
-    onLoad,
-}: ImageLibraryPickerProps): React.ReactElement | null {
+export function ImageLibraryPicker({ driveType, onLoad }: ImageLibraryPickerProps): React.ReactElement | null {
     const [images, setImages] = useState<DiskImage[]>([]);
     const [loading, setLoading] = useState(false);
 

@@ -982,7 +982,7 @@ impl<V: VideoController> Computer<V> {
 
         // Check if we're at the 8086 reset vector (FFFF:0000 = physical 0xFFFF0).
         // Programs reboot by writing 0x1234 to 0040:0072 (warm-boot flag) and jumping here.
-        if current_cs == 0xFFFF {
+        if current_cs == 0xFFFF && current_ip == 0x0000 {
             log::info!(
                 "Reset vector executed at {:04X}:{:04X} — triggering reboot",
                 current_cs,

@@ -169,21 +169,37 @@ Tests INT 16h AH=00h blocking keyboard input behavior. Waits for keypresses and 
 
 ## Misc
 
+### reboot_test.asm
+Tests the emulator's warm-reboot handling. Writes the warm-boot flag (`0x1234`) to `0040:0072` (tells POST to skip memory test), then executes `JMP FAR 0xFFFF:0000` — the standard 8086 reset vector. The emulator should detect execution at `FFFF:0000`, call `reset()`, and re-run the original boot sequence.
+
+**Running:**
+```bash
+nasm -f bin test-programs/misc/reboot_test.asm -o test-programs/misc/reboot_test.com
+cargo run -p oxide86-native-cli -- test-programs/misc/reboot_test.com
+```
+
+**Expected Output:**
+```
+Reboot test: writing warm-boot flag...
+Jumping to FFFF:0000 (reset vector)...
+```
+After the second line the emulator triggers a reset and the boot/program sequence restarts.
+
 ### hello_program.asm
 Simple "Hello World" test program for verifying program loading functionality. Uses INT 21h AH=09h to display a message and INT 21h AH=4Ch to exit. Minimal .COM file structure starting at CS:0100h.
 
 ## Opcode Test
 
-### opcode-test/op286.asm
+### cpu/op286.asm
 Test suite for 80286-specific CPU instructions and 8086 behavior differences. Tests all instructions new in 286 not covered by op8086.asm, plus instructions whose behavior changed between 8086 and 286.
 
 **Running:**
 ```bash
 # Native CLI (must use --cpu 286)
-cargo run -p oxide86-native-cli -- test-programs/opcode-test/op286.com --cpu 286
+cargo run -p oxide86-native-cli -- test-programs/cpu/op286.com --cpu 286
 
 # Native GUI
-cargo run -p oxide86-native-gui -- test-programs/opcode-test/op286.com --cpu 286
+cargo run -p oxide86-native-gui -- test-programs/cpu/op286.com --cpu 286
 ```
 
 **Expected Output:**
@@ -247,16 +263,16 @@ The 0xC0/0xC1 encoding allows shifting/rotating by any immediate count (not just
 - **OUTSB** (0x6E): Output byte from DS:SI to I/O port DX; SI±1; tested with CLD, STD, and REP
 - **OUTSW** (0x6F): Output word from DS:SI to I/O port DX; SI±2; tested with CLD, STD, and REP
 
-### opcode-test/op8086.asm
+### cpu/op8086.asm
 Comprehensive test suite for validating CPU instruction implementation. Tests 55 different instruction categories with multiple test cases each, reporting results to the screen. Covers approximately 70% of the 8086 instruction set.
 
 **Running:**
 ```bash
 # Native CLI
-cargo run -p oxide86-native-cli -- test-programs/opcode-test/op8086.com
+cargo run -p oxide86-native-cli -- test-programs/cpu/op8086.com
 
 # Native GUI
-cargo run -p oxide86-native-gui -- test-programs/opcode-test/op8086.com
+cargo run -p oxide86-native-gui -- test-programs/cpu/op8086.com
 ```
 
 **Expected Output:**
