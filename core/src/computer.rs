@@ -466,10 +466,22 @@ impl<V: VideoController> Computer<V> {
             return false;
         }
 
+        // Prevent re-entrant keyboard IRQ: real 8259A keeps IRQ 1 in-service
+        // until the handler sends EOI (OUT 0x20, 0x20 or BIOS handler returns).
+        if self.io_device.is_irq_in_service(1) {
+            log::trace!("Keyboard IRQ suppressed: IRQ 1 already in service (PIC ISR)");
+            return false; // Leave key in queue; will fire after EOI clears ISR
+        }
+
         // Wake CPU from HLT state (STI + HLT idle-wait pattern)
         if self.cpu.is_halted() {
             self.cpu.clear_halt();
         }
+
+        // Mark IRQ 1 (keyboard) as in-service in the PIC ISR.
+        // Cleared when: BIOS INT 09h handler returns, or program sends OUT 0x20, 0x20.
+        self.io_device.set_irq_in_service(1);
+        log::trace!("PIC: IRQ 1 (keyboard) set in-service");
 
         // Set keyboard data:
         // 1. Port 0x60 for custom INT 09h handlers that read the keyboard controller
@@ -575,6 +587,8 @@ impl<V: VideoController> Computer<V> {
                 &mut self.bios,
                 self.cpu_type,
             );
+            // BIOS INT 09h sends EOI before returning — mirror that here.
+            self.io_device.clear_irq_in_service(1);
         }
 
         true
@@ -713,10 +727,20 @@ impl<V: VideoController> Computer<V> {
             return false;
         }
 
+        // Prevent re-entrant timer IRQ: real 8259A keeps IRQ 0 in-service
+        // until the handler sends EOI (OUT 0x20, 0x20 or BIOS handler returns).
+        if self.io_device.is_irq_in_service(0) {
+            log::trace!("Timer IRQ suppressed: IRQ 0 already in service (PIC ISR)");
+            return false;
+        }
+
         // Wake CPU from HLT state
         if self.cpu.is_halted() {
             self.cpu.clear_halt();
         }
+
+        // Mark IRQ 0 (timer) as in-service in the PIC ISR.
+        self.io_device.set_irq_in_service(0);
 
         // Check if custom INT 08h handler is installed
         let int_num: u8 = 0x08;
@@ -824,6 +848,9 @@ impl<V: VideoController> Computer<V> {
                 log::info!("IRQ 08h: tick at {:04X}:{:04X}", self.cpu.cs, self.cpu.ip);
             }
             // BIOS INT 1Ch is a no-op, so nothing more to do
+
+            // BIOS INT 08h sends EOI before returning — clear ISR bit 0.
+            self.io_device.clear_irq_in_service(0);
         }
 
         true
@@ -1033,6 +1060,14 @@ impl<V: VideoController> Computer<V> {
                 &mut self.bios,
                 self.cpu_type,
             );
+
+            // BIOS handlers for hardware IRQs send EOI (OUT 0x20, 0x20) before IRET.
+            // Clear the PIC ISR bit so the next IRQ of the same level can be delivered.
+            match int_num {
+                0x08 => self.io_device.clear_irq_in_service(0),
+                0x09 => self.io_device.clear_irq_in_service(1),
+                _ => {}
+            }
 
             // Check if handler started an IRQ chain (e.g., INT 0x08 chains to INT 0x1C)
             if self.cpu.is_in_irq_chain() {

@@ -14,7 +14,8 @@
 - [X] Add an opcode test for 286 instructions (test-programs/cpu/op286.asm).
 - [X] wasm hosted images. (see plans/images-json-server-library.md)
 - [X] King's Quest 2 soft locks on title screen (see docs/kq2-timer-softlock-investigation.md)
-- [ ] Implement 8259 PIC Keyboard handling (see plans/pic-isr-keyboard-reentrance-fix.md)
+- [X] Implement 8259 PIC Keyboard handling (see plans/pic-isr-keyboard-reentrance-fix.md)
+- [ ] Integration tests
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)

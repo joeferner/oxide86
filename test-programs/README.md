@@ -167,6 +167,29 @@ Fires RC timer one-shots by writing to port 0x201, then polls in a tight loop (u
 ### waitkey.asm
 Tests INT 16h AH=00h blocking keyboard input behavior. Waits for keypresses and echoes them back to the console. Demonstrates blocking keyboard reads, scan code/ASCII code handling, and prints each key pressed. Press ESC to exit.
 
+### pic_isr_reentrance.asm
+Validates 8259A PIC In-Service Register (ISR) re-entrance prevention for INT 09h (keyboard IRQ 1). Installs a custom INT 09h handler that immediately executes STI — exactly as Sierra AGI games (e.g. KQ2 at 10B2:5F6F) do. On real AT hardware the PIC keeps IRQ 1 in-service until EOI, blocking any re-entrant keyboard delivery even with IF=1.
+
+Without PIC ISR emulation: if a key-press and key-release arrive closely together, the release fires re-entrantly inside the press handler (after STI, before port 0x60 is read), overwriting the scan code. The `reentrant_count` increments.
+
+With PIC ISR emulation: the release is blocked until the chained BIOS handler sends EOI, so `reentrant_count` stays 0.
+
+Each keypress prints: `Scan:XX Reentrant:NN [PASS|FAIL]`. ESC exits and shows the final result.
+
+**Running:**
+```bash
+nasm -f bin test-programs/keyboard/pic_isr_reentrance.asm -o test-programs/keyboard/pic_isr_reentrance.com
+cargo run -p oxide86-native-gui -- test-programs/keyboard/pic_isr_reentrance.com
+```
+
+**Expected output (with PIC ISR fix):**
+```
+Scan:1E Reentrant:00 [PASS]
+Scan:25 Reentrant:00 [PASS]
+...
+PASS: No re-entrant INT 09h calls detected.
+```
+
 ## Misc
 
 ### reboot_test.asm

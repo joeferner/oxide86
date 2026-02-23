@@ -71,6 +71,10 @@ pub struct IoDevice {
     crtc_cursor_low: u8,
     /// Emulated CPU frequency in Hz (preserved across resets for PIT re-init)
     cpu_freq: u64,
+    /// 8259A PIC In-Service Register: bit N = IRQ N currently being serviced.
+    /// Prevents re-entrant delivery of the same IRQ level while its handler runs.
+    /// Cleared by EOI command (OUT 0x20, 0x20) or by BIOS handler returning.
+    pic_isr: u8,
 }
 
 impl IoDevice {
@@ -106,12 +110,31 @@ impl IoDevice {
             crtc_cursor_high: 0,
             crtc_cursor_low: 0,
             cpu_freq,
+            pic_isr: 0,
         }
+    }
+
+    /// Set ISR bit for the given IRQ level (0–7).
+    pub fn set_irq_in_service(&mut self, irq: u8) {
+        self.pic_isr |= 1 << irq;
+    }
+
+    /// Clear ISR bit for the given IRQ level (0–7). Called on EOI or BIOS handler return.
+    pub fn clear_irq_in_service(&mut self, irq: u8) {
+        self.pic_isr &= !(1 << irq);
+    }
+
+    /// Returns true if the given IRQ level is currently in service.
+    pub fn is_irq_in_service(&self, irq: u8) -> bool {
+        self.pic_isr & (1 << irq) != 0
     }
 
     /// Read a byte from the specified I/O port.
     pub fn read_byte(&mut self, port: u16) -> u8 {
         let value = match port {
+            // 8259A PIC command port (read) — return 0xFF; ISR/IRR reads not needed
+            0x20 => 0xFF,
+
             // PIT channel data ports
             0x40..=0x42 => self.pit.read_channel((port - 0x40) as u8),
 
@@ -244,6 +267,21 @@ impl IoDevice {
         log::trace!("I/O Write: Port 0x{:04X} <- 0x{:02X}", port, value);
 
         match port {
+            // 8259A PIC command port
+            // 0x20 = Non-specific EOI: clear the highest-priority (lowest-numbered) ISR bit.
+            // Ignore other 8259A command writes (ICW/OCW) — not needed for our purposes.
+            0x20 => {
+                if value == 0x20 {
+                    for irq in 0..8u8 {
+                        if self.pic_isr & (1 << irq) != 0 {
+                            self.clear_irq_in_service(irq);
+                            log::trace!("PIC: EOI cleared ISR bit for IRQ {}", irq);
+                            break;
+                        }
+                    }
+                }
+            }
+
             // PIT channel data ports
             0x40..=0x42 => self.pit.write_channel((port - 0x40) as u8, value),
 
@@ -659,5 +697,6 @@ impl IoDevice {
         self.crtc_cursor_high = 0;
         self.crtc_cursor_low = 0;
         self.sound_card.reset();
+        self.pic_isr = 0;
     }
 }
