@@ -174,6 +174,79 @@ Simple "Hello World" test program for verifying program loading functionality. U
 
 ## Opcode Test
 
+### opcode-test/op286.asm
+Test suite for 80286-specific CPU instructions and 8086 behavior differences. Tests all instructions new in 286 not covered by op8086.asm, plus instructions whose behavior changed between 8086 and 286.
+
+**Running with serial logger:**
+```bash
+# Native CLI (must use --cpu 286)
+cargo run -p oxide86-native-cli -- test-programs/opcode-test/op286.com --cpu 286 --com1-device logger
+
+# Native GUI
+cargo run -p oxide86-native-gui -- test-programs/opcode-test/op286.com --cpu 286 --com1-device logger
+```
+
+**Expected Output:**
+```
+[COM1] === oxide86 286 Opcode Test Suite ===
+[COM1] PUSH SP (286): PASS
+[COM1] PUSH imm: PASS
+[COM1] PUSHA/POPA: PASS
+[COM1] IMUL 3-op: PASS
+[COM1] BOUND: PASS
+[COM1] ENTER/LEAVE: PASS
+[COM1] SHL imm: PASS
+[COM1] SHR imm: PASS
+[COM1] SAR imm: PASS
+[COM1] ROL imm: PASS
+[COM1] ROR imm: PASS
+[COM1] RCL imm: PASS
+[COM1] RCR imm: PASS
+[COM1] INSB: PASS
+[COM1] INSW: PASS
+[COM1] OUTSB: PASS
+[COM1] OUTSW: PASS
+[COM1]
+[COM1] --- Summary ---
+[COM1] 17 passed, 0 failed
+```
+
+**Tested Instructions (286-specific):**
+
+*Stack Operations (new in 286):*
+- **PUSH SP**: 286 behavior — pushes the original SP value (before decrement), unlike 8086 which pushes the decremented value
+- **PUSH imm16** (0x68): Push 16-bit immediate directly onto stack
+- **PUSH imm8** (0x6A): Push sign-extended 8-bit immediate (positive and negative sign extension)
+- **PUSHA** (0x60): Push all general-purpose registers (AX, CX, DX, BX, original SP, BP, SI, DI)
+- **POPA** (0x61): Pop all general-purpose registers (SP value from stack discarded)
+
+*Arithmetic (new in 286):*
+- **IMUL r16, r/m16, imm16** (0x69): 3-operand signed multiply with 16-bit immediate; destination differs from source
+- **IMUL r16, r/m16, imm8** (0x6B): 3-operand signed multiply with sign-extended 8-bit immediate; includes memory source form; overflow behavior
+
+*Bounds Checking (new in 286):*
+- **BOUND** (0x62): Array bounds check — verifies register value is within signed [lower, upper] range stored in memory; in-bounds case tested (no INT 5)
+
+*Stack Frame Instructions (new in 286):*
+- **ENTER imm16, 0** (0xC8): Set up high-level language stack frame (push BP, set BP=SP, allocate locals); tested with 0, 4, and 16 byte allocations
+- **LEAVE** (0xC9): Tear down stack frame (MOV SP,BP; POP BP); verified SP/BP restored correctly
+
+*Shift/Rotate by Immediate Count (new in 286):*
+The 0xC0/0xC1 encoding allows shifting/rotating by any immediate count (not just 1 as on 8086):
+- **SHL r/m, imm8**: Shift left by counts 1, 4, 8, 15; carry flag propagation
+- **SHR r/m, imm8**: Logical shift right; no sign extension; carry from LSB
+- **SAR r/m, imm8**: Arithmetic shift right; sign bit replicated; negative values preserved
+- **ROL r/m, imm8**: Rotate left by count; bit wrap; carry reflects MSB; byte-swap via count=8
+- **ROR r/m, imm8**: Rotate right by count; bit wrap; carry reflects LSB; byte-swap via count=8
+- **RCL r/m, imm8**: Rotate left through carry; 17-bit rotation; verified with carry set/clear
+- **RCR r/m, imm8**: Rotate right through carry; 17-bit rotation; verified with carry set/clear
+
+*String I/O Instructions (new in 286):*
+- **INSB** (0x6C): Input byte from I/O port DX into ES:DI; DI±1; tested with CLD, STD, and REP
+- **INSW** (0x6D): Input word from I/O port DX into ES:DI; DI±2; tested with CLD, STD, and REP
+- **OUTSB** (0x6E): Output byte from DS:SI to I/O port DX; SI±1; tested with CLD, STD, and REP
+- **OUTSW** (0x6F): Output word from DS:SI to I/O port DX; SI±2; tested with CLD, STD, and REP
+
 ### opcode-test/op8086.asm
 Comprehensive test suite for validating CPU instruction implementation. Tests 55 different instruction categories with multiple test cases each, reporting results to COM1 serial logger. Covers approximately 70% of the 8086 instruction set.
 

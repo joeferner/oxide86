@@ -1,5 +1,5 @@
 // INT 20h - Program Terminate
-use crate::Bus;
+use crate::{Bus, cpu::cpu_flag};
 // This is the original DOS program termination interrupt.
 // CS must contain the PSP segment when this interrupt is called.
 
@@ -34,8 +34,11 @@ impl Cpu {
 
         // Jump to the terminate address
         if terminate_cs == 0 && terminate_ip == 0 {
-            // No return address - halt the CPU (top-level program)
+            // No return address - halt the CPU (top-level program).
+            // Clear IF so that pending IRQs cannot wake the CPU and
+            // resume execution after the INT 20h instruction.
             self.halted = true;
+            self.set_flag(cpu_flag::INTERRUPT, false);
         } else {
             // Return to parent program
             self.cs = terminate_cs;

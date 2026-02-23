@@ -340,8 +340,11 @@ impl Cpu {
 
         // Jump to the terminate address
         if terminate_cs == 0 && terminate_ip == 0 {
-            // No return address - halt the CPU (top-level program)
+            // No return address - halt the CPU (top-level program).
+            // Clear IF so that pending IRQs (e.g. timer) cannot wake the CPU
+            // and resume execution after the INT 21h instruction.
             self.halted = true;
+            self.set_flag(cpu_flag::INTERRUPT, false);
         } else {
             // Return to parent program
             self.cs = terminate_cs;
@@ -400,8 +403,10 @@ impl Cpu {
 
         // Jump to the terminate address
         if terminate_cs == 0 && terminate_ip == 0 {
-            // No return address - halt the CPU (top-level program)
+            // No return address - halt the CPU (top-level program).
+            // Clear IF so that pending IRQs cannot wake the CPU.
             self.halted = true;
+            self.set_flag(cpu_flag::INTERRUPT, false);
         } else {
             // Return to parent program
             self.cs = terminate_cs;
