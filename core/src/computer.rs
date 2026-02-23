@@ -1077,6 +1077,39 @@ impl<V: VideoController> Computer<V> {
             self.cpu.ip = ret_offset;
             self.cpu.cs = ret_segment;
 
+            // INT 08h: Chain to custom INT 1Ch handler if one is installed.
+            // On real AT-class hardware, the BIOS INT 08h handler always calls INT 1Ch
+            // after updating the BDA tick counter. When a custom INT 08h handler
+            // (e.g., Sierra AGI / KQ2) calls F000:0008 directly via CALL FAR, INT 1Ch
+            // must still be fired here to match real BIOS behavior.
+            //
+            // Stack at this point is already correct: the saved_flags pop above consumed
+            // the near-call return address from the task manager's stack, so the task
+            // manager's IRET at the end of its body will correctly return from INT 08h.
+            // We push an INT frame so INT 1Ch can IRET back to ret_cs:ret_ip.
+            if int_num == 0x08 && !Cpu::is_bios_handler(&mut self.bus, 0x1C) {
+                let ivt_1c = 0x1C_usize * 4;
+                let handler_off = self.bus.read_u16(ivt_1c);
+                let handler_seg = self.bus.read_u16(ivt_1c + 2);
+
+                if self.exec_logging_enabled {
+                    log::info!(
+                        "INT 08h (F000): Chaining to custom INT 1Ch at {:04X}:{:04X}",
+                        handler_seg,
+                        handler_off
+                    );
+                }
+
+                self.cpu.push(self.cpu.flags, &mut self.bus);
+                self.cpu.push(self.cpu.cs, &mut self.bus);
+                self.cpu.push(self.cpu.ip, &mut self.bus);
+                self.cpu.set_flag(crate::cpu::cpu_flag::INTERRUPT, false);
+                self.cpu.set_flag(crate::cpu::cpu_flag::TRAP, false);
+                self.cpu.cs = handler_seg;
+                self.cpu.ip = handler_off;
+                return;
+            }
+
             // Process pending timer IRQs inline if IF=1
             // This simulates the timer IRQs that would fire during disk I/O on real hardware.
             // Note: We do NOT process keyboard IRQs inline because custom INT 09h handlers

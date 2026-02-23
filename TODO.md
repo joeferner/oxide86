@@ -13,10 +13,10 @@
 - [X] Changing hard drive images in wasm isn't reflected in the disk manager dialog
 - [X] Add an opcode test for 286 instructions (test-programs/cpu/op286.asm).
 - [X] wasm hosted images. (see plans/images-json-server-library.md)
+- [X] King's Quest 2 soft locks on title screen (see docs/kq2-timer-softlock-investigation.md)
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)
-- [ ] King's Quest 2 soft locks on title screen (see docs/kq2-timer-softlock-investigation.md)
 - [ ] create better onboarding experience for gui and wasm, better enable/disable states of buttons
 - [ ] add cpu type runtime feature toggle to instructions. For example when selecting 8086 it should not be able to use PUSHA
 - [ ] WASM add additional hard drives, floppy, or cdrom. Remove "Floppy Drive B:" by default and add a button to add additional drives.
