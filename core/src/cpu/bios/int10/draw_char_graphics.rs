@@ -3,6 +3,37 @@ use crate::cpu::bios::int10::GraphicsDrawMode;
 use crate::{Bus, Cp437Font};
 
 impl Cpu {
+    /// Read an 8-row glyph for `char_code` from the INT 43h font pointer.
+    ///
+    /// Real IBM BIOS behavior: in graphics modes, INT 43h points to the active
+    /// 8×8 character font (all 256 glyphs).  Programs install custom fonts by
+    /// changing the INT 43h vector before calling INT 10h.
+    /// Falls back to the built-in CP437 font if INT 43h is zero / unset.
+    fn get_glyph_from_int43(bus: &Bus, char_code: u8) -> [u8; 8] {
+        // INT 43h vector lives at IVT[0x43] = physical 0x10C (offset) / 0x10E (segment)
+        let int43_offset =
+            bus.memory().read_u8(0x10C) as usize | ((bus.memory().read_u8(0x10D) as usize) << 8);
+        let int43_segment =
+            bus.memory().read_u8(0x10E) as usize | ((bus.memory().read_u8(0x10F) as usize) << 8);
+        let font_base = int43_segment * 16 + int43_offset;
+
+        if font_base == 0 {
+            // Fallback: use built-in CP437 font
+            let font = Cp437Font::new();
+            let slice = font.get_glyph_8(char_code);
+            let mut arr = [0u8; 8];
+            arr.copy_from_slice(&slice[..8]);
+            return arr;
+        }
+
+        let glyph_base = font_base + char_code as usize * 8;
+        let mut glyph = [0u8; 8];
+        for (i, byte) in glyph.iter_mut().enumerate() {
+            *byte = bus.memory().read_u8(glyph_base + i);
+        }
+        glyph
+    }
+
     /// Draw a character in graphics mode using font data
     pub(super) fn draw_char_graphics(
         &self,
@@ -38,8 +69,6 @@ impl Cpu {
         fg_color: u8,
         mode: GraphicsDrawMode,
     ) {
-        let font = Cp437Font::new();
-
         // CGA graphics mode: use native 8x8 CGA font
         // In XorInverted mode, strip bit 7 from character to get base glyph
         // (e.g., 0x80 -> 0x00, then invert to get solid block)
@@ -48,7 +77,7 @@ impl Cpu {
         } else {
             character
         };
-        let glyph = font.get_glyph_8(char_code);
+        let glyph = Self::get_glyph_from_int43(bus, char_code);
         let char_height = 8;
         let char_width = 8;
 
@@ -128,20 +157,30 @@ impl Cpu {
         fg_color: u8,
         mode: GraphicsDrawMode,
     ) {
-        let font = Cp437Font::new();
-
         // EGA 320x200 16-color planar mode
         let char_code = if matches!(mode, GraphicsDrawMode::XorInverted) {
             character & 0x7F
         } else {
             character
         };
-        let glyph = font.get_glyph_8(char_code);
+        let glyph = Self::get_glyph_from_int43(bus, char_code);
         let char_height = 8;
         let char_width = 8;
 
         let start_x = col * char_width;
         let start_y = row * char_height;
+
+        log::trace!(
+            "Drawing char 0x{:02X}->0x{:02X} at row={} col={} (pixel {},{}) fg={} mode={:?}",
+            character,
+            char_code,
+            row,
+            col,
+            start_x,
+            start_y,
+            fg_color,
+            mode
+        );
 
         for (py, &glyph_byte) in glyph.iter().enumerate() {
             let y = start_y + py;
@@ -269,20 +308,30 @@ impl Cpu {
         fg_color: u8,
         mode: GraphicsDrawMode,
     ) {
-        let font = Cp437Font::new();
-
         // VGA mode 13h: 1 byte per pixel, linear framebuffer
         let char_code = if matches!(mode, GraphicsDrawMode::XorInverted) {
             character & 0x7F
         } else {
             character
         };
-        let glyph = font.get_glyph_8(char_code);
+        let glyph = Self::get_glyph_from_int43(bus, char_code);
         let char_height = 8;
         let char_width = 8;
 
         let start_x = col * char_width;
         let start_y = row * char_height;
+
+        log::trace!(
+            "Drawing char 0x{:02X}->0x{:02X} at row={} col={} (pixel {},{}) fg={} mode={:?}",
+            character,
+            char_code,
+            row,
+            col,
+            start_x,
+            start_y,
+            fg_color,
+            mode
+        );
 
         for (py, &glyph_byte) in glyph.iter().enumerate() {
             let y = start_y + py;

@@ -78,6 +78,13 @@ pub const FONT_8X8_SEGMENT: u16 = 0xF000;
 pub const FONT_8X8_OFFSET: u16 = 0xC000; // F000:C000
 pub const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
 
+// IBM BIOS standard 8x8 font location for chars 0x00-0x7F.
+// Many programs (e.g. Sierra AGI) hardcode "mov ds, 0xF000; mov si, 0xFA6E" to read
+// glyph data directly rather than going through INT 43h.  We must mirror chars 0-127
+// of our 8x8 font here to match real IBM BIOS behaviour.
+// Only 128 chars (1024 bytes) fit: 0xFFA6E + 0x400 = 0xFFE6E < 0x100000.
+pub const FONT_8X8_IBM_ADDR: usize = 0xFFA6E; // F000:FA6E, chars 0x00-0x7F only
+
 pub struct Memory {
     data: Vec<u8>,
     /// A20 gate state (true = enabled, addresses can go above 1MB)
@@ -488,11 +495,22 @@ impl Memory {
             }
         }
 
-        // Copy 8x8 CGA font to ROM at F000:FE6E
+        // Copy 8x8 CGA font to ROM at F000:C000
         // 256 characters × 8 bytes = 2048 bytes
         for ch in 0..256 {
             let glyph = font.get_glyph_8(ch as u8);
             let dest_addr = FONT_8X8_ADDR + ch * 8;
+            for (i, &byte) in glyph.iter().enumerate() {
+                self.write_u8(dest_addr + i, byte);
+            }
+        }
+
+        // Mirror chars 0x00-0x7F to IBM BIOS standard address F000:FA6E.
+        // Programs like Sierra AGI hardcode this address to read glyph data directly.
+        // Only 128 chars fit: 0xFFA6E + 128*8 = 0xFFE6E which is still within 1 MB.
+        for ch in 0..128usize {
+            let glyph = font.get_glyph_8(ch as u8);
+            let dest_addr = FONT_8X8_IBM_ADDR + ch * 8;
             for (i, &byte) in glyph.iter().enumerate() {
                 self.write_u8(dest_addr + i, byte);
             }
