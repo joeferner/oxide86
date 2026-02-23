@@ -177,38 +177,38 @@ Simple "Hello World" test program for verifying program loading functionality. U
 ### opcode-test/op286.asm
 Test suite for 80286-specific CPU instructions and 8086 behavior differences. Tests all instructions new in 286 not covered by op8086.asm, plus instructions whose behavior changed between 8086 and 286.
 
-**Running with serial logger:**
+**Running:**
 ```bash
 # Native CLI (must use --cpu 286)
-cargo run -p oxide86-native-cli -- test-programs/opcode-test/op286.com --cpu 286 --com1-device logger
+cargo run -p oxide86-native-cli -- test-programs/opcode-test/op286.com --cpu 286
 
 # Native GUI
-cargo run -p oxide86-native-gui -- test-programs/opcode-test/op286.com --cpu 286 --com1-device logger
+cargo run -p oxide86-native-gui -- test-programs/opcode-test/op286.com --cpu 286
 ```
 
 **Expected Output:**
 ```
-[COM1] === oxide86 286 Opcode Test Suite ===
-[COM1] PUSH SP (286): PASS
-[COM1] PUSH imm: PASS
-[COM1] PUSHA/POPA: PASS
-[COM1] IMUL 3-op: PASS
-[COM1] BOUND: PASS
-[COM1] ENTER/LEAVE: PASS
-[COM1] SHL imm: PASS
-[COM1] SHR imm: PASS
-[COM1] SAR imm: PASS
-[COM1] ROL imm: PASS
-[COM1] ROR imm: PASS
-[COM1] RCL imm: PASS
-[COM1] RCR imm: PASS
-[COM1] INSB: PASS
-[COM1] INSW: PASS
-[COM1] OUTSB: PASS
-[COM1] OUTSW: PASS
-[COM1]
-[COM1] --- Summary ---
-[COM1] 17 passed, 0 failed
+=== oxide86 286 Opcode Test Suite ===
+PUSH SP (286): PASS
+PUSH imm: PASS
+PUSHA/POPA: PASS
+IMUL 3-op: PASS
+BOUND: PASS
+ENTER/LEAVE: PASS
+SHL imm: PASS
+SHR imm: PASS
+SAR imm: PASS
+ROL imm: PASS
+ROR imm: PASS
+RCL imm: PASS
+RCR imm: PASS
+INSB: PASS
+INSW: PASS
+OUTSB: PASS
+OUTSW: PASS
+
+--- Summary ---
+17 passed, 0 failed
 ```
 
 **Tested Instructions (286-specific):**
@@ -248,78 +248,78 @@ The 0xC0/0xC1 encoding allows shifting/rotating by any immediate count (not just
 - **OUTSW** (0x6F): Output word from DS:SI to I/O port DX; SI±2; tested with CLD, STD, and REP
 
 ### opcode-test/op8086.asm
-Comprehensive test suite for validating CPU instruction implementation. Tests 55 different instruction categories with multiple test cases each, reporting results to COM1 serial logger. Covers approximately 70% of the 8086 instruction set.
+Comprehensive test suite for validating CPU instruction implementation. Tests 55 different instruction categories with multiple test cases each, reporting results to the screen. Covers approximately 70% of the 8086 instruction set.
 
-**Running with serial logger:**
+**Running:**
 ```bash
 # Native CLI
-cargo run -p oxide86-native-cli -- test-programs/opcode-test/op8086.com --com1-device logger
+cargo run -p oxide86-native-cli -- test-programs/opcode-test/op8086.com
 
 # Native GUI
-cargo run -p oxide86-native-gui -- test-programs/opcode-test/op8086.com --com1-device logger
+cargo run -p oxide86-native-gui -- test-programs/opcode-test/op8086.com
 ```
 
 **Expected Output:**
 ```
-[COM1] === oxide86 Opcode Test Suite ===
-[COM1] MOV: PASS
-[COM1] ADD: PASS
-[COM1] SUB: PASS
-[COM1] INC: PASS
-[COM1] DEC: PASS
-[COM1] NEG: PASS
-[COM1] CMP: PASS
-[COM1] AND: PASS
-[COM1] OR: PASS
-[COM1] XOR: PASS
-[COM1] NOT: PASS
-[COM1] TEST: PASS
-[COM1] SHL: PASS
-[COM1] SHR: PASS
-[COM1] ROL: PASS
-[COM1] ROR: PASS
-[COM1] MUL: PASS
-[COM1] DIV: PASS
-[COM1] PUSH/POP: PASS
-[COM1] LODSB: PASS
-[COM1] STOSB: PASS
-[COM1] MOVSB: PASS
-[COM1] CMPSB: PASS
-[COM1] SCASB: PASS
-[COM1] ADC/SBB: PASS
-[COM1] IMUL: PASS
-[COM1] IDIV: PASS
-[COM1] RCL/RCR: PASS
-[COM1] LOOPZ/LOOPNZ: PASS
-[COM1] DAA/DAS: PASS
-[COM1] AAA/AAS: PASS
-[COM1] AAM/AAD: PASS
-[COM1] JO/JNO: PASS
-[COM1] JP/JNP: PASS
-[COM1] LDS/LES: PASS
-[COM1] RET imm: PASS
-[COM1] XCHG: PASS
-[COM1] LEA: PASS
-[COM1] CBW/CWD: PASS
-[COM1] LAHF/SAHF: PASS
-[COM1] XLATB: PASS
-[COM1] SAR: PASS
-[COM1] LODSW: PASS
-[COM1] STOSW: PASS
-[COM1] MOVSW: PASS
-[COM1] CMPSW: PASS
-[COM1] SCASW: PASS
-[COM1] Conditional Jumps: PASS
-[COM1] JMP: PASS
-[COM1] CALL/RET: PASS
-[COM1] JCXZ/LOOP: PASS
-[COM1] CLC/STC/CMC: PASS
-[COM1] CLD/STD/CLI/STI: PASS
-[COM1] RETF: PASS
-[COM1] PUSHF/POPF: PASS
-[COM1]
-[COM1] --- Summary ---
-[COM1] 55 passed, 0 failed
+=== oxide86 Opcode Test Suite ===
+MOV: PASS
+ADD: PASS
+SUB: PASS
+INC: PASS
+DEC: PASS
+NEG: PASS
+CMP: PASS
+AND: PASS
+OR: PASS
+XOR: PASS
+NOT: PASS
+TEST: PASS
+SHL: PASS
+SHR: PASS
+ROL: PASS
+ROR: PASS
+MUL: PASS
+DIV: PASS
+PUSH/POP: PASS
+LODSB: PASS
+STOSB: PASS
+MOVSB: PASS
+CMPSB: PASS
+SCASB: PASS
+ADC/SBB: PASS
+IMUL: PASS
+IDIV: PASS
+RCL/RCR: PASS
+LOOPZ/LOOPNZ: PASS
+DAA/DAS: PASS
+AAA/AAS: PASS
+AAM/AAD: PASS
+JO/JNO: PASS
+JP/JNP: PASS
+LDS/LES: PASS
+RET imm: PASS
+XCHG: PASS
+LEA: PASS
+CBW/CWD: PASS
+LAHF/SAHF: PASS
+XLATB: PASS
+SAR: PASS
+LODSW: PASS
+STOSW: PASS
+MOVSW: PASS
+CMPSW: PASS
+SCASW: PASS
+Conditional Jumps: PASS
+JMP: PASS
+CALL/RET: PASS
+JCXZ/LOOP: PASS
+CLC/STC/CMC: PASS
+CLD/STD/CLI/STI: PASS
+RETF: PASS
+PUSHF/POPF: PASS
+
+--- Summary ---
+55 passed, 0 failed
 ```
 
 **Tested Instructions:**

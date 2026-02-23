@@ -22,12 +22,6 @@
 
 section .text
 start:
-    ; Initialize COM1 serial port
-    mov dx, 0          ; COM1
-    mov al, 0xE3       ; 9600 baud, no parity, 1 stop, 8 data
-    mov ah, 0          ; Initialize serial port
-    int 14h
-
     ; Print banner
     mov si, msg_banner
     call print_string
@@ -1048,13 +1042,13 @@ print_summary:
 print_string:
     push ax
     push dx
-    mov dx, 0          ; COM1
 .loop:
     lodsb
     test al, al
     jz .done
-    mov ah, 1          ; Write character
-    int 14h
+    mov dl, al
+    mov ah, 02h        ; Write character to stdout
+    int 21h
     jmp .loop
 .done:
     pop dx
@@ -1067,9 +1061,9 @@ print_string:
 print_char:
     push ax
     push dx
-    mov dx, 0          ; COM1
-    mov ah, 1          ; Write character
-    int 14h
+    mov dl, al
+    mov ah, 02h        ; Write character to stdout
+    int 21h
     pop dx
     pop ax
     ret
