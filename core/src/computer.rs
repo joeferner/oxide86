@@ -906,6 +906,10 @@ impl<V: VideoController> Computer<V> {
                 // loops (e.g., the while-loop in step_emulator) always make progress
                 // and the event loop gets a chance to deliver keyboard events.
                 self.increment_cycles(3);
+                // Drain pending timer ticks into the BDA counter so they don't burst-fire
+                // when the wait ends.  Real BIOS INT 16h runs with STI, letting timer
+                // IRQs update the BDA normally; we approximate that here.
+                self.sync_bda_timer();
                 return;
             }
         }

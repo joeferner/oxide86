@@ -211,14 +211,19 @@ impl IoDevice {
                 // Reading port 0x3DA resets the AC address/data flip-flop
                 self.ac_flip_flop = false;
 
-                self.cga_status_counter = self.cga_status_counter.wrapping_add(1);
-                // Every other read: alternate between active display (0x00) and
-                // retrace (0x09 = both hsync and vsync bits set)
-                if self.cga_status_counter & 1 == 0 {
-                    0x00
-                } else {
-                    0x09
-                }
+                // Cycle-accurate vertical blank emulation at 60 Hz.
+                // VBlank occupies the last ~10% of each frame period; active display
+                // the first ~90%.  Bit 3 = vertical sync active, bit 0 = display
+                // enable inverted (also set during retrace).
+                //
+                // Games such as IJATC spin on this port in a "wait for VBlank" loop;
+                // without cycle-gating the bit would toggle on every read, making the
+                // loop return instantly and causing animations/title-screens to run at
+                // full CPU speed instead of the intended 60 fps.
+                let frame_cycles = (self.cpu_freq / 60).max(1);
+                let cycle_in_frame = self.current_cycle % frame_cycles;
+                let in_vblank = cycle_in_frame >= frame_cycles * 9 / 10;
+                if in_vblank { 0x09 } else { 0x00 }
             }
 
             // EGA Sequencer index port (write-only address, return 0xFF)
