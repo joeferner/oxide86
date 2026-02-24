@@ -404,21 +404,25 @@ pub(crate) fn event_to_keypress(
         "F11" => (0x57, 0x00),
         "F12" => (0x58, 0x00),
 
-        // Numpad keys
-        "Numpad0" => (0x52, b'0'),
-        "Numpad1" => (0x4F, b'1'),
-        "Numpad2" => (0x50, b'2'),
-        "Numpad3" => (0x51, b'3'),
-        "Numpad4" => (0x4B, b'4'),
-        "Numpad5" => (0x4C, b'5'),
-        "Numpad6" => (0x4D, b'6'),
-        "Numpad7" => (0x47, b'7'),
-        "Numpad8" => (0x48, b'8'),
-        "Numpad9" => (0x49, b'9'),
+        // Numpad keys - behavior depends on NumLock state.
+        // The browser's KeyboardEvent.key already reflects NumLock:
+        //   NumLock ON:  key = "0"-"9" or "."  → send digit ASCII
+        //   NumLock OFF: key = navigation name  → send 0x00 (extended key)
+        // Scan codes are the same regardless of NumLock (physical key position).
+        "Numpad0" => (0x52, if key == "0" { b'0' } else { 0x00 }), // Insert when NumLock off
+        "Numpad1" => (0x4F, if key == "1" { b'1' } else { 0x00 }), // End when NumLock off
+        "Numpad2" => (0x50, if key == "2" { b'2' } else { 0x00 }), // Down when NumLock off
+        "Numpad3" => (0x51, if key == "3" { b'3' } else { 0x00 }), // PgDn when NumLock off
+        "Numpad4" => (0x4B, if key == "4" { b'4' } else { 0x00 }), // Left when NumLock off
+        "Numpad5" => (0x4C, if key == "5" { b'5' } else { 0x00 }), // (undefined) when NumLock off
+        "Numpad6" => (0x4D, if key == "6" { b'6' } else { 0x00 }), // Right when NumLock off
+        "Numpad7" => (0x47, if key == "7" { b'7' } else { 0x00 }), // Home when NumLock off
+        "Numpad8" => (0x48, if key == "8" { b'8' } else { 0x00 }), // Up when NumLock off
+        "Numpad9" => (0x49, if key == "9" { b'9' } else { 0x00 }), // PgUp when NumLock off
         "NumpadMultiply" => (0x37, b'*'),
         "NumpadAdd" => (0x4E, b'+'),
         "NumpadSubtract" => (0x4A, b'-'),
-        "NumpadDecimal" => (0x53, b'.'),
+        "NumpadDecimal" => (0x53, if key == "." { b'.' } else { 0x00 }), // Delete when NumLock off
         "NumpadDivide" => (0x35, b'/'),
         "NumpadEnter" => (0x1C, 0x0D),
 

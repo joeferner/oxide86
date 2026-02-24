@@ -186,7 +186,7 @@ impl Cpu {
         let rows = bus.video().get_rows();
 
         if lines == 0 {
-            log::info!(
+            log::debug!(
                 "INT 10h AH=06h: CLEARING window with attr=0x{:02X}, ({},{}) to ({},{})",
                 attr,
                 top,
