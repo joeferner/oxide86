@@ -37,6 +37,25 @@ EGA_PALETTE = [
 ]
 
 
+def ega_formula_color(i):
+    """Compute VGA DAC RGB (6-bit) for EGA 64-color palette index i.
+
+    Each 6-bit index encodes two intensity bits per channel:
+      R = bit2 * 0x2A + bit5 * 0x15
+      G = bit1 * 0x2A + bit4 * 0x15
+      B = bit0 * 0x2A + bit3 * 0x15
+    6-bit values are scaled to 8-bit via (v << 2) | (v >> 4).
+    """
+    r6 = ((i >> 2) & 1) * 0x2A + ((i >> 5) & 1) * 0x15
+    g6 = ((i >> 1) & 1) * 0x2A + ((i >> 4) & 1) * 0x15
+    b6 = (i & 1) * 0x2A + ((i >> 3) & 1) * 0x15
+    return (
+        (r6 << 2) | (r6 >> 4),
+        (g6 << 2) | (g6 >> 4),
+        (b6 << 2) | (b6 >> 4),
+    )
+
+
 class ScreenRecreator:
     def __init__(self):
         self.mode = None
@@ -45,11 +64,16 @@ class ScreenRecreator:
         self.scale = 2  # Scale factor for output image
         self.pixels = None
         self.palette = None
-        # VGA DAC has 256 entries, initialize first 16 with EGA defaults
+        # VGA DAC: entries 0-15 = EGA 16-color text palette, entries 16-63 =
+        # EGA 64-color formula (matches what the IBM VGA BIOS programs on mode set).
         self.vga_dac = [(0, 0, 0)] * 256
         for i, color in enumerate(EGA_PALETTE):
             self.vga_dac[i] = color
-        self.ac_palette = list(range(16))  # Identity mapping by default [0,1,2,3,...]
+        for i in range(16, 64):
+            self.vga_dac[i] = ega_formula_color(i)
+        # AC palette: maps EGA pixel values 0-15 to VGA DAC indices.
+        # Default is identity; EGA programs override via port 0x3C0.
+        self.ac_palette = list(range(16))
         # EGA plane buffers: 4 planes, each 40 bytes wide × 200 rows = 8000 bytes
         self.ega_planes = [[0] * 8000 for _ in range(4)]
 
@@ -89,7 +113,13 @@ class ScreenRecreator:
         elif "Graphics640x200" in self.mode:
             self.palette = [self.vga_dac[0], self.vga_dac[15]]  # Black and white
         elif "Graphics320x200x16" in self.mode:
-            self.palette = self.vga_dac[:16]
+            # EGA 16-color: pixel value (0-15) → AC palette → VGA DAC index → color
+            self.palette = [self.vga_dac[self.ac_palette[i]] for i in range(16)]
+            print(f"Effective EGA palette (via AC palette):")
+            for i in range(16):
+                ac_idx = self.ac_palette[i]
+                rgb = self.vga_dac[ac_idx]
+                print(f"  Pixel {i} → AC[{i}]={ac_idx} → VGA_DAC[{ac_idx}] = RGB{rgb}")
         else:
             self.palette = CGA_PALETTE
 
@@ -230,13 +260,14 @@ def find_last_screen(log_path):
     vga_dac_pattern = re.compile(
         r'VGA DAC: Setting palette\[(\d+)\] = RGB\((\d+), (\d+), (\d+)\)'
     )
-    ac_palette_pattern = re.compile(
-        r'AC Palette: Synced registers 0-3 from CGA palette.*-> \[(\d+), (\d+), (\d+), (\d+)\]'
+    # Matches individual AC register writes: "AC Palette: Register N = V (DAC index)"
+    ac_register_pattern = re.compile(
+        r'AC Palette: Register (\d+) = (\d+) \(DAC index\)'
     )
 
     recreator = ScreenRecreator()
     last_mode_line = None
-    last_ac_palette = None
+    last_ac_palette = list(range(16))  # identity default
     write_count = 0
 
     print(f"Reading log file: {log_path}")
@@ -249,16 +280,20 @@ def find_last_screen(log_path):
 
     # Scan forward to find last mode switch and track AC palette state
     for i in range(len(lines)):
-        # Track AC palette updates
-        match = ac_palette_pattern.search(lines[i])
+        # Track individual AC register writes
+        match = ac_register_pattern.search(lines[i])
         if match:
-            last_ac_palette = [int(match.group(j)) for j in range(1, 5)]
+            reg = int(match.group(1))
+            val = int(match.group(2))
+            if 0 <= reg < 16:
+                last_ac_palette[reg] = val
 
-        # Track mode switches
+        # Track mode switches (reset AC to identity on mode change)
         match = mode_pattern.search(lines[i])
         if match:
             last_mode_line = i
             mode_str = match.group(1)
+            last_ac_palette = list(range(16))
 
     if last_mode_line is None:
         print("No mode switch found in log file")
@@ -266,11 +301,8 @@ def find_last_screen(log_path):
 
     # Set mode and apply last known AC palette
     recreator.set_mode(mode_str)
-    if last_ac_palette:
-        ac_full = list(range(16))
-        ac_full[:4] = last_ac_palette
-        recreator.set_ac_palette(ac_full)
-        recreator.update_palette()
+    recreator.set_ac_palette(last_ac_palette)
+    recreator.update_palette()
     print(f"Found last mode switch at line {last_mode_line}: {mode_str}")
 
     # Process all VGA DAC, AC palette, and graphics writes after the last mode switch
@@ -287,15 +319,14 @@ def find_last_screen(log_path):
             palette_updated = True
             continue
 
-        # Check for AC palette updates
-        match = ac_palette_pattern.search(lines[i])
+        # Check for individual AC register updates
+        match = ac_register_pattern.search(lines[i])
         if match:
-            ac_values = [int(match.group(j)) for j in range(1, 5)]
-            # Pad to 16 entries (rest stay as identity)
-            ac_full = list(range(16))
-            ac_full[:4] = ac_values
-            recreator.set_ac_palette(ac_full)
-            palette_updated = True
+            reg = int(match.group(1))
+            val = int(match.group(2))
+            if 0 <= reg < 16:
+                recreator.ac_palette[reg] = val
+                palette_updated = True
             continue
 
         # Check for graphics writes

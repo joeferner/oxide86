@@ -16,7 +16,8 @@
 - [X] King's Quest 2 soft locks on title screen (see docs/kq2-timer-softlock-investigation.md)
 - [X] Implement 8259 PIC Keyboard handling (see plans/pic-isr-keyboard-reentrance-fix.md)
 - [X] Indiana Jones and The Last Crusade The Action Game - Cycles title screens too fast
-- [ ] Indiana Jones and The Last Crusade The Action Game - title screens should have black background
+- [X] Indiana Jones and The Last Crusade The Action Game - title screens should have black background
+- [ ] Indiana Jones and The Last Crusade The Action Game - flashing sprites
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)

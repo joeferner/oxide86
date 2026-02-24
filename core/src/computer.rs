@@ -1329,7 +1329,9 @@ impl<V: VideoController> Computer<V> {
                 }
                 crate::video::VideoMode::Graphics320x200x16 => {
                     let pixels = self.bus.video().get_ega_pixels();
-                    self.video_controller.update_graphics_320x200x16(&pixels);
+                    let ac = self.bus.video().get_ac_palette();
+                    let mapped: Vec<u8> = pixels.iter().map(|&p| ac[p as usize]).collect();
+                    self.video_controller.update_graphics_320x200x16(&mapped);
                 }
                 crate::video::VideoMode::Graphics320x200x256 => {
                     let pixels = self.bus.video().get_vga_pixels();
@@ -1382,7 +1384,9 @@ impl<V: VideoController> Computer<V> {
             }
             crate::video::VideoMode::Graphics320x200x16 => {
                 let pixels = self.bus.video().get_ega_pixels();
-                self.video_controller.update_graphics_320x200x16(&pixels);
+                let ac = self.bus.video().get_ac_palette();
+                let mapped: Vec<u8> = pixels.iter().map(|&p| ac[p as usize]).collect();
+                self.video_controller.update_graphics_320x200x16(&mapped);
             }
             crate::video::VideoMode::Graphics320x200x256 => {
                 let pixels = self.bus.video().get_vga_pixels();

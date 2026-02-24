@@ -219,25 +219,35 @@ pub struct Video {
 
 /// Initialize VGA DAC palette with defaults.
 ///
-/// Entries 0-15 use standard EGA colors (6-bit RGB, 0-63).
-/// Entries 16-255 use an RGB332-derived scheme so all 256 palette slots
-/// have distinct, visible colors.  Real VGA BIOS also programs these slots
-/// on mode change; programs that need specific colors must reprogram the DAC.
+/// Entries 0-15 use standard EGA 16-color text palette (6-bit RGB, 0-63).
+/// Entries 16-63 use the EGA 64-color formula so AC palette registers pointing
+/// into this range (as EGA programs do, e.g. AC[8..15]=0x38..0x3F for bright
+/// colors, or game-specific indices like 24-31) resolve to authentic colors.
+/// Entries 64-255 use an RGB332-derived scheme.
 fn default_vga_palette() -> [[u8; 3]; 256] {
     let mut palette = [[0u8; 3]; 256];
 
-    // Entries 0-15: standard EGA colors
+    // Entries 0-15: standard EGA 16-color text palette (kept for identity-AC
+    // text mode compatibility; brown at [6] and dark gray at [8] are correct).
     for (i, entry) in palette.iter_mut().enumerate().take(16) {
         *entry = crate::palette::TextModePalette::get_dac_color(i as u8);
     }
 
-    // Entries 16-255: distribute across 8x8x4 = 256 colour slots so every
-    // index maps to a unique, non-black colour.
-    // Bit layout of n: RRRGGGBB
-    //   R = (n >> 5) & 7  -> 8 levels at multiples of 9  (0..63)
-    //   G = (n >> 2) & 7  -> 8 levels at multiples of 9  (0..63)
-    //   B =  n       & 3  -> 4 levels at multiples of 21 (0..63)
-    for (n, entry) in palette.iter_mut().enumerate().skip(16) {
+    // Entries 16-63: EGA 64-color formula.
+    // Each 6-bit index i encodes two intensity bits per channel:
+    //   R = bit2 * 0x2A + bit5 * 0x15
+    //   G = bit1 * 0x2A + bit4 * 0x15
+    //   B = bit0 * 0x2A + bit3 * 0x15
+    // This matches what the IBM VGA BIOS programs into the DAC for EGA modes.
+    for (i, entry) in palette.iter_mut().enumerate().take(64).skip(16) {
+        let r = ((i >> 2) & 1) as u8 * 0x2A + ((i >> 5) & 1) as u8 * 0x15;
+        let g = ((i >> 1) & 1) as u8 * 0x2A + ((i >> 4) & 1) as u8 * 0x15;
+        let b = (i & 1) as u8 * 0x2A + ((i >> 3) & 1) as u8 * 0x15;
+        *entry = [r, g, b];
+    }
+
+    // Entries 64-255: RGB332-derived scheme.
+    for (n, entry) in palette.iter_mut().enumerate().skip(64) {
         let r = ((n >> 5) & 7) as u8 * 9;
         let g = ((n >> 2) & 7) as u8 * 9;
         let b = (n & 3) as u8 * 21;
