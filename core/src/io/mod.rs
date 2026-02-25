@@ -566,6 +566,14 @@ impl IoDevice {
                 if idx < self.ega_graphics_regs.len() {
                     self.ega_graphics_regs[idx] = value;
                     match idx {
+                        // Register 0: Set/Reset - per-plane fill value for Write Mode 0
+                        0 => {
+                            video.set_ega_set_reset(value);
+                        }
+                        // Register 1: Enable Set/Reset - which planes use Set/Reset in Write Mode 0
+                        1 => {
+                            video.set_ega_enable_set_reset(value);
+                        }
                         // Register 4: Read Map Select - which plane to read
                         4 => {
                             video.set_ega_read_plane(value);

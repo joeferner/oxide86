@@ -16,9 +16,14 @@ pub const CGA_MEMORY_START: usize = 0xB8000;
 pub const CGA_MEMORY_END: usize = 0xBFFFF;
 pub const CGA_MEMORY_SIZE: usize = CGA_MEMORY_END - CGA_MEMORY_START + 1; // 32KB
 
-// Video RAM size: 64KB to hold mode 13h linear framebuffer (64000 bytes)
-// and EGA planar data (4 × 8000 = 32000 bytes). Must be at least 64000.
-pub const VIDEO_MEMORY_SIZE: usize = 65536; // 64KB
+// EGA planar memory: 16KB per plane × 4 planes = 64KB total.
+// This supports two 320×200 display pages (8000 bytes each) plus tile storage at
+// offsets 0x2000+, which games like Indiana Jones use for background tiles.
+pub const EGA_PLANE_SIZE: usize = 0x4000; // 16KB per plane
+
+// Video RAM size: 64KB total — shared between EGA planar (4 × 16KB = 64KB)
+// and VGA mode 13h linear framebuffer (64000 bytes).
+pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 64KB
 
 // EGA video memory range (A000:0000 - A000:FFFF = 0xA0000 - 0xAFFFF)
 pub const EGA_MEMORY_START: usize = 0xA0000;
@@ -189,6 +194,12 @@ pub struct Video {
     /// EGA Graphics Controller Bit Mask (register 8): which bits can be updated by writes
     /// Bit = 1: update from CPU/write-mode expansion; Bit = 0: preserve latch value
     ega_bit_mask: u8,
+    /// EGA Graphics Controller Set/Reset (register 0): per-plane fill value for Write Mode 0
+    /// Bit N = 1: plane N gets 0xFF (set); Bit N = 0: plane N gets 0x00 (reset)
+    ega_set_reset: u8,
+    /// EGA Graphics Controller Enable Set/Reset (register 1): which planes use Set/Reset in Write Mode 0
+    /// Bit N = 1: plane N uses ega_set_reset; Bit N = 0: plane N uses CPU data byte
+    ega_enable_set_reset: u8,
     /// EGA internal latches (one per plane). Loaded on every EGA read, used in writes with
     /// bit_mask != 0xFF to preserve bits not targeted by the current write.
     ega_latches: Cell<[u8; 4]>,
@@ -211,7 +222,7 @@ pub struct Video {
     cursor_visible: bool,
     /// Raw video RAM (64KB).
     /// In CGA/text modes: framebuffer at B8000-BFFFF.
-    /// In EGA mode 0x0D: 4 planes × 8000 bytes (plane N at vram[N*8000..N*8000+8000]).
+    /// In EGA mode 0x0D: 4 planes × EGA_PLANE_SIZE bytes (plane N at vram[N*EGA_PLANE_SIZE..]).
     /// In VGA mode 0x13: linear framebuffer vram[0..64000], 1 byte per pixel.
     /// Persists across mode changes, just like real hardware.
     vram: Box<[u8; VIDEO_MEMORY_SIZE]>,
@@ -294,10 +305,12 @@ impl Video {
             dirty: false,
             mode_changed: false,
             vga_dac_palette: default_vga_palette(),
-            ega_map_mask: 0x0F, // All 4 planes enabled
-            ega_read_plane: 0,  // Read from plane 0
-            ega_write_mode: 0,  // Write Mode 0 (direct write)
-            ega_bit_mask: 0xFF, // All bits updatable by default
+            ega_map_mask: 0x0F,      // All 4 planes enabled
+            ega_read_plane: 0,       // Read from plane 0
+            ega_write_mode: 0,       // Write Mode 0 (direct write)
+            ega_bit_mask: 0xFF,      // All bits updatable by default
+            ega_set_reset: 0,        // Set/Reset value: all planes reset (0x00)
+            ega_enable_set_reset: 0, // Set/Reset disabled for all planes
             ega_latches: Cell::new([0u8; 4]),
             composite_mode: false,
             card_type,
@@ -582,7 +595,7 @@ impl Video {
                 const BYTES_PER_SCAN_LINE: usize = 40;
                 let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
                 for plane in 0..4usize {
-                    let base = plane * 8000;
+                    let base = plane * EGA_PLANE_SIZE;
                     // Fill byte for this plane: 0xFF if bit `plane` of bg_color is set
                     let fill_byte = if (bg_color >> plane) & 1 == 1 {
                         0xFFu8
@@ -698,7 +711,7 @@ impl Video {
                 const BYTES_PER_SCAN_LINE: usize = 40;
                 let scroll_lines = if lines == 0 { bottom - top + 1 } else { lines };
                 for plane in 0..4usize {
-                    let base = plane * 8000;
+                    let base = plane * EGA_PLANE_SIZE;
                     let fill_byte = if (bg_color >> plane) & 1 == 1 {
                         0xFFu8
                     } else {
@@ -838,9 +851,9 @@ impl Video {
                 let byte_offset = y * 40 + x / 8;
                 let bit = 7 - (x % 8);
                 let color = ((self.vram[byte_offset] >> bit) & 1)
-                    | (((self.vram[8000 + byte_offset] >> bit) & 1) << 1)
-                    | (((self.vram[16000 + byte_offset] >> bit) & 1) << 2)
-                    | (((self.vram[24000 + byte_offset] >> bit) & 1) << 3);
+                    | (((self.vram[EGA_PLANE_SIZE + byte_offset] >> bit) & 1) << 1)
+                    | (((self.vram[EGA_PLANE_SIZE * 2 + byte_offset] >> bit) & 1) << 2)
+                    | (((self.vram[EGA_PLANE_SIZE * 3 + byte_offset] >> bit) & 1) << 3);
                 pixels[y * 320 + x] = color;
             }
         }
@@ -876,17 +889,36 @@ impl Video {
 
     /// Write a byte to EGA planar memory (A000 segment).
     ///
-    /// Supports EGA Write Mode 0 (direct/set-reset) and Write Mode 2 (color fill).
+    /// Supports EGA Write Mode 0 (direct/set-reset), Write Mode 1 (latch copy),
+    /// and Write Mode 2 (color fill).
     /// The Bit Mask register (GC reg 8) controls which bits within each plane byte are
     /// updated; masked-off bits come from the internal latches loaded by the last EGA read.
     pub fn write_byte_ega(&mut self, offset: usize, value: u8) {
-        if offset >= 8000 {
+        if offset >= EGA_PLANE_SIZE {
             return;
         }
         let bit_mask = self.ega_bit_mask;
         let latches = self.ega_latches.get();
 
         match self.ega_write_mode {
+            1 => {
+                // Write Mode 1: copy latches directly to each enabled plane.
+                // The CPU data byte is ignored; bit mask does NOT apply.
+                // Used for fast block copies (load latches from source read, then write to dest).
+                for (plane, &latch) in latches.iter().enumerate() {
+                    if self.ega_map_mask & (1 << plane) != 0 {
+                        self.vram[plane * EGA_PLANE_SIZE + offset] = latch;
+                        log::debug!(
+                            "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} (ega_p{})",
+                            offset,
+                            (offset % 40) * 8,
+                            offset / 40,
+                            latch,
+                            plane
+                        );
+                    }
+                }
+            }
             2 => {
                 // Write Mode 2: bits 3:0 of `value` are a 4-bit color index.
                 // Each plane N gets 0xFF if color bit N is set, else 0x00, combined
@@ -900,7 +932,7 @@ impl Video {
                             0x00
                         };
                         let new_val = (expanded & bit_mask) | (latch & !bit_mask);
-                        self.vram[plane * 8000 + offset] = new_val;
+                        self.vram[plane * EGA_PLANE_SIZE + offset] = new_val;
                         log::debug!(
                             "Graphics write: offset=0x{:04X} (x={}, y={}), color=0x{:X} \
                              mask=0x{:02X} -> p{} = 0x{:02X}",
@@ -916,22 +948,36 @@ impl Video {
                 }
             }
             _ => {
-                // Write Mode 0 (default): write `value` directly to each enabled plane,
-                // combined with the latch via the bit mask.
+                // Write Mode 0: for each enabled plane, data is either:
+                // - From Set/Reset register (if Enable Set/Reset bit for that plane is set)
+                // - From the CPU data byte (if Enable Set/Reset bit is clear)
+                // Result is combined with the latch via the bit mask.
+                let enable_sr = self.ega_enable_set_reset;
+                let set_reset = self.ega_set_reset;
                 for (plane, &latch) in latches.iter().enumerate() {
                     if self.ega_map_mask & (1 << plane) != 0 {
-                        let new_val = if bit_mask == 0xFF {
-                            value
+                        let plane_data = if enable_sr & (1 << plane) != 0 {
+                            // Use Set/Reset: expand single bit to full byte
+                            if set_reset & (1 << plane) != 0 {
+                                0xFF
+                            } else {
+                                0x00
+                            }
                         } else {
-                            (value & bit_mask) | (latch & !bit_mask)
+                            value
                         };
-                        self.vram[plane * 8000 + offset] = new_val;
+                        let new_val = if bit_mask == 0xFF {
+                            plane_data
+                        } else {
+                            (plane_data & bit_mask) | (latch & !bit_mask)
+                        };
+                        self.vram[plane * EGA_PLANE_SIZE + offset] = new_val;
                         log::debug!(
                             "Graphics write: offset=0x{:04X} (x={}, y={}), value=0x{:02X} (ega_p{})",
                             offset,
                             (offset % 40) * 8,
                             offset / 40,
-                            value,
+                            new_val,
                             plane
                         );
                     }
@@ -946,18 +992,18 @@ impl Video {
     /// the plane selected by the Read Map Select register (GC reg 4).
     pub fn read_byte_ega(&self, offset: usize) -> u8 {
         let plane = (self.ega_read_plane & 3) as usize;
-        if offset >= 8000 {
+        if offset >= EGA_PLANE_SIZE {
             return 0;
         }
         // Load all 4 latches from the current offset.
         let latches = [
             self.vram[offset],
-            self.vram[8000 + offset],
-            self.vram[16000 + offset],
-            self.vram[24000 + offset],
+            self.vram[EGA_PLANE_SIZE + offset],
+            self.vram[EGA_PLANE_SIZE * 2 + offset],
+            self.vram[EGA_PLANE_SIZE * 3 + offset],
         ];
         self.ega_latches.set(latches);
-        self.vram[plane * 8000 + offset]
+        self.vram[plane * EGA_PLANE_SIZE + offset]
     }
 
     /// Set EGA Sequencer Map Mask (register 2): which planes receive writes
@@ -980,6 +1026,16 @@ impl Video {
     pub fn set_ega_bit_mask(&mut self, value: u8) {
         self.ega_bit_mask = value;
         log::debug!("EGA Bit Mask: 0x{:02X}", value);
+    }
+
+    /// Set EGA Graphics Controller Set/Reset (GC register 0)
+    pub fn set_ega_set_reset(&mut self, value: u8) {
+        self.ega_set_reset = value & 0x0F;
+    }
+
+    /// Set EGA Graphics Controller Enable Set/Reset (GC register 1)
+    pub fn set_ega_enable_set_reset(&mut self, value: u8) {
+        self.ega_enable_set_reset = value & 0x0F;
     }
 
     /// Get palette (for rendering)

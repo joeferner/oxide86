@@ -18,6 +18,10 @@
 - [X] Indiana Jones and The Last Crusade The Action Game - Cycles title screens too fast
 - [X] Indiana Jones and The Last Crusade The Action Game - title screens should have black background
 - [ ] Indiana Jones and The Last Crusade The Action Game - flashing sprites
+- [ ] Indiana Jones and The Last Crusade The Action Game - colors are not quite right
+            Pixel 4 → AC[4]=4 → VGA_DAC[4] = RGB(170,0,0) should be RGB(153,40,34)
+            Pixel 14 → AC[14]=30 → VGA_DAC[30] = RGB(170, 255, 85) should be RGB(255,241,78)
+            and others
 - [ ] CD-ROM support. Need to get CDROM.SYS and MSCDEX.EXE (see plans/cdrom-support.md docs/atapi-cdrom-driver-investigation.md)
 - [ ] Fix Commander Keen 1 startup (see plans/keen1-error-during-code-expansion.md branch: keen1)
 - [ ] Fix Commander Keen 1 missing EGA keyboard not working (see plans/int15-keyboard-intercept-4fh.md branch: keen1-keyboard)

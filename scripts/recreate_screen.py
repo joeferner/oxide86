@@ -253,9 +253,14 @@ class ScreenRecreator:
 def find_last_screen(log_path):
     """Find the last screen in the log file."""
     mode_pattern = re.compile(r'Video mode set to 0x[0-9A-Fa-f]+ \(([^)]+)\)')
-    # Standard format: x=N, y=N, format=(2bpp|1bpp|8bpp)
+    # Write Mode 0/1 format: value=0xVV (ega_pN) or value=0xVV (2bpp|1bpp|8bpp)
     write_pattern = re.compile(
         r'Graphics write: offset=0x[0-9A-Fa-f]+ \(x=(\d+), y=(\d+)\), value=0x([0-9A-Fa-f]+) \((\w+)\)'
+    )
+    # Write Mode 2 format: color=0xC mask=0xMM -> pN = 0xVV (one line per plane)
+    write_mode2_pattern = re.compile(
+        r'Graphics write: offset=0x[0-9A-Fa-f]+ \(x=(\d+), y=(\d+)\), color=0x[0-9A-Fa-f]+ '
+        r'mask=0x[0-9A-Fa-f]+ -> p(\d+) = 0x([0-9A-Fa-f]+)'
     )
     vga_dac_pattern = re.compile(
         r'VGA DAC: Setting palette\[(\d+)\] = RGB\((\d+), (\d+), (\d+)\)'
@@ -329,7 +334,23 @@ def find_last_screen(log_path):
                 palette_updated = True
             continue
 
-        # Check for graphics writes
+        # Check for Write Mode 2 plane writes (color=... mask=... -> pN = 0xVV)
+        match = write_mode2_pattern.search(lines[i])
+        if match:
+            if palette_updated:
+                recreator.update_palette()
+                palette_updated = False
+            x = int(match.group(1))
+            y = int(match.group(2))
+            plane = int(match.group(3))
+            value = int(match.group(4), 16)
+            recreator.write_ega_plane(plane, x, y, value)
+            write_count += 1
+            if write_count % 10000 == 0:
+                print(f"Processed {write_count} writes...")
+            continue
+
+        # Check for Write Mode 0/1 graphics writes
         match = write_pattern.search(lines[i])
         if match:
             # Update palette if needed before first write
