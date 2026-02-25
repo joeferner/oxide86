@@ -187,6 +187,27 @@ class ScreenRecreator:
         color = self.vga_dac[value] if value < len(self.vga_dac) else (0, 0, 0)
         self.pixels[y][x] = list(color)
 
+    def render_ega_planes(self):
+        """Re-render all pixels from stored EGA plane data using current palette.
+
+        Call this after a palette update that occurred after all writes (e.g. the
+        game blacks-out the AC palette during drawing and restores it at the end).
+        """
+        if self.pixels is None or self.palette is None:
+            return
+        for y in range(self.height):
+            for x in range(self.width):
+                byte_x = x // 8
+                offset = y * 40 + byte_x
+                if offset >= 8000:
+                    continue
+                color_index = 0
+                for p in range(4):
+                    if self.ega_planes[p][offset] & (0x80 >> (x % 8)):
+                        color_index |= (1 << p)
+                if color_index < len(self.palette):
+                    self.pixels[y][x] = list(self.palette[color_index])
+
     def write_ega_plane(self, plane, x, y, value):
         """Write a byte to an EGA plane and update the pixel buffer.
 
@@ -378,6 +399,15 @@ def find_last_screen(log_path):
                 print(f"Processed {write_count} writes...")
 
     print(f"Total graphics writes processed: {write_count}")
+
+    # If the palette was updated after all writes (e.g. game blacks-out AC palette
+    # during drawing and restores it at the end), re-render EGA planes with the
+    # final palette so the image isn't all black.
+    if palette_updated:
+        recreator.update_palette()
+        if recreator.mode and "Graphics320x200x16" in recreator.mode:
+            print("Re-rendering EGA planes with final palette...")
+            recreator.render_ega_planes()
 
     return recreator
 

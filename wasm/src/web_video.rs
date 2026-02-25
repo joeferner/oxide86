@@ -26,6 +26,8 @@ pub struct WebVideo {
     graphics_color_map: Option<[u8; 4]>,
     /// VGA DAC palette (256 colors, RGB 6-bit values 0-63)
     vga_dac_palette: [[u8; 3]; 256],
+    /// EGA Attribute Controller palette (maps 4-bit VRAM pixel index → VGA DAC index)
+    ega_ac_palette: [u8; 16],
     /// Whether the text cursor is visible (mirrors INT 10h AH=01h CH bit 5)
     cursor_visible: bool,
 }
@@ -73,6 +75,7 @@ impl WebVideo {
             },
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
+            ega_ac_palette: core::array::from_fn(|i| i as u8),
             cursor_visible: true,
         })
     }
@@ -346,5 +349,9 @@ impl VideoController for WebVideo {
         // Update stored VGA DAC palette
         self.vga_dac_palette.copy_from_slice(palette);
         log::trace!("WebVideo: Updated VGA DAC palette");
+    }
+
+    fn update_ega_ac_palette(&mut self, ac_palette: &[u8; 16]) {
+        self.ega_ac_palette.copy_from_slice(ac_palette);
     }
 }

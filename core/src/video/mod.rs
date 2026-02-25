@@ -143,6 +143,13 @@ pub trait VideoController {
         // Default implementation: do nothing
     }
 
+    /// Update EGA Attribute Controller palette (maps 4-bit VRAM pixel → DAC index)
+    /// Called whenever AC palette registers are programmed (port 0x3C0).
+    fn update_ega_ac_palette(&mut self, ac_palette: &[u8; 16]) {
+        let _ = ac_palette;
+        // Default implementation: do nothing
+    }
+
     /// Set border color (overscan) - the area around the display
     /// Only affects text modes; in graphics modes this is not visible
     fn set_border_color(&mut self, color: u8) {
@@ -200,6 +207,10 @@ pub struct Video {
     /// EGA Graphics Controller Enable Set/Reset (register 1): which planes use Set/Reset in Write Mode 0
     /// Bit N = 1: plane N uses ega_set_reset; Bit N = 0: plane N uses CPU data byte
     ega_enable_set_reset: u8,
+    /// CRTC display start offset (byte offset within each plane).
+    /// Set via CRTC regs 0x0C (high) and 0x0D (low). Used by EGA renderer to support page flipping.
+    /// Page 0 = 0, Page 1 = 8000 (0x1F40) for standard 320×200 EGA double-buffering.
+    ega_display_start: usize,
     /// EGA internal latches (one per plane). Loaded on every EGA read, used in writes with
     /// bit_mask != 0xFF to preserve bits not targeted by the current write.
     ega_latches: Cell<[u8; 4]>,
@@ -311,6 +322,7 @@ impl Video {
             ega_bit_mask: 0xFF,      // All bits updatable by default
             ega_set_reset: 0,        // Set/Reset value: all planes reset (0x00)
             ega_enable_set_reset: 0, // Set/Reset disabled for all planes
+            ega_display_start: 0,    // Display from page 0 by default
             ega_latches: Cell::new([0u8; 4]),
             composite_mode: false,
             card_type,
@@ -461,6 +473,18 @@ impl Video {
         if !preserve_memory {
             self.vram.fill(0);
         }
+
+        // Reset EGA Graphics Controller and Sequencer registers to IBM BIOS defaults.
+        // Real BIOS reprograms all GC/Sequencer registers on every mode set; without
+        // this reset, stale values from a previous mode can corrupt EGA writes.
+        self.ega_map_mask = 0x0F; // All 4 planes enabled
+        self.ega_write_mode = 0; // Write Mode 0
+        self.ega_read_plane = 0; // Read from plane 0
+        self.ega_bit_mask = 0xFF; // All bits updatable
+        self.ega_set_reset = 0; // Set/Reset: all planes 0x00
+        self.ega_enable_set_reset = 0; // Set/Reset disabled for all planes
+        self.ega_display_start = 0; // Display from start of VRAM (page 0)
+        self.ega_latches.set([0u8; 4]);
 
         // Reset VGA DAC palette and AC palette to defaults
         // This ensures programs that modify the palette don't leave the system
@@ -845,10 +869,14 @@ impl Video {
     /// Get 16-color pixel data composed from EGA planes stored in vram.
     /// Returns 320×200 = 64000 bytes; each byte is a 0-15 color index.
     pub fn get_ega_pixels(&self) -> Vec<u8> {
+        let start = self.ega_display_start;
         let mut pixels = vec![0u8; 320 * 200];
         for y in 0..200usize {
             for x in 0..320usize {
-                let byte_offset = y * 40 + x / 8;
+                let byte_offset = start + y * 40 + x / 8;
+                if byte_offset >= EGA_PLANE_SIZE {
+                    break;
+                }
                 let bit = 7 - (x % 8);
                 let color = ((self.vram[byte_offset] >> bit) & 1)
                     | (((self.vram[EGA_PLANE_SIZE + byte_offset] >> bit) & 1) << 1)
@@ -1031,6 +1059,14 @@ impl Video {
     /// Set EGA Graphics Controller Set/Reset (GC register 0)
     pub fn set_ega_set_reset(&mut self, value: u8) {
         self.ega_set_reset = value & 0x0F;
+    }
+
+    /// Set EGA display start address (byte offset per plane).
+    /// Called when CRTC start address regs 0x0C/0x0D are written.
+    /// Used for page flipping: Page 0 = 0, Page 1 = 8000 for 320x200.
+    pub fn set_ega_display_start(&mut self, addr: usize) {
+        self.ega_display_start = addr;
+        log::debug!("EGA display start: 0x{:04X}", addr);
     }
 
     /// Set EGA Graphics Controller Enable Set/Reset (GC register 1)

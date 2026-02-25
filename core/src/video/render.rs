@@ -229,8 +229,9 @@ pub fn render_vga_320x200x256(
 
 /// Render EGA 320x200 16-color graphics to a 640x400 RGBA buffer.
 ///
-/// Each byte in `pixel_data` is a color index (0-15). Looked up in
-/// `vga_dac_palette` for final 6-bit RGB. Output is scaled 2x2.
+/// Each byte in `pixel_data` is a color index (0-15) already remapped
+/// through the AC palette. Looked up in `vga_dac_palette` for final
+/// 6-bit RGB. Output is scaled 2x2.
 ///
 /// # Arguments
 /// * `pixel_data` - 64000 bytes (320 * 200), one byte per pixel (0-15)

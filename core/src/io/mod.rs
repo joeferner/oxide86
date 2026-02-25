@@ -65,6 +65,8 @@ pub struct IoDevice {
     dac_write_buf: [u8; 3],
     /// CRTC index register (port 0x3D4): selects which CRTC register to access
     crtc_index: u8,
+    /// CRTC display start address high byte (CRTC register 0x0C)
+    crtc_start_high: u8,
     /// CRTC cursor address high byte (CRTC register 0x0E)
     crtc_cursor_high: u8,
     /// CRTC cursor address low byte (CRTC register 0x0F)
@@ -107,6 +109,7 @@ impl IoDevice {
             dac_component: 0,
             dac_write_buf: [0u8; 3],
             crtc_index: 0,
+            crtc_start_high: 0,
             crtc_cursor_high: 0,
             crtc_cursor_low: 0,
             cpu_freq,
@@ -448,6 +451,16 @@ impl IoDevice {
 
             // CRTC data register - cursor location
             0x3D5 => match self.crtc_index {
+                0x0C => {
+                    // Display start address high byte
+                    self.crtc_start_high = value;
+                }
+                0x0D => {
+                    // Display start address low byte - compute full address and update renderer
+                    let addr = ((self.crtc_start_high as usize) << 8) | (value as usize);
+                    video.set_ega_display_start(addr);
+                    log::debug!("CRTC display start: 0x{:04X}", addr);
+                }
                 0x0E => {
                     self.crtc_cursor_high = value;
                 }
@@ -707,6 +720,7 @@ impl IoDevice {
         self.ega_graphics_index = 0;
         self.ega_graphics_regs = [0u8; 16];
         self.crtc_index = 0;
+        self.crtc_start_high = 0;
         self.crtc_cursor_high = 0;
         self.crtc_cursor_low = 0;
         self.sound_card.reset();

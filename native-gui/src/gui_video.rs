@@ -37,6 +37,8 @@ pub struct PixelsVideoController {
     graphics_color_map: Option<[u8; 4]>,
     /// VGA DAC palette (256 RGB triplets, 6-bit per component 0-63)
     vga_dac_palette: [[u8; 3]; 256],
+    /// EGA Attribute Controller palette (maps 4-bit VRAM pixel index → VGA DAC index)
+    ega_ac_palette: [u8; 16],
     /// CGA composite rendering mode for 640x200
     graphics_composite: bool,
     /// Whether the text cursor is visible (mirrors INT 10h AH=01h CH bit 5)
@@ -63,6 +65,7 @@ impl PixelsVideoController {
             graphics_bg_color: 0,  // Black
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
+            ega_ac_palette: core::array::from_fn(|i| i as u8),
             graphics_composite: false,
             cursor_visible: true,
         }
@@ -320,6 +323,7 @@ impl Default for PixelsVideoController {
             graphics_bg_color: 0,  // Black
             graphics_color_map: None,
             vga_dac_palette: Self::default_vga_dac_palette(),
+            ega_ac_palette: core::array::from_fn(|i| i as u8),
             graphics_composite: false,
             cursor_visible: true,
         }
@@ -436,6 +440,11 @@ impl VideoController for PixelsVideoController {
 
         // Mark for full redraw since colors changed
         self.needs_full_redraw = true;
+        self.has_pending_updates = true;
+    }
+
+    fn update_ega_ac_palette(&mut self, ac_palette: &[u8; 16]) {
+        self.ega_ac_palette.copy_from_slice(ac_palette);
         self.has_pending_updates = true;
     }
 }

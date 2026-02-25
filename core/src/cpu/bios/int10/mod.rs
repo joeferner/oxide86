@@ -836,9 +836,16 @@ impl Cpu {
 
         match subfunction {
             0x00 => {
-                // Set individual palette register
-                // BL = palette register number, BH = value
-                log::warn!("INT 10h/AH=10h/AL=00h: Set palette register");
+                // Set individual AC palette register
+                // BL = register number (0-15), BH = color value (EGA 6-bit index)
+                let register = (self.bx & 0xFF) as u8; // BL
+                let value = ((self.bx >> 8) & 0xFF) as u8; // BH
+                bus.video_mut().set_ac_register(register, value);
+                log::debug!(
+                    "INT 10h/AH=10h/AL=00h: Set AC register {} = {}",
+                    register,
+                    value
+                );
             }
             0x01 => {
                 // Set border (overscan) color
@@ -846,9 +853,18 @@ impl Cpu {
                 log::warn!("INT 10h/AH=10h/AL=01h: Set border color");
             }
             0x02 => {
-                // Set all palette registers and border
-                // ES:DX -> 17-byte table
-                log::warn!("INT 10h/AH=10h/AL=02h: Set all palette registers");
+                // Set all AC palette registers and border
+                // ES:DX -> 17-byte table (16 AC register values + 1 border color byte)
+                let table_addr = Self::physical_address(self.es, self.dx);
+                for i in 0..16usize {
+                    let value = bus.read_u8(table_addr + i);
+                    bus.video_mut().set_ac_register(i as u8, value);
+                }
+                let border = bus.read_u8(table_addr + 16);
+                log::debug!(
+                    "INT 10h/AH=10h/AL=02h: Set all AC palette registers, border={}",
+                    border
+                );
             }
             0x03 => {
                 // Toggle intensity/blinking bit
