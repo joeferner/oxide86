@@ -18,6 +18,12 @@ Despite that, what came out the other end is something I'm genuinely impressed b
 
 **Conclusion:** I'll continue using AI as a coding assistant — it's genuinely useful for the majority of day-to-day work. But pure vibe coding, where you hand over full control and stop following along, isn't there yet. The deeper problem is that losing your own understanding of the project creates a compounding debt. When something goes wrong in unfamiliar territory, neither you nor the AI can find solid footing, and the further you drift from understanding, the harder it becomes to course-correct. That's a problem that will only get worse as the project grows and gets more complex.
 
+## Lessons Learned
+
+- **Track token and model usage from the start.** It would have been interesting to know exactly how many tokens were consumed and which models were used at each stage of the project. That data would give a much clearer picture of the real cost of AI-assisted development and help calibrate when it makes sense to reach for a more capable (and expensive) model versus a faster one.
+- **Preserve the plans and prompts.** I should have kept all the planning documents and possibly all the prompts used throughout the project. They would make valuable documentation — both for understanding why certain decisions were made and as a record of how the AI-human collaboration actually unfolded in practice.
+- **Write tests along the way.** I wish I had pushed the AI to write more unit tests and integration tests incrementally rather than leaving correctness entirely to manual testing. It likely would have cost more time and tokens upfront, but having a test suite would have made debugging significantly easier and given more confidence when making changes later.
+
 # Features
 
 ### 🖥️ CPU
