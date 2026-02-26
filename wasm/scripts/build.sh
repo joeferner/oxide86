@@ -10,6 +10,9 @@ echo "Building oxide86 WASM module..."
 wasm-pack build --target web --out-dir www/pkg
 
 cd "${SCRIPT_DIR}/../www"
+source "${HOME}/.nvm/nvm.sh"
+nvm install
+npm install --no-save
 npm run pre-commit
 
 echo ""

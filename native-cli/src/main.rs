@@ -2,7 +2,10 @@ use std::panic;
 
 use anyhow::{Context, Result};
 use crossterm::{
-    event::{self, DisableMouseCapture, Event, KeyEventKind}, execute, style::Print, terminal::{LeaveAlternateScreen, disable_raw_mode}
+    event::{self, DisableMouseCapture, Event, KeyEventKind},
+    execute,
+    style::Print,
+    terminal::{LeaveAlternateScreen, disable_raw_mode},
 };
 use oxide86_core::logging::setup_logging;
 

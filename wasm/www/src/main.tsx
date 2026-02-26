@@ -4,7 +4,7 @@ import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
-import App from './App';
+import { App } from './App';
 import './styles/global.scss';
 
 const theme = createTheme({

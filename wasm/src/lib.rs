@@ -1,7 +1,7 @@
+use wasm_bindgen::{JsValue, prelude::wasm_bindgen};
 
 #[wasm_bindgen]
-pub struct Oxide86Computer {
-}
+pub struct Oxide86Computer {}
 
 #[wasm_bindgen]
 impl Oxide86Computer {

@@ -10,9 +10,13 @@ cargo clippy --all -- -D warnings
 ./wasm/scripts/build.sh
 cargo test --all
 
-echo ""
-echo "Building production Docker container..."
-docker build -t oxide86-web:latest ./wasm/www
+if command -v docker &> /dev/null; then
+    echo ""
+    echo "Building production Docker container..."
+    docker build -t oxide86-web:latest ./wasm/www
+else
+    echo "Skipping docker build, docker not installed"
+fi
 
 echo ""
 echo "Complete!"
