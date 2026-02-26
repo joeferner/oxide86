@@ -1472,6 +1472,7 @@ dependencies = [
  "log",
  "strum",
  "strum_macros",
+ "walkdir",
 ]
 
 [[package]]
