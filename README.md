@@ -6,28 +6,6 @@
 
 **oxide86** is an Intel x86 CPU emulator written in Rust, capable of running real MS-DOS software including early PC games and productivity applications. It supports CGA, EGA, and VGA video modes, AdLib FM sound, mouse and joystick input, floppy and hard drive images, and CD-ROM/ISO support. The emulator targets three platforms: a native CLI, a native GUI, and a WebAssembly build for the browser.
 
-This project started in February 2026 as part of a vibe coding challenge at my company [RazorX2](https://razorx2.com/), where we wanted to see what AI-assisted development was capable of. I chose to write an x86 emulator as a stress test — something with well-defined correctness requirements, hardware-level complexity, and a long debugging tail. In hindsight it may not have been the fairest benchmark for AI, since there are plenty of existing x86 implementations out there and the models have likely learned from them. That said, adapting that knowledge to a clean Rust architecture with native and WASM targets, correct interrupt handling, and working DOS compatibility was far from trivial.
-
-I started with Claude Opus, which produced better results, but the cost added up quickly and I switched to Claude Sonnet. Sonnet turned out to be good enough for the majority of tasks — routine implementation, bug fixes, and incremental improvements.
-
-The process required a lot of hand-holding. The AI made plenty of mistakes — some subtle, some embarrassingly obvious — and code reviews were essential at every step. Debugging the harder issues was particularly challenging since I didn't build up a natural understanding of the code and where the problems might occur, which meant I had to reason through the emulator's behavior from the outside.
-
-When the AI couldn't figure something out, a recurring pattern emerged: it would keep adding code rather than reasoning through the problem. Often the new code wasn't even in the execution path being hit — it was shooting in the dark, likely because the training data didn't closely match the specific problem at hand. This was most visible with deep hardware emulation issues where the AI's pattern-matching broke down entirely.
-
-Two examples stand out. Commander Keen, after many hours of debugging sessions, still doesn't work. The AI had no clear idea where to look, and without having built up my own understanding of the project, I couldn't effectively guide it either. We were both stuck. The AdLib OPL2 implementation followed a similar arc — the AI's hand-rolled attempt was never going to be accurate enough, and eventually I had it port nuked-opl3 instead, which is a well-regarded open source implementation.
-
-Despite that, what came out the other end is something I'm genuinely impressed by: a working emulator that boots MS-DOS, runs classic games, and plays AdLib music.
-
-**Conclusion:** I'll continue using AI as a coding assistant — it's genuinely useful for the majority of day-to-day work. But pure vibe coding, where you hand over full control and stop following along, isn't there yet. The deeper problem is that losing your own understanding of the project creates a compounding debt. When something goes wrong in unfamiliar territory, neither you nor the AI can find solid footing, and the further you drift from understanding, the harder it becomes to course-correct. That's a problem that will only get worse as the project grows and gets more complex.
-
-There are fundamental flaws in the emulator that no amount of incremental patching will fix. To really address them, I'd need to deep dive into understanding the x86 architecture and probably rearchitect and rewrite large parts of the code. This project exposed a core limitation of AI-assisted development: you need to understand the problem domain and make good architectural decisions upfront. You need to debug the code yourself to understand its shortcomings and figure out how to restructure it so the next issue is easier to fix. The AI will just brute-force its way to a solution — piling on workarounds and special cases — which doesn't build the kind of foundation that helps in the future.
-
-## Lessons Learned
-
-- **Track token and model usage from the start.** It would have been interesting to know exactly how many tokens were consumed and which models were used at each stage of the project. That data would give a much clearer picture of the real cost of AI-assisted development and help calibrate when it makes sense to reach for a more capable (and expensive) model versus a faster one.
-- **Preserve the plans and prompts.** I should have kept all the planning documents and possibly all the prompts used throughout the project. They would make valuable documentation — both for understanding why certain decisions were made and as a record of how the AI-human collaboration actually unfolded in practice.
-- **Write tests along the way.** I wish I had pushed the AI to write more unit tests and integration tests incrementally rather than leaving correctness entirely to manual testing. It likely would have cost more time and tokens upfront, but having a test suite would have made debugging significantly easier and given more confidence when making changes later.
-
 # Features
 
 ### 🖥️ CPU
@@ -102,42 +80,6 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 :hourglass: - Partially Working
 :x: - Does not work
 
-- OS
-  - :white_check_mark: MS-DOS 2.11
-  - :white_check_mark: MS-DOS 3.31
-  - :white_check_mark: MS-DOS 4.01
-  - :white_check_mark: MS-DOS 5.0
-  - :white_check_mark: SvarDOS
-
-- Games
-  - :white_check_mark: Zork 1
-
-    ![Screenshot](docs/screenshots/zork1.png)
-  - :white_check_mark: Alley Cat
-
-    ![Screenshot](docs/screenshots/alleycat.png)
-  - :white_check_mark: Kings Quest I
-
-    ![Screenshot](docs/screenshots/kq1.png)
-  - :white_check_mark: Kings Quest II
-
-    ![Screenshot](docs/screenshots/kq2.png)
-  - :white_check_mark: Kings Quest III
-
-    ![Screenshot](docs/screenshots/kq3.png)
-  - :white_check_mark: Flight Simulator 1
-
-    ![Screenshot](docs/screenshots/ms-flight-sim-1.png)
-  - :white_check_mark: Battle Chess
-
-    ![Screenshot](docs/screenshots/battle-chess-1.png)
-    ![Screenshot](docs/screenshots/battle-chess-2.png)
-
-- Other
-  - :white_check_mark: AdLib Jukebox
-
-    ![Screenshot](docs/screenshots/adlib-jukebox.png)
-
 # History
 
 | Date | Title | OS Requirement | Description |
@@ -174,9 +116,3 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 | 1993-12-10 | **DOOM** | MS-DOS 5.0+ | A cultural phenomenon. Pushed the **486** to its absolute limit with pseudo-3D rendering. |
 | 1994-06 | **MS-DOS 6.22** | 80386/486 | The final standalone retail version. Replaced DoubleSpace with **DriveSpace** due to legal issues. |
 | 1995-08-24 | **Windows 95** | MS-DOS 7.0 | Defined the end of the early era. Required a **386DX** but was the swan song for the **486**. |
-
-# Miscellaneous
-
-## Shorter logs
-
-`cat oxide86.log | grep -v ' naga::' | grep -v 'Port 0x0064' | grep -v 'Serial I/O' | grep -v 'IVT Write' | grep -v 'oxide86_core' > oxide86.log.new; mv oxide86.log.new oxide86.log`

@@ -1,4 +1,4 @@
-FROM mcr.microsoft.com/devcontainers/rust:2.0.6-bookworm
+FROM mcr.microsoft.com/devcontainers/rust:2.0.8-bookworm
 
 RUN apt-get update
 
@@ -11,5 +11,5 @@ RUN \
 
 # install node
 USER vscode
-RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+RUN curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
 USER root

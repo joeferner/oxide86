@@ -6,15 +6,9 @@ edition = "2024"
 [dependencies]
 anyhow = { workspace = true }
 log = { workspace = true }
-fatfs = { workspace = true }
-strum = "0.27"
-strum_macros = "0.27"
-
-[build-dependencies]
-png = "0.17"
-
-[dev-dependencies]
-criterion = { version = "0.8.1", features = ["html_reports"] }
+env_logger = { workspace = true }
+strum = { workspace = true }
+strum_macros = { workspace = true }
 
 [lints]
 workspace = true

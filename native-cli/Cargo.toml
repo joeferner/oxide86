@@ -8,7 +8,6 @@ oxide86-native-common = { path = "../native-common" }
 oxide86-core = { path = "../core" }
 clap = { workspace = true }
 anyhow = { workspace = true }
-env_logger = "0.11"
 log = { workspace = true }
 crossterm = "0.29"
 

@@ -4,10 +4,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "${SCRIPT_DIR}/.."
 
-scripts/compile-test-programs.sh
-
-cargo fmt
 cargo build --all
+cargo fmt
 cargo clippy --all -- -D warnings
 ./wasm/scripts/build.sh
 cargo test --all

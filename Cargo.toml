@@ -4,13 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [workspace]
-members = ["core", "native-common", "native-cli", "native-gui", "wasm", "disktools"]
+members = ["core", "native-common", "native-cli", "native-gui", "wasm"]
 
 [workspace.dependencies]
 anyhow = "1.0"
 clap = { version = "4.5", features = ["derive"] }
 fatfs = { version = "0.3", features = ["alloc"] }
 log = "0.4"
+env_logger = "0.11"
+strum = "0.28"
+strum_macros = "0.28"
 
 [workspace.lints.clippy]
 new_without_default = "allow"
