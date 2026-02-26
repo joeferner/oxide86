@@ -188,12 +188,19 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use std::cell::RefCell;
+    use std::sync::Arc;
 
-    use crate::{cpu::Cpu, memory::Memory, memory_bus::MemoryBus, video::VideoCard};
+    use crate::{
+        cpu::Cpu,
+        memory::Memory,
+        memory_bus::MemoryBus,
+        video::{VideoBuffer, VideoCard},
+    };
 
     pub fn create_test_cpu() -> (Cpu, MemoryBus) {
         let cpu = Cpu::new();
-        let video_card = RefCell::new(VideoCard::new());
+        let video_buffer = Arc::new(VideoBuffer::new());
+        let video_card = RefCell::new(VideoCard::new(video_buffer));
         let memory_bus = MemoryBus::new(Memory::new(1024), video_card);
 
         (cpu, memory_bus)

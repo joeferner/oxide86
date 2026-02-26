@@ -13,5 +13,8 @@ strum_macros = { workspace = true }
 [build-dependencies]
 walkdir = { workspace = true }
 
+[dev-dependencies]
+image = { workspace = true }
+
 [lints]
 workspace = true
