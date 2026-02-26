@@ -37,18 +37,21 @@ pub struct Cpu {
     fs: u16, // 80386+
     gs: u16, // 80386+
 
-    // Instruction pointer
+    /// Instruction pointer
     ip: u16,
 
-    // Flags (start with just carry, zero, sign)
+    /// Flags (start with just carry, zero, sign)
     flags: u16,
 
-    // Halted flag
+    /// Halted flag
     halted: bool,
 
     /// Cycle count for the last executed instruction
     /// Used by Computer::step() to accurately track CPU cycles
     last_instruction_cycles: u64,
+
+    /// Segment override prefix (for next instruction only)
+    segment_override: Option<u16>,
 }
 
 impl Cpu {
@@ -72,6 +75,7 @@ impl Cpu {
             flags: 0,
             halted: false,
             last_instruction_cycles: 0,
+            segment_override: None,
         }
     }
 
@@ -95,12 +99,28 @@ impl Cpu {
         self.halted
     }
 
-    pub fn step(&mut self, memory_bus: &MemoryBus) {
+    pub fn step(&mut self, memory_bus: &mut MemoryBus) {
         let opcode = self.fetch_byte(memory_bus);
         match opcode {
+            // ES: segment override prefix (26)
+            0x26 => {
+                self.segment_override = Some(self.es);
+                self.step(memory_bus);
+                self.segment_override = None;
+            }
+
+            // MOV r/m16 to segment register (8E)
+            0x8E => self.mov_rm_to_segreg(memory_bus),
+
+            // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
+            0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory_bus),
+
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory_bus),
 
+            // HLT - Halt (F4)
+            0xF4 => self.hlt(),
+            
             _ => {
                 let err = format!(
                     "Unknown opcode: {:#04X} at {:04X}:{:04X}",
@@ -129,36 +149,6 @@ impl Cpu {
         (high << 8) | low
     }
 
-    /// Set 8-bit register
-    fn set_reg8(&mut self, reg: u8, value: u8) {
-        match reg {
-            0 => self.ax = (self.ax & 0xFF00) | value as u16, // AL
-            1 => self.cx = (self.cx & 0xFF00) | value as u16, // CL
-            2 => self.dx = (self.dx & 0xFF00) | value as u16, // DL
-            3 => self.bx = (self.bx & 0xFF00) | value as u16, // BL
-            4 => self.ax = (self.ax & 0x00FF) | ((value as u16) << 8), // AH
-            5 => self.cx = (self.cx & 0x00FF) | ((value as u16) << 8), // CH
-            6 => self.dx = (self.dx & 0x00FF) | ((value as u16) << 8), // DH
-            7 => self.bx = (self.bx & 0x00FF) | ((value as u16) << 8), // BH
-            _ => unreachable!(),
-        }
-    }
-
-    /// Set 16-bit register
-    fn set_reg16(&mut self, reg: u8, value: u16) {
-        match reg & 0x07 {
-            0 => self.ax = value,
-            1 => self.cx = value,
-            2 => self.dx = value,
-            3 => self.bx = value,
-            4 => self.sp = value,
-            5 => self.bp = value,
-            6 => self.si = value,
-            7 => self.di = value,
-            _ => unreachable!(),
-        }
-    }
-
     pub fn reset(&mut self, segment: u16, offset: u16) {
         self.ax = 0;
         self.bx = 0;
@@ -177,6 +167,8 @@ impl Cpu {
         self.ip = 0;
         self.flags = 0;
         self.halted = false;
+        self.last_instruction_cycles = 0;
+        self.segment_override = None;
 
         // Set CPU to start at this location
         self.cs = segment;

@@ -32,7 +32,7 @@ impl Computer {
     }
 
     fn step(&mut self) {
-        self.cpu.step(&self.memory_bus);
+        self.cpu.step(&mut self.memory_bus);
     }
 }
 

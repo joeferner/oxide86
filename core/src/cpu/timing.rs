@@ -63,8 +63,7 @@
 ///
 /// ## Segment Override Penalty:
 /// - +2 cycles if segment override prefix was used
-#[allow(dead_code)]
-fn calculate_ea_cycles(mode: u8, rm: u8, has_segment_override: bool) -> u64 {
+pub(crate) fn calculate_ea_cycles(mode: u8, rm: u8, has_segment_override: bool) -> u64 {
     let base_ea = match (mode, rm) {
         // Register mode - no EA calculation
         (0b11, _) => 0,

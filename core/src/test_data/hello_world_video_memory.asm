@@ -15,3 +15,5 @@ start:
     
     mov ax, 0x0F48      ; AH = 0F (Attr), AL = 48 (Char)
     mov [es:0], ax      ; Write 'H' to the very first character cell
+
+    hlt
