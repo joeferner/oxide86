@@ -253,6 +253,145 @@ Problematic address 0x81B96 (varies per run due to DOS memory allocation):
 - Treat as a compatibility quirk rather than fixing root cause
 - **Effort**: Low | **Likelihood of success**: High (but doesn't solve the underlying issue)
 
+## 2026-02-25 Investigation: LZW Dictionary Self-Reference
+
+### Approach
+
+Investigated the decompression failure using a full instruction-level trace log (oxide86.log, ~3M lines). The decompression starts at log line ~814601 and the error appears at ~2916818.
+
+### Error Mechanism
+
+The error "Error during code expansion!" is triggered when the LZW dictionary grows to 4000 entries (0x0FA0). At line ~2915669:
+```
+0FD8:6BAB cmp ax, 0x0FA0    ; AX = current dictionary entry count
+0FD8:6BAE jl 0x6bc2          ; NOT taken - 0x0FA0 is NOT < 0x0FA0
+0FD8:6BB0 mov ax, 0x2853     ; error path - loads error string pointer
+```
+
+### Root Cause: Circular Dictionary Entry
+
+**Dictionary entry at index 0x06BE contains 0x06BE** — it points to itself, creating an infinite chain walk loop.
+
+The chain walk function at 0FD8:6B6E-6BC7 reads `es:[bx]` which resolves to linear address 0x8B840, always getting value 0x06BE. This causes `[bp+0x06]` to be 0x06BE > 0x00FF, so the `ja 0x6b6e` loop keeps iterating, incrementing the dictionary counter DI on each pass until it hits the 0x0FA0 limit.
+
+### How the Self-Reference Was Created
+
+Traced the exact write at log line ~1532172:
+```
+0FD8:6B0D mov es:[bx], ax   ; AX=06BE, writes to @8B84:0000 (linear 0x8B840)
+```
+
+The LZW algorithm at this point:
+- **DI** (next dictionary entry to fill) = **0x06BE**
+- **[bp-0x04]** (old_code / parent pointer) = **0x06BE**
+- Result: entry 0x06BE → 0x06BE (self-reference)
+
+In correct LZW, `old_code` should always be **less than** the current dictionary index (DI), because old_code was a valid code from a previous iteration.
+
+### Why old_code Equals DI
+
+Traced backwards to find when `[bp-0x02]` (new_code) was first set to 0x06BE (log line ~1531673):
+
+1. **Huffman bit reader** extracts code **0x06BE** from the 32-bit accumulator DX:AX = 0xD7D6:7F56 via a 21-bit right shift (32 - 11 bit code width = 21). Verified: `0xD7D6 >> 5 = 0x06BE` ✓
+
+2. At the `cmp [bp-0x02], di` check (line ~1531681): new_code 0x06BE was compared with DI. The `jb` (jump if below) was **NOT taken**, meaning 0x06BE >= DI. This is the **"code not in dictionary"** special case in LZW.
+
+3. **DI at that point was 0x06BD** (verified via `shl bx, 1` → BX=0x0D78, so DI = 0x06BC, then `inc di` → 0x06BD).
+
+4. So **new_code (0x06BE) = DI + 1**. In standard LZW, the ONLY valid "code not in dictionary" case is `new_code == DI` (exactly one ahead). Code `DI + 1` is **INVALID** — it means the bitstream is being misinterpreted.
+
+5. After processing code 0x06BE via the special path, `old_code` is set to 0x06BE, DI increments to 0x06BE, and on the next iteration, the dictionary write creates entry 0x06BE → old_code 0x06BE → self-reference.
+
+### Verified NOT the Cause
+
+- **SHL/SHR/RCL/CBW instructions**: All verified correct by tracing actual values
+- **NEG instruction**: Implementation verified correct (`wrapping_neg()`)
+- **5-bit shift count masking** (286+ behavior on 8086): Shift counts in the decompression loop are all 0-24, within the 5-bit mask range; doesn't cause differences
+- **E169 path** (32-bit shift left with count >= 16): Only hit twice in the entire decompression, both with CL=16 producing correct zero results
+- **CWD instruction**: Always operates on AX=0x00-0xFF (byte values), so DX is always 0
+- **32-bit shift right (E192)**: Verified code extraction produces correct value from accumulator
+
+### Suspected: Bit Accumulator Off-by-One
+
+The 32-bit bit accumulator (`[0x82F2..0x82F5]`, bit count `[0x82F6]`) accumulates 8 bits per input byte and extracts 9-12 bit LZW codes. If the accumulator gets even a **single bit wrong** at any point, all subsequent code extractions will be misaligned, eventually producing an invalid code.
+
+The code 0x06BE was extracted correctly from the accumulator value — the question is whether the accumulator itself had the right data. This could be caused by:
+1. **Wrong data read from disk** (INT 13h sector read returning incorrect bytes)
+2. **Wrong data in the file buffer** (DOS file I/O corruption)
+3. **A cumulative bit error** from earlier in the decompression that shifted the bit stream
+
+### LZW Code Width Transitions
+
+Commander Keen's LZW uses variable-width codes with "early change" transitions:
+- Width increases when `DI == threshold` (threshold = `(1 << width) - 1`)
+- Transitions observed: 9→10 bits at DI=0x01FF, 10→11 at DI=0x03FF, 11→12 at DI=0x07FF, 12→max at DI=0x0FFF
+- Max code width is 12 bits (`[0x8326]` = 0x000C)
+- **Could be a width timing mismatch** — if the compressor uses "late change" and our decompressor triggers "early change", a 1-bit misalignment would accumulate
+
+### Key Architecture Detail
+
+File I/O goes through **real DOS from the boot disk**, not the emulator's BIOS:
+- INT 21h vector → DOS kernel at segment 035C → INT 13h → emulator's disk sector I/O
+- This means the emulator's INT 21h file read handler is NOT involved
+- Any file I/O bug would be in INT 13h (disk sector reads) or the real DOS's buffering
+
+### Decompression Algorithm Summary
+
+```
+Commander Keen LZW Decompressor (0FD8:6A30-6C48):
+
+OUTER LOOP (at 0x6A40):
+  new_code = read_huffman_code()      ; calls 0x6BD4 (bit reader)
+  if new_code == 0x0101: break        ; end of stream
+
+  if new_code < DI:                   ; code IS in dictionary
+    output = walk_chain(new_code)     ; calls 0x6B62
+  else:                               ; code NOT in dictionary (== DI or > DI)
+    output[0] = first_char            ; prepend first_char
+    output[1..] = walk_chain(old_code); calls 0x6B62
+
+  dict[DI].parent = old_code          ; 0x6B0D: word write to code table
+  dict[DI].char = first_char          ; 0x6B24: byte write to char table
+  DI++                                ; 0x6B27: inc di
+
+  if DI == threshold:                 ; 0x6B28: width change check
+    if width < max_width:
+      width++
+      threshold = (1 << width) - 1
+
+  old_code = new_code
+
+HUFFMAN BIT READER (0x6BD4):
+  while bit_count <= 24:              ; accumulate bytes
+    byte = input_buffer[ptr++]        ; read from far pointer
+    accumulator |= (byte << (24 - bit_count))  ; 32-bit shift left
+    bit_count += 8
+  code = accumulator >> (32 - width)  ; 32-bit shift right to extract
+  accumulator <<= width               ; consume bits
+  bit_count -= width
+  return code
+
+Dictionary tables:
+  Code table (word): base at [0x8266]:[0x8268] = 0x0004:0x8AAC
+    Entry N at: base + N*2 (far pointer normalized via E23B)
+  Char table (byte): base at [0xA6D6]:[0xA6D8] = 0x0004:0x8D20
+    Entry N at: base + N (far pointer normalized via E23B)
+```
+
+### Next Steps
+
+1. **Re-run with trace logging** to reproduce the log (was overwritten)
+2. **Verify INT 13h sector reads**: Compare raw sector data from emulator vs known-good disk image
+3. **Binary search the bit accumulator**: Sample accumulator state at the midpoint (~line 1.8M) to see if errors have already accumulated
+4. **Check code width transition timing**: Compare with known Commander Keen LZW implementations (id Software's IGRAB/LZSS) to confirm early vs late change
+5. **DOSBox comparison** at the width transition boundary: extract the exact accumulator value at DI=0x01FF and compare
+
 ## Recommendation
 
 Start with **Option 1 (DOSBox comparison)** - it's the most practical way to see the actual difference in execution. If that reveals the issue, great. If not, move to **Option 3 (real hardware testing)** if available, otherwise **Option 6 (workaround)** while keeping the issue documented for future investigation.
+
+The 2026-02-25 investigation strongly suggests the root cause is either:
+- **A bit-level misalignment in the Huffman accumulator** (caused by wrong input data or a subtle shift instruction bug under specific conditions not yet observed)
+- **A code width transition timing mismatch** between compressor and decompressor
+
+The most efficient next step is to **compare the bit accumulator state at a few key points** (start, midpoint, near the error) between the emulator and DOSBox to pinpoint exactly where divergence begins.

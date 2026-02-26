@@ -18,7 +18,7 @@
 - [X] Indiana Jones and The Last Crusade The Action Game - Cycles title screens too fast
 - [X] Indiana Jones and The Last Crusade The Action Game - title screens should have black background
 - [ ] Change WASM disk selection menu to popup and include a type ahead to select the disk
-- [ ] Add Borland Turbo C 2.01 disks to wasm/www/public/images.json
+- [X] Add Borland Turbo C 2.01 disks to wasm/www/public/images.json
 - [ ] Add BlackJack to image list include the source file
 - [ ] Create hard drive with fresh install of SvarDOS with Borland Turbo C and blackjack installed
 - [ ] Indiana Jones and The Last Crusade The Action Game - flashing sprites

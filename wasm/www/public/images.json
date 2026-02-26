@@ -1,11 +1,37 @@
 {
     "floppy": [
         {
+            "name": "Borland Turbo C 2.01 (Install)",
+            "description": "Turbo C is an Integrated Development Environment and compiler for the C programming language from Borland",
+            "url": "/images/floppy/Borland_Turbo_C-2.01/Install.img"
+        },
+        {
+            "name": "Borland Turbo C 2.01 (Compiler)",
+            "description": "Turbo C is an Integrated Development Environment and compiler for the C programming language from Borland",
+            "url": "/images/floppy/Borland_Turbo_C-2.01/Compiler.img"
+        },
+        {
+            "name": "Borland Turbo C 2.01 (Header)",
+            "description": "Turbo C is an Integrated Development Environment and compiler for the C programming language from Borland",
+            "url": "/images/floppy/Borland_Turbo_C-2.01/Header.img"
+        },
+        {
             "name": "SvarDOS 20250427",
             "description": "Open-source DOS distribution able to run on a 8086 PC",
             "url": "/images/floppy/svardos-20250427-1.44M-disk-1.img"
+        },
+        {
+            "name": "x86 Blackjack",
+            "description": "Blackjack made for the x86",
+            "url": "/images/floppy/x86-blackjack.img"
         }
     ],
-    "hdd": [],
+    "hdd": [
+        {
+            "name": "SvarDOS 20250427",
+            "description": "Fresh install of SvarDOS 20250427",
+            "url": "/images/harddrive/svardos-fresh.img"
+        }
+    ],
     "cdrom": []
 }
