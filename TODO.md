@@ -17,10 +17,10 @@
 - [X] Implement 8259 PIC Keyboard handling (see plans/pic-isr-keyboard-reentrance-fix.md)
 - [X] Indiana Jones and The Last Crusade The Action Game - Cycles title screens too fast
 - [X] Indiana Jones and The Last Crusade The Action Game - title screens should have black background
-- [ ] Change WASM disk selection menu to popup and include a type ahead to select the disk
 - [X] Add Borland Turbo C 2.01 disks to wasm/www/public/images.json
-- [ ] Add BlackJack to image list include the source file
-- [ ] Create hard drive with fresh install of SvarDOS with Borland Turbo C and blackjack installed
+- [X] Add BlackJack to image list include the source file
+- [X] Create hard drive with fresh install of SvarDOS with Borland Turbo C and blackjack installed
+- [ ] Change WASM disk selection menu to popup and include a type ahead to select the disk
 - [ ] Indiana Jones and The Last Crusade The Action Game - flashing sprites
 - [ ] Indiana Jones and The Last Crusade The Action Game - colors are not quite right
             Pixel 4 → AC[4]=4 → VGA_DAC[4] = RGB(170,0,0) should be RGB(153,40,34)
