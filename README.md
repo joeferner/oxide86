@@ -80,6 +80,12 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 :hourglass: - Partially Working
 :x: - Does not work
 
+## Resources
+- [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
+- [x86 Reference](https://www.felixcloutier.com/x86/)
+- [8086 Opcodes](http://www.mlsite.net/8086/)
+- [8086 Instructions](https://www.eng.auburn.edu/~sylee/ee2220/8086_instruction_set.html)
+
 # History
 
 | Date | Title | OS Requirement | Description |

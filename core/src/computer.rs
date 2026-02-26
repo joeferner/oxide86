@@ -1,20 +1,18 @@
-use crate::{
-    cpu::{Cpu, cpu_flag},
-    memory::Memory,
-    physical_address,
-};
+use crate::{cpu::Cpu, memory::MemoryBus, physical_address};
 use anyhow::Result;
 
 pub struct Computer {
-    memory: Memory,
+    memory_bus: MemoryBus,
     cpu: Cpu,
 }
 
 impl Computer {
     #[cfg(test)]
     pub fn new_for_test() -> Result<Computer> {
+        use crate::memory::Memory;
+
         Ok(Computer {
-            memory: Memory::new(2048 * 1024),
+            memory_bus: MemoryBus::new(Memory::new(2048 * 1024)),
             cpu: Cpu::new(),
         })
     }
@@ -22,21 +20,8 @@ impl Computer {
     /// Load a program at the specified segment:offset and set CPU to start there
     pub fn load_program(&mut self, program_data: &[u8], segment: u16, offset: u16) -> Result<()> {
         let physical_addr = physical_address(segment, offset);
-        self.memory.load_at(physical_addr, program_data)?;
-
-        // Set CPU to start at this location
-        self.cpu.cs = segment;
-        self.cpu.ip = offset;
-
-        // Initialize other segments to reasonable defaults
-        self.cpu.ds = segment;
-        self.cpu.es = segment;
-        self.cpu.ss = segment;
-        self.cpu.sp = 0xFFFE; // Stack grows down from top of segment
-
-        // Enable interrupts - DOS programs expect IF=1 (inherited from DOS environment)
-        self.cpu.set_flag(cpu_flag::INTERRUPT, true);
-
+        self.memory_bus.load_at(physical_addr, program_data)?;
+        self.cpu.reset(segment, offset);
         Ok(())
     }
 
@@ -46,11 +31,8 @@ impl Computer {
         }
     }
 
-    fn step(&self) {
-        let addr = physical_address(self.cpu.cs, self.cpu.ip);
-        let opcode = self.memory.read_u8(addr);
-
-        todo!("unhandled opcode 0x{opcode:02X}");
+    fn step(&mut self) {
+        self.cpu.step(&self.memory_bus);
     }
 }
 

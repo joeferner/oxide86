@@ -1,5 +1,24 @@
 use anyhow::{Result, anyhow};
 
+pub struct MemoryBus {
+    memory: Memory,
+}
+
+impl MemoryBus {
+    pub fn new(memory: Memory) -> Self {
+        Self { memory }
+    }
+
+    pub fn read_u8(&self, addr: usize) -> u8 {
+        self.memory.read_u8(addr)
+    }
+
+    /// Load binary data at a specific address
+    pub fn load_at(&mut self, address: usize, data: &[u8]) -> Result<()> {
+        self.memory.load_at(address, data)
+    }
+}
+
 pub struct Memory {
     data: Vec<u8>,
 }
@@ -11,7 +30,7 @@ impl Memory {
         }
     }
 
-    // Load binary data at a specific address
+    /// Load binary data at a specific address
     pub fn load_at(&mut self, address: usize, data: &[u8]) -> Result<()> {
         if address + data.len() > self.data.len() {
             return Err(anyhow!(
