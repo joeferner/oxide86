@@ -1,4 +1,4 @@
-use crate::{cpu::Cpu, memory::MemoryBus, physical_address};
+use crate::{cpu::Cpu, memory_bus::MemoryBus, physical_address};
 use anyhow::Result;
 
 pub struct Computer {
@@ -9,10 +9,13 @@ pub struct Computer {
 impl Computer {
     #[cfg(test)]
     pub fn new_for_test() -> Result<Computer> {
-        use crate::memory::Memory;
+        use std::cell::RefCell;
 
+        use crate::{memory::Memory, video::VideoCard};
+
+        let video_card = RefCell::new(VideoCard::new());
         Ok(Computer {
-            memory_bus: MemoryBus::new(Memory::new(2048 * 1024)),
+            memory_bus: MemoryBus::new(Memory::new(2048 * 1024), video_card),
             cpu: Cpu::new(),
         })
     }

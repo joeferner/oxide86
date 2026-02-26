@@ -1,7 +1,7 @@
-use crate::{cpu::Cpu, memory::MemoryBus, physical_address};
+use crate::{cpu::Cpu, memory_bus::MemoryBus, physical_address};
 
-mod data_transfer;
 mod control_flow;
+mod data_transfer;
 
 impl Cpu {
     // Decode ModR/M byte and calculate effective address
@@ -104,6 +104,7 @@ impl Cpu {
     }
 
     /// Get 8-bit register value
+    #[allow(dead_code)]
     fn get_reg8(&self, reg: u8) -> u8 {
         match reg {
             0 => (self.ax & 0xFF) as u8, // AL

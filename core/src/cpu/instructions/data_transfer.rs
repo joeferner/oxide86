@@ -1,6 +1,7 @@
 use crate::{
     cpu::{Cpu, timing},
-    memory::MemoryBus, physical_address,
+    memory_bus::MemoryBus,
+    physical_address,
 };
 
 impl Cpu {
@@ -93,15 +94,13 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     // Assuming these exist in your project structure
-    use crate::cpu::Cpu;
-    use crate::memory::{Memory, MemoryBus};
+    use crate::cpu::tests::create_test_cpu;
     use crate::physical_address;
 
     #[test]
     fn test_mov_imm_to_reg_8bit() {
         // 1. Setup: Initialize CPU and Memory
-        let mut cpu = Cpu::new();
-        let mut memory_bus = MemoryBus::new(Memory::new(1024));
+        let (mut cpu, mut memory_bus) = create_test_cpu();
 
         // 2. Test 8-bit Move: MOV AL, 0x42 (Opcode 0xB0)
         // AL is usually register index 0
@@ -121,8 +120,7 @@ mod tests {
     #[test]
     fn test_mov_imm_to_reg_16bit() {
         // 1. Setup: Initialize CPU and Memory
-        let mut cpu = Cpu::new();
-        let mut memory_bus = MemoryBus::new(Memory::new(1024));
+        let (mut cpu, mut memory_bus) = create_test_cpu();
 
         // 2. Test 16-bit Move: MOV AX, 0x1234 (Opcode 0xB8)
         // AX is usually register index 0 (with the is_word bit set)

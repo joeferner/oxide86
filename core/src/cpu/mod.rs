@@ -1,4 +1,4 @@
-use crate::{memory::MemoryBus, physical_address};
+use crate::{memory_bus::MemoryBus, physical_address};
 mod instructions;
 mod timing;
 
@@ -120,7 +120,7 @@ impl Cpu {
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
-            
+
             _ => {
                 let err = format!(
                     "Unknown opcode: {:#04X} at {:04X}:{:04X}",
@@ -182,5 +182,20 @@ impl Cpu {
 
         // Enable interrupts - DOS programs expect IF=1 (inherited from DOS environment)
         self.set_flag(cpu_flag::INTERRUPT, true);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::cell::RefCell;
+
+    use crate::{cpu::Cpu, memory::Memory, memory_bus::MemoryBus, video::VideoCard};
+
+    pub fn create_test_cpu() -> (Cpu, MemoryBus) {
+        let cpu = Cpu::new();
+        let video_card = RefCell::new(VideoCard::new());
+        let memory_bus = MemoryBus::new(Memory::new(1024), video_card);
+
+        (cpu, memory_bus)
     }
 }
