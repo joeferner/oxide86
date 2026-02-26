@@ -109,13 +109,32 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 
 - Games
   - :white_check_mark: Zork 1
+
+    ![Screenshot](docs/screenshots/zork1.png)
   - :white_check_mark: Alley Cat
-  - :white_check_mark: Kings Quest 1
+
+    ![Screenshot](docs/screenshots/alleycat.png)
+  - :white_check_mark: Kings Quest I
+
+    ![Screenshot](docs/screenshots/kq1.png)
+  - :white_check_mark: Kings Quest II
+
+    ![Screenshot](docs/screenshots/kq2.png)
+  - :white_check_mark: Kings Quest III
+
+    ![Screenshot](docs/screenshots/kq3.png)
   - :white_check_mark: Flight Simulator 1
+
+    ![Screenshot](docs/screenshots/ms-flight-sim-1.png)
   - :white_check_mark: Battle Chess
+
+    ![Screenshot](docs/screenshots/battle-chess-1.png)
+    ![Screenshot](docs/screenshots/battle-chess-2.png)
 
 - Other
   - :white_check_mark: AdLib Jukebox
+
+    ![Screenshot](docs/screenshots/adlib-jukebox.png)
 
 # History
 

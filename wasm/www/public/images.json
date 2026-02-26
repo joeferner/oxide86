@@ -1,6 +1,11 @@
 {
     "floppy": [
         {
+            "name": "Adlib Jukebox 1.64",
+            "description": "Adlib Juke Box is a program bundled with Adlib sound cards that plays \".ROL\" music files created with Visual Composer",
+            "url": "/images/floppy/adlib-jukebox-1.64.img"
+        },
+        {
             "name": "Borland Turbo C 2.01 (Install)",
             "description": "Turbo C is an Integrated Development Environment and compiler for the C programming language from Borland",
             "url": "/images/floppy/Borland_Turbo_C-2.01/Install.img"
