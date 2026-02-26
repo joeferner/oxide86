@@ -1,5 +1,7 @@
 ![Logo](docs/oxide86-logo-pixel-art-256x256.png)
 
+[Run Oxide86](https://oxide86.fernsroth.com)
+
 # About
 
 **oxide86** is an Intel x86 CPU emulator written in Rust, capable of running real MS-DOS software including early PC games and productivity applications. It supports CGA, EGA, and VGA video modes, AdLib FM sound, mouse and joystick input, floppy and hard drive images, and CD-ROM/ISO support. The emulator targets three platforms: a native CLI, a native GUI, and a WebAssembly build for the browser.
