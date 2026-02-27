@@ -81,6 +81,7 @@
         "Svar",
         "Timelike",
         "tsify",
+        "UEFI",
         "walkdir",
         "wgpu",
         "winit",

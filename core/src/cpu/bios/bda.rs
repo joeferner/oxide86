@@ -1,6 +1,8 @@
 use crate::{
     memory_bus::MemoryBus,
-    video::{TEXT_MODE_BYTES_PER_CHAR, TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MODE_03H_COLOR_TEXT_80_X_25},
+    video::{
+        TEXT_MODE_BYTES_PER_CHAR, TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
+    },
 };
 
 // BIOS Data Area (BDA) constants
@@ -177,4 +179,24 @@ pub(in crate::cpu) fn bda_reset(memory_bus: &mut MemoryBus) {
     memory_bus.write_u16(BDA_START + BDA_MOUSE_MAX_X, 639); // Maximum X
     memory_bus.write_u16(BDA_START + BDA_MOUSE_MIN_Y, 0); // Minimum Y
     memory_bus.write_u16(BDA_START + BDA_MOUSE_MAX_Y, 199); // Maximum Y
+}
+
+pub(in crate::cpu) fn bda_get_cursor_pos(memory_bus: &MemoryBus) -> (u8, u8) {
+    // low byte = column, high byte = row
+    let pos = memory_bus.read_u16(BDA_START + BDA_CURSOR_POS);
+    let col = (pos & 0xff) as u8;
+    let row = ((pos >> 8) & 0xff) as u8;
+    return (row, col);
+}
+
+pub(in crate::cpu) fn bda_get_rows(memory_bus: &MemoryBus) -> u8 {
+    let rows = memory_bus.read_u8(BDA_START + BDA_EGA_ROWS);
+    // On very old original IBM PCs (1981), the byte at 0x84 wasn't always
+    // initialized because 25 lines was the only option. However, for any
+    // EGA, VGA, or modern BIOS/UEFI CSM, this byte is the "source of truth."
+    if rows == 0 {
+        24 // 25 rows - 1 = 24
+    } else {
+        rows
+    }
 }
