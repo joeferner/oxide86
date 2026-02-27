@@ -6,7 +6,8 @@ mod tests {
     use std::sync::Arc;
     use std::{cell::RefCell, fs::File};
 
-    use crate::Device;
+    use crate::DeviceRef;
+    use crate::cpu::CpuType;
     use crate::io_bus::IoBus;
     use crate::video::video_buffer::RenderResult;
     use crate::{
@@ -22,11 +23,11 @@ mod tests {
 
     fn create_computer() -> (Computer, Arc<VideoBuffer>) {
         let video_buffer = Arc::new(VideoBuffer::new());
-        let devices: Vec<Rc<RefCell<dyn Device>>> =
+        let devices: Vec<DeviceRef> =
             vec![Rc::new(RefCell::new(VideoCard::new(video_buffer.clone())))];
         let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), devices.clone());
         let io_bus = IoBus::new(devices);
-        let cpu = Cpu::new();
+        let cpu = Cpu::new(CpuType::I8086);
         let computer = Computer::new(cpu, memory_bus, io_bus);
         (computer, video_buffer)
     }
@@ -93,19 +94,16 @@ mod tests {
         assert_screen(name, expected_screen, video_buffer);
     }
 
-    #[test]
     #[test_log::test]
     pub fn hello_world_video_memory() {
         run_test("hello_world_video_memory");
     }
 
-    #[test]
     #[test_log::test]
     pub fn hello_world_int21_write_string() {
         run_test("hello_world_int21_write_string");
     }
 
-    #[test]
     #[test_log::test]
     pub fn cpu_op8086() {
         run_test("cpu/op8086");

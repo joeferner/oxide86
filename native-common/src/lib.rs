@@ -1,10 +1,10 @@
 use std::{cell::RefCell, rc::Rc, sync::Arc};
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
-    Device,
+    DeviceRef,
     computer::Computer,
-    cpu::Cpu,
+    cpu::{Cpu, CpuType},
     io_bus::IoBus,
     memory::Memory,
     memory_bus::MemoryBus,
@@ -18,9 +18,14 @@ pub mod cli;
 pub mod logging;
 
 pub fn create_computer(cli: &CommonCli, buffer: Arc<VideoBuffer>) -> Result<Computer> {
-    let cpu = Cpu::new();
+    let cpu_type = if let Some(cpu_type) = CpuType::parse(&cli.cpu_type) {
+        cpu_type
+    } else {
+        return Err(anyhow!("Could not parse CPU type: {}", cli.cpu_type));
+    };
+    let cpu = Cpu::new(cpu_type);
     let memory = Memory::new(2048 * 1024); // TODO fill from cli args
-    let devices: Vec<Rc<RefCell<dyn Device>>> = vec![Rc::new(RefCell::new(VideoCard::new(buffer)))];
+    let devices: Vec<DeviceRef> = vec![Rc::new(RefCell::new(VideoCard::new(buffer)))];
     let memory_bus = MemoryBus::new(memory, devices.clone());
     let io_bus = IoBus::new(devices);
     let mut computer = Computer::new(cpu, memory_bus, io_bus);

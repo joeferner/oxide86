@@ -1,7 +1,10 @@
 use crate::{cpu::bios::BIOS_CODE_SEGMENT, io_bus::IoBus, memory_bus::MemoryBus, physical_address};
 pub mod bios;
+mod cpu_type;
 mod instructions;
 mod timing;
+
+pub use cpu_type::CpuType;
 
 // IVT (Interrupt Vector Table) constants
 pub const IVT_START: usize = 0x0000;
@@ -23,6 +26,8 @@ mod cpu_flag {
 }
 
 pub struct Cpu {
+    cpu_type: CpuType,
+
     // General purpose registers
     ax: u16,
     bx: u16,
@@ -61,8 +66,9 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new() -> Self {
+    pub fn new(cpu_type: CpuType) -> Self {
         Self {
+            cpu_type,
             ax: 0,
             bx: 0,
             cx: 0,
@@ -120,6 +126,9 @@ impl Cpu {
                 self.segment_override = None;
             }
 
+            // PUSH 16-bit register (50-57)
+            0x50..=0x57 => self.push_reg16(opcode, memory_bus),
+
             // MOV r/m16 to segment register (8E)
             0x8E => self.mov_rm_to_segreg(memory_bus),
 
@@ -131,6 +140,9 @@ impl Cpu {
 
             // INT - Software Interrupt (CD)
             0xCD => self.int(memory_bus),
+
+            // CALL near relative (E8)
+            0xE8 => self.call_near(memory_bus),
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
@@ -211,8 +223,9 @@ mod tests {
     use std::sync::Arc;
     use std::{cell::RefCell, rc::Rc};
 
+    use crate::DeviceRef;
+    use crate::cpu::CpuType;
     use crate::{
-        Device,
         cpu::Cpu,
         memory::Memory,
         memory_bus::MemoryBus,
@@ -220,10 +233,9 @@ mod tests {
     };
 
     pub fn create_test_cpu() -> (Cpu, MemoryBus) {
-        let cpu = Cpu::new();
+        let cpu = Cpu::new(CpuType::I8086);
         let video_buffer = Arc::new(VideoBuffer::new());
-        let devices: Vec<Rc<RefCell<dyn Device>>> =
-            vec![Rc::new(RefCell::new(VideoCard::new(video_buffer)))];
+        let devices: Vec<DeviceRef> = vec![Rc::new(RefCell::new(VideoCard::new(video_buffer)))];
         let memory_bus = MemoryBus::new(Memory::new(1024), devices);
 
         (cpu, memory_bus)

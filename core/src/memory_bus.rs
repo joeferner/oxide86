@@ -1,16 +1,14 @@
-use std::{cell::RefCell, rc::Rc};
-
 use anyhow::Result;
 
-use crate::{Device, cpu::bios::bios_reset, memory::Memory};
+use crate::{DeviceRef, cpu::bios::bios_reset, memory::Memory};
 
 pub struct MemoryBus {
     memory: Memory,
-    devices: Vec<Rc<RefCell<dyn Device>>>,
+    devices: Vec<DeviceRef>,
 }
 
 impl MemoryBus {
-    pub fn new(memory: Memory, devices: Vec<Rc<RefCell<dyn Device>>>) -> Self {
+    pub fn new(memory: Memory, devices: Vec<DeviceRef>) -> Self {
         Self { memory, devices }
     }
 

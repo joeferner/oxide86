@@ -617,7 +617,6 @@ pub mod cycles {
 mod tests {
     use super::*;
 
-    #[test]
     #[test_log::test]
     fn test_ea_cycles_mode_00_no_disp() {
         // Mode 00 addressing modes (no displacement)
@@ -631,7 +630,6 @@ mod tests {
         assert_eq!(calculate_ea_cycles(0b00, 0b111, false), 5); // [BX]
     }
 
-    #[test]
     #[test_log::test]
     fn test_ea_cycles_mode_01_disp8() {
         // Mode 01 addressing modes (8-bit displacement)
@@ -645,7 +643,6 @@ mod tests {
         assert_eq!(calculate_ea_cycles(0b01, 0b111, false), 9); // [BX+disp8]
     }
 
-    #[test]
     #[test_log::test]
     fn test_ea_cycles_mode_10_disp16() {
         // Mode 10 addressing modes (16-bit displacement)
@@ -659,7 +656,6 @@ mod tests {
         assert_eq!(calculate_ea_cycles(0b10, 0b111, false), 9); // [BX+disp16]
     }
 
-    #[test]
     #[test_log::test]
     fn test_ea_cycles_mode_11_register() {
         // Mode 11 is register mode - no EA calculation
@@ -668,7 +664,6 @@ mod tests {
         }
     }
 
-    #[test]
     #[test_log::test]
     fn test_ea_cycles_segment_override() {
         // Segment override adds 2 cycles

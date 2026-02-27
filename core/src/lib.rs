@@ -1,3 +1,5 @@
+use std::{cell::RefCell, rc::Rc};
+
 use anyhow::{Context, Result};
 
 pub mod computer;
@@ -23,6 +25,8 @@ pub fn parse_hex_or_dec(s: &str) -> Result<u16> {
             .with_context(|| format!("Invalid decimal value: {}", s))
     }
 }
+
+pub type DeviceRef = Rc<RefCell<dyn Device>>;
 
 pub trait Device {
     fn memory_read_u8(&self, addr: usize) -> Option<u8>;

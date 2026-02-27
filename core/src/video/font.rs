@@ -71,7 +71,6 @@ impl Default for Cp437Font {
 mod tests {
     use super::*;
 
-    #[test]
     #[test_log::test]
     fn test_vga_font_glyph_size() {
         let font = Cp437Font::new();
@@ -79,7 +78,6 @@ mod tests {
         assert_eq!(glyph.len(), CHAR_HEIGHT_16);
     }
 
-    #[test]
     #[test_log::test]
     fn test_cga_font_glyph_size() {
         let font = Cp437Font::new();
@@ -87,7 +85,6 @@ mod tests {
         assert_eq!(glyph.len(), CHAR_HEIGHT_8);
     }
 
-    #[test]
     #[test_log::test]
     fn test_all_characters_accessible() {
         let font = Cp437Font::new();
@@ -101,7 +98,6 @@ mod tests {
         }
     }
 
-    #[test]
     #[test_log::test]
     fn test_font_data_size() {
         assert_eq!(VGA_FONT_8X16.len(), 256 * CHAR_HEIGHT_16);

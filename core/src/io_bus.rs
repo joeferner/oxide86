@@ -1,13 +1,11 @@
-use std::{cell::RefCell, rc::Rc};
-
-use crate::Device;
+use crate::DeviceRef;
 
 pub struct IoBus {
-    devices: Vec<Rc<RefCell<dyn Device>>>,
+    devices: Vec<DeviceRef>,
 }
 
 impl IoBus {
-    pub fn new(devices: Vec<Rc<RefCell<dyn Device>>>) -> Self {
+    pub fn new(devices: Vec<DeviceRef>) -> Self {
         Self { devices }
     }
 

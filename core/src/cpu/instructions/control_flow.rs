@@ -53,4 +53,17 @@ impl Cpu {
         // IRET: 24 cycles
         self.last_instruction_cycles = timing::cycles::IRET;
     }
+
+    /// CALL near relative (opcode E8)
+    /// Call procedure at IP + signed 16-bit offset
+    pub(in crate::cpu) fn call_near(&mut self, memory_bus: &mut MemoryBus) {
+        let offset = self.fetch_word(memory_bus) as i16;
+        // Push return address (current IP after reading offset)
+        self.push(self.ip, memory_bus);
+        // Jump to target
+        self.ip = self.ip.wrapping_add(offset as u16);
+
+        // CALL near direct: 19 cycles
+        self.last_instruction_cycles = timing::cycles::CALL_NEAR_DIRECT;
+    }
 }

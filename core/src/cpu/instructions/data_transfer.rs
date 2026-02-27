@@ -1,5 +1,5 @@
 use crate::{
-    cpu::{Cpu, timing},
+    cpu::{Cpu, CpuType, timing},
     memory_bus::MemoryBus,
     physical_address,
 };
@@ -89,6 +89,27 @@ impl Cpu {
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
         };
     }
+
+    /// PUSH 16-bit register (opcodes 50-57)
+    /// Push register onto stack
+    /// 8086 PUSH SP behavior: pushes SP-2 (value after decrement)
+    /// 80286+ PUSH SP behavior: pushes original SP value
+    pub(in crate::cpu) fn push_reg16(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let reg = opcode & 0x07;
+        if reg == 4 && self.cpu_type == CpuType::I8086 {
+            // PUSH SP on 8086: push the decremented value (post-decrement SP)
+            self.sp = self.sp.wrapping_sub(2);
+            let value = self.sp;
+            let addr = physical_address(self.ss, self.sp);
+            memory_bus.write_u16(addr, value);
+        } else {
+            let value = self.get_reg16(reg);
+            self.push(value, memory_bus);
+        }
+
+        // PUSH register: 11 cycles
+        self.last_instruction_cycles = timing::cycles::PUSH_REG;
+    }
 }
 
 #[cfg(test)]
@@ -97,7 +118,6 @@ mod tests {
     use crate::cpu::tests::create_test_cpu;
     use crate::physical_address;
 
-    #[test]
     #[test_log::test]
     fn test_mov_imm_to_reg_8bit() {
         // 1. Setup: Initialize CPU and Memory
@@ -118,7 +138,6 @@ mod tests {
         assert_eq!(cpu.ip, 1, "IP should have advanced by 1 bytes");
     }
 
-    #[test]
     #[test_log::test]
     fn test_mov_imm_to_reg_16bit() {
         // 1. Setup: Initialize CPU and Memory

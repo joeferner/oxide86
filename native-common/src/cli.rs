@@ -13,4 +13,8 @@ pub struct CommonCli {
     /// Starting offset address (default: 0x0100, like .COM files)
     #[arg(long, default_value = "0x0100")]
     pub offset: String,
+
+    /// CPU type to emulate (8086, 286, 386, 486)
+    #[arg(long = "cpu", default_value = "286")]
+    pub cpu_type: String,
 }
