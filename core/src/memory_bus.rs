@@ -2,7 +2,7 @@ use std::cell::RefCell;
 
 use anyhow::Result;
 
-use crate::{Device, memory::Memory};
+use crate::{Device, cpu::bios::bios_reset, memory::Memory};
 
 pub struct MemoryBus {
     memory: Memory,
@@ -66,8 +66,6 @@ impl MemoryBus {
     }
 
     pub fn reset(&mut self) {
-        for addr in (0..0x0400).step_by(4) {
-            self.write_u32(addr, (0xF0000 + addr) as u32);
-        }
+        bios_reset(self);
     }
 }

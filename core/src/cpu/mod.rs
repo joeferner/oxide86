@@ -1,7 +1,12 @@
-use crate::{memory_bus::MemoryBus, physical_address};
-mod bios;
+use crate::{cpu::bios::BIOS_CODE_SEGMENT, memory_bus::MemoryBus, physical_address};
+pub mod bios;
 mod instructions;
 mod timing;
+
+// IVT (Interrupt Vector Table) constants
+pub const IVT_START: usize = 0x0000;
+pub const IVT_END: usize = 0x0400;
+pub const IVT_ENTRY_SIZE: usize = 4; // Each entry is 4 bytes (offset, segment)
 
 /// Flag bit positions
 #[allow(dead_code)]
@@ -101,8 +106,8 @@ impl Cpu {
     }
 
     pub fn step(&mut self, memory_bus: &mut MemoryBus) {
-        if self.cs == 0xf {
-            self.run_bios_int(memory_bus);
+        if self.cs == BIOS_CODE_SEGMENT {
+            self.step_bios_int(memory_bus);
             return;
         }
 
@@ -191,10 +196,10 @@ impl Cpu {
         self.set_flag(cpu_flag::INTERRUPT, true);
     }
 
-    fn run_bios_int(&mut self, memory_bus: &mut MemoryBus) {
+    fn step_bios_int(&mut self, memory_bus: &mut MemoryBus) {
         let int = self.ip / 4;
         match int {
-            0x21 => self.handle_int21_dos_services(),
+            0x21 => self.handle_int21_dos_services(memory_bus),
             _ => log::error!("unhandled BIOS interrupt 0x{int:04X}"),
         }
         self.iret(memory_bus);
