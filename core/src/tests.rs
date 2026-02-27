@@ -22,8 +22,9 @@ mod tests {
 
     fn create_computer() -> (Computer, Arc<VideoBuffer>) {
         let video_buffer = Arc::new(VideoBuffer::new());
-        let devices: Rc<RefCell<Vec<Box<dyn Device>>>> =
-            Rc::new(RefCell::new(vec![Box::new(VideoCard::new(video_buffer.clone()))]));
+        let devices: Rc<RefCell<Vec<Box<dyn Device>>>> = Rc::new(RefCell::new(vec![Box::new(
+            VideoCard::new(video_buffer.clone()),
+        )]));
         let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), devices.clone());
         let io_bus = IoBus::new(devices);
         let cpu = Cpu::new();
@@ -94,11 +95,13 @@ mod tests {
     }
 
     #[test]
+    #[test_log::test]
     pub fn hello_world_video_memory() {
         run_test("hello_world_video_memory");
     }
 
     #[test]
+    #[test_log::test]
     pub fn hello_world_int21_write_string() {
         run_test("hello_world_int21_write_string");
     }

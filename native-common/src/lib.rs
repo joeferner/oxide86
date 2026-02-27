@@ -2,7 +2,14 @@ use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use anyhow::{Context, Result};
 use oxide86_core::{
-    Device, computer::Computer, cpu::Cpu, io_bus::IoBus, memory::Memory, memory_bus::MemoryBus, parse_hex_or_dec, video::{VideoBuffer, VideoCard}
+    Device,
+    computer::Computer,
+    cpu::Cpu,
+    io_bus::IoBus,
+    memory::Memory,
+    memory_bus::MemoryBus,
+    parse_hex_or_dec,
+    video::{VideoBuffer, VideoCard},
 };
 
 use crate::cli::CommonCli;

@@ -184,7 +184,7 @@ pub(in crate::cpu) fn bda_get_cursor_pos(memory_bus: &MemoryBus) -> (u8, u8) {
     let pos = memory_bus.read_u16(BDA_START + BDA_CURSOR_POS);
     let col = (pos & 0xff) as u8;
     let row = ((pos >> 8) & 0xff) as u8;
-    return (row, col);
+    (row, col)
 }
 
 pub(in crate::cpu) fn bda_set_cursor_pos(memory_bus: &mut MemoryBus, row: u8, col: u8) {

@@ -98,6 +98,7 @@ mod tests {
     use crate::physical_address;
 
     #[test]
+    #[test_log::test]
     fn test_mov_imm_to_reg_8bit() {
         // 1. Setup: Initialize CPU and Memory
         let (mut cpu, mut memory_bus) = create_test_cpu();
@@ -118,6 +119,7 @@ mod tests {
     }
 
     #[test]
+    #[test_log::test]
     fn test_mov_imm_to_reg_16bit() {
         // 1. Setup: Initialize CPU and Memory
         let (mut cpu, mut memory_bus) = create_test_cpu();

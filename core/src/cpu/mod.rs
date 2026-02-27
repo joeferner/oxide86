@@ -208,8 +208,8 @@ impl Cpu {
 
 #[cfg(test)]
 mod tests {
-    use std::{cell::RefCell, rc::Rc};
     use std::sync::Arc;
+    use std::{cell::RefCell, rc::Rc};
 
     use crate::{
         Device,
