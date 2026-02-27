@@ -1,1 +1,2 @@
-- [ ] Get a working hello world writing directly to video memory text mode working
+- [X] Get a working hello world writing directly to video memory text mode
+- [X] Get a working hello world using int21 - write string

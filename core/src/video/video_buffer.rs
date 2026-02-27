@@ -4,7 +4,7 @@ use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
 use crate::video::palette::TextModePalette;
 use crate::video::renderer::{RenderTextArgs, render_text};
 use crate::video::text::TextAttribute;
-use crate::video::{TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MEMORY_SIZE};
+use crate::video::{TEXT_MODE_COLS, TEXT_MODE_ROWS, TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE};
 
 #[derive(PartialEq)]
 pub struct RenderResult {
@@ -33,8 +33,13 @@ pub struct VideoData {
 
 impl VideoData {
     pub fn new() -> Self {
+        let mut vram = vec![0; VIDEO_MEMORY_SIZE];
+        for i in (0..TEXT_MODE_SIZE).step_by(2) {
+            vram[i] = 0x20; // space
+            vram[i + 1] = 0x07; // Light Gray on Black
+        }
         Self {
-            vram: vec![0; VIDEO_MEMORY_SIZE],
+            vram,
             font: Cp437Font::new(),
             vga_dac_palette: Self::default_vga_dac_palette(),
             blink_enabled: false,

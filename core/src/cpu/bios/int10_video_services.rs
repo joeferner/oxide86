@@ -46,12 +46,9 @@ impl Cpu {
             }
             b'\x08' => {
                 // Backspace
-                todo!(
-                    "ch: backspace, cursor_row: {cursor_row}, cursor_col: {cursor_col}, rows: {rows}"
-                );
-                //  if cursor.col > 0 {
-                //      bus.video_mut().set_cursor(cursor.row, cursor.col - 1);
-                //  }
+                if cursor_col > 0 {
+                    set_cursor_pos(cursor_row, cursor_col - 1, columns, memory_bus, io_bus);
+                }
             }
             ch => {
                 // Normal character - handle based on video mode
@@ -70,12 +67,12 @@ impl Cpu {
                 // TODO  } else {
                 // Text mode: write character byte directly
                 let offset = (cursor_row as usize * columns as usize + cursor_col as usize) * 2;
-                // TODO     let existing_attr = bus.video().read_byte(offset + 1);
                 memory_bus.write_u8(CGA_MEMORY_START + offset, ch);
                 // TODO     // Preserve existing color, but substitute 0x07 for 0x00 (black on black)
                 // TODO     // since text with attribute 0x00 is always invisible. Many BIOS implementations
                 // TODO     // do this as a compatibility measure for programs that clear the screen with
                 // TODO     // attribute 0x00 before exiting (e.g., EDIT, Checkit).
+                // TODO     let existing_attr = bus.video().read_byte(offset + 1);
                 // TODO     if existing_attr == 0x00 {
                 // TODO         bus.video_mut().write_byte(offset + 1, 0x07);
                 // TODO     }

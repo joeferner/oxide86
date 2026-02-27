@@ -29,6 +29,7 @@ pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 64KB
 pub const TEXT_MODE_COLS: usize = 80;
 pub const TEXT_MODE_ROWS: usize = 25;
 pub const TEXT_MODE_BYTES_PER_CHAR: usize = 2;
+pub const TEXT_MODE_SIZE: usize = TEXT_MODE_COLS * TEXT_MODE_ROWS * TEXT_MODE_BYTES_PER_CHAR;
 
 // VGA color constants
 pub mod colors {

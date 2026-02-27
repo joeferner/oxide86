@@ -29,7 +29,8 @@ impl VideoCard {
     fn _read_u8(&self, addr: usize) -> u8 {
         // Read from raw VRAM (source of truth)
         if addr < self.vram_size {
-            self.buffer.emu_get_back_buffer().vram[addr]
+            let data = self.buffer.emu_get_back_buffer();
+            data.vram[addr]
         } else {
             0
         }
@@ -37,8 +38,9 @@ impl VideoCard {
 
     fn _write_u8(&mut self, addr: usize, val: u8) {
         if addr < self.vram_size {
+            let data = self.buffer.emu_get_back_buffer_mut();
             log::info!("Write: [0x{addr:04X}] = 0x{val:02X}");
-            self.buffer.emu_get_back_buffer_mut().vram[addr] = val;
+            data.vram[addr] = val;
         }
     }
 }
