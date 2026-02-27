@@ -11,16 +11,6 @@ impl Cpu {
         self.last_instruction_cycles = timing::cycles::HLT;
     }
 
-    /// JMP short relative (opcode EB)
-    /// Jump to IP + signed 8-bit displacement
-    pub(in crate::cpu) fn jmp_short(&mut self, bus: &Bus) {
-        let offset = self.fetch_byte(bus) as i8;
-        self.ip = self.ip.wrapping_add(offset as i16 as u16);
-
-        // JMP short: 15 cycles
-        self.last_instruction_cycles = timing::cycles::JMP_SHORT;
-    }
-
     /// JMP near relative (opcode E9)
     /// Jump to IP + signed 16-bit displacement
     pub(in crate::cpu) fn jmp_near(&mut self, bus: &Bus) {
@@ -29,43 +19,6 @@ impl Cpu {
 
         // JMP near direct: 15 cycles
         self.last_instruction_cycles = timing::cycles::JMP_NEAR_DIRECT;
-    }
-
-    /// CALL near relative (opcode E8)
-    /// Call procedure at IP + signed 16-bit offset
-    pub(in crate::cpu) fn call_near(&mut self, bus: &mut Bus) {
-        let offset = self.fetch_word(bus) as i16;
-        // Push return address (current IP after reading offset)
-        self.push(self.ip, bus);
-        // Jump to target
-        self.ip = self.ip.wrapping_add(offset as u16);
-
-        // CALL near direct: 19 cycles
-        self.last_instruction_cycles = timing::cycles::CALL_NEAR_DIRECT;
-    }
-
-    /// RET (opcode C3: near return, C2: near return with imm16 pop)
-    pub(in crate::cpu) fn ret(&mut self, opcode: u8, bus: &mut Bus) {
-        // If opcode is C2, fetch the immediate BEFORE popping
-        // (fetch_word reads from CS:IP which will change after pop)
-        let bytes_to_pop = if opcode == 0xC2 {
-            self.fetch_word(bus)
-        } else {
-            0
-        };
-
-        // Pop return address
-        self.ip = self.pop(bus);
-
-        // Add the immediate to SP (if C2)
-        self.sp = self.sp.wrapping_add(bytes_to_pop);
-
-        // RET near: 8 cycles (C3), 12 cycles (C2 with pop)
-        self.last_instruction_cycles = if opcode == 0xC2 {
-            timing::cycles::RET_NEAR_POP
-        } else {
-            timing::cycles::RET_NEAR
-        };
     }
 
     /// ENTER - Make Stack Frame (opcode C8, 80186+)
@@ -114,47 +67,6 @@ impl Cpu {
         self.bp = self.pop(bus);
 
         self.last_instruction_cycles = timing::cycles::LEAVE;
-    }
-
-    /// Conditional jumps - short relative (opcodes 70-7F)
-    /// Jump to IP + signed 8-bit displacement if condition is met
-    pub(in crate::cpu) fn jmp_conditional(&mut self, opcode: u8, bus: &Bus) {
-        let offset = self.fetch_byte(bus) as i8;
-
-        let condition = match opcode {
-            0x70 => self.get_flag(cpu_flag::OVERFLOW), // JO - Jump if overflow
-            0x71 => !self.get_flag(cpu_flag::OVERFLOW), // JNO - Jump if not overflow
-            0x72 => self.get_flag(cpu_flag::CARRY),    // JB/JC/JNAE - Jump if below/carry
-            0x73 => !self.get_flag(cpu_flag::CARRY), // JAE/JNB/JNC - Jump if above or equal/not below/not carry
-            0x74 => self.get_flag(cpu_flag::ZERO),   // JE/JZ - Jump if equal/zero
-            0x75 => !self.get_flag(cpu_flag::ZERO),  // JNE/JNZ - Jump if not equal/not zero
-            0x76 => self.get_flag(cpu_flag::CARRY) || self.get_flag(cpu_flag::ZERO), // JBE/JNA - Jump if below or equal/not above
-            0x77 => !self.get_flag(cpu_flag::CARRY) && !self.get_flag(cpu_flag::ZERO), // JA/JNBE - Jump if above/not below or equal
-            0x78 => self.get_flag(cpu_flag::SIGN), // JS - Jump if sign
-            0x79 => !self.get_flag(cpu_flag::SIGN), // JNS - Jump if not sign
-            0x7A => self.get_flag(cpu_flag::PARITY), // JP/JPE - Jump if parity/parity even
-            0x7B => !self.get_flag(cpu_flag::PARITY), // JNP/JPO - Jump if not parity/parity odd
-            0x7C => self.get_flag(cpu_flag::SIGN) != self.get_flag(cpu_flag::OVERFLOW), // JL/JNGE - Jump if less/not greater or equal
-            0x7D => self.get_flag(cpu_flag::SIGN) == self.get_flag(cpu_flag::OVERFLOW), // JGE/JNL - Jump if greater or equal/not less
-            0x7E => {
-                self.get_flag(cpu_flag::ZERO)
-                    || (self.get_flag(cpu_flag::SIGN) != self.get_flag(cpu_flag::OVERFLOW))
-            } // JLE/JNG - Jump if less or equal/not greater
-            0x7F => {
-                !self.get_flag(cpu_flag::ZERO)
-                    && (self.get_flag(cpu_flag::SIGN) == self.get_flag(cpu_flag::OVERFLOW))
-            } // JG/JNLE - Jump if greater/not less or equal
-            _ => unreachable!(),
-        };
-
-        if condition {
-            self.ip = self.ip.wrapping_add(offset as i16 as u16);
-            // Conditional jump taken: 16 cycles
-            self.last_instruction_cycles = timing::cycles::CONDITIONAL_JUMP_TAKEN;
-        } else {
-            // Conditional jump not taken: 4 cycles
-            self.last_instruction_cycles = timing::cycles::CONDITIONAL_JUMP_NOT_TAKEN;
-        }
     }
 
     /// LOOP - Loop while CX != 0 (opcode E2)
@@ -228,45 +140,6 @@ impl Cpu {
         self.last_instruction_cycles = timing::cycles::JMP_FAR_DIRECT;
     }
 
-    /// JMP indirect (opcode FF)
-    /// FF /4: JMP r/m16 (near indirect)
-    /// FF /5: JMP m16:16 (far indirect)
-    pub(in crate::cpu) fn jmp_indirect(&mut self, bus: &Bus) {
-        let modrm = self.fetch_byte(bus);
-        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, bus);
-
-        match operation {
-            4 => {
-                // JMP r/m16 (near indirect)
-                let offset = self.read_rm16(mode, rm, addr, bus);
-                self.ip = offset;
-
-                // JMP near indirect: 11 cycles (reg), 18+EA (mem)
-                self.last_instruction_cycles = if mode == 0b11 {
-                    timing::cycles::JMP_NEAR_INDIRECT_REG
-                } else {
-                    timing::cycles::JMP_NEAR_INDIRECT_MEM
-                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
-            }
-            5 => {
-                // JMP m16:16 (far indirect)
-                if mode == 0b11 {
-                    panic!("Far JMP indirect requires bus operand");
-                }
-                let offset = bus.read_u16(addr);
-                let segment = bus.read_u16(addr + 2);
-                self.ip = offset;
-                self.cs = segment;
-
-                // JMP far indirect: 24+EA cycles
-                self.last_instruction_cycles = timing::cycles::JMP_FAR_INDIRECT_MEM
-                    + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
-            }
-            _ => panic!("Invalid JMP indirect operation: {}", operation),
-        }
-    }
-
     /// CALL far direct (opcode 9A)
     /// Call far procedure
     pub(in crate::cpu) fn call_far(&mut self, bus: &mut Bus) {
@@ -281,48 +154,6 @@ impl Cpu {
 
         // CALL far direct: 28 cycles
         self.last_instruction_cycles = timing::cycles::CALL_FAR_DIRECT;
-    }
-
-    /// CALL indirect (opcode FF)
-    /// FF /2: CALL r/m16 (near indirect)
-    /// FF /3: CALL m16:16 (far indirect)
-    pub(in crate::cpu) fn call_indirect(&mut self, bus: &mut Bus) {
-        let modrm = self.fetch_byte(bus);
-        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, bus);
-
-        match operation {
-            2 => {
-                // CALL r/m16 (near indirect)
-                let offset = self.read_rm16(mode, rm, addr, bus);
-                self.push(self.ip, bus);
-                self.ip = offset;
-
-                // CALL near indirect: 16 cycles (reg), 21+EA (mem)
-                self.last_instruction_cycles = if mode == 0b11 {
-                    timing::cycles::CALL_NEAR_INDIRECT_REG
-                } else {
-                    timing::cycles::CALL_NEAR_INDIRECT_MEM
-                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
-            }
-            3 => {
-                // CALL m16:16 (far indirect)
-                if mode == 0b11 {
-                    panic!("Far CALL indirect requires bus operand");
-                }
-                let offset = bus.read_u16(addr);
-                let segment = bus.read_u16(addr + 2);
-                self.push(self.cs, bus);
-                self.push(self.ip, bus);
-                self.ip = offset;
-                self.cs = segment;
-
-                // CALL far indirect: 37+EA cycles
-                self.last_instruction_cycles = timing::cycles::CALL_FAR_INDIRECT_MEM
-                    + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
-            }
-            _ => panic!("Invalid CALL indirect operation: {}", operation),
-        }
     }
 
     /// RET far (opcodes CA, CB)
@@ -351,30 +182,6 @@ impl Cpu {
             timing::cycles::RET_FAR
         };
     }
-
-// MIGRATED      /// INT - Software Interrupt (opcode CD)
-// MIGRATED      /// Calls interrupt handler
-// MIGRATED      pub(in crate::cpu) fn int(&mut self, bus: &mut Bus) {
-// MIGRATED          let int_num = self.fetch_byte(bus);
-// MIGRATED  
-// MIGRATED          // Push flags, CS, and IP
-// MIGRATED          self.push(self.flags, bus);
-// MIGRATED          self.push(self.cs, bus);
-// MIGRATED          self.push(self.ip, bus);
-// MIGRATED          // Clear IF and TF
-// MIGRATED          self.set_flag(cpu_flag::INTERRUPT, false);
-// MIGRATED          self.set_flag(cpu_flag::TRAP, false);
-// MIGRATED          // Load interrupt vector from interrupt vector table (IVT)
-// MIGRATED          // IVT starts at 0x00000, each entry is 4 bytes (offset, segment)
-// MIGRATED          let ivt_addr = (int_num as usize) * 4;
-// MIGRATED          let offset = bus.read_u16(ivt_addr);
-// MIGRATED          let segment = bus.read_u16(ivt_addr + 2);
-// MIGRATED          self.ip = offset;
-// MIGRATED          self.cs = segment;
-// MIGRATED  
-// MIGRATED          // INT: 51 cycles
-// MIGRATED          self.last_instruction_cycles = timing::cycles::INT;
-// MIGRATED      }
 
     /// INT 3 - Breakpoint Interrupt (opcode CC)
     /// Single-byte interrupt for breakpoints
@@ -416,50 +223,6 @@ impl Cpu {
             self.last_instruction_cycles = timing::cycles::INTO_NOT_TAKEN;
         }
     }
-
-// MIGRATED      /// IRET - Interrupt Return (opcode CF)
-// MIGRATED      /// Returns from interrupt handler
-// MIGRATED      pub(in crate::cpu) fn iret(&mut self, bus: &mut Bus) {
-// MIGRATED          // Pop IP, CS, and flags
-// MIGRATED          let new_ip = self.pop(bus);
-// MIGRATED          let new_cs = self.pop(bus);
-// MIGRATED          let new_flags = self.pop(bus);
-// MIGRATED  
-// MIGRATED          let old_if = (self.flags & cpu_flag::INTERRUPT) != 0;
-// MIGRATED          self.ip = new_ip;
-// MIGRATED          self.cs = new_cs;
-// MIGRATED          // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
-// MIGRATED          self.flags = (new_flags & 0x0FFF) | 0x0002;
-// MIGRATED          if self.exec_logging_enabled {
-// MIGRATED              let new_if = (self.flags & cpu_flag::INTERRUPT) != 0;
-// MIGRATED              if old_if != new_if {
-// MIGRATED                  log::debug!(
-// MIGRATED                      "IF: {} -> {} (IRET) -> {:04X}:{:04X}",
-// MIGRATED                      old_if as u8,
-// MIGRATED                      new_if as u8,
-// MIGRATED                      self.cs,
-// MIGRATED                      self.ip,
-// MIGRATED                  );
-// MIGRATED              }
-// MIGRATED          }
-// MIGRATED  
-// MIGRATED          // Check if this completes an IRQ chain (e.g., INT 08h -> INT 1Ch)
-// MIGRATED          if let Some(context) = self.complete_irq_chain() {
-// MIGRATED              log::debug!(
-// MIGRATED                  "IRQ Chain Complete: INT 0x{:02X} (expected return {:04X}:{:04X} FLAGS={:04X}, actual {:04X}:{:04X} FLAGS={:04X})",
-// MIGRATED                  context.original_int,
-// MIGRATED                  context.return_cs,
-// MIGRATED                  context.return_ip,
-// MIGRATED                  context.return_flags,
-// MIGRATED                  self.cs,
-// MIGRATED                  self.ip,
-// MIGRATED                  self.flags
-// MIGRATED              );
-// MIGRATED          }
-// MIGRATED  
-// MIGRATED          // IRET: 24 cycles
-// MIGRATED          self.last_instruction_cycles = timing::cycles::IRET;
-// MIGRATED      }
 
     /// CBW - Convert Byte to Word (opcode 98)
     /// Sign-extends AL into AX

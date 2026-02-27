@@ -5,43 +5,43 @@ mod instructions;
 pub(super) mod timing;
 
 pub struct Cpu {
-    // General purpose registers
-    pub ax: u16,
-    pub bx: u16,
-    pub cx: u16,
-    pub dx: u16,
-
-    // Index and pointer registers
-    pub si: u16,
-    pub di: u16,
-    pub sp: u16,
-    pub bp: u16,
-
-    // Segment registers
-    pub cs: u16,
-    pub ds: u16,
-    pub ss: u16,
-    pub es: u16,
-    pub fs: u16, // 80386+
-    pub gs: u16, // 80386+
-
-    // Instruction pointer
-    pub ip: u16,
-
-    // Flags (start with just carry, zero, sign)
-    pub flags: u16,
-
-    // Halted flag
-    halted: bool,
+// MIGRATED      // General purpose registers
+// MIGRATED      pub ax: u16,
+// MIGRATED      pub bx: u16,
+// MIGRATED      pub cx: u16,
+// MIGRATED      pub dx: u16,
+// MIGRATED  
+// MIGRATED      // Index and pointer registers
+// MIGRATED      pub si: u16,
+// MIGRATED      pub di: u16,
+// MIGRATED      pub sp: u16,
+// MIGRATED      pub bp: u16,
+// MIGRATED  
+// MIGRATED      // Segment registers
+// MIGRATED      pub cs: u16,
+// MIGRATED      pub ds: u16,
+// MIGRATED      pub ss: u16,
+// MIGRATED      pub es: u16,
+// MIGRATED      pub fs: u16, // 80386+
+// MIGRATED      pub gs: u16, // 80386+
+// MIGRATED  
+// MIGRATED      // Instruction pointer
+// MIGRATED      pub ip: u16,
+// MIGRATED  
+// MIGRATED      // Flags (start with just carry, zero, sign)
+// MIGRATED      pub flags: u16,
+// MIGRATED  
+// MIGRATED      // Halted flag
+// MIGRATED      halted: bool,
 
     // Wait state (paused waiting for external event)
     wait_state: CpuWaitState,
 
-    // Segment override prefix (for next instruction only)
-    segment_override: Option<u16>,
+// MIGRATED      // Segment override prefix (for next instruction only)
+// MIGRATED      segment_override: Option<u16>,
 
-    // Repeat prefix for string instructions
-    repeat_prefix: Option<RepeatPrefix>,
+// MIGRATED      // Repeat prefix for string instructions
+// MIGRATED      repeat_prefix: Option<RepeatPrefix>,
 
     /// if true logs interrupts at info level
     pub log_interrupts_enabled: bool,
@@ -61,17 +61,10 @@ pub struct Cpu {
     /// Used by interrupt handlers that need to convert real time to cycles
     pub(super) cpu_freq: u64,
 
-    /// Pending CPU exception interrupt number (e.g. 0 = divide error)
-    /// Set by instructions that trigger CPU exceptions; fired by Computer::step()
-    pub(super) pending_exception: Option<u8>,
-
     /// IRQ chain context - tracks nested interrupt chaining
     /// None = normal execution
     /// Some(IrqChainContext) = currently processing a chained interrupt
     irq_chain_context: Option<IrqChainContext>,
-
-    /// CPU type for behavior differences (e.g., PUSH SP semantics)
-    pub cpu_type: CpuType,
 }
 
 /// IRQ chain context - tracks state when one interrupt chains to another
@@ -87,14 +80,6 @@ pub(crate) struct IrqChainContext {
     return_ip: u16,
     /// Flags to restore after chain
     return_flags: u16,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-#[allow(dead_code)]
-pub(super) enum RepeatPrefix {
-    Rep,   // 0xF3 - Repeat while CX != 0
-    Repe,  // 0xF3 - Repeat while CX != 0 and ZF = 1
-    Repne, // 0xF2 - Repeat while CX != 0 and ZF = 0
 }
 
 /// CPU wait state - indicates the CPU is paused waiting for an external event
@@ -123,58 +108,22 @@ pub mod cpu_flag {
 impl Cpu {
     pub fn new() -> Self {
         Self {
-            ax: 0,
-            bx: 0,
-            cx: 0,
-            dx: 0,
-            si: 0,
-            di: 0,
-            sp: 0,
-            bp: 0,
-            cs: 0,
-            ds: 0,
-            ss: 0,
-            es: 0,
-            fs: 0,
-            gs: 0,
-            ip: 0,
-            flags: 0,
-            halted: false,
             wait_state: CpuWaitState::Running,
-            segment_override: None,
-            repeat_prefix: None,
             log_interrupts_enabled: false,
             exec_logging_enabled: false,
             last_instruction_cycles: 0,
             pending_sleep_cycles: 0,
             cpu_freq: 4_770_000,
-            pending_exception: None,
             irq_chain_context: None,
-            cpu_type: CpuType::I8086,
         }
     }
 
     // Reset CPU to initial state (as if powered on)
     pub fn reset(&mut self) {
-        // On x86 reset, CS:IP = 0xF000:0xFFF0 (physical address 0xFFFF0)
-        self.cs = 0xF000;
-        self.ip = 0xFFF0;
-
         // Other typical reset values
-        self.flags = 0x0002; // Reserved bit always set
-        self.sp = 0;
-        self.halted = false;
         self.wait_state = CpuWaitState::Running;
-        self.segment_override = None;
-        self.repeat_prefix = None;
-        self.pending_exception = None;
         // Other registers are undefined on reset
     }
-
-    // Calculate physical address from segment:offset
-// MIGRATED      pub fn physical_address(segment: u16, offset: u16) -> usize {
-// MIGRATED          ((segment as usize) << 4) + (offset as usize)
-// MIGRATED      }
 
     // Fetch a byte from memory at CS:IP and increment IP
     pub(crate) fn fetch_byte(&mut self, bus: &Bus) -> u8 {
@@ -385,10 +334,7 @@ impl Cpu {
             // OR r/m to register
             0x08..=0x0B => self.or_rm_reg(opcode, bus),
 
-            // OR immediate to AL/AX
-            0x0C..=0x0D => self.or_imm_acc(opcode, bus),
-
-            // PUSH CS (0E)
+           // PUSH CS (0E)
             0x0E => self.push_segreg(opcode, bus),
 
             // POP CS (0F) - 8086 only, repurposed as two-byte prefix on 80286+
@@ -428,17 +374,6 @@ impl Cpu {
             // AND r/m to register
             0x20..=0x23 => self.and_rm_reg(opcode, bus),
 
-            // AND immediate to AL/AX
-            0x24..=0x25 => self.and_imm_acc(opcode, bus),
-
-// MIGRATED              // ES: segment override prefix (26)
-// MIGRATED              0x26 => {
-// MIGRATED                  self.segment_override = Some(self.es);
-// MIGRATED                  let next_opcode = self.fetch_byte(bus);
-// MIGRATED                  self.execute_with_io(next_opcode, bus, bios, io_device);
-// MIGRATED                  self.segment_override = None;
-// MIGRATED              }
-
             // DAA - Decimal Adjust After Addition (27)
             0x27 => self.daa(),
 
@@ -476,12 +411,6 @@ impl Cpu {
             // AAA - ASCII Adjust After Addition (37)
             0x37 => self.aaa(),
 
-            // CMP r/m to register
-            0x38..=0x3B => self.cmp_rm_reg(opcode, bus),
-
-            // CMP immediate to AL/AX
-            0x3C..=0x3D => self.cmp_imm_acc(opcode, bus),
-
             // DS: segment override prefix (3E)
             0x3E => {
                 self.segment_override = Some(self.ds);
@@ -492,18 +421,6 @@ impl Cpu {
 
             // AAS - ASCII Adjust After Subtraction (3F)
             0x3F => self.aas(),
-
-            // INC 16-bit register (40-47)
-            0x40..=0x47 => self.inc_reg16(opcode),
-
-            // DEC 16-bit register (48-4F)
-            0x48..=0x4F => self.dec_reg16(opcode),
-
-            // PUSH 16-bit register (50-57)
-            0x50..=0x57 => self.push_reg16(opcode, bus),
-
-            // POP 16-bit register (58-5F)
-            0x58..=0x5F => self.pop_reg16(opcode, bus),
 
             // PUSHA - Push All General Registers (60)
             0x60 => self.pusha(bus),
@@ -559,31 +476,14 @@ impl Cpu {
             // OUTS - Output String to Port (6E-6F)
             0x6E..=0x6F => self.outs(opcode, bus, bios, io_device),
 
-            // Conditional jumps (70-7F)
-            0x70..=0x7F => self.jmp_conditional(opcode, bus),
-
-            // Arithmetic/logical immediate to r/m (80: 8-bit, 81: 16-bit, 82: same as 80, 83: sign-extended 8-bit to 16-bit)
-            0x80 | 0x82 => self.arith_imm8_rm8(bus),
-            0x81 => self.arith_imm16_rm(bus),
-            0x83 => self.arith_imm8_rm(bus),
-
-            // TEST r/m and register (84-85)
-            0x84..=0x85 => self.test_rm_reg(opcode, bus),
-
             // XCHG r/m and register (86-87)
             0x86..=0x87 => self.xchg_rm_reg(opcode, bus),
-
-            // MOV register to/from r/m (88-8B)
-            0x88..=0x8B => self.mov_reg_rm(opcode, bus),
 
             // MOV segment register to r/m16 (8C)
             0x8C => self.mov_segreg_to_rm(bus),
 
             // LEA - Load Effective Address (8D)
             0x8D => self.lea(bus),
-
-// MIGRATED              // MOV r/m16 to segment register (8E)
-// MIGRATED              0x8E => self.mov_rm_to_segreg(bus),
 
             // POP r/m16 (8F) - Group 1A
             0x8F => self.pop_rm16(bus),
@@ -612,44 +512,26 @@ impl Cpu {
             // LAHF - Load AH from Flags (9F)
             0x9F => self.lahf(),
 
-// MIGRATED              // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
-// MIGRATED              0xA0..=0xA3 => self.mov_acc_moffs(opcode, bus),
-
             // MOVS - Move String (A4-A5)
             0xA4..=0xA5 => self.movs(opcode, bus),
 
             // CMPS - Compare String (A6-A7)
             0xA6..=0xA7 => self.cmps(opcode, bus),
 
-            // TEST immediate to AL/AX (A8-A9)
-            0xA8..=0xA9 => self.test_imm_acc(opcode, bus),
-
             // STOS - Store String (AA-AB)
             0xAA..=0xAB => self.stos(opcode, bus),
-
-            // LODS - Load String (AC-AD)
-            0xAC..=0xAD => self.lods(opcode, bus),
 
             // SCAS - Scan String (AE-AF)
             0xAE..=0xAF => self.scas(opcode, bus),
 
-// MIGRATED              // MOV immediate to register (B0-BF)
-// MIGRATED              0xB0..=0xBF => self.mov_imm_to_reg(opcode, bus),
-
             // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
             0xC0..=0xC1 => self.shift_rotate_group(opcode, bus),
-
-            // RET with optional pop (C2: with imm16, C3: without)
-            0xC2..=0xC3 => self.ret(opcode, bus),
 
             // LES - Load Pointer using ES (C4)
             0xC4 => self.les(bus),
 
             // LDS - Load Pointer using DS (C5)
             0xC5 => self.lds(bus),
-
-            // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
-            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, bus),
 
             // ENTER - Make Stack Frame (C8, 80186+)
             0xC8 => self.enter(bus),
@@ -663,17 +545,11 @@ impl Cpu {
             // INT 3 - Breakpoint (CC)
             0xCC => self.int3(bus),
 
-// MIGRATED              // INT - Software Interrupt (CD)
-// MIGRATED              0xCD => self.int(bus),
-
             // INTO - Interrupt on Overflow (CE)
             0xCE => self.into(bus),
 
             // IRET - Interrupt Return (CF)
             0xCF => self.iret(bus),
-
-            // Shift/Rotate Group 2 (D0: r/m8, 1; D1: r/m16, 1; D2: r/m8, CL; D3: r/m16, CL)
-            0xD0..=0xD3 => self.shift_rotate_group(opcode, bus),
 
             // AAM - ASCII Adjust After Multiplication (D4)
             0xD4 => self.aam(bus),
@@ -712,17 +588,11 @@ impl Cpu {
             // OUT imm8, AX (E7)
             0xE7 => self.out_imm8_ax(bus, bios, io_device),
 
-            // CALL near relative (E8)
-            0xE8 => self.call_near(bus),
-
             // JMP near relative (E9)
             0xE9 => self.jmp_near(bus),
 
             // JMP far (EA)
             0xEA => self.jmp_far(bus),
-
-            // JMP short relative (EB)
-            0xEB => self.jmp_short(bus),
 
             // IN AL, DX (EC)
             0xEC => self.in_al_dx(bios, io_device),
@@ -759,14 +629,8 @@ impl Cpu {
                 self.repeat_prefix = None;
             }
 
-// MIGRATED              // HLT - Halt (F4)
-// MIGRATED              0xF4 => self.hlt(),
-
             // CMC - Complement Carry Flag (F5)
             0xF5 => self.cmc(),
-
-            // NOT/NEG/MUL/DIV Group 3 (F6: 8-bit, F7: 16-bit)
-            0xF6..=0xF7 => self.unary_group3(opcode, bus),
 
             // CLC - Clear Carry Flag (F8)
             0xF8 => self.clc(),
@@ -785,37 +649,6 @@ impl Cpu {
 
             // STD - Set Direction Flag (FD)
             0xFD => self.std_flag(),
-
-            // INC/DEC/CALL/JMP Group 4/5 (FE: 8-bit, FF: 16-bit)
-            0xFE => self.inc_dec_rm(opcode, bus),
-            0xFF => {
-                // For FF, we need to check the reg field to determine operation
-                let modrm_peek = bus.read_u8(Self::physical_address(self.cs, self.ip));
-                let reg_field = (modrm_peek >> 3) & 0x07;
-                match reg_field {
-                    0 | 1 => self.inc_dec_rm(opcode, bus), // INC/DEC
-                    2 | 3 => self.call_indirect(bus),      // CALL near/far
-                    4 | 5 => self.jmp_indirect(bus),       // JMP near/far
-                    6 => self.push_rm16(bus),              // PUSH r/m16
-                    _ => log::warn!(
-                        "Invalid FF /{}  at {:04X}:{:04X} (undefined, skipping)",
-                        reg_field,
-                        self.cs,
-                        self.ip.wrapping_sub(1)
-                    ),
-                }
-            }
-
-            _ => {
-                let err = format!(
-                    "Unknown opcode: {:#04X} at {:04X}:{:04X}",
-                    opcode,
-                    self.cs,
-                    self.ip.wrapping_sub(1)
-                );
-                log::error!("{}", err);
-                panic!("{}", err);
-            }
         }
     }
 
@@ -1000,66 +833,66 @@ impl Cpu {
         (mode, reg, rm, effective_addr, effective_seg)
     }
 
-    // Read 8-bit value from register or memory based on mod field
-    pub(super) fn read_rm8(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u8 {
-        if mode == 0b11 {
-            // Register mode
-            self.get_reg8(rm)
-        } else {
-            // Memory mode
-            bus.read_u8(addr)
-        }
-    }
+// MIGRATED      // Read 8-bit value from register or memory based on mod field
+// MIGRATED      pub(super) fn read_rm8(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u8 {
+// MIGRATED          if mode == 0b11 {
+// MIGRATED              // Register mode
+// MIGRATED              self.get_reg8(rm)
+// MIGRATED          } else {
+// MIGRATED              // Memory mode
+// MIGRATED              bus.read_u8(addr)
+// MIGRATED          }
+// MIGRATED      }
 
-    // Read 16-bit value from register or memory based on mod field
-    pub(super) fn read_rm16(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u16 {
-        if mode == 0b11 {
-            // Register mode
-            self.get_reg16(rm)
-        } else {
-            // Memory mode
-            bus.read_u16(addr)
-        }
-    }
+// MIGRATED      // Read 16-bit value from register or memory based on mod field
+// MIGRATED      pub(super) fn read_rm16(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u16 {
+// MIGRATED          if mode == 0b11 {
+// MIGRATED              // Register mode
+// MIGRATED              self.get_reg16(rm)
+// MIGRATED          } else {
+// MIGRATED              // Memory mode
+// MIGRATED              bus.read_u16(addr)
+// MIGRATED          }
+// MIGRATED      }
 
-    // Write 8-bit value to register or memory based on mod field
-    pub(super) fn write_rm8(&mut self, mode: u8, rm: u8, addr: usize, value: u8, bus: &mut Bus) {
-        if mode == 0b11 {
-            // Register mode
-            self.set_reg8(rm, value);
-        } else {
-            // Memory mode
-            bus.write_u8(addr, value);
-        }
-    }
+// MIGRATED      // Write 8-bit value to register or memory based on mod field
+// MIGRATED      pub(super) fn write_rm8(&mut self, mode: u8, rm: u8, addr: usize, value: u8, bus: &mut Bus) {
+// MIGRATED          if mode == 0b11 {
+// MIGRATED              // Register mode
+// MIGRATED              self.set_reg8(rm, value);
+// MIGRATED          } else {
+// MIGRATED              // Memory mode
+// MIGRATED              bus.write_u8(addr, value);
+// MIGRATED          }
+// MIGRATED      }
+// MIGRATED  
+// MIGRATED      // Write 16-bit value to register or memory based on mod field
+// MIGRATED      pub(super) fn write_rm16(&mut self, mode: u8, rm: u8, addr: usize, value: u16, bus: &mut Bus) {
+// MIGRATED          if mode == 0b11 {
+// MIGRATED              // Register mode
+// MIGRATED              self.set_reg16(rm, value);
+// MIGRATED          } else {
+// MIGRATED              // Memory mode
+// MIGRATED              bus.write_u16(addr, value);
+// MIGRATED          }
+// MIGRATED      }
 
-    // Write 16-bit value to register or memory based on mod field
-    pub(super) fn write_rm16(&mut self, mode: u8, rm: u8, addr: usize, value: u16, bus: &mut Bus) {
-        if mode == 0b11 {
-            // Register mode
-            self.set_reg16(rm, value);
-        } else {
-            // Memory mode
-            bus.write_u16(addr, value);
-        }
-    }
+// MIGRATED      // Calculate and set flags for 8-bit result
+// MIGRATED      pub(super) fn set_flags_8(&mut self, result: u8) {
+// MIGRATED          self.set_flag(cpu_flag::ZERO, result == 0);
+// MIGRATED          self.set_flag(cpu_flag::SIGN, (result & 0x80) != 0);
+// MIGRATED          self.set_flag(cpu_flag::PARITY, result.count_ones().is_multiple_of(2));
+// MIGRATED      }
 
-    // Calculate and set flags for 8-bit result
-    pub(super) fn set_flags_8(&mut self, result: u8) {
-        self.set_flag(cpu_flag::ZERO, result == 0);
-        self.set_flag(cpu_flag::SIGN, (result & 0x80) != 0);
-        self.set_flag(cpu_flag::PARITY, result.count_ones().is_multiple_of(2));
-    }
-
-    // Calculate and set flags for 16-bit result
-    pub(super) fn set_flags_16(&mut self, result: u16) {
-        self.set_flag(cpu_flag::ZERO, result == 0);
-        self.set_flag(cpu_flag::SIGN, (result & 0x8000) != 0);
-        self.set_flag(
-            cpu_flag::PARITY,
-            (result as u8).count_ones().is_multiple_of(2),
-        );
-    }
+// MIGRATED      // Calculate and set flags for 16-bit result
+// MIGRATED      pub(super) fn set_flags_16(&mut self, result: u16) {
+// MIGRATED          self.set_flag(cpu_flag::ZERO, result == 0);
+// MIGRATED          self.set_flag(cpu_flag::SIGN, (result & 0x8000) != 0);
+// MIGRATED          self.set_flag(
+// MIGRATED              cpu_flag::PARITY,
+// MIGRATED              (result as u8).count_ones().is_multiple_of(2),
+// MIGRATED          );
+// MIGRATED      }
 
     // Dump register state
     pub fn dump_registers(&self) {

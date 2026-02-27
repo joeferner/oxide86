@@ -23,89 +23,6 @@ impl Cpu {
         self.last_instruction_cycles = timing::cycles::MOV_IMM_REG;
     }
 
-    /// MOV register to/from r/m (opcodes 88-8B)
-    /// 88: MOV r/m8, r8
-    /// 89: MOV r/m16, r16
-    /// 8A: MOV r8, r/m8
-    /// 8B: MOV r16, r/m16
-    pub(in crate::cpu) fn mov_reg_rm(&mut self, opcode: u8, bus: &mut Bus) {
-        let is_word = opcode & 0x01 != 0;
-        let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
-
-        let modrm = self.fetch_byte(bus);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
-
-        if is_word {
-            // 16-bit move
-            if dir {
-                // MOV reg16, r/m16
-                let value = self.read_rm16(mode, rm, addr, bus);
-                self.set_reg16(reg, value);
-            } else {
-                // MOV r/m16, reg16
-                let value = self.get_reg16(reg);
-                self.write_rm16(mode, rm, addr, value, bus);
-            }
-        } else {
-            // 8-bit move
-            if dir {
-                // MOV reg8, r/m8
-                let value = self.read_rm8(mode, rm, addr, bus);
-                self.set_reg8(reg, value);
-            } else {
-                // MOV r/m8, reg8
-                let value = self.get_reg8(reg);
-                self.write_rm8(mode, rm, addr, value, bus);
-            }
-        }
-
-        // Calculate cycle timing based on operands
-        self.last_instruction_cycles = if mode == 0b11 {
-            // MOV reg, reg: 2 cycles
-            timing::cycles::MOV_REG_REG
-        } else if dir {
-            // MOV reg, mem: 8 + EA cycles
-            timing::cycles::MOV_MEM_REG
-                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        } else {
-            // MOV mem, reg: 9 + EA cycles
-            timing::cycles::MOV_REG_MEM
-                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
-    }
-
-    /// PUSH 16-bit register (opcodes 50-57)
-    /// Push register onto stack
-    /// 8086 PUSH SP behavior: pushes SP-2 (value after decrement)
-    /// 80286+ PUSH SP behavior: pushes original SP value
-    pub(in crate::cpu) fn push_reg16(&mut self, opcode: u8, bus: &mut Bus) {
-        let reg = opcode & 0x07;
-        if reg == 4 && self.cpu_type == crate::CpuType::I8086 {
-            // PUSH SP on 8086: push the decremented value (post-decrement SP)
-            self.sp = self.sp.wrapping_sub(2);
-            let value = self.sp;
-            let addr = Self::physical_address(self.ss, self.sp);
-            bus.write_u16(addr, value);
-        } else {
-            let value = self.get_reg16(reg);
-            self.push(value, bus);
-        }
-
-        // PUSH register: 11 cycles
-        self.last_instruction_cycles = timing::cycles::PUSH_REG;
-    }
-
-    /// POP 16-bit register (opcodes 58-5F)
-    /// Pop from stack to register
-    pub(in crate::cpu) fn pop_reg16(&mut self, opcode: u8, bus: &mut Bus) {
-        let reg = opcode & 0x07;
-        let value = self.pop(bus);
-        self.set_reg16(reg, value);
-
-        // POP register: 8 cycles
-        self.last_instruction_cycles = timing::cycles::POP_REG;
-    }
-
     /// PUSH immediate (opcode 68: 16-bit, 6A: sign-extended 8-bit)
     pub(in crate::cpu) fn push_imm(&mut self, opcode: u8, bus: &mut Bus) {
         let value = if opcode == 0x68 {
@@ -124,38 +41,6 @@ impl Cpu {
 
         // PUSH immediate: 10 cycles (80186+)
         self.last_instruction_cycles = timing::cycles::PUSH_IMM;
-    }
-
-    /// MOV immediate to r/m (opcodes C6-C7)
-    /// C6: MOV r/m8, imm8
-    /// C7: MOV r/m16, imm16
-    pub(in crate::cpu) fn mov_imm_to_rm(&mut self, opcode: u8, bus: &mut Bus) {
-        let is_word = opcode & 0x01 != 0;
-        let modrm = self.fetch_byte(bus);
-        let (mode, _reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
-
-        // The reg field should be 0 for MOV immediate
-        // (it's part of the opcode extension)
-
-        if is_word {
-            // MOV r/m16, imm16
-            let value = self.fetch_word(bus);
-            self.write_rm16(mode, rm, addr, value, bus);
-        } else {
-            // MOV r/m8, imm8
-            let value = self.fetch_byte(bus);
-            self.write_rm8(mode, rm, addr, value, bus);
-        }
-
-        // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
-            // MOV reg, imm: 4 cycles
-            timing::cycles::MOV_IMM_REG
-        } else {
-            // MOV mem, imm: 10 + EA cycles
-            timing::cycles::MOV_IMM_MEM
-                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
     }
 
     /// MOV accumulator to/from direct bus offset (opcodes A0-A3)
@@ -343,35 +228,6 @@ impl Cpu {
         } else {
             // POP mem: 17 + EA cycles
             timing::cycles::POP_MEM
-                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
-    }
-
-    /// PUSH r/m16 (opcode FF /6) - Group 5
-    /// FF /6: PUSH r/m16
-    /// Pushes a word from register or bus location onto stack
-    pub(in crate::cpu) fn push_rm16(&mut self, bus: &mut Bus) {
-        let modrm = self.fetch_byte(bus);
-        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, bus);
-
-        // The reg field should be 6 for PUSH (it's an opcode extension)
-        if reg_field != 6 {
-            panic!(
-                "Invalid opcode extension for FF /6: expected /6, got /{}",
-                reg_field
-            );
-        }
-
-        let value = self.read_rm16(mode, rm, addr, bus);
-        self.push(value, bus);
-
-        // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
-            // PUSH reg: 11 cycles
-            timing::cycles::PUSH_REG
-        } else {
-            // PUSH mem: 16 + EA cycles
-            timing::cycles::PUSH_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
         };
     }

@@ -54,9 +54,9 @@ pub struct CommonCli {
     #[arg(long = "int-log")]
     pub int_log: bool,
 
-    /// CPU type to emulate (8086, 286, 386, 486)
-    #[arg(long = "cpu", default_value = "286")]
-    pub cpu_type: String,
+// MIGRATED      /// CPU type to emulate (8086, 286, 386, 486)
+// MIGRATED      #[arg(long = "cpu", default_value = "286")]
+// MIGRATED      pub cpu_type: String,
 
     /// CPU clock speed in MHz (default: 8 for a standard 286)
     #[arg(long, default_value = "8")]
