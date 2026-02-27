@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::{cell::RefCell, rc::Rc};
 
 use anyhow::Result;
 
@@ -6,17 +6,18 @@ use crate::{Device, cpu::bios::bios_reset, memory::Memory};
 
 pub struct MemoryBus {
     memory: Memory,
-    devices: Vec<RefCell<Box<dyn Device>>>,
+    devices: Rc<RefCell<Vec<Box<dyn Device>>>>,
 }
 
 impl MemoryBus {
-    pub fn new(memory: Memory, devices: Vec<RefCell<Box<dyn Device>>>) -> Self {
+    pub fn new(memory: Memory, devices: Rc<RefCell<Vec<Box<dyn Device>>>>) -> Self {
         Self { memory, devices }
     }
 
     pub fn read_u8(&self, addr: usize) -> u8 {
-        for device in &self.devices {
-            if let Some(val) = device.borrow().read_u8(addr) {
+        let devices = self.devices.borrow();
+        for device in devices.iter() {
+            if let Some(val) = device.memory_read_u8(addr) {
                 return val;
             }
         }
@@ -25,8 +26,9 @@ impl MemoryBus {
     }
 
     pub fn write_u8(&mut self, addr: usize, val: u8) {
-        for device in &self.devices {
-            if device.borrow_mut().write_u8(addr, val) {
+        let mut devices = self.devices.borrow_mut();
+        for device in devices.iter_mut() {
+            if device.memory_write_u8(addr, val) {
                 return;
             }
         }

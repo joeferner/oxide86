@@ -64,6 +64,6 @@ pub fn video_set_cursor_pos(io_bus: &mut IoBus, crt_controller_port: u16, linear
     io_bus.write_u8(crt_controller_port + 1, (linear_offset & 0xFF) as u8);
 }
 
-pub fn video_calculate_linear_offset(row: u8, col: u8, max_cols: u16) -> u16 {
+pub fn video_calculate_linear_offset(row: u8, col: u8, max_cols: u8) -> u16 {
     (row as u16 * max_cols as u16) + col as u16
 }

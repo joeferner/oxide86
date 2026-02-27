@@ -22,6 +22,7 @@ const VGA_FONT_8X16: &[u8] = include_bytes!("IBM_VGA_8x16.bin");
 const CGA_FONT_8X8: &[u8] = include_bytes!("IBM_VGA_8x8.bin");
 
 /// CP437 font wrapper around embedded BIOS fonts
+#[derive(Clone)]
 pub struct Cp437Font {
     vga_font_data: &'static [u8],
     cga_font_data: &'static [u8],

@@ -208,7 +208,7 @@ impl Cpu {
 
 #[cfg(test)]
 mod tests {
-    use std::cell::RefCell;
+    use std::{cell::RefCell, rc::Rc};
     use std::sync::Arc;
 
     use crate::{
@@ -222,8 +222,8 @@ mod tests {
     pub fn create_test_cpu() -> (Cpu, MemoryBus) {
         let cpu = Cpu::new();
         let video_buffer = Arc::new(VideoBuffer::new());
-        let devices: Vec<RefCell<Box<dyn Device>>> =
-            vec![RefCell::new(Box::new(VideoCard::new(video_buffer)))];
+        let devices: Rc<RefCell<Vec<Box<dyn Device>>>> =
+            Rc::new(RefCell::new(vec![Box::new(VideoCard::new(video_buffer))]));
         let memory_bus = MemoryBus::new(Memory::new(1024), devices);
 
         (cpu, memory_bus)

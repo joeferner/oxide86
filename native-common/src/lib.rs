@@ -1,4 +1,4 @@
-use std::{cell::RefCell, sync::Arc};
+use std::{cell::RefCell, rc::Rc, sync::Arc};
 
 use anyhow::{Context, Result};
 use oxide86_core::{
@@ -13,10 +13,10 @@ pub mod logging;
 pub fn create_computer(cli: &CommonCli, buffer: Arc<VideoBuffer>) -> Result<Computer> {
     let cpu = Cpu::new();
     let memory = Memory::new(2048 * 1024); // TODO fill from cli args
-    let devices: Vec<RefCell<Box<dyn Device>>> =
-        vec![RefCell::new(Box::new(VideoCard::new(buffer)))];
-    let memory_bus = MemoryBus::new(memory, devices);
-    let io_bus = IoBus::new();
+    let devices: Rc<RefCell<Vec<Box<dyn Device>>>> =
+        Rc::new(RefCell::new(vec![Box::new(VideoCard::new(buffer))]));
+    let memory_bus = MemoryBus::new(memory, devices.clone());
+    let io_bus = IoBus::new(devices);
     let mut computer = Computer::new(cpu, memory_bus, io_bus);
 
     if let Some(program_path) = &cli.program {

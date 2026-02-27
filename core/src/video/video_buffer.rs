@@ -1,4 +1,3 @@
-use std::ptr;
 use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 
 use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
@@ -29,6 +28,7 @@ pub struct VideoData {
     /// true  = bit 7 enables character blinking (8 background colors, default)
     /// false = bit 7 selects high-intensity background (16 background colors, no blink)
     pub blink_enabled: bool,
+    pub cursor_loc: u16,
 }
 
 impl VideoData {
@@ -38,7 +38,18 @@ impl VideoData {
             font: Cp437Font::new(),
             vga_dac_palette: Self::default_vga_dac_palette(),
             blink_enabled: false,
+            cursor_loc: 0,
         }
+    }
+
+    fn copy_from(&mut self, src: &VideoData) {
+        self.vram.as_mut_slice().copy_from_slice(&src.vram);
+        self.font = src.font.clone();
+        self.vga_dac_palette
+            .as_mut_slice()
+            .copy_from_slice(&src.vga_dac_palette);
+        self.blink_enabled = src.blink_enabled;
+        self.cursor_loc = src.cursor_loc;
     }
 
     /// Initialize VGA DAC palette with EGA defaults
@@ -84,12 +95,6 @@ impl VideoData {
             data,
             width: width as u32,
             height: height as u32,
-        }
-    }
-
-    unsafe fn copy_from(&mut self, src: &VideoData) {
-        unsafe {
-            ptr::copy_nonoverlapping(src.vram.as_ptr(), self.vram.as_mut_ptr(), src.vram.len());
         }
     }
 }

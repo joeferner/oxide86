@@ -2,6 +2,7 @@
 mod tests {
     use anyhow::Context;
     use std::io::Read;
+    use std::rc::Rc;
     use std::sync::Arc;
     use std::{cell::RefCell, fs::File};
 
@@ -21,10 +22,10 @@ mod tests {
 
     fn create_computer() -> (Computer, Arc<VideoBuffer>) {
         let video_buffer = Arc::new(VideoBuffer::new());
-        let devices: Vec<RefCell<Box<dyn Device>>> =
-            vec![RefCell::new(Box::new(VideoCard::new(video_buffer.clone())))];
-        let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), devices);
-        let io_bus = IoBus::new();
+        let devices: Rc<RefCell<Vec<Box<dyn Device>>>> =
+            Rc::new(RefCell::new(vec![Box::new(VideoCard::new(video_buffer.clone()))]));
+        let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), devices.clone());
+        let io_bus = IoBus::new(devices);
         let cpu = Cpu::new();
         let computer = Computer::new(cpu, memory_bus, io_bus);
         (computer, video_buffer)

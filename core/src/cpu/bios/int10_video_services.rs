@@ -27,29 +27,22 @@ impl Cpu {
         let (cursor_row, cursor_col) = bda_get_cursor_pos(memory_bus);
         let columns = bda_get_columns(memory_bus);
         let rows = bda_get_rows(memory_bus);
-        let crt_controller_port = bda_get_crt_controller_port_address(memory_bus);
 
         match ch {
             b'\r' => {
                 // Carriage return - move to column 0
-                bda_set_cursor_pos(memory_bus, cursor_row, 0);
-                video_set_cursor_pos(
-                    io_bus,
-                    crt_controller_port,
-                    video_calculate_linear_offset(cursor_row, 0, columns),
-                );
+                set_cursor_pos(cursor_row, 0, columns, memory_bus, io_bus);
             }
             b'\n' => {
                 // Line feed - move to next line
-                todo!("ch: \\n, cursor_row: {cursor_row}, cursor_col: {cursor_col}, rows: {rows}");
-                //  let new_row = if cursor.row >= rows - 1 {
-                //      // Need to scroll
-                //      self.scroll_up_internal(bus, 1);
-                //      rows - 1
-                //  } else {
-                //      cursor.row + 1
-                //  };
-                //  bus.video_mut().set_cursor(new_row, cursor.col);
+                let new_row = if cursor_row >= rows - 1 {
+                    // Need to scroll
+                    scroll_up(1, memory_bus, io_bus);
+                    rows - 1
+                } else {
+                    cursor_row + 1
+                };
+                set_cursor_pos(new_row, cursor_col, columns, memory_bus, io_bus);
             }
             b'\x08' => {
                 // Backspace
@@ -89,21 +82,35 @@ impl Cpu {
                 // TODO  }
 
                 // Advance cursor
-                // TODO  let cols = bus.video().get_cols();
-                // TODO  let new_col = cursor.col + 1;
-                // TODO  if new_col >= cols {
-                // TODO      // Wrap to next line
-                // TODO      let new_row = if cursor.row >= rows - 1 {
-                // TODO          self.scroll_up_internal(bus, 1);
-                // TODO          rows - 1
-                // TODO      } else {
-                // TODO          cursor.row + 1
-                // TODO      };
-                // TODO      bus.video_mut().set_cursor(new_row, 0);
-                // TODO  } else {
-                // TODO      bus.video_mut().set_cursor(cursor.row, new_col);
-                // TODO  }
+                let new_col = cursor_col + 1;
+                if new_col >= columns {
+                    // Wrap to next line
+                    let new_row = if cursor_row >= rows - 1 {
+                        scroll_up(1, memory_bus, io_bus);
+                        rows - 1
+                    } else {
+                        cursor_row + 1
+                    };
+                    set_cursor_pos(new_row, 0, columns, memory_bus, io_bus);
+                } else {
+                    set_cursor_pos(cursor_row, new_col, columns, memory_bus, io_bus);
+                }
             }
         }
     }
+}
+
+fn set_cursor_pos(row: u8, col: u8, columns: u8, memory_bus: &mut MemoryBus, io_bus: &mut IoBus) {
+    let crt_controller_port = bda_get_crt_controller_port_address(memory_bus);
+
+    bda_set_cursor_pos(memory_bus, row, col);
+    video_set_cursor_pos(
+        io_bus,
+        crt_controller_port,
+        video_calculate_linear_offset(row, col, columns),
+    );
+}
+
+fn scroll_up(amt: u8, _memory_bus: &mut MemoryBus, _io_bus: &mut IoBus) {
+    todo!("scroll_up amt:{amt}");
 }

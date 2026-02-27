@@ -1,7 +1,7 @@
 use crate::{
     memory_bus::MemoryBus,
     video::{
-        TEXT_MODE_BYTES_PER_CHAR, TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
+        TEXT_MODE_BYTES_PER_CHAR, TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MODE_03H_COLOR_TEXT_80_X_25, video_card::VIDEO_CARD_CONTROL_ADDR,
     },
 };
 
@@ -134,7 +134,7 @@ pub(in crate::cpu) fn bda_reset(memory_bus: &mut MemoryBus) {
     memory_bus.write_u8(BDA_START + BDA_ACTIVE_PAGE, 0); // Page 0
 
     // CRT controller port address (0x0040:0063)
-    memory_bus.write_u16(BDA_START + BDA_CRTC_PORT, 0x03D4); // Color adapter (monochrome = 0x03B4)
+    memory_bus.write_u16(BDA_START + BDA_CRTC_PORT, VIDEO_CARD_CONTROL_ADDR); // Color adapter (monochrome = 0x03B4)
 
     // CRT mode control register (0x0040:0065)
     memory_bus.write_u8(BDA_START + BDA_CRT_MODE_CONTROL, 0x09); // 80x25 text, enable video
@@ -195,8 +195,9 @@ pub(in crate::cpu) fn bda_set_cursor_pos(memory_bus: &mut MemoryBus, row: u8, co
     memory_bus.write_u16(BDA_START + BDA_CURSOR_POS, pos);
 }
 
-pub(in crate::cpu) fn bda_get_columns(memory_bus: &MemoryBus) -> u16 {
-    memory_bus.read_u16(BDA_START + BDA_SCREEN_COLUMNS)
+pub(in crate::cpu) fn bda_get_columns(memory_bus: &MemoryBus) -> u8 {
+    // TODO do columns really take up u16
+    memory_bus.read_u16(BDA_START + BDA_SCREEN_COLUMNS) as u8
 }
 
 pub(in crate::cpu) fn bda_get_rows(memory_bus: &MemoryBus) -> u8 {
