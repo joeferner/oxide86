@@ -5,12 +5,14 @@ mod tests {
     use std::sync::Arc;
     use std::{cell::RefCell, fs::File};
 
+    use crate::Device;
+    use crate::video::video_buffer::RenderResult;
     use crate::{
         computer::Computer,
         cpu::Cpu,
         memory::Memory,
         memory_bus::MemoryBus,
-        video::{VideoBuffer, VideoCard, video_buffer},
+        video::{VideoBuffer, VideoCard},
     };
 
     const TEST_SEGMENT: u16 = 0x1000;
@@ -18,16 +20,17 @@ mod tests {
 
     fn create_computer() -> (Computer, Arc<VideoBuffer>) {
         let video_buffer = Arc::new(VideoBuffer::new());
-        let video_card = RefCell::new(VideoCard::new(video_buffer.clone()));
-        let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), video_card);
+        let devices: Vec<RefCell<Box<dyn Device>>> =
+            vec![RefCell::new(Box::new(VideoCard::new(video_buffer.clone())))];
+        let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), devices);
         let cpu = Cpu::new();
         let computer = Computer::new(cpu, memory_bus);
         (computer, video_buffer)
     }
 
-    fn load_data(name: &str) -> (Vec<u8>, Vec<u8>) {
+    fn load_data(name: &str) -> (Vec<u8>, RenderResult) {
         let program_data = {
-            let filename = format!("{name}.com");
+            let filename = format!("src/test_data/{name}.com");
             let mut f = File::open(&filename)
                 .context(format!("failed to open: {filename}"))
                 .unwrap();
@@ -39,14 +42,40 @@ mod tests {
         };
 
         let expected_image_data = {
-            let filename = format!("{name}.png");
+            let filename = format!("src/test_data/{name}.png");
             let f = image::open(&filename)
                 .context(format!("failed to open: {filename}"))
                 .unwrap();
-            f.to_rgba8().into_raw()
+            let data = f.to_rgba8().into_raw();
+            RenderResult {
+                data,
+                width: f.width(),
+                height: f.height(),
+            }
         };
 
         (program_data, expected_image_data)
+    }
+
+    fn assert_screen(name: &str, expected_screen: RenderResult, video_buffer: Arc<VideoBuffer>) {
+        video_buffer.emu_try_flip();
+        if let Some(frame) = video_buffer.ui_get_data() {
+            let render = frame.render();
+            if render != expected_screen {
+                let filename = format!("src/test_data/{name}_actual.png");
+                image::save_buffer(
+                    &filename,
+                    &render.data,
+                    render.width,
+                    render.height,
+                    image::ColorType::Rgba8,
+                )
+                .expect(&format!("failed to save {filename}"));
+                panic!("frame mismatch");
+            }
+        } else {
+            panic!("could not get frame");
+        }
     }
 
     #[test]
@@ -58,5 +87,7 @@ mod tests {
             .load_program(&program_data, TEST_SEGMENT, TEST_OFFSET)
             .unwrap();
         computer.run();
+
+        assert_screen("hello_world_video_memory", expected_screen, video_buffer);
     }
 }

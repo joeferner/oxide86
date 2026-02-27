@@ -1,13 +1,46 @@
+pub mod font;
+pub mod palette;
+pub mod renderer;
+pub mod text;
 pub mod video_buffer;
 pub mod video_card;
 
-pub const MAX_VIDEO_WIDTH: usize = 800;
-pub const MAX_VIDEO_HEIGHT: usize = 600;
+pub use video_buffer::VideoBuffer;
+pub use video_card::VideoCard;
 
 // CGA video memory constants
 pub const CGA_MEMORY_START: usize = 0xB8000;
 pub const CGA_MEMORY_END: usize = 0xBFFFF;
 pub const CGA_MEMORY_SIZE: usize = CGA_MEMORY_END - CGA_MEMORY_START + 1; // 32KB
 
-pub use video_buffer::VideoBuffer;
-pub use video_card::VideoCard;
+// EGA planar memory: 16KB per plane × 4 planes = 64KB total.
+// This supports two 320×200 display pages (8000 bytes each) plus tile storage at
+// offsets 0x2000+, which games like Indiana Jones use for background tiles.
+pub const EGA_PLANE_SIZE: usize = 0x4000; // 16KB per plane
+
+// Video RAM size: 64KB total — shared between EGA planar (4 × 16KB = 64KB)
+// and VGA mode 13h linear framebuffer (64000 bytes).
+pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 64KB
+
+pub const TEXT_MODE_COLS: usize = 80;
+pub const TEXT_MODE_ROWS: usize = 25;
+
+// VGA color constants
+pub mod colors {
+    pub const BLACK: u8 = 0x0;
+    pub const BLUE: u8 = 0x1;
+    pub const GREEN: u8 = 0x2;
+    pub const CYAN: u8 = 0x3;
+    pub const RED: u8 = 0x4;
+    pub const MAGENTA: u8 = 0x5;
+    pub const BROWN: u8 = 0x6;
+    pub const LIGHT_GRAY: u8 = 0x7;
+    pub const DARK_GRAY: u8 = 0x8;
+    pub const LIGHT_BLUE: u8 = 0x9;
+    pub const LIGHT_GREEN: u8 = 0xA;
+    pub const LIGHT_CYAN: u8 = 0xB;
+    pub const LIGHT_RED: u8 = 0xC;
+    pub const LIGHT_MAGENTA: u8 = 0xD;
+    pub const YELLOW: u8 = 0xE;
+    pub const WHITE: u8 = 0xF;
+}

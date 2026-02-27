@@ -1,4 +1,6 @@
+use chrono::Timelike;
 use std::fs::File;
+use std::io::Write;
 
 use anyhow::{Context, Result};
 
@@ -17,6 +19,20 @@ pub fn setup_logging() -> Result<()> {
     }
 
     builder
+        .format(|buf, record| {
+            let now = chrono::Local::now();
+            writeln!(
+                buf,
+                "[{:02}:{:02}:{:02}.{:03} {:5} {}] {}",
+                now.hour(),
+                now.minute(),
+                now.second(),
+                now.timestamp_subsec_millis(),
+                record.level(),
+                record.target(),
+                record.args()
+            )
+        })
         .target(env_logger::Target::Pipe(Box::new(log_file)))
         .init();
 

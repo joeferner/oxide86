@@ -191,6 +191,7 @@ mod tests {
     use std::sync::Arc;
 
     use crate::{
+        Device,
         cpu::Cpu,
         memory::Memory,
         memory_bus::MemoryBus,
@@ -200,8 +201,9 @@ mod tests {
     pub fn create_test_cpu() -> (Cpu, MemoryBus) {
         let cpu = Cpu::new();
         let video_buffer = Arc::new(VideoBuffer::new());
-        let video_card = RefCell::new(VideoCard::new(video_buffer));
-        let memory_bus = MemoryBus::new(Memory::new(1024), video_card);
+        let devices: Vec<RefCell<Box<dyn Device>>> =
+            vec![RefCell::new(Box::new(VideoCard::new(video_buffer)))];
+        let memory_bus = MemoryBus::new(Memory::new(1024), devices);
 
         (cpu, memory_bus)
     }

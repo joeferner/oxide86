@@ -5,3 +5,4 @@ target/
 *.com
 *.img
 screen_output.png
+*_actual.png

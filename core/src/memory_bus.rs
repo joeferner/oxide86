@@ -2,37 +2,33 @@ use std::cell::RefCell;
 
 use anyhow::Result;
 
-use crate::{
-    memory::Memory,
-    video::{CGA_MEMORY_END, CGA_MEMORY_START, VideoCard},
-};
+use crate::{Device, memory::Memory};
 
 pub struct MemoryBus {
     memory: Memory,
-    video: RefCell<VideoCard>,
+    devices: Vec<RefCell<Box<dyn Device>>>,
 }
 
 impl MemoryBus {
-    pub fn new(memory: Memory, video: RefCell<VideoCard>) -> Self {
-        Self { memory, video }
+    pub fn new(memory: Memory, devices: Vec<RefCell<Box<dyn Device>>>) -> Self {
+        Self { memory, devices }
     }
 
     pub fn read_u8(&self, addr: usize) -> u8 {
-        // Route to Video for memory-mapped ranges
-        if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
-            let offset = addr - CGA_MEMORY_START;
-            return self.video.borrow().read_u8(offset);
+        for device in &self.devices {
+            if let Some(val) = device.borrow().read_u8(addr) {
+                return val;
+            }
         }
 
         self.memory.read_u8(addr)
     }
 
     pub fn write_u8(&mut self, addr: usize, val: u8) {
-        // Route to Video for memory-mapped ranges
-        if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
-            let offset = addr - CGA_MEMORY_START;
-            self.video.borrow_mut().write_u8(offset, val);
-            return;
+        for device in &self.devices {
+            if device.borrow_mut().write_u8(addr, val) {
+                return;
+            }
         }
 
         self.memory.write_u8(addr, val);

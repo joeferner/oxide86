@@ -8,6 +8,8 @@ clap = { workspace = true }
 oxide86-core = { path = "../core" }
 anyhow = { workspace = true }
 log = { workspace = true }
+env_logger = { workspace = true }
+chrono = "0.4"
 
 [lints]
 workspace = true
