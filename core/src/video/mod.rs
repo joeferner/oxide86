@@ -12,47 +12,47 @@ pub use text::TextBuffer;
 // CursorPosition is already defined in this file, so no need to re-export
 
 // CGA video memory constants
-pub const CGA_MEMORY_START: usize = 0xB8000;
-pub const CGA_MEMORY_END: usize = 0xBFFFF;
-pub const CGA_MEMORY_SIZE: usize = CGA_MEMORY_END - CGA_MEMORY_START + 1; // 32KB
+// MIGRATED  pub const CGA_MEMORY_START: usize = 0xB8000;
+// MIGRATED  pub const CGA_MEMORY_END: usize = 0xBFFFF;
+// MIGRATED  pub const CGA_MEMORY_SIZE: usize = CGA_MEMORY_END - CGA_MEMORY_START + 1; // 32KB
 
-// EGA planar memory: 16KB per plane × 4 planes = 64KB total.
-// This supports two 320×200 display pages (8000 bytes each) plus tile storage at
-// offsets 0x2000+, which games like Indiana Jones use for background tiles.
-pub const EGA_PLANE_SIZE: usize = 0x4000; // 16KB per plane
+// MIGRATED  // EGA planar memory: 16KB per plane × 4 planes = 64KB total.
+// MIGRATED  // This supports two 320×200 display pages (8000 bytes each) plus tile storage at
+// MIGRATED  // offsets 0x2000+, which games like Indiana Jones use for background tiles.
+// MIGRATED  pub const EGA_PLANE_SIZE: usize = 0x4000; // 16KB per plane
 
-// Video RAM size: 64KB total — shared between EGA planar (4 × 16KB = 64KB)
-// and VGA mode 13h linear framebuffer (64000 bytes).
-pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 64KB
+// MIGRATED  // Video RAM size: 64KB total — shared between EGA planar (4 × 16KB = 64KB)
+// MIGRATED  // and VGA mode 13h linear framebuffer (64000 bytes).
+// MIGRATED  pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 64KB
 
 // EGA video memory range (A000:0000 - A000:FFFF = 0xA0000 - 0xAFFFF)
 pub const EGA_MEMORY_START: usize = 0xA0000;
 pub const EGA_MEMORY_END: usize = 0xAFFFF;
 
 // Text mode dimensions
-pub const TEXT_MODE_COLS: usize = 80;
-pub const TEXT_MODE_ROWS: usize = 25;
+// MIGRATED  pub const TEXT_MODE_COLS: usize = 80;
+// MIGRATED  pub const TEXT_MODE_ROWS: usize = 25;
 pub const TEXT_MODE_BUFFER_SIZE: usize = TEXT_MODE_COLS * TEXT_MODE_ROWS * 2; // char + attr
 
-// VGA color constants
-pub mod colors {
-    pub const BLACK: u8 = 0x0;
-    pub const BLUE: u8 = 0x1;
-    pub const GREEN: u8 = 0x2;
-    pub const CYAN: u8 = 0x3;
-    pub const RED: u8 = 0x4;
-    pub const MAGENTA: u8 = 0x5;
-    pub const BROWN: u8 = 0x6;
-    pub const LIGHT_GRAY: u8 = 0x7;
-    pub const DARK_GRAY: u8 = 0x8;
-    pub const LIGHT_BLUE: u8 = 0x9;
-    pub const LIGHT_GREEN: u8 = 0xA;
-    pub const LIGHT_CYAN: u8 = 0xB;
-    pub const LIGHT_RED: u8 = 0xC;
-    pub const LIGHT_MAGENTA: u8 = 0xD;
-    pub const YELLOW: u8 = 0xE;
-    pub const WHITE: u8 = 0xF;
-}
+// MIGRATED  // VGA color constants
+// MIGRATED  pub mod colors {
+// MIGRATED      pub const BLACK: u8 = 0x0;
+// MIGRATED      pub const BLUE: u8 = 0x1;
+// MIGRATED      pub const GREEN: u8 = 0x2;
+// MIGRATED      pub const CYAN: u8 = 0x3;
+// MIGRATED      pub const RED: u8 = 0x4;
+// MIGRATED      pub const MAGENTA: u8 = 0x5;
+// MIGRATED      pub const BROWN: u8 = 0x6;
+// MIGRATED      pub const LIGHT_GRAY: u8 = 0x7;
+// MIGRATED      pub const DARK_GRAY: u8 = 0x8;
+// MIGRATED      pub const LIGHT_BLUE: u8 = 0x9;
+// MIGRATED      pub const LIGHT_GREEN: u8 = 0xA;
+// MIGRATED      pub const LIGHT_CYAN: u8 = 0xB;
+// MIGRATED      pub const LIGHT_RED: u8 = 0xC;
+// MIGRATED      pub const LIGHT_MAGENTA: u8 = 0xD;
+// MIGRATED      pub const YELLOW: u8 = 0xE;
+// MIGRATED      pub const WHITE: u8 = 0xF;
+// MIGRATED  }
 
 /// Cursor position
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -190,8 +190,8 @@ pub struct Video {
     dirty: bool,
     /// Flag to track if mode changed (needs controller notification)
     mode_changed: bool,
-    /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
-    vga_dac_palette: [[u8; 3]; 256],
+// MIGRATED      /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
+// MIGRATED      vga_dac_palette: [[u8; 3]; 256],
     /// EGA Sequencer Map Mask (register 2): bitmask of planes to write (default 0x0F = all)
     ega_map_mask: u8,
     /// EGA Graphics Controller Read Map Select (register 4): which plane to read (0-3)
@@ -224,19 +224,19 @@ pub struct Video {
     /// On CGA mode changes, AC[0-3] are synced from the CGA palette EGA indices
     /// Programs can reprogram these via port 0x3C0 for custom color mapping
     ac_palette: [u8; 16],
-    /// Blink/intensity mode for text attribute bit 7.
-    /// true  = bit 7 enables character blinking (8 background colors, default)
-    /// false = bit 7 selects high-intensity background (16 background colors, no blink)
-    blink_enabled: bool,
+// MIGRATED      /// Blink/intensity mode for text attribute bit 7.
+// MIGRATED      /// true  = bit 7 enables character blinking (8 background colors, default)
+// MIGRATED      /// false = bit 7 selects high-intensity background (16 background colors, no blink)
+// MIGRATED      blink_enabled: bool,
     /// Whether the text cursor is visible.
     /// Hidden when INT 10h AH=01h is called with CH bit 5 set (cursor off).
     cursor_visible: bool,
-    /// Raw video RAM (64KB).
-    /// In CGA/text modes: framebuffer at B8000-BFFFF.
-    /// In EGA mode 0x0D: 4 planes × EGA_PLANE_SIZE bytes (plane N at vram[N*EGA_PLANE_SIZE..]).
-    /// In VGA mode 0x13: linear framebuffer vram[0..64000], 1 byte per pixel.
-    /// Persists across mode changes, just like real hardware.
-    vram: Box<[u8; VIDEO_MEMORY_SIZE]>,
+// MIGRATED      /// Raw video RAM (64KB).
+// MIGRATED      /// In CGA/text modes: framebuffer at B8000-BFFFF.
+// MIGRATED      /// In EGA mode 0x0D: 4 planes × EGA_PLANE_SIZE bytes (plane N at vram[N*EGA_PLANE_SIZE..]).
+// MIGRATED      /// In VGA mode 0x13: linear framebuffer vram[0..64000], 1 byte per pixel.
+// MIGRATED      /// Persists across mode changes, just like real hardware.
+// MIGRATED      vram: Box<[u8; VIDEO_MEMORY_SIZE]>,
 }
 
 /// Initialize VGA DAC palette with defaults.

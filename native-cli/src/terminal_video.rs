@@ -12,29 +12,29 @@ use oxide86_core::{
 };
 use std::io::{self, Write};
 
-/// Convert CP437 byte to Unicode character
-/// CP437 is the original IBM PC character set
-fn cp437_to_unicode(byte: u8) -> char {
-    // CP437 high characters (0x80-0xFF) to Unicode
-    const CP437_HIGH: [char; 128] = [
-        'Ç', 'ü', 'é', 'â', 'ä', 'à', 'å', 'ç', 'ê', 'ë', 'è', 'ï', 'î', 'ì', 'Ä', 'Å', 'É', 'æ',
-        'Æ', 'ô', 'ö', 'ò', 'û', 'ù', 'ÿ', 'Ö', 'Ü', '¢', '£', '¥', '₧', 'ƒ', 'á', 'í', 'ó', 'ú',
-        'ñ', 'Ñ', 'ª', 'º', '¿', '⌐', '¬', '½', '¼', '¡', '«', '»', '░', '▒', '▓', '│', '┤', '╡',
-        '╢', '╖', '╕', '╣', '║', '╗', '╝', '╜', '╛', '┐', '└', '┴', '┬', '├', '─', '┼', '╞', '╟',
-        '╚', '╔', '╩', '╦', '╠', '═', '╬', '╧', '╨', '╤', '╥', '╙', '╘', '╒', '╓', '╫', '╪', '┘',
-        '┌', '█', '▄', '▌', '▐', '▀', 'α', 'ß', 'Γ', 'π', 'Σ', 'σ', 'µ', 'τ', 'Φ', 'Θ', 'Ω', 'δ',
-        '∞', 'φ', 'ε', '∩', '≡', '±', '≥', '≤', '⌠', '⌡', '÷', '≈', '°', '∙', '·', '√', 'ⁿ', '²',
-        '■', ' ',
-    ];
-
-    match byte {
-        0x00 => ' ',                 // NUL - display as space
-        0x20..=0x7E => byte as char, // Standard ASCII printable
-        0x7F => '⌂',                 // DEL - house symbol in CP437
-        0x80..=0xFF => CP437_HIGH[(byte - 0x80) as usize],
-        _ => byte as char, // Low control chars - pass through
-    }
-}
+// MIGRATED  /// Convert CP437 byte to Unicode character
+// MIGRATED  /// CP437 is the original IBM PC character set
+// MIGRATED  fn cp437_to_unicode(byte: u8) -> char {
+// MIGRATED      // CP437 high characters (0x80-0xFF) to Unicode
+// MIGRATED      const CP437_HIGH: [char; 128] = [
+// MIGRATED          'Ç', 'ü', 'é', 'â', 'ä', 'à', 'å', 'ç', 'ê', 'ë', 'è', 'ï', 'î', 'ì', 'Ä', 'Å', 'É', 'æ',
+// MIGRATED          'Æ', 'ô', 'ö', 'ò', 'û', 'ù', 'ÿ', 'Ö', 'Ü', '¢', '£', '¥', '₧', 'ƒ', 'á', 'í', 'ó', 'ú',
+// MIGRATED          'ñ', 'Ñ', 'ª', 'º', '¿', '⌐', '¬', '½', '¼', '¡', '«', '»', '░', '▒', '▓', '│', '┤', '╡',
+// MIGRATED          '╢', '╖', '╕', '╣', '║', '╗', '╝', '╜', '╛', '┐', '└', '┴', '┬', '├', '─', '┼', '╞', '╟',
+// MIGRATED          '╚', '╔', '╩', '╦', '╠', '═', '╬', '╧', '╨', '╤', '╥', '╙', '╘', '╒', '╓', '╫', '╪', '┘',
+// MIGRATED          '┌', '█', '▄', '▌', '▐', '▀', 'α', 'ß', 'Γ', 'π', 'Σ', 'σ', 'µ', 'τ', 'Φ', 'Θ', 'Ω', 'δ',
+// MIGRATED          '∞', 'φ', 'ε', '∩', '≡', '±', '≥', '≤', '⌠', '⌡', '÷', '≈', '°', '∙', '·', '√', 'ⁿ', '²',
+// MIGRATED          '■', ' ',
+// MIGRATED      ];
+// MIGRATED  
+// MIGRATED      match byte {
+// MIGRATED          0x00 => ' ',                 // NUL - display as space
+// MIGRATED          0x20..=0x7E => byte as char, // Standard ASCII printable
+// MIGRATED          0x7F => '⌂',                 // DEL - house symbol in CP437
+// MIGRATED          0x80..=0xFF => CP437_HIGH[(byte - 0x80) as usize],
+// MIGRATED          _ => byte as char, // Low control chars - pass through
+// MIGRATED      }
+// MIGRATED  }
 
 /// Terminal-based video controller using crossterm
 pub struct TerminalVideo {
@@ -47,19 +47,19 @@ pub struct TerminalVideo {
 
 impl TerminalVideo {
     pub fn new() -> Self {
-        let mut stdout = io::stdout();
+// MIGRATED          let mut stdout = io::stdout();
 
-        // Enable raw mode and alternate screen
-        terminal::enable_raw_mode().unwrap();
-        execute!(
-            stdout,
-            EnterAlternateScreen,
-            SetForegroundColor(Color::White),
-            SetBackgroundColor(Color::Black),
-            terminal::Clear(ClearType::All),
-            cursor::Hide
-        )
-        .unwrap();
+// MIGRATED          // Enable raw mode and alternate screen
+// MIGRATED          terminal::enable_raw_mode().unwrap();
+// MIGRATED          execute!(
+// MIGRATED              stdout,
+// MIGRATED              EnterAlternateScreen,
+// MIGRATED              SetForegroundColor(Color::White),
+// MIGRATED              SetBackgroundColor(Color::Black),
+// MIGRATED              terminal::Clear(ClearType::All),
+// MIGRATED              cursor::Hide
+// MIGRATED          )
+// MIGRATED          .unwrap();
 
         Self {
             last_buffer: TextBuffer::new(),
@@ -82,34 +82,34 @@ impl TerminalVideo {
         palette
     }
 
-    /// Convert 6-bit VGA DAC RGB (0-63) to 8-bit RGB (0-255)
-    /// Uses the standard VGA conversion: value * 255 / 63
-    fn dac_to_rgb(&self, dac_value: u8) -> u8 {
-        // Standard VGA DAC conversion: multiply by ~4.047619
-        // Using ((value << 2) | (value >> 4)) for accuracy
-        let val = dac_value & 0x3F; // Ensure 6-bit
-        (val << 2) | (val >> 4)
-    }
+// MIGRATED      /// Convert 6-bit VGA DAC RGB (0-63) to 8-bit RGB (0-255)
+// MIGRATED      /// Uses the standard VGA conversion: value * 255 / 63
+// MIGRATED      fn dac_to_rgb(&self, dac_value: u8) -> u8 {
+// MIGRATED          // Standard VGA DAC conversion: multiply by ~4.047619
+// MIGRATED          // Using ((value << 2) | (value >> 4)) for accuracy
+// MIGRATED          let val = dac_value & 0x3F; // Ensure 6-bit
+// MIGRATED          (val << 2) | (val >> 4)
+// MIGRATED      }
 
-    /// Get 8-bit RGB color from VGA DAC palette
-    fn get_palette_color(&self, color_index: u8) -> [u8; 3] {
-        let dac_color = self.vga_dac_palette[color_index as usize];
-        [
-            self.dac_to_rgb(dac_color[0]),
-            self.dac_to_rgb(dac_color[1]),
-            self.dac_to_rgb(dac_color[2]),
-        ]
-    }
+// MIGRATED      /// Get 8-bit RGB color from VGA DAC palette
+// MIGRATED      fn get_palette_color(&self, color_index: u8) -> [u8; 3] {
+// MIGRATED          let dac_color = self.vga_dac_palette[color_index as usize];
+// MIGRATED          [
+// MIGRATED              self.dac_to_rgb(dac_color[0]),
+// MIGRATED              self.dac_to_rgb(dac_color[1]),
+// MIGRATED              self.dac_to_rgb(dac_color[2]),
+// MIGRATED          ]
+// MIGRATED      }
 
-    /// Map VGA color to crossterm Color using the VGA DAC palette
-    fn vga_to_crossterm_color(&self, vga_color: u8) -> Color {
-        let color_tuple = self.get_palette_color(vga_color);
-        Color::Rgb {
-            r: color_tuple[0],
-            g: color_tuple[1],
-            b: color_tuple[2],
-        }
-    }
+// MIGRATED      /// Map VGA color to crossterm Color using the VGA DAC palette
+// MIGRATED      fn vga_to_crossterm_color(&self, vga_color: u8) -> Color {
+// MIGRATED          let color_tuple = self.get_palette_color(vga_color);
+// MIGRATED          Color::Rgb {
+// MIGRATED              r: color_tuple[0],
+// MIGRATED              g: color_tuple[1],
+// MIGRATED              b: color_tuple[2],
+// MIGRATED          }
+// MIGRATED      }
 }
 
 impl VideoController for TerminalVideo {
@@ -215,15 +215,15 @@ impl VideoController for TerminalVideo {
     }
 }
 
-impl Drop for TerminalVideo {
-    fn drop(&mut self) {
-        let mut stdout = io::stdout();
-
-        // Restore terminal: leave alternate screen, disable raw mode, show cursor
-        stdout.execute(LeaveAlternateScreen).unwrap();
-        stdout.execute(cursor::Show).unwrap();
-        stdout.flush().unwrap();
-
-        terminal::disable_raw_mode().unwrap();
-    }
-}
+// MIGRATED  impl Drop for TerminalVideo {
+// MIGRATED      fn drop(&mut self) {
+// MIGRATED          let mut stdout = io::stdout();
+// MIGRATED  
+// MIGRATED          // Restore terminal: leave alternate screen, disable raw mode, show cursor
+// MIGRATED          stdout.execute(LeaveAlternateScreen).unwrap();
+// MIGRATED          stdout.execute(cursor::Show).unwrap();
+// MIGRATED          stdout.flush().unwrap();
+// MIGRATED  
+// MIGRATED          terminal::disable_raw_mode().unwrap();
+// MIGRATED      }
+// MIGRATED  }

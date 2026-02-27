@@ -172,9 +172,9 @@ impl Cpu {
     }
 
     // Calculate physical address from segment:offset
-    pub fn physical_address(segment: u16, offset: u16) -> usize {
-        ((segment as usize) << 4) + (offset as usize)
-    }
+// MIGRATED      pub fn physical_address(segment: u16, offset: u16) -> usize {
+// MIGRATED          ((segment as usize) << 4) + (offset as usize)
+// MIGRATED      }
 
     // Fetch a byte from memory at CS:IP and increment IP
     pub(crate) fn fetch_byte(&mut self, bus: &Bus) -> u8 {
@@ -431,13 +431,13 @@ impl Cpu {
             // AND immediate to AL/AX
             0x24..=0x25 => self.and_imm_acc(opcode, bus),
 
-            // ES: segment override prefix (26)
-            0x26 => {
-                self.segment_override = Some(self.es);
-                let next_opcode = self.fetch_byte(bus);
-                self.execute_with_io(next_opcode, bus, bios, io_device);
-                self.segment_override = None;
-            }
+// MIGRATED              // ES: segment override prefix (26)
+// MIGRATED              0x26 => {
+// MIGRATED                  self.segment_override = Some(self.es);
+// MIGRATED                  let next_opcode = self.fetch_byte(bus);
+// MIGRATED                  self.execute_with_io(next_opcode, bus, bios, io_device);
+// MIGRATED                  self.segment_override = None;
+// MIGRATED              }
 
             // DAA - Decimal Adjust After Addition (27)
             0x27 => self.daa(),
@@ -582,8 +582,8 @@ impl Cpu {
             // LEA - Load Effective Address (8D)
             0x8D => self.lea(bus),
 
-            // MOV r/m16 to segment register (8E)
-            0x8E => self.mov_rm_to_segreg(bus),
+// MIGRATED              // MOV r/m16 to segment register (8E)
+// MIGRATED              0x8E => self.mov_rm_to_segreg(bus),
 
             // POP r/m16 (8F) - Group 1A
             0x8F => self.pop_rm16(bus),
@@ -612,8 +612,8 @@ impl Cpu {
             // LAHF - Load AH from Flags (9F)
             0x9F => self.lahf(),
 
-            // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
-            0xA0..=0xA3 => self.mov_acc_moffs(opcode, bus),
+// MIGRATED              // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
+// MIGRATED              0xA0..=0xA3 => self.mov_acc_moffs(opcode, bus),
 
             // MOVS - Move String (A4-A5)
             0xA4..=0xA5 => self.movs(opcode, bus),
@@ -633,8 +633,8 @@ impl Cpu {
             // SCAS - Scan String (AE-AF)
             0xAE..=0xAF => self.scas(opcode, bus),
 
-            // MOV immediate to register (B0-BF)
-            0xB0..=0xBF => self.mov_imm_to_reg(opcode, bus),
+// MIGRATED              // MOV immediate to register (B0-BF)
+// MIGRATED              0xB0..=0xBF => self.mov_imm_to_reg(opcode, bus),
 
             // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
             0xC0..=0xC1 => self.shift_rotate_group(opcode, bus),
@@ -663,8 +663,8 @@ impl Cpu {
             // INT 3 - Breakpoint (CC)
             0xCC => self.int3(bus),
 
-            // INT - Software Interrupt (CD)
-            0xCD => self.int(bus),
+// MIGRATED              // INT - Software Interrupt (CD)
+// MIGRATED              0xCD => self.int(bus),
 
             // INTO - Interrupt on Overflow (CE)
             0xCE => self.into(bus),
@@ -759,8 +759,8 @@ impl Cpu {
                 self.repeat_prefix = None;
             }
 
-            // HLT - Halt (F4)
-            0xF4 => self.hlt(),
+// MIGRATED              // HLT - Halt (F4)
+// MIGRATED              0xF4 => self.hlt(),
 
             // CMC - Complement Carry Flag (F5)
             0xF5 => self.cmc(),
@@ -927,20 +927,20 @@ impl Cpu {
         (self.flags & flag) != 0
     }
 
-    // Push 16-bit value onto stack
-    pub(super) fn push(&mut self, value: u16, bus: &mut Bus) {
-        self.sp = self.sp.wrapping_sub(2);
-        let addr = Self::physical_address(self.ss, self.sp);
-        bus.write_u16(addr, value);
-    }
+// MIGRATED      // Push 16-bit value onto stack
+// MIGRATED      pub(super) fn push(&mut self, value: u16, bus: &mut Bus) {
+// MIGRATED          self.sp = self.sp.wrapping_sub(2);
+// MIGRATED          let addr = Self::physical_address(self.ss, self.sp);
+// MIGRATED          bus.write_u16(addr, value);
+// MIGRATED      }
 
-    // Pop 16-bit value from stack
-    pub(super) fn pop(&mut self, bus: &Bus) -> u16 {
-        let addr = Self::physical_address(self.ss, self.sp);
-        let value = bus.read_u16(addr);
-        self.sp = self.sp.wrapping_add(2);
-        value
-    }
+// MIGRATED      // Pop 16-bit value from stack
+// MIGRATED      pub(super) fn pop(&mut self, bus: &Bus) -> u16 {
+// MIGRATED          let addr = Self::physical_address(self.ss, self.sp);
+// MIGRATED          let value = bus.read_u16(addr);
+// MIGRATED          self.sp = self.sp.wrapping_add(2);
+// MIGRATED          value
+// MIGRATED      }
 
     // Decode ModR/M byte and calculate effective address
     // Returns (mod, reg, r/m, effective_address, default_segment)

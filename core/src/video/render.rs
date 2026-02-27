@@ -8,68 +8,68 @@ use crate::palette::TextModePalette;
 use crate::video::CursorPosition;
 use crate::video::text::TextCell;
 
-/// Convert a 6-bit VGA DAC value (0-63) to 8-bit RGB (0-255).
-#[inline]
-fn dac_to_8bit(val: u8) -> u8 {
-    let v = val & 0x3F;
-    (v << 2) | (v >> 4)
-}
+// MIGRATED  /// Convert a 6-bit VGA DAC value (0-63) to 8-bit RGB (0-255).
+// MIGRATED  #[inline]
+// MIGRATED  fn dac_to_8bit(val: u8) -> u8 {
+// MIGRATED      let v = val & 0x3F;
+// MIGRATED      (v << 2) | (v >> 4)
+// MIGRATED  }
 
-/// Render a single text cell to an RGBA buffer.
-///
-/// Uses VGA DAC palette for foreground/background colors. The output buffer
-/// must be at least `stride * (row * CHAR_HEIGHT + CHAR_HEIGHT) * 4` bytes.
-///
-/// # Arguments
-/// * `font` - CP437 font for glyph lookup
-/// * `row` - Character row position (0-based)
-/// * `col` - Character column position (0-based)
-/// * `cell` - The text cell (character + attribute)
-/// * `vga_dac_palette` - 256-entry VGA DAC palette (6-bit RGB per component)
-/// * `stride` - Output buffer width in pixels (e.g., 640)
-/// * `output` - RGBA buffer to write to
-pub fn render_text_cell(
-    font: &Cp437Font,
-    row: usize,
-    col: usize,
-    cell: &TextCell,
-    vga_dac_palette: &[[u8; 3]; 256],
-    stride: usize,
-    output: &mut [u8],
-) {
-    let glyph = font.get_glyph(cell.character);
-    let fg_dac = vga_dac_palette[cell.attribute.foreground as usize];
-    let bg_dac = vga_dac_palette[cell.attribute.background as usize];
-    let fg_color = [
-        dac_to_8bit(fg_dac[0]),
-        dac_to_8bit(fg_dac[1]),
-        dac_to_8bit(fg_dac[2]),
-    ];
-    let bg_color = [
-        dac_to_8bit(bg_dac[0]),
-        dac_to_8bit(bg_dac[1]),
-        dac_to_8bit(bg_dac[2]),
-    ];
-
-    let char_x = col * CHAR_WIDTH;
-    let char_y = row * CHAR_HEIGHT;
-
-    for (glyph_row, &glyph_byte) in glyph.iter().enumerate() {
-        let pixel_y = char_y + glyph_row;
-
-        for bit in 0..8 {
-            let pixel_x = char_x + bit;
-            let is_fg = (glyph_byte & (0x80 >> bit)) != 0;
-            let color = if is_fg { fg_color } else { bg_color };
-
-            let offset = (pixel_y * stride + pixel_x) * 4;
-            output[offset] = color[0];
-            output[offset + 1] = color[1];
-            output[offset + 2] = color[2];
-            output[offset + 3] = 0xFF;
-        }
-    }
-}
+// MIGRATED  /// Render a single text cell to an RGBA buffer.
+// MIGRATED  ///
+// MIGRATED  /// Uses VGA DAC palette for foreground/background colors. The output buffer
+// MIGRATED  /// must be at least `stride * (row * CHAR_HEIGHT + CHAR_HEIGHT) * 4` bytes.
+// MIGRATED  ///
+// MIGRATED  /// # Arguments
+// MIGRATED  /// * `font` - CP437 font for glyph lookup
+// MIGRATED  /// * `row` - Character row position (0-based)
+// MIGRATED  /// * `col` - Character column position (0-based)
+// MIGRATED  /// * `cell` - The text cell (character + attribute)
+// MIGRATED  /// * `vga_dac_palette` - 256-entry VGA DAC palette (6-bit RGB per component)
+// MIGRATED  /// * `stride` - Output buffer width in pixels (e.g., 640)
+// MIGRATED  /// * `output` - RGBA buffer to write to
+// MIGRATED  pub fn render_text_cell(
+// MIGRATED      font: &Cp437Font,
+// MIGRATED      row: usize,
+// MIGRATED      col: usize,
+// MIGRATED      cell: &TextCell,
+// MIGRATED      vga_dac_palette: &[[u8; 3]; 256],
+// MIGRATED      stride: usize,
+// MIGRATED      output: &mut [u8],
+// MIGRATED  ) {
+// MIGRATED      let glyph = font.get_glyph(cell.character);
+// MIGRATED      let fg_dac = vga_dac_palette[cell.attribute.foreground as usize];
+// MIGRATED      let bg_dac = vga_dac_palette[cell.attribute.background as usize];
+// MIGRATED      let fg_color = [
+// MIGRATED          dac_to_8bit(fg_dac[0]),
+// MIGRATED          dac_to_8bit(fg_dac[1]),
+// MIGRATED          dac_to_8bit(fg_dac[2]),
+// MIGRATED      ];
+// MIGRATED      let bg_color = [
+// MIGRATED          dac_to_8bit(bg_dac[0]),
+// MIGRATED          dac_to_8bit(bg_dac[1]),
+// MIGRATED          dac_to_8bit(bg_dac[2]),
+// MIGRATED      ];
+// MIGRATED  
+// MIGRATED      let char_x = col * CHAR_WIDTH;
+// MIGRATED      let char_y = row * CHAR_HEIGHT;
+// MIGRATED  
+// MIGRATED      for (glyph_row, &glyph_byte) in glyph.iter().enumerate() {
+// MIGRATED          let pixel_y = char_y + glyph_row;
+// MIGRATED  
+// MIGRATED          for bit in 0..8 {
+// MIGRATED              let pixel_x = char_x + bit;
+// MIGRATED              let is_fg = (glyph_byte & (0x80 >> bit)) != 0;
+// MIGRATED              let color = if is_fg { fg_color } else { bg_color };
+// MIGRATED  
+// MIGRATED              let offset = (pixel_y * stride + pixel_x) * 4;
+// MIGRATED              output[offset] = color[0];
+// MIGRATED              output[offset + 1] = color[1];
+// MIGRATED              output[offset + 2] = color[2];
+// MIGRATED              output[offset + 3] = 0xFF;
+// MIGRATED          }
+// MIGRATED      }
+// MIGRATED  }
 
 /// Render a text cursor (white underline) at the given position.
 ///

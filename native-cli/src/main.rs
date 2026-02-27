@@ -36,31 +36,31 @@ struct Cli {
 }
 
 fn main() -> Result<()> {
-    let log_file = File::create("oxide86.log").context("Failed to create log file")?;
+// MIGRATED      let log_file = File::create("oxide86.log").context("Failed to create log file")?;
 
-    // Initialize logger from RUST_LOG env var, or use defaults if not set
-    let mut builder = env_logger::Builder::from_default_env();
+// MIGRATED      // Initialize logger from RUST_LOG env var, or use defaults if not set
+// MIGRATED      let mut builder = env_logger::Builder::from_default_env();
 
-    // Only apply defaults if RUST_LOG is not set
-    if std::env::var("RUST_LOG").is_err() {
-        builder
-            .filter_level(log::LevelFilter::Error)
-            .filter_module("oxide86_core", log::LevelFilter::Info)
-            .filter_module("oxide86_native", log::LevelFilter::Info);
-    }
+// MIGRATED      // Only apply defaults if RUST_LOG is not set
+// MIGRATED      if std::env::var("RUST_LOG").is_err() {
+// MIGRATED          builder
+// MIGRATED              .filter_level(log::LevelFilter::Error)
+// MIGRATED              .filter_module("oxide86_core", log::LevelFilter::Info)
+// MIGRATED              .filter_module("oxide86_native", log::LevelFilter::Info);
+// MIGRATED      }
 
-    builder
-        .target(env_logger::Target::Pipe(Box::new(log_file)))
-        .init();
+// MIGRATED      builder
+// MIGRATED          .target(env_logger::Target::Pipe(Box::new(log_file)))
+// MIGRATED          .init();
 
-    let default_panic = panic::take_hook();
-    panic::set_hook(Box::new(move |info| {
-        let _ = disable_raw_mode();
-        let _ = execute!(std::io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
-        default_panic(info);
-    }));
+// MIGRATED      let default_panic = panic::take_hook();
+// MIGRATED      panic::set_hook(Box::new(move |info| {
+// MIGRATED          let _ = disable_raw_mode();
+// MIGRATED          let _ = execute!(std::io::stdout(), DisableMouseCapture, LeaveAlternateScreen);
+// MIGRATED          default_panic(info);
+// MIGRATED      }));
 
-    let cli = Cli::parse();
+// MIGRATED      let cli = Cli::parse();
 
     // Parse CPU type
     let cpu_type = oxide86_core::CpuType::parse(&cli.common.cpu_type)

@@ -197,12 +197,12 @@ impl PixelsVideoController {
         };
 
         // Render all cells
-        for row in 0..actual_rows {
-            for col in 0..actual_cols {
-                let idx = row * TEXT_MODE_COLS + col;
-                self.render_cell(&mut buffer, row, col, &self.current_buffer[idx]);
-            }
-        }
+// MIGRATED          for row in 0..actual_rows {
+// MIGRATED              for col in 0..actual_cols {
+// MIGRATED                  let idx = row * TEXT_MODE_COLS + col;
+// MIGRATED                  self.render_cell(&mut buffer, row, col, &self.current_buffer[idx]);
+// MIGRATED              }
+// MIGRATED          }
 
         // Render cursor if visible
         if self.cursor_visible

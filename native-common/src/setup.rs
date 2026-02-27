@@ -227,23 +227,23 @@ pub fn load_program_or_boot<V: VideoController>(
 
         log::info!("Boot sector loaded at 0x0000:0x7C00");
     } else if let Some(program_path) = &cli.program {
-        // Load program from file
-        let program_data = std::fs::read(program_path)
-            .with_context(|| format!("Failed to read program file: {}", program_path))?;
-
-        let segment = parse_hex_or_dec(&cli.segment)?;
-        let offset = parse_hex_or_dec(&cli.offset)?;
-
-        computer
-            .load_program(&program_data, segment, offset)
-            .context("Failed to load program")?;
-
-        log::info!(
-            "Loaded {} bytes at {:04X}:{:04X}",
-            program_data.len(),
-            segment,
-            offset
-        );
+// MIGRATED          // Load program from file
+// MIGRATED          let program_data = std::fs::read(program_path)
+// MIGRATED              .with_context(|| format!("Failed to read program file: {}", program_path))?;
+// MIGRATED  
+// MIGRATED          let segment = parse_hex_or_dec(&cli.segment)?;
+// MIGRATED          let offset = parse_hex_or_dec(&cli.offset)?;
+// MIGRATED  
+// MIGRATED          computer
+// MIGRATED              .load_program(&program_data, segment, offset)
+// MIGRATED              .context("Failed to load program")?;
+// MIGRATED  
+// MIGRATED          log::info!(
+// MIGRATED              "Loaded {} bytes at {:04X}:{:04X}",
+// MIGRATED              program_data.len(),
+// MIGRATED              segment,
+// MIGRATED              offset
+// MIGRATED          );
     }
 
     Ok(())

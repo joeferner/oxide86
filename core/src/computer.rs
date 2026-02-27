@@ -209,18 +209,18 @@ impl<V: VideoController> Computer<V> {
 
     /// Load a program at the specified segment:offset and set CPU to start there
     pub fn load_program(&mut self, program_data: &[u8], segment: u16, offset: u16) -> Result<()> {
-        let physical_addr = Cpu::physical_address(segment, offset);
-        self.bus.load_at(physical_addr, program_data)?;
+// MIGRATED  let physical_addr = Cpu::physical_address(segment, offset);
+// MIGRATED  self.bus.load_at(physical_addr, program_data)?;
 
         // Set CPU to start at this location
-        self.cpu.cs = segment;
-        self.cpu.ip = offset;
+// MIGRATED  self.cpu.cs = segment;
+// MIGRATED  self.cpu.ip = offset;
 
         // Initialize other segments to reasonable defaults
-        self.cpu.ds = segment;
-        self.cpu.es = segment;
-        self.cpu.ss = segment;
-        self.cpu.sp = 0xFFFE; // Stack grows down from top of segment
+// MIGRATED  self.cpu.ds = segment;
+// MIGRATED  self.cpu.es = segment;
+// MIGRATED  self.cpu.ss = segment;
+// MIGRATED  self.cpu.sp = 0xFFFE; // Stack grows down from top of segment
 
         // Store program for reset/reload
         self.loaded_program = Some(LoadedProgram {
@@ -233,8 +233,8 @@ impl<V: VideoController> Computer<V> {
         self.boot_drive = None;
 
         // Enable interrupts - DOS programs expect IF=1 (inherited from DOS environment)
-        use crate::cpu::cpu_flag;
-        self.cpu.set_flag(cpu_flag::INTERRUPT, true);
+// MIGRATED  use crate::cpu::cpu_flag;
+// MIGRATED  self.cpu.set_flag(cpu_flag::INTERRUPT, true);
 
         Ok(())
     }
@@ -814,10 +814,10 @@ impl<V: VideoController> Computer<V> {
     }
 
     pub fn run(&mut self) {
-        while !self.cpu.is_halted() {
-            self.step();
+// MIGRATED  while !self.cpu.is_halted() {
+// MIGRATED      self.step();
             self.update_video();
-        }
+// MIGRATED  }
     }
 
     /// Execute a single instruction

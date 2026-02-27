@@ -352,29 +352,29 @@ impl Cpu {
         };
     }
 
-    /// INT - Software Interrupt (opcode CD)
-    /// Calls interrupt handler
-    pub(in crate::cpu) fn int(&mut self, bus: &mut Bus) {
-        let int_num = self.fetch_byte(bus);
-
-        // Push flags, CS, and IP
-        self.push(self.flags, bus);
-        self.push(self.cs, bus);
-        self.push(self.ip, bus);
-        // Clear IF and TF
-        self.set_flag(cpu_flag::INTERRUPT, false);
-        self.set_flag(cpu_flag::TRAP, false);
-        // Load interrupt vector from interrupt vector table (IVT)
-        // IVT starts at 0x00000, each entry is 4 bytes (offset, segment)
-        let ivt_addr = (int_num as usize) * 4;
-        let offset = bus.read_u16(ivt_addr);
-        let segment = bus.read_u16(ivt_addr + 2);
-        self.ip = offset;
-        self.cs = segment;
-
-        // INT: 51 cycles
-        self.last_instruction_cycles = timing::cycles::INT;
-    }
+// MIGRATED      /// INT - Software Interrupt (opcode CD)
+// MIGRATED      /// Calls interrupt handler
+// MIGRATED      pub(in crate::cpu) fn int(&mut self, bus: &mut Bus) {
+// MIGRATED          let int_num = self.fetch_byte(bus);
+// MIGRATED  
+// MIGRATED          // Push flags, CS, and IP
+// MIGRATED          self.push(self.flags, bus);
+// MIGRATED          self.push(self.cs, bus);
+// MIGRATED          self.push(self.ip, bus);
+// MIGRATED          // Clear IF and TF
+// MIGRATED          self.set_flag(cpu_flag::INTERRUPT, false);
+// MIGRATED          self.set_flag(cpu_flag::TRAP, false);
+// MIGRATED          // Load interrupt vector from interrupt vector table (IVT)
+// MIGRATED          // IVT starts at 0x00000, each entry is 4 bytes (offset, segment)
+// MIGRATED          let ivt_addr = (int_num as usize) * 4;
+// MIGRATED          let offset = bus.read_u16(ivt_addr);
+// MIGRATED          let segment = bus.read_u16(ivt_addr + 2);
+// MIGRATED          self.ip = offset;
+// MIGRATED          self.cs = segment;
+// MIGRATED  
+// MIGRATED          // INT: 51 cycles
+// MIGRATED          self.last_instruction_cycles = timing::cycles::INT;
+// MIGRATED      }
 
     /// INT 3 - Breakpoint Interrupt (opcode CC)
     /// Single-byte interrupt for breakpoints
@@ -417,49 +417,49 @@ impl Cpu {
         }
     }
 
-    /// IRET - Interrupt Return (opcode CF)
-    /// Returns from interrupt handler
-    pub(in crate::cpu) fn iret(&mut self, bus: &mut Bus) {
-        // Pop IP, CS, and flags
-        let new_ip = self.pop(bus);
-        let new_cs = self.pop(bus);
-        let new_flags = self.pop(bus);
-
-        let old_if = (self.flags & cpu_flag::INTERRUPT) != 0;
-        self.ip = new_ip;
-        self.cs = new_cs;
-        // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
-        self.flags = (new_flags & 0x0FFF) | 0x0002;
-        if self.exec_logging_enabled {
-            let new_if = (self.flags & cpu_flag::INTERRUPT) != 0;
-            if old_if != new_if {
-                log::debug!(
-                    "IF: {} -> {} (IRET) -> {:04X}:{:04X}",
-                    old_if as u8,
-                    new_if as u8,
-                    self.cs,
-                    self.ip,
-                );
-            }
-        }
-
-        // Check if this completes an IRQ chain (e.g., INT 08h -> INT 1Ch)
-        if let Some(context) = self.complete_irq_chain() {
-            log::debug!(
-                "IRQ Chain Complete: INT 0x{:02X} (expected return {:04X}:{:04X} FLAGS={:04X}, actual {:04X}:{:04X} FLAGS={:04X})",
-                context.original_int,
-                context.return_cs,
-                context.return_ip,
-                context.return_flags,
-                self.cs,
-                self.ip,
-                self.flags
-            );
-        }
-
-        // IRET: 24 cycles
-        self.last_instruction_cycles = timing::cycles::IRET;
-    }
+// MIGRATED      /// IRET - Interrupt Return (opcode CF)
+// MIGRATED      /// Returns from interrupt handler
+// MIGRATED      pub(in crate::cpu) fn iret(&mut self, bus: &mut Bus) {
+// MIGRATED          // Pop IP, CS, and flags
+// MIGRATED          let new_ip = self.pop(bus);
+// MIGRATED          let new_cs = self.pop(bus);
+// MIGRATED          let new_flags = self.pop(bus);
+// MIGRATED  
+// MIGRATED          let old_if = (self.flags & cpu_flag::INTERRUPT) != 0;
+// MIGRATED          self.ip = new_ip;
+// MIGRATED          self.cs = new_cs;
+// MIGRATED          // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
+// MIGRATED          self.flags = (new_flags & 0x0FFF) | 0x0002;
+// MIGRATED          if self.exec_logging_enabled {
+// MIGRATED              let new_if = (self.flags & cpu_flag::INTERRUPT) != 0;
+// MIGRATED              if old_if != new_if {
+// MIGRATED                  log::debug!(
+// MIGRATED                      "IF: {} -> {} (IRET) -> {:04X}:{:04X}",
+// MIGRATED                      old_if as u8,
+// MIGRATED                      new_if as u8,
+// MIGRATED                      self.cs,
+// MIGRATED                      self.ip,
+// MIGRATED                  );
+// MIGRATED              }
+// MIGRATED          }
+// MIGRATED  
+// MIGRATED          // Check if this completes an IRQ chain (e.g., INT 08h -> INT 1Ch)
+// MIGRATED          if let Some(context) = self.complete_irq_chain() {
+// MIGRATED              log::debug!(
+// MIGRATED                  "IRQ Chain Complete: INT 0x{:02X} (expected return {:04X}:{:04X} FLAGS={:04X}, actual {:04X}:{:04X} FLAGS={:04X})",
+// MIGRATED                  context.original_int,
+// MIGRATED                  context.return_cs,
+// MIGRATED                  context.return_ip,
+// MIGRATED                  context.return_flags,
+// MIGRATED                  self.cs,
+// MIGRATED                  self.ip,
+// MIGRATED                  self.flags
+// MIGRATED              );
+// MIGRATED          }
+// MIGRATED  
+// MIGRATED          // IRET: 24 cycles
+// MIGRATED          self.last_instruction_cycles = timing::cycles::IRET;
+// MIGRATED      }
 
     /// CBW - Convert Byte to Word (opcode 98)
     /// Sign-extends AL into AX

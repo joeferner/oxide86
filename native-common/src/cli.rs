@@ -2,25 +2,25 @@ use clap::Parser;
 
 #[derive(Parser)]
 pub struct CommonCli {
-    /// Path to the program binary to load and execute (not used with --boot)
-    #[arg(required_unless_present = "boot")]
-    pub program: Option<String>,
+// MIGRATED      /// Path to the program binary to load and execute (not used with --boot)
+// MIGRATED      #[arg(required_unless_present = "boot")]
+// MIGRATED      pub program: Option<String>,
 
-    /// Boot from disk image instead of loading a program
-    #[arg(long)]
-    pub boot: bool,
+// MIGRATED      /// Boot from disk image instead of loading a program
+// MIGRATED      #[arg(long)]
+// MIGRATED      pub boot: bool,
 
     /// Boot drive number (0x00 for floppy A:, 0x01 for floppy B:, 0x80 for hard disk C:)
     #[arg(long, default_value = "0x00")]
     pub boot_drive: String,
 
-    /// Starting segment address (default: 0x1000)
-    #[arg(long, default_value = "0x1000")]
-    pub segment: String,
+// MIGRATED      /// Starting segment address (default: 0x1000)
+// MIGRATED      #[arg(long, default_value = "0x1000")]
+// MIGRATED      pub segment: String,
 
-    /// Starting offset address (default: 0x0100, like .COM files)
-    #[arg(long, default_value = "0x0100")]
-    pub offset: String,
+// MIGRATED      /// Starting offset address (default: 0x0100, like .COM files)
+// MIGRATED      #[arg(long, default_value = "0x0100")]
+// MIGRATED      pub offset: String,
 
     /// Path to disk image file for floppy A:
     #[arg(long = "floppy-a")]

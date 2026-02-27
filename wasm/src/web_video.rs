@@ -33,15 +33,15 @@ pub struct WebVideo {
 }
 
 impl WebVideo {
-    /// Initialize VGA DAC palette with EGA defaults
-    fn default_vga_dac_palette() -> [[u8; 3]; 256] {
-        let mut palette = [[0u8; 3]; 256];
-        // Initialize first 16 colors with EGA defaults (6-bit RGB values 0-63)
-        for (i, entry) in palette.iter_mut().enumerate().take(16) {
-            *entry = TextModePalette::get_dac_color(i as u8);
-        }
-        palette
-    }
+// MIGRATED      /// Initialize VGA DAC palette with EGA defaults
+// MIGRATED      fn default_vga_dac_palette() -> [[u8; 3]; 256] {
+// MIGRATED          let mut palette = [[0u8; 3]; 256];
+// MIGRATED          // Initialize first 16 colors with EGA defaults (6-bit RGB values 0-63)
+// MIGRATED          for (i, entry) in palette.iter_mut().enumerate().take(16) {
+// MIGRATED              *entry = TextModePalette::get_dac_color(i as u8);
+// MIGRATED          }
+// MIGRATED          palette
+// MIGRATED      }
 
     /// Create a new WebVideo controller
     ///

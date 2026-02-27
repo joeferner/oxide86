@@ -123,18 +123,18 @@ impl Memory {
     }
 
     // Load binary data at a specific address
-    pub fn load_at(&mut self, address: usize, data: &[u8]) -> Result<()> {
-        if address + data.len() > self.data.len() {
-            return Err(anyhow!(
-                "Data exceeds memory bounds: {address:#x} + {:#x} > {:#x}",
-                data.len(),
-                self.data.len()
-            ));
-        }
-
-        self.data[address..address + data.len()].copy_from_slice(data);
-        Ok(())
-    }
+// MIGRATED      pub fn load_at(&mut self, address: usize, data: &[u8]) -> Result<()> {
+// MIGRATED          if address + data.len() > self.data.len() {
+// MIGRATED              return Err(anyhow!(
+// MIGRATED                  "Data exceeds memory bounds: {address:#x} + {:#x} > {:#x}",
+// MIGRATED                  data.len(),
+// MIGRATED                  self.data.len()
+// MIGRATED              ));
+// MIGRATED          }
+// MIGRATED  
+// MIGRATED          self.data[address..address + data.len()].copy_from_slice(data);
+// MIGRATED          Ok(())
+// MIGRATED      }
 
     // Load BIOS - typically at the end of the first megabyte
     pub fn load_bios(&mut self, bios_data: &[u8]) -> Result<()> {
@@ -169,10 +169,10 @@ impl Memory {
 
     pub fn read_u8(&self, address: usize) -> u8 {
         let addr = self.apply_a20_gate(address);
-        if addr >= self.data.len() {
-            return 0xFF; // Reading beyond memory returns 0xFF
-        }
-        self.data[addr]
+// MIGRATED          if addr >= self.data.len() {
+// MIGRATED              return 0xFF; // Reading beyond memory returns 0xFF
+// MIGRATED          }
+// MIGRATED          self.data[addr]
     }
 
     /// Read a byte from a physical address, bypassing the A20 gate.
@@ -196,10 +196,10 @@ impl Memory {
 
     pub fn write_u8(&mut self, address: usize, value: u8) {
         let addr = self.apply_a20_gate(address);
-        if addr >= self.data.len() {
-            // Writing beyond memory is silently ignored
-            return;
-        }
+// MIGRATED          if addr >= self.data.len() {
+// MIGRATED              // Writing beyond memory is silently ignored
+// MIGRATED              return;
+// MIGRATED          }
 
         // Log writes to Interrupt Vector Table (IVT)
         if (IVT_START..=IVT_END).contains(&addr) {
@@ -224,7 +224,7 @@ impl Memory {
             }
         }
 
-        self.data[addr] = value;
+// MIGRATED          self.data[addr] = value;
     }
 
     // Read a 16-bit word (little-endian)

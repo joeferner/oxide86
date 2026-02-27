@@ -38,10 +38,10 @@ impl Bus {
     /// Read byte from memory or memory-mapped device
     pub fn read_u8(&self, address: usize) -> u8 {
         // Route to Video for memory-mapped ranges
-        if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&address) {
-            let offset = address - CGA_MEMORY_START;
-            return self.video.read_byte(offset);
-        }
+// MIGRATED          if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&address) {
+// MIGRATED              let offset = address - CGA_MEMORY_START;
+// MIGRATED              return self.video.read_byte(offset);
+// MIGRATED          }
         if self.video.card_type() != VideoCardType::CGA
             && (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address)
         {
@@ -59,11 +59,11 @@ impl Bus {
     /// Write byte to memory or memory-mapped device
     pub fn write_u8(&mut self, address: usize, value: u8) {
         // Route to Video for memory-mapped ranges
-        if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&address) {
-            let offset = address - CGA_MEMORY_START;
-            self.video.write_byte(offset, value);
-            return;
-        }
+// MIGRATED          if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&address) {
+// MIGRATED              let offset = address - CGA_MEMORY_START;
+// MIGRATED              self.video.write_byte(offset, value);
+// MIGRATED              return;
+// MIGRATED          }
         if self.video.card_type() != VideoCardType::CGA
             && (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&address)
         {
@@ -84,37 +84,37 @@ impl Bus {
     }
 
     /// Read 16-bit word from memory or memory-mapped device
-    pub fn read_u16(&self, address: usize) -> u16 {
-        let low = self.read_u8(address) as u16;
-        let high = self.read_u8(address + 1) as u16;
-        (high << 8) | low
-    }
+// MIGRATED      pub fn read_u16(&self, address: usize) -> u16 {
+// MIGRATED          let low = self.read_u8(address) as u16;
+// MIGRATED          let high = self.read_u8(address + 1) as u16;
+// MIGRATED          (high << 8) | low
+// MIGRATED      }
 
     /// Write 16-bit word to memory or memory-mapped device
-    pub fn write_u16(&mut self, address: usize, value: u16) {
-        self.write_u8(address, (value & 0xFF) as u8);
-        self.write_u8(address + 1, (value >> 8) as u8);
-    }
+// MIGRATED      pub fn write_u16(&mut self, address: usize, value: u16) {
+// MIGRATED          self.write_u8(address, (value & 0xFF) as u8);
+// MIGRATED          self.write_u8(address + 1, (value >> 8) as u8);
+// MIGRATED      }
 
-    /// Read 32-bit dword from memory or memory-mapped device
-    pub fn read_u32(&self, address: usize) -> u32 {
-        let w1 = self.read_u16(address) as u32;
-        let w2 = self.read_u16(address + 2) as u32;
-        (w2 << 16) | w1
-    }
+// MIGRATED      /// Read 32-bit dword from memory or memory-mapped device
+// MIGRATED      pub fn read_u32(&self, address: usize) -> u32 {
+// MIGRATED          let w1 = self.read_u16(address) as u32;
+// MIGRATED          let w2 = self.read_u16(address + 2) as u32;
+// MIGRATED          (w2 << 16) | w1
+// MIGRATED      }
 
-    /// Write 32-bit dword to memory or memory-mapped device
-    pub fn write_u32(&mut self, address: usize, value: u32) {
-        self.write_u16(address, (value & 0xFFFF) as u16);
-        self.write_u16(address + 2, (value >> 16) as u16);
-    }
+// MIGRATED      /// Write 32-bit dword to memory or memory-mapped device
+// MIGRATED      pub fn write_u32(&mut self, address: usize, value: u32) {
+// MIGRATED          self.write_u16(address, (value & 0xFFFF) as u16);
+// MIGRATED          self.write_u16(address + 2, (value >> 16) as u16);
+// MIGRATED      }
 
     // Common Memory delegation methods
 
     /// Load data at specific memory address
-    pub fn load_at(&mut self, address: usize, data: &[u8]) -> anyhow::Result<()> {
-        self.memory.load_at(address, data)
-    }
+// MIGRATED      pub fn load_at(&mut self, address: usize, data: &[u8]) -> anyhow::Result<()> {
+// MIGRATED          self.memory.load_at(address, data)
+// MIGRATED      }
 
     /// Load BIOS into memory
     pub fn load_bios(&mut self, bios_data: &[u8]) -> anyhow::Result<()> {

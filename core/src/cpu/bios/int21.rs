@@ -23,7 +23,7 @@ impl Cpu {
     /// INT 0x21 - DOS Services
     /// AH register contains the function number
     pub(super) fn handle_int21(&mut self, bus: &mut Bus, io: &mut super::Bios) {
-        let function = (self.ax >> 8) as u8; // Get AH directly
+// MIGRATED          let function = (self.ax >> 8) as u8; // Get AH directly
 
         // Log all DOS calls at debug level for easier troubleshooting
         if function != 0x01 && function != 0x02 && function != 0x06 && function != 0x09 {
@@ -43,7 +43,7 @@ impl Cpu {
             0x06 => self.int21_direct_console_io(bus, io),
             0x07 => self.int21_direct_console_input(io),
             0x08 => self.int21_console_input_no_echo(io),
-            0x09 => self.int21_write_string(bus),
+// MIGRATED              0x09 => self.int21_write_string(bus),
             0x0B => self.int21_check_input_status(io),
             0x0C => self.int21_flush_and_input(bus, io),
             0x0E => self.int21_select_disk(io),
@@ -83,9 +83,9 @@ impl Cpu {
             0x4F => self.int21_find_next(bus, io),
             0x50 => self.int21_set_psp(io),
             0x63 => self.int21_get_dbcs_lead_byte_table(bus),
-            _ => {
-                log::warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
-            }
+// MIGRATED              _ => {
+// MIGRATED                  log::warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
+// MIGRATED              }
         }
     }
 
@@ -169,25 +169,25 @@ impl Cpu {
         // If no character available, just return with whatever is in AL
     }
 
-    /// INT 21h, AH=09h - Write String to STDOUT
-    /// Input: DS:DX = pointer to '$'-terminated string
-    fn int21_write_string(&mut self, bus: &mut Bus) {
-        let mut addr = Self::physical_address(self.ds, self.dx);
-        let saved_ax = self.ax;
-
-        loop {
-            let ch = bus.read_u8(addr);
-            if ch == b'$' {
-                break;
-            }
-            // Use teletype output for each character
-            self.ax = (self.ax & 0xFF00) | (ch as u16);
-            self.int10_teletype_output(bus);
-            addr += 1;
-        }
-
-        self.ax = saved_ax;
-    }
+// MIGRATED      /// INT 21h, AH=09h - Write String to STDOUT
+// MIGRATED      /// Input: DS:DX = pointer to '$'-terminated string
+// MIGRATED      fn int21_write_string(&mut self, bus: &mut Bus) {
+// MIGRATED          let mut addr = Self::physical_address(self.ds, self.dx);
+// MIGRATED          let saved_ax = self.ax;
+// MIGRATED  
+// MIGRATED          loop {
+// MIGRATED              let ch = bus.read_u8(addr);
+// MIGRATED              if ch == b'$' {
+// MIGRATED                  break;
+// MIGRATED              }
+// MIGRATED              // Use teletype output for each character
+// MIGRATED              self.ax = (self.ax & 0xFF00) | (ch as u16);
+// MIGRATED              self.int10_teletype_output(bus);
+// MIGRATED              addr += 1;
+// MIGRATED          }
+// MIGRATED  
+// MIGRATED          self.ax = saved_ax;
+// MIGRATED      }
 
     /// INT 21h, AH=0Bh - Check Standard Input Status
     /// Output:
