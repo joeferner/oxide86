@@ -3,6 +3,7 @@ use walkdir::WalkDir;
 
 fn main() {
     let asm_dir = "src/test_data";
+    println!("cargo:rerun-if-changed={}", asm_dir);
 
     for entry in WalkDir::new(asm_dir).into_iter().filter_map(|e| e.ok()) {
         let path = entry.path();

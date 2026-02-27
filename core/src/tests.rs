@@ -78,9 +78,8 @@ mod tests {
         }
     }
 
-    #[test]
-    pub fn hello_world_video_memory() {
-        let (program_data, expected_screen) = load_data("hello_world_video_memory");
+    fn run_test(name: &str) {
+        let (program_data, expected_screen) = load_data(name);
 
         let (mut computer, video_buffer) = create_computer();
         computer
@@ -88,6 +87,16 @@ mod tests {
             .unwrap();
         computer.run();
 
-        assert_screen("hello_world_video_memory", expected_screen, video_buffer);
+        assert_screen(name, expected_screen, video_buffer);
+    }
+
+    #[test]
+    pub fn hello_world_video_memory() {
+        run_test("hello_world_video_memory");
+    }
+
+    #[test]
+    pub fn hello_world_int21_write_string() {
+        run_test("hello_world_int21_write_string");
     }
 }
