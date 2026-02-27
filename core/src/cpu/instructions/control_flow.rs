@@ -67,6 +67,48 @@ impl Cpu {
         self.last_instruction_cycles = timing::cycles::CALL_NEAR_DIRECT;
     }
 
+    /// CALL indirect (opcode FF)
+    /// FF /2: CALL r/m16 (near indirect)
+    /// FF /3: CALL m16:16 (far indirect)
+    pub(in crate::cpu) fn call_indirect(&mut self, memory_bus: &mut MemoryBus) {
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        match operation {
+            2 => {
+                // CALL r/m16 (near indirect)
+                let offset = self.read_rm16(mode, rm, addr, memory_bus);
+                self.push(self.ip, memory_bus);
+                self.ip = offset;
+
+                // CALL near indirect: 16 cycles (reg), 21+EA (mem)
+                self.last_instruction_cycles = if mode == 0b11 {
+                    timing::cycles::CALL_NEAR_INDIRECT_REG
+                } else {
+                    timing::cycles::CALL_NEAR_INDIRECT_MEM
+                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+                };
+            }
+            3 => {
+                // CALL m16:16 (far indirect)
+                if mode == 0b11 {
+                    panic!("Far CALL indirect requires bus operand");
+                }
+                let offset = memory_bus.read_u16(addr);
+                let segment = memory_bus.read_u16(addr + 2);
+                self.push(self.cs, memory_bus);
+                self.push(self.ip, memory_bus);
+                self.ip = offset;
+                self.cs = segment;
+
+                // CALL far indirect: 37+EA cycles
+                self.last_instruction_cycles = timing::cycles::CALL_FAR_INDIRECT_MEM
+                    + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
+            }
+            _ => panic!("Invalid CALL indirect operation: {}", operation),
+        }
+    }
+
     /// RET (opcode C3: near return, C2: near return with imm16 pop)
     pub(in crate::cpu) fn ret(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
         // If opcode is C2, fetch the immediate BEFORE popping
@@ -99,6 +141,45 @@ impl Cpu {
 
         // JMP short: 15 cycles
         self.last_instruction_cycles = timing::cycles::JMP_SHORT;
+    }
+
+    /// JMP indirect (opcode FF)
+    /// FF /4: JMP r/m16 (near indirect)
+    /// FF /5: JMP m16:16 (far indirect)
+    pub(in crate::cpu) fn jmp_indirect(&mut self, memory_bus: &MemoryBus) {
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        match operation {
+            4 => {
+                // JMP r/m16 (near indirect)
+                let offset = self.read_rm16(mode, rm, addr, memory_bus);
+                self.ip = offset;
+
+                // JMP near indirect: 11 cycles (reg), 18+EA (mem)
+                self.last_instruction_cycles = if mode == 0b11 {
+                    timing::cycles::JMP_NEAR_INDIRECT_REG
+                } else {
+                    timing::cycles::JMP_NEAR_INDIRECT_MEM
+                        + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+                };
+            }
+            5 => {
+                // JMP m16:16 (far indirect)
+                if mode == 0b11 {
+                    panic!("Far JMP indirect requires bus operand");
+                }
+                let offset = memory_bus.read_u16(addr);
+                let segment = memory_bus.read_u16(addr + 2);
+                self.ip = offset;
+                self.cs = segment;
+
+                // JMP far indirect: 24+EA cycles
+                self.last_instruction_cycles = timing::cycles::JMP_FAR_INDIRECT_MEM
+                    + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
+            }
+            _ => panic!("Invalid JMP indirect operation: {}", operation),
+        }
     }
 
     /// Conditional jumps - short relative (opcodes 70-7F)

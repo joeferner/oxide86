@@ -9,6 +9,8 @@ mod data_transfer;
 mod logical;
 mod string;
 mod arithmetic;
+mod comparison;
+mod shift_rotate;
 
 impl Cpu {
     // Decode ModR/M byte and calculate effective address

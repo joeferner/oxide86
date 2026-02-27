@@ -306,4 +306,111 @@ impl Cpu {
             base + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
         };
     }
+
+    /// INC/DEC r/m (opcode 0xFE for 8-bit, 0xFF for 16-bit)
+    /// FE /0: INC r/m8
+    /// FE /1: DEC r/m8
+    /// FF /0: INC r/m16
+    /// FF /1: DEC r/m16
+    pub(in crate::cpu) fn inc_dec_rm(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let is_word = opcode & 0x01 != 0;
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        match operation {
+            0 => {
+                // INC
+                if is_word {
+                    let value = self.read_rm16(mode, rm, addr, memory_bus);
+                    let result = value.wrapping_add(1);
+                    self.write_rm16(mode, rm, addr, result, memory_bus);
+                    self.set_flags_16(result);
+                    let overflow = value == 0x7FFF;
+                    self.set_flag(cpu_flag::OVERFLOW, overflow);
+                    let aux_carry = (value & 0x0F) == 0x0F;
+                    self.set_flag(cpu_flag::AUXILIARY, aux_carry);
+                } else {
+                    let value = self.read_rm8(mode, rm, addr, memory_bus);
+                    let result = value.wrapping_add(1);
+                    self.write_rm8(mode, rm, addr, result, memory_bus);
+                    self.set_flags_8(result);
+                    let overflow = value == 0x7F;
+                    self.set_flag(cpu_flag::OVERFLOW, overflow);
+                    let aux_carry = (value & 0x0F) == 0x0F;
+                    self.set_flag(cpu_flag::AUXILIARY, aux_carry);
+                }
+            }
+            1 => {
+                // DEC
+                if is_word {
+                    let value = self.read_rm16(mode, rm, addr, memory_bus);
+                    let result = value.wrapping_sub(1);
+                    self.write_rm16(mode, rm, addr, result, memory_bus);
+                    self.set_flags_16(result);
+                    let overflow = value == 0x8000;
+                    self.set_flag(cpu_flag::OVERFLOW, overflow);
+                    let aux_carry = (value & 0x0F) == 0;
+                    self.set_flag(cpu_flag::AUXILIARY, aux_carry);
+                } else {
+                    let value = self.read_rm8(mode, rm, addr, memory_bus);
+                    let result = value.wrapping_sub(1);
+                    self.write_rm8(mode, rm, addr, result, memory_bus);
+                    self.set_flags_8(result);
+                    let overflow = value == 0x80;
+                    self.set_flag(cpu_flag::OVERFLOW, overflow);
+                    let aux_carry = (value & 0x0F) == 0;
+                    self.set_flag(cpu_flag::AUXILIARY, aux_carry);
+                }
+            }
+            _ => panic!("Invalid INC/DEC operation: {}", operation),
+        }
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // INC/DEC register: 2 cycles
+            timing::cycles::INC_REG // Same timing for INC and DEC
+        } else {
+            // INC/DEC memory: 15 + EA cycles
+            timing::cycles::INC_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
+    }
+
+    /// INC 16-bit register (opcodes 40-47)
+    /// Increment register by 1 (does not affect carry flag)
+    pub(in crate::cpu) fn inc_reg16(&mut self, opcode: u8) {
+        let reg = opcode & 0x07;
+        let value = self.get_reg16(reg);
+        let result = value.wrapping_add(1);
+
+        self.set_reg16(reg, result);
+        self.set_flags_16(result);
+        // INC does not affect the carry flag
+        let overflow = value == 0x7FFF; // Overflow when going from max positive to negative
+        self.set_flag(cpu_flag::OVERFLOW, overflow);
+        let aux_carry = (value & 0x0F) == 0x0F;
+        self.set_flag(cpu_flag::AUXILIARY, aux_carry);
+
+        // INC register: 2 cycles
+        self.last_instruction_cycles = timing::cycles::INC_REG;
+    }
+
+    /// DEC 16-bit register (opcodes 48-4F)
+    /// Decrement register by 1 (does not affect carry flag)
+    pub(in crate::cpu) fn dec_reg16(&mut self, opcode: u8) {
+        let reg = opcode & 0x07;
+        let value = self.get_reg16(reg);
+        let result = value.wrapping_sub(1);
+
+        self.set_reg16(reg, result);
+        self.set_flags_16(result);
+        // DEC does not affect the carry flag
+        let overflow = value == 0x8000; // Overflow when going from min negative to positive
+        self.set_flag(cpu_flag::OVERFLOW, overflow);
+        let aux_carry = (value & 0x0F) == 0;
+        self.set_flag(cpu_flag::AUXILIARY, aux_carry);
+
+        // DEC register: 2 cycles
+        self.last_instruction_cycles = timing::cycles::DEC_REG;
+    }
 }

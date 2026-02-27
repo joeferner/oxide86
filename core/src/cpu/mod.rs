@@ -74,6 +74,10 @@ pub struct Cpu {
 
     /// Repeat prefix for string instructions
     repeat_prefix: Option<RepeatPrefix>,
+
+    /// Pending CPU exception interrupt number (e.g. 0 = divide error)
+    /// Set by instructions that trigger CPU exceptions; fired by Computer::step()
+    pending_exception: Option<u8>,
 }
 
 impl Cpu {
@@ -100,6 +104,7 @@ impl Cpu {
             last_instruction_cycles: 0,
             segment_override: None,
             repeat_prefix: None,
+            pending_exception: None,
         }
     }
 
@@ -131,12 +136,30 @@ impl Cpu {
 
         let opcode = self.fetch_byte(memory_bus);
         match opcode {
+            // OR immediate to AL/AX
+            0x0C..=0x0D => self.or_imm_acc(opcode, memory_bus),
+
+            // AND immediate to AL/AX
+            0x24..=0x25 => self.and_imm_acc(opcode, memory_bus),
+
             // ES: segment override prefix (26)
             0x26 => {
                 self.segment_override = Some(self.es);
                 self.step(memory_bus, io_bus);
                 self.segment_override = None;
             }
+
+            // CMP r/m to register
+            0x38..=0x3B => self.cmp_rm_reg(opcode, memory_bus),
+
+            // CMP immediate to AL/AX
+            0x3C..=0x3D => self.cmp_imm_acc(opcode, memory_bus),
+
+            // INC 16-bit register (40-47)
+            0x40..=0x47 => self.inc_reg16(opcode),
+
+            // DEC 16-bit register (48-4F)
+            0x48..=0x4F => self.dec_reg16(opcode),
 
             // PUSH 16-bit register (50-57)
             0x50..=0x57 => self.push_reg16(opcode, memory_bus),
@@ -164,6 +187,9 @@ impl Cpu {
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
             0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory_bus),
 
+            // TEST immediate to AL/AX (A8-A9)
+            0xA8..=0xA9 => self.test_imm_acc(opcode, memory_bus),
+
             // LODS - Load String (AC-AD)
             0xAC..=0xAD => self.lods(opcode, memory_bus),
 
@@ -179,6 +205,9 @@ impl Cpu {
             // INT - Software Interrupt (CD)
             0xCD => self.int(memory_bus),
 
+            // Shift/Rotate Group 2 (D0: r/m8, 1; D1: r/m16, 1; D2: r/m8, CL; D3: r/m16, CL)
+            0xD0..=0xD3 => self.shift_rotate_group(opcode, memory_bus),
+
             // CALL near relative (E8)
             0xE8 => self.call_near(memory_bus),
 
@@ -187,6 +216,29 @@ impl Cpu {
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
+
+            // NOT/NEG/MUL/DIV Group 3 (F6: 8-bit, F7: 16-bit)
+            0xF6..=0xF7 => self.unary_group3(opcode, memory_bus),
+
+            // INC/DEC/CALL/JMP Group 4/5 (FE: 8-bit, FF: 16-bit)
+            0xFE => self.inc_dec_rm(opcode, memory_bus),
+            0xFF => {
+                // For FF, we need to check the reg field to determine operation
+                let modrm_peek = memory_bus.read_u8(physical_address(self.cs, self.ip));
+                let reg_field = (modrm_peek >> 3) & 0x07;
+                match reg_field {
+                    0 | 1 => self.inc_dec_rm(opcode, memory_bus), // INC/DEC
+                    2 | 3 => self.call_indirect(memory_bus),      // CALL near/far
+                    4 | 5 => self.jmp_indirect(memory_bus),       // JMP near/far
+                    6 => self.push_rm16(memory_bus),              // PUSH r/m16
+                    _ => log::warn!(
+                        "Invalid FF /{}  at {:04X}:{:04X} (undefined, skipping)",
+                        reg_field,
+                        self.cs,
+                        self.ip.wrapping_sub(1)
+                    ),
+                }
+            }
 
             _ => {
                 let err = format!(
@@ -230,10 +282,12 @@ impl Cpu {
         self.fs = 0;
         self.gs = 0;
         self.ip = 0;
-        self.flags = 0;
+        self.flags = 0x0002; // Reserved bit always set
         self.halted = false;
         self.last_instruction_cycles = 0;
         self.segment_override = None;
+        self.repeat_prefix = None;
+        self.pending_exception = None;
 
         // Set CPU to start at this location
         self.cs = segment;

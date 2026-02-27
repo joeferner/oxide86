@@ -122,6 +122,35 @@ impl Cpu {
         self.last_instruction_cycles = timing::cycles::PUSH_REG;
     }
 
+    /// PUSH r/m16 (opcode FF /6) - Group 5
+    /// FF /6: PUSH r/m16
+    /// Pushes a word from register or bus location onto stack
+    pub(in crate::cpu) fn push_rm16(&mut self, memory_bus: &mut MemoryBus) {
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        // The reg field should be 6 for PUSH (it's an opcode extension)
+        if reg_field != 6 {
+            panic!(
+                "Invalid opcode extension for FF /6: expected /6, got /{}",
+                reg_field
+            );
+        }
+
+        let value = self.read_rm16(mode, rm, addr, memory_bus);
+        self.push(value, memory_bus);
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // PUSH reg: 11 cycles
+            timing::cycles::PUSH_REG
+        } else {
+            // PUSH mem: 16 + EA cycles
+            timing::cycles::PUSH_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
+    }
+
     /// MOV register to/from r/m (opcodes 88-8B)
     /// 88: MOV r/m8, r8
     /// 89: MOV r/m16, r16
