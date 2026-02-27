@@ -8,7 +8,9 @@ pub struct Computer {
 
 impl Computer {
     pub fn new(cpu: Cpu, memory_bus: MemoryBus) -> Self {
-        Self { memory_bus, cpu }
+        let mut computer = Self { memory_bus, cpu };
+        computer.reset();
+        computer
     }
 
     /// Load a program at the specified segment:offset and set CPU to start there
@@ -31,5 +33,10 @@ impl Computer {
 
     pub fn is_halted(&self) -> bool {
         self.cpu.is_halted()
+    }
+
+    fn reset(&mut self) {
+        self.memory_bus.reset();
+        self.cpu.reset(0xffff, 0x0000);
     }
 }

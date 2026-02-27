@@ -1,4 +1,5 @@
 use crate::{memory_bus::MemoryBus, physical_address};
+mod bios;
 mod instructions;
 mod timing;
 
@@ -100,6 +101,11 @@ impl Cpu {
     }
 
     pub fn step(&mut self, memory_bus: &mut MemoryBus) {
+        if self.cs == 0xf {
+            self.run_bios_int(memory_bus);
+            return;
+        }
+
         let opcode = self.fetch_byte(memory_bus);
         match opcode {
             // ES: segment override prefix (26)
@@ -117,6 +123,9 @@ impl Cpu {
 
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory_bus),
+
+            // INT - Software Interrupt (CD)
+            0xCD => self.int(memory_bus),
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),
@@ -156,11 +165,9 @@ impl Cpu {
         self.dx = 0;
         self.si = 0;
         self.di = 0;
-        self.sp = 0;
         self.bp = 0;
         self.cs = 0;
         self.ds = 0;
-        self.ss = 0;
         self.es = 0;
         self.fs = 0;
         self.gs = 0;
@@ -182,6 +189,15 @@ impl Cpu {
 
         // Enable interrupts - DOS programs expect IF=1 (inherited from DOS environment)
         self.set_flag(cpu_flag::INTERRUPT, true);
+    }
+
+    fn run_bios_int(&mut self, memory_bus: &mut MemoryBus) {
+        let int = self.ip / 4;
+        match int {
+            0x21 => self.handle_int21_dos_services(),
+            _ => log::error!("unhandled BIOS interrupt 0x{int:04X}"),
+        }
+        self.iret(memory_bus);
     }
 }
 

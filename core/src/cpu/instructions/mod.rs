@@ -144,4 +144,19 @@ impl Cpu {
             _ => unreachable!(),
         }
     }
+
+    // Push 16-bit value onto stack
+    fn push(&mut self, value: u16, bus: &mut MemoryBus) {
+        self.sp = self.sp.wrapping_sub(2);
+        let addr = physical_address(self.ss, self.sp);
+        bus.write_u16(addr, value);
+    }
+
+    // Pop 16-bit value from stack
+    fn pop(&mut self, bus: &MemoryBus) -> u16 {
+        let addr = physical_address(self.ss, self.sp);
+        let value = bus.read_u16(addr);
+        self.sp = self.sp.wrapping_add(2);
+        value
+    }
 }

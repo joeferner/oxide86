@@ -47,8 +47,27 @@ impl MemoryBus {
         self.write_u8(addr + 1, (val >> 8) as u8);
     }
 
+    /// Read 32-bit dword from memory or memory-mapped device
+    pub fn read_u32(&self, address: usize) -> u32 {
+        let w1 = self.read_u16(address) as u32;
+        let w2 = self.read_u16(address + 2) as u32;
+        (w2 << 16) | w1
+    }
+
+    /// Write 32-bit dword to memory or memory-mapped device
+    pub fn write_u32(&mut self, address: usize, value: u32) {
+        self.write_u16(address, (value & 0xFFFF) as u16);
+        self.write_u16(address + 2, (value >> 16) as u16);
+    }
+
     /// Load binary data at a specific address
     pub fn load_at(&mut self, addr: usize, data: &[u8]) -> Result<()> {
         self.memory.load_at(addr, data)
+    }
+
+    pub fn reset(&mut self) {
+        for addr in (0..0x0400).step_by(4) {
+            self.write_u32(addr, (0xF0000 + addr) as u32);
+        }
     }
 }
