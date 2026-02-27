@@ -25,6 +25,14 @@ mod cpu_flag {
     pub const OVERFLOW: u16 = 1 << 11;
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+#[allow(dead_code)]
+enum RepeatPrefix {
+    Rep,   // 0xF3 - Repeat while CX != 0
+    Repe,  // 0xF3 - Repeat while CX != 0 and ZF = 1
+    Repne, // 0xF2 - Repeat while CX != 0 and ZF = 0
+}
+
 pub struct Cpu {
     cpu_type: CpuType,
 
@@ -63,6 +71,9 @@ pub struct Cpu {
 
     /// Segment override prefix (for next instruction only)
     segment_override: Option<u16>,
+
+    /// Repeat prefix for string instructions
+    repeat_prefix: Option<RepeatPrefix>,
 }
 
 impl Cpu {
@@ -88,6 +99,7 @@ impl Cpu {
             halted: false,
             last_instruction_cycles: 0,
             segment_override: None,
+            repeat_prefix: None,
         }
     }
 
@@ -129,20 +141,49 @@ impl Cpu {
             // PUSH 16-bit register (50-57)
             0x50..=0x57 => self.push_reg16(opcode, memory_bus),
 
+            // POP 16-bit register (58-5F)
+            0x58..=0x5F => self.pop_reg16(opcode, memory_bus),
+
+            // Conditional jumps (70-7F)
+            0x70..=0x7F => self.jmp_conditional(opcode, memory_bus),
+
+            // Arithmetic/logical immediate to r/m (80: 8-bit, 81: 16-bit, 82: same as 80, 83: sign-extended 8-bit to 16-bit)
+            0x80 | 0x82 => self.arith_imm8_rm8(memory_bus),
+            0x81 => self.arith_imm16_rm(memory_bus),
+            0x83 => self.arith_imm8_rm(memory_bus),
+
+            // TEST r/m and register (84-85)
+            0x84..=0x85 => self.test_rm_reg(opcode, memory_bus),
+
+            // MOV register to/from r/m (88-8B)
+            0x88..=0x8B => self.mov_reg_rm(opcode, memory_bus),
+
             // MOV r/m16 to segment register (8E)
             0x8E => self.mov_rm_to_segreg(memory_bus),
 
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
             0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory_bus),
 
+            // LODS - Load String (AC-AD)
+            0xAC..=0xAD => self.lods(opcode, memory_bus),
+
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory_bus),
+
+            // RET with optional pop (C2: with imm16, C3: without)
+            0xC2..=0xC3 => self.ret(opcode, memory_bus),
+
+            // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
+            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, memory_bus),
 
             // INT - Software Interrupt (CD)
             0xCD => self.int(memory_bus),
 
             // CALL near relative (E8)
             0xE8 => self.call_near(memory_bus),
+
+            // JMP short relative (EB)
+            0xEB => self.jmp_short(memory_bus),
 
             // HLT - Halt (F4)
             0xF4 => self.hlt(),

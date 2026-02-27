@@ -90,6 +90,17 @@ impl Cpu {
         };
     }
 
+    /// POP 16-bit register (opcodes 58-5F)
+    /// Pop from stack to register
+    pub(in crate::cpu) fn pop_reg16(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let reg = opcode & 0x07;
+        let value = self.pop(memory_bus);
+        self.set_reg16(reg, value);
+
+        // POP register: 8 cycles
+        self.last_instruction_cycles = timing::cycles::POP_REG;
+    }
+
     /// PUSH 16-bit register (opcodes 50-57)
     /// Push register onto stack
     /// 8086 PUSH SP behavior: pushes SP-2 (value after decrement)
@@ -109,6 +120,89 @@ impl Cpu {
 
         // PUSH register: 11 cycles
         self.last_instruction_cycles = timing::cycles::PUSH_REG;
+    }
+
+    /// MOV register to/from r/m (opcodes 88-8B)
+    /// 88: MOV r/m8, r8
+    /// 89: MOV r/m16, r16
+    /// 8A: MOV r8, r/m8
+    /// 8B: MOV r16, r/m16
+    pub(in crate::cpu) fn mov_reg_rm(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let is_word = opcode & 0x01 != 0;
+        let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
+
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        if is_word {
+            // 16-bit move
+            if dir {
+                // MOV reg16, r/m16
+                let value = self.read_rm16(mode, rm, addr, memory_bus);
+                self.set_reg16(reg, value);
+            } else {
+                // MOV r/m16, reg16
+                let value = self.get_reg16(reg);
+                self.write_rm16(mode, rm, addr, value, memory_bus);
+            }
+        } else {
+            // 8-bit move
+            if dir {
+                // MOV reg8, r/m8
+                let value = self.read_rm8(mode, rm, addr, memory_bus);
+                self.set_reg8(reg, value);
+            } else {
+                // MOV r/m8, reg8
+                let value = self.get_reg8(reg);
+                self.write_rm8(mode, rm, addr, value, memory_bus);
+            }
+        }
+
+        // Calculate cycle timing based on operands
+        self.last_instruction_cycles = if mode == 0b11 {
+            // MOV reg, reg: 2 cycles
+            timing::cycles::MOV_REG_REG
+        } else if dir {
+            // MOV reg, mem: 8 + EA cycles
+            timing::cycles::MOV_MEM_REG
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        } else {
+            // MOV mem, reg: 9 + EA cycles
+            timing::cycles::MOV_REG_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
+    }
+
+    /// MOV immediate to r/m (opcodes C6-C7)
+    /// C6: MOV r/m8, imm8
+    /// C7: MOV r/m16, imm16
+    pub(in crate::cpu) fn mov_imm_to_rm(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let is_word = opcode & 0x01 != 0;
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, _reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        // The reg field should be 0 for MOV immediate
+        // (it's part of the opcode extension)
+
+        if is_word {
+            // MOV r/m16, imm16
+            let value = self.fetch_word(memory_bus);
+            self.write_rm16(mode, rm, addr, value, memory_bus);
+        } else {
+            // MOV r/m8, imm8
+            let value = self.fetch_byte(memory_bus);
+            self.write_rm8(mode, rm, addr, value, memory_bus);
+        }
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // MOV reg, imm: 4 cycles
+            timing::cycles::MOV_IMM_REG
+        } else {
+            // MOV mem, imm: 10 + EA cycles
+            timing::cycles::MOV_IMM_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
     }
 }
 
