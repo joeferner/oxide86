@@ -20,8 +20,7 @@ pub mod logging;
 pub fn create_computer(cli: &CommonCli, buffer: Arc<VideoBuffer>) -> Result<Computer> {
     let cpu = Cpu::new();
     let memory = Memory::new(2048 * 1024); // TODO fill from cli args
-    let devices: Rc<RefCell<Vec<Box<dyn Device>>>> =
-        Rc::new(RefCell::new(vec![Box::new(VideoCard::new(buffer))]));
+    let devices: Vec<Rc<RefCell<dyn Device>>> = vec![Rc::new(RefCell::new(VideoCard::new(buffer)))];
     let memory_bus = MemoryBus::new(memory, devices.clone());
     let io_bus = IoBus::new(devices);
     let mut computer = Computer::new(cpu, memory_bus, io_bus);
