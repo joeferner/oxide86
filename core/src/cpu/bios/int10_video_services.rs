@@ -7,7 +7,7 @@ impl Cpu {
     ///   BL = foreground color (in graphics modes)
     ///   BH = page number (0 for text mode)
     /// Output: None
-   pub(in crate::cpu) fn int10_teletype_output(&mut self, bus: &mut MemoryBus) {
+   pub(in crate::cpu) fn int10_teletype_output(&mut self, memory_bus: &mut MemoryBus) {
         todo!();
         // let ch = (self.ax & 0xFF) as u8; // AL
         // let cursor = bus.video().get_cursor();

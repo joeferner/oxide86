@@ -1,7 +1,6 @@
 use crate::{
     cpu::{IVT_END, IVT_ENTRY_SIZE, IVT_START, bios::bda::bda_reset},
     memory_bus::MemoryBus,
-    physical_address,
 };
 
 pub mod bda;

@@ -8,6 +8,8 @@ pub mod video_card;
 pub use video_buffer::VideoBuffer;
 pub use video_card::VideoCard;
 
+pub const VIDEO_MODE_03H_COLOR_TEXT_80_X_25: u8 = 0x03;
+
 // CGA video memory constants
 pub const CGA_MEMORY_START: usize = 0xB8000;
 pub const CGA_MEMORY_END: usize = 0xBFFFF;
@@ -24,6 +26,7 @@ pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 64KB
 
 pub const TEXT_MODE_COLS: usize = 80;
 pub const TEXT_MODE_ROWS: usize = 25;
+pub const TEXT_MODE_BYTES_PER_CHAR: usize = 2;
 
 // VGA color constants
 pub mod colors {
