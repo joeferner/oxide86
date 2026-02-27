@@ -4,6 +4,7 @@ pub mod computer;
 pub mod cpu;
 pub mod memory;
 pub mod memory_bus;
+pub mod io_bus;
 pub mod video;
 
 #[cfg(test)]

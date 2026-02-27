@@ -8,6 +8,8 @@ pub mod video_card;
 pub use video_buffer::VideoBuffer;
 pub use video_card::VideoCard;
 
+use crate::io_bus::IoBus;
+
 pub const VIDEO_MODE_03H_COLOR_TEXT_80_X_25: u8 = 0x03;
 
 // CGA video memory constants
@@ -46,4 +48,22 @@ pub mod colors {
     pub const LIGHT_MAGENTA: u8 = 0xD;
     pub const YELLOW: u8 = 0xE;
     pub const WHITE: u8 = 0xF;
+}
+
+pub fn video_set_cursor_pos(io_bus: &mut IoBus, crt_controller_port: u16, linear_offset: u16) {
+    // Send the HIGH byte (Registers 0x0E)
+    // Tell the VGA controller we want to update the "Cursor Location High" register
+    io_bus.write_u8(crt_controller_port, 0x0E);
+    // Send the actual high 8 bits of our offset
+    io_bus.write_u8(crt_controller_port + 1, ((linear_offset >> 8) & 0xFF) as u8);
+
+    // Send the LOW byte (Register 0x0F)
+    // Tell the VGA controller we want to update the "Cursor Location Low" register
+    io_bus.write_u8(crt_controller_port, 0x0F);
+    // Send the actual low 8 bits of our offset
+    io_bus.write_u8(crt_controller_port + 1, (linear_offset & 0xFF) as u8);
+}
+
+pub fn video_calculate_linear_offset(row: u8, col: u8, max_cols: u16) -> u16 {
+    (row as u16 * max_cols as u16) + col as u16
 }

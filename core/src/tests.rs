@@ -6,6 +6,7 @@ mod tests {
     use std::{cell::RefCell, fs::File};
 
     use crate::Device;
+    use crate::io_bus::IoBus;
     use crate::video::video_buffer::RenderResult;
     use crate::{
         computer::Computer,
@@ -23,8 +24,9 @@ mod tests {
         let devices: Vec<RefCell<Box<dyn Device>>> =
             vec![RefCell::new(Box::new(VideoCard::new(video_buffer.clone())))];
         let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), devices);
+        let io_bus = IoBus::new();
         let cpu = Cpu::new();
-        let computer = Computer::new(cpu, memory_bus);
+        let computer = Computer::new(cpu, memory_bus, io_bus);
         (computer, video_buffer)
     }
 

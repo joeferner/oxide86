@@ -1,4 +1,4 @@
-use crate::{cpu::bios::BIOS_CODE_SEGMENT, memory_bus::MemoryBus, physical_address};
+use crate::{cpu::bios::BIOS_CODE_SEGMENT, io_bus::IoBus, memory_bus::MemoryBus, physical_address};
 pub mod bios;
 mod instructions;
 mod timing;
@@ -105,9 +105,9 @@ impl Cpu {
         self.halted
     }
 
-    pub fn step(&mut self, memory_bus: &mut MemoryBus) {
+    pub fn step(&mut self, memory_bus: &mut MemoryBus, io_bus: &mut IoBus) {
         if self.cs == BIOS_CODE_SEGMENT {
-            self.step_bios_int(memory_bus);
+            self.step_bios_int(memory_bus, io_bus);
             return;
         }
 
@@ -116,7 +116,7 @@ impl Cpu {
             // ES: segment override prefix (26)
             0x26 => {
                 self.segment_override = Some(self.es);
-                self.step(memory_bus);
+                self.step(memory_bus, io_bus);
                 self.segment_override = None;
             }
 
@@ -196,10 +196,10 @@ impl Cpu {
         self.set_flag(cpu_flag::INTERRUPT, true);
     }
 
-    fn step_bios_int(&mut self, memory_bus: &mut MemoryBus) {
+    fn step_bios_int(&mut self, memory_bus: &mut MemoryBus, io_bus: &mut IoBus) {
         let int = self.ip / 4;
         match int {
-            0x21 => self.handle_int21_dos_services(memory_bus),
+            0x21 => self.handle_int21_dos_services(memory_bus, io_bus),
             _ => log::error!("unhandled BIOS interrupt 0x{int:04X}"),
         }
         self.iret(memory_bus);

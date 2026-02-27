@@ -2,13 +2,7 @@ use std::{cell::RefCell, sync::Arc};
 
 use anyhow::{Context, Result};
 use oxide86_core::{
-    Device,
-    computer::Computer,
-    cpu::Cpu,
-    memory::Memory,
-    memory_bus::MemoryBus,
-    parse_hex_or_dec,
-    video::{VideoBuffer, VideoCard},
+    Device, computer::Computer, cpu::Cpu, io_bus::IoBus, memory::Memory, memory_bus::MemoryBus, parse_hex_or_dec, video::{VideoBuffer, VideoCard}
 };
 
 use crate::cli::CommonCli;
@@ -22,7 +16,8 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<VideoBuffer>) -> Result<Comp
     let devices: Vec<RefCell<Box<dyn Device>>> =
         vec![RefCell::new(Box::new(VideoCard::new(buffer)))];
     let memory_bus = MemoryBus::new(memory, devices);
-    let mut computer = Computer::new(cpu, memory_bus);
+    let io_bus = IoBus::new();
+    let mut computer = Computer::new(cpu, memory_bus, io_bus);
 
     if let Some(program_path) = &cli.program {
         // Load program from file

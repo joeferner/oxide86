@@ -189,6 +189,16 @@ pub(in crate::cpu) fn bda_get_cursor_pos(memory_bus: &MemoryBus) -> (u8, u8) {
     return (row, col);
 }
 
+pub(in crate::cpu) fn bda_set_cursor_pos(memory_bus: &mut MemoryBus, row: u8, col: u8) {
+    // low byte = column, high byte = row
+    let pos = ((row as u16) << 8) | col as u16;
+    memory_bus.write_u16(BDA_START + BDA_CURSOR_POS, pos);
+}
+
+pub(in crate::cpu) fn bda_get_columns(memory_bus: &MemoryBus) -> u16 {
+    memory_bus.read_u16(BDA_START + BDA_SCREEN_COLUMNS)
+}
+
 pub(in crate::cpu) fn bda_get_rows(memory_bus: &MemoryBus) -> u8 {
     let rows = memory_bus.read_u8(BDA_START + BDA_EGA_ROWS);
     // On very old original IBM PCs (1981), the byte at 0x84 wasn't always
@@ -199,4 +209,8 @@ pub(in crate::cpu) fn bda_get_rows(memory_bus: &MemoryBus) -> u8 {
     } else {
         rows
     }
+}
+
+pub(in crate::cpu) fn bda_get_crt_controller_port_address(memory_bus: &MemoryBus) -> u16 {
+    memory_bus.read_u16(BDA_START + BDA_CRTC_PORT)
 }

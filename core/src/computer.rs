@@ -1,14 +1,19 @@
-use crate::{cpu::Cpu, memory_bus::MemoryBus, physical_address};
+use crate::{cpu::Cpu, io_bus::IoBus, memory_bus::MemoryBus, physical_address};
 use anyhow::Result;
 
 pub struct Computer {
-    memory_bus: MemoryBus,
     cpu: Cpu,
+    memory_bus: MemoryBus,
+    io_bus: IoBus,
 }
 
 impl Computer {
-    pub fn new(cpu: Cpu, memory_bus: MemoryBus) -> Self {
-        let mut computer = Self { memory_bus, cpu };
+    pub fn new(cpu: Cpu, memory_bus: MemoryBus, io_bus: IoBus) -> Self {
+        let mut computer = Self {
+            cpu,
+            memory_bus,
+            io_bus,
+        };
         computer.reset();
         computer
     }
@@ -28,7 +33,7 @@ impl Computer {
     }
 
     pub fn step(&mut self) {
-        self.cpu.step(&mut self.memory_bus);
+        self.cpu.step(&mut self.memory_bus, &mut self.io_bus);
     }
 
     pub fn is_halted(&self) -> bool {
