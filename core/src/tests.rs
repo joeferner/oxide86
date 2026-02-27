@@ -104,4 +104,10 @@ mod tests {
     pub fn hello_world_int21_write_string() {
         run_test("hello_world_int21_write_string");
     }
+
+    #[test]
+    #[test_log::test]
+    pub fn cpu_op8086() {
+        run_test("cpu/op8086");
+    }
 }
