@@ -1,4 +1,5 @@
 - [X] Get a working hello world writing directly to video memory text mode
 - [X] Get a working hello world using int21 - write string
 - [ ] Add unit tests for current batch of instructions
-- [ ] Port https://github.com/joeferner/oxide86/blob/4fdc46c8ac9333bf09326944b385bee5370cde47/test-programs/cpu/op8086.asm over
+- [ ] Port https://github.com/joeferner/oxide86/blob/4fdc46c8ac9333bf09326944b385bee5370cde47/test-programs/cpu/op8086.asm
+- [ ] Add Keyboard/PIC support
