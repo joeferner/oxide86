@@ -1,5 +1,29 @@
 use crate::video::colors;
 
+/// Convert CP437 byte to Unicode character
+/// CP437 is the original IBM PC character set
+pub fn cp437_to_unicode(byte: u8) -> char {
+    // CP437 high characters (0x80-0xFF) to Unicode
+    const CP437_HIGH: [char; 128] = [
+        'Ç', 'ü', 'é', 'â', 'ä', 'à', 'å', 'ç', 'ê', 'ë', 'è', 'ï', 'î', 'ì', 'Ä', 'Å', 'É', 'æ',
+        'Æ', 'ô', 'ö', 'ò', 'û', 'ù', 'ÿ', 'Ö', 'Ü', '¢', '£', '¥', '₧', 'ƒ', 'á', 'í', 'ó', 'ú',
+        'ñ', 'Ñ', 'ª', 'º', '¿', '⌐', '¬', '½', '¼', '¡', '«', '»', '░', '▒', '▓', '│', '┤', '╡',
+        '╢', '╖', '╕', '╣', '║', '╗', '╝', '╜', '╛', '┐', '└', '┴', '┬', '├', '─', '┼', '╞', '╟',
+        '╚', '╔', '╩', '╦', '╠', '═', '╬', '╧', '╨', '╤', '╥', '╙', '╘', '╒', '╓', '╫', '╪', '┘',
+        '┌', '█', '▄', '▌', '▐', '▀', 'α', 'ß', 'Γ', 'π', 'Σ', 'σ', 'µ', 'τ', 'Φ', 'Θ', 'Ω', 'δ',
+        '∞', 'φ', 'ε', '∩', '≡', '±', '≥', '≤', '⌠', '⌡', '÷', '≈', '°', '∙', '·', '√', 'ⁿ', '²',
+        '■', ' ',
+    ];
+
+    match byte {
+        0x00 => ' ',                 // NUL - display as space
+        0x20..=0x7E => byte as char, // Standard ASCII printable
+        0x7F => '⌂',                 // DEL - house symbol in CP437
+        0x80..=0xFF => CP437_HIGH[(byte - 0x80) as usize],
+        _ => byte as char, // Low control chars - pass through
+    }
+}
+
 /// VGA text mode character attribute
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TextAttribute {

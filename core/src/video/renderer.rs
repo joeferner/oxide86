@@ -5,7 +5,7 @@ use crate::video::{
 
 /// Convert a 6-bit VGA DAC value (0-63) to 8-bit RGB (0-255).
 #[inline]
-fn dac_to_8bit(val: u8) -> u8 {
+pub fn dac_to_8bit(val: u8) -> u8 {
     let v = val & 0x3F;
     (v << 2) | (v >> 4)
 }

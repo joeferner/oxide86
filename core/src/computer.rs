@@ -25,7 +25,11 @@ impl Computer {
         }
     }
 
-    fn step(&mut self) {
+    pub fn step(&mut self) {
         self.cpu.step(&mut self.memory_bus);
+    }
+
+    pub fn is_halted(&self) -> bool {
+        self.cpu.is_halted()
     }
 }

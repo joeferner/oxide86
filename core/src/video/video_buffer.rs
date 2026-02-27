@@ -24,11 +24,11 @@ pub struct VideoData {
     pub vram: Vec<u8>,
     pub font: Cp437Font,
     /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
-    vga_dac_palette: [[u8; 3]; 256],
+    pub vga_dac_palette: [[u8; 3]; 256],
     /// Blink/intensity mode for text attribute bit 7.
     /// true  = bit 7 enables character blinking (8 background colors, default)
     /// false = bit 7 selects high-intensity background (16 background colors, no blink)
-    blink_enabled: bool,
+    pub blink_enabled: bool,
 }
 
 impl VideoData {
@@ -84,6 +84,12 @@ impl VideoData {
             data,
             width: width as u32,
             height: height as u32,
+        }
+    }
+
+    unsafe fn copy_from(&mut self, src: &VideoData) {
+        unsafe {
+            ptr::copy_nonoverlapping(src.vram.as_ptr(), self.vram.as_mut_ptr(), src.vram.len());
         }
     }
 }
@@ -157,11 +163,7 @@ impl VideoBuffer {
             // (has_new_data is still false) and the emulator hasn't
             // resumed work yet.
             unsafe {
-                ptr::copy_nonoverlapping(
-                    (*back_ptr).vram.as_ptr(),
-                    (*front_ptr).vram.as_mut_ptr(),
-                    (*back_ptr).vram.len(),
-                );
+                (*front_ptr).copy_from(&*back_ptr);
             }
 
             // Signal to UI that 'front' is ready
