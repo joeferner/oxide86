@@ -32,5 +32,6 @@ pub trait Device {
     fn memory_read_u8(&self, addr: usize) -> Option<u8>;
     fn memory_write_u8(&mut self, addr: usize, val: u8) -> bool;
 
-    fn io_write_u8(&mut self, addr: u16, val: u8) -> bool;
+    fn io_read_u8(&self, port: u16) -> Option<u8>;
+    fn io_write_u8(&mut self, port: u16, val: u8) -> bool;
 }

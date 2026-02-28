@@ -107,9 +107,9 @@ start:
     ; Print summary
     call print_summary
 
-    ; Exit to DOS
-    mov ax, 0x4C00
-    int 21h
+    mov ah, 0x4C    ; DOS terminate with return code
+    mov al, 0x00    ; exit code 0
+    int 0x21        ; In DOS: exits. In emulator: halts.
 
 ;=============================================================================
 ; Test: MOV (data movement)

@@ -67,11 +67,15 @@ impl Device for VideoCard {
         }
     }
 
-    fn io_write_u8(&mut self, addr: u16, val: u8) -> bool {
-        if addr == VIDEO_CARD_CONTROL_ADDR {
+    fn io_read_u8(&self, _port: u16) -> Option<u8> {
+        None
+    }
+
+    fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
+        if port == VIDEO_CARD_CONTROL_ADDR {
             self.io_register = val;
             true
-        } else if addr == VIDEO_CARD_DATA_ADDR {
+        } else if port == VIDEO_CARD_DATA_ADDR {
             let data = self.buffer.emu_get_back_buffer_mut();
             match self.io_register {
                 VIDEO_CARD_REG_CURSOR_LOC_HIGH => {

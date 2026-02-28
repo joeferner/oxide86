@@ -16,4 +16,6 @@ start:
     mov ax, 0x0F48      ; AH = 0F (Attr), AL = 48 (Char)
     mov [es:0], ax      ; Write 'H' to the very first character cell
 
-    hlt
+    mov ah, 0x4C    ; DOS terminate with return code
+    mov al, 0x00    ; exit code 0
+    int 0x21        ; In DOS: exits. In emulator: halts.

@@ -233,6 +233,320 @@ impl Cpu {
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
         };
     }
+
+    /// PUSH segment register (opcodes 06, 0E, 16, 1E)
+    /// 06: PUSH ES
+    /// 0E: PUSH CS
+    /// 16: PUSH SS
+    /// 1E: PUSH DS
+    pub(in crate::cpu) fn push_segreg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let seg = match opcode {
+            0x06 => 0, // ES
+            0x0E => 1, // CS
+            0x16 => 2, // SS
+            0x1E => 3, // DS
+            _ => unreachable!(),
+        };
+        let value = self.get_segreg(seg);
+        self.push(value, memory_bus);
+
+        // PUSH segment register: 10 cycles
+        self.last_instruction_cycles = timing::cycles::PUSH_SEGREG;
+    }
+
+    /// LDS - Load Pointer using DS (opcode 0xC5)
+    /// Loads far pointer from bus into register and DS
+    pub(in crate::cpu) fn lds(&mut self, memory_bus: &MemoryBus) {
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        // LDS only works with bus operands
+        if mode == 0b11 {
+            panic!("LDS cannot use register operand");
+        }
+
+        // Read offset and segment from bus (4 bytes total)
+        let offset = memory_bus.read_u16(addr);
+        let segment = memory_bus.read_u16(addr + 2);
+
+        self.set_reg16(reg, offset);
+        self.ds = segment;
+
+        // LDS: 16 + EA cycles
+        let rm = modrm & 0x07;
+        self.last_instruction_cycles = timing::cycles::LDS
+            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
+    }
+
+    /// MOV segment register to r/m16 (opcode 8C)
+    /// 8C: MOV r/m16, segreg
+    /// Copies a segment register (ES, CS, SS, DS) to a 16-bit register or bus location
+    pub(in crate::cpu) fn mov_segreg_to_rm(&mut self, memory_bus: &mut MemoryBus) {
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, seg_reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        // The reg field specifies which segment register (ES=0, CS=1, SS=2, DS=3)
+        let value = self.get_segreg(seg_reg);
+        self.write_rm16(mode, rm, addr, value, memory_bus);
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // MOV reg, segreg: 2 cycles
+            timing::cycles::MOV_SEGREG_RM_REG
+        } else {
+            // MOV mem, segreg: 9 + EA cycles
+            timing::cycles::MOV_SEGREG_RM_MEM
+                + timing::calculate_ea_cycles(mode, seg_reg, self.segment_override.is_some())
+        };
+    }
+
+    /// POP segment register (opcodes 07, 0F, 17, 1F)
+    /// 07: POP ES
+    /// 0F: POP CS (note: POP CS is unusual, typically not used)
+    /// 17: POP SS
+    /// 1F: POP DS
+    pub(in crate::cpu) fn pop_segreg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let seg = match opcode {
+            0x07 => 0, // ES
+            0x0F => 1, // CS
+            0x17 => 2, // SS
+            0x1F => 3, // DS
+            _ => unreachable!(),
+        };
+        let value = self.pop(memory_bus);
+        self.set_segreg(seg, value);
+
+        // POP segment register: 8 cycles
+        self.last_instruction_cycles = timing::cycles::POP_SEGREG;
+    }
+
+    /// LES - Load Pointer using ES (opcode 0xC4)
+    /// Loads far pointer from bus into register and ES
+    pub(in crate::cpu) fn les(&mut self, memory_bus: &MemoryBus) {
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        // LES only works with bus operands
+        if mode == 0b11 {
+            panic!("LES cannot use register operand");
+        }
+
+        // Read offset and segment from bus (4 bytes total)
+        let offset = memory_bus.read_u16(addr);
+        let segment = memory_bus.read_u16(addr + 2);
+
+        self.set_reg16(reg, offset);
+        self.es = segment;
+
+        // LES: 16 + EA cycles
+        let rm = modrm & 0x07;
+        self.last_instruction_cycles = timing::cycles::LES
+            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
+    }
+
+    /// XCHG register with accumulator (opcodes 90-97)
+    /// 90: NOP (XCHG AX, AX) - special case
+    /// 91-97: XCHG AX, reg16
+    pub(in crate::cpu) fn xchg_ax_reg(&mut self, opcode: u8) {
+        let reg = opcode & 0x07;
+        if reg == 0 {
+            // NOP - XCHG AX, AX does nothing
+            self.last_instruction_cycles = timing::cycles::NOP;
+            return;
+        }
+        let temp = self.ax;
+        self.ax = self.get_reg16(reg);
+        self.set_reg16(reg, temp);
+
+        // XCHG AX, reg: 3 cycles
+        self.last_instruction_cycles = timing::cycles::XCHG_REG_ACC;
+    }
+
+    /// XCHG register/bus with register (opcodes 86-87)
+    /// 86: XCHG r/m8, r8
+    /// 87: XCHG r/m16, r16
+    pub(in crate::cpu) fn xchg_rm_reg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let is_word = opcode & 0x01 != 0;
+        let modrm = self.fetch_byte(memory_bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+
+        if is_word {
+            // 16-bit exchange
+            let reg_val = self.get_reg16(reg);
+            let rm_val = self.read_rm16(mode, rm, addr, memory_bus);
+            self.set_reg16(reg, rm_val);
+            self.write_rm16(mode, rm, addr, reg_val, memory_bus);
+        } else {
+            // 8-bit exchange
+            let reg_val = self.get_reg8(reg);
+            let rm_val = self.read_rm8(mode, rm, addr, memory_bus);
+            self.set_reg8(reg, rm_val);
+            self.write_rm8(mode, rm, addr, reg_val, memory_bus);
+        }
+
+        // Calculate cycle timing
+        self.last_instruction_cycles = if mode == 0b11 {
+            // XCHG reg, reg: 4 cycles
+            timing::cycles::XCHG_REG_REG
+        } else {
+            // XCHG reg, mem: 17 + EA cycles
+            timing::cycles::XCHG_REG_MEM
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
+        };
+    }
+
+    /// LEA - Load Effective Address (opcode 0x8D)
+    /// Loads the offset of the source operand into destination register
+    pub(in crate::cpu) fn lea(&mut self, memory_bus: &MemoryBus) {
+        let modrm = self.fetch_byte(memory_bus);
+        let mode = modrm >> 6;
+        let reg = (modrm >> 3) & 0x07;
+        let rm = modrm & 0x07;
+
+        // LEA only works with bus operands (mode != 11)
+        if mode == 0b11 {
+            panic!("LEA cannot use register operand");
+        }
+
+        // Calculate the effective address offset (not physical address)
+        let offset = match rm {
+            0b000 => self.bx.wrapping_add(self.si), // [BX + SI]
+            0b001 => self.bx.wrapping_add(self.di), // [BX + DI]
+            0b010 => self.bp.wrapping_add(self.si), // [BP + SI]
+            0b011 => self.bp.wrapping_add(self.di), // [BP + DI]
+            0b100 => self.si,                       // [SI]
+            0b101 => self.di,                       // [DI]
+            0b110 => {
+                if mode == 0b00 {
+                    // Special case: direct address
+                    self.fetch_word(memory_bus)
+                } else {
+                    self.bp // [BP]
+                }
+            }
+            0b111 => self.bx, // [BX]
+            _ => unreachable!(),
+        };
+
+        // Add displacement based on mode
+        let effective_offset = match mode {
+            0b00 => offset, // No displacement (except for direct addressing handled above)
+            0b01 => {
+                // 8-bit signed displacement
+                let disp = self.fetch_byte(memory_bus) as i8;
+                offset.wrapping_add(disp as i16 as u16)
+            }
+            0b10 => {
+                // 16-bit displacement
+                let disp = self.fetch_word(memory_bus);
+                offset.wrapping_add(disp)
+            }
+            _ => unreachable!(),
+        };
+
+        self.set_reg16(reg, effective_offset);
+
+        // LEA: 2 + EA cycles (EA calculation is done even though bus isn't accessed)
+        self.last_instruction_cycles = timing::cycles::LEA
+            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
+    }
+
+    /// LAHF - Load AH from Flags (opcode 0x9F)
+    /// Loads SF, ZF, AF, PF, CF into AH
+    pub(in crate::cpu) fn lahf(&mut self) {
+        let ah = (self.flags & 0xFF) as u8;
+        self.ax = (self.ax & 0x00FF) | ((ah as u16) << 8);
+
+        // LAHF: 4 cycles
+        self.last_instruction_cycles = timing::cycles::LAHF;
+    }
+
+    /// SAHF - Store AH into Flags (opcode 0x9E)
+    /// Stores AH into SF, ZF, AF, PF, CF
+    pub(in crate::cpu) fn sahf(&mut self) {
+        let ah = ((self.ax >> 8) & 0xFF) as u8;
+        // Only update lower 8 bits of flags (SF, ZF, 0, AF, 0, PF, 1, CF)
+        // Preserve upper 8 bits
+        self.flags = (self.flags & 0xFF00) | (ah as u16);
+
+        // SAHF: 4 cycles
+        self.last_instruction_cycles = timing::cycles::SAHF;
+    }
+
+    /// XLAT - Table Look-up Translation (opcode 0xD7)
+    /// Translates AL using lookup table at DS:BX
+    /// AL = [DS:BX + AL]
+    pub(in crate::cpu) fn xlat(&mut self, memory_bus: &MemoryBus) {
+        let al = (self.ax & 0xFF) as u8;
+        let offset = self.bx.wrapping_add(al as u16);
+        // Use segment override if present, otherwise use DS
+        let segment = self.segment_override.unwrap_or(self.ds);
+        let addr = physical_address(segment, offset);
+        let value = memory_bus.read_u8(addr);
+        self.ax = (self.ax & 0xFF00) | (value as u16);
+
+        // XLAT: 11 cycles
+        self.last_instruction_cycles = timing::cycles::XLAT;
+    }
+
+    /// PUSHF - Push Flags Register (opcode 9C)
+    /// Pushes the FLAGS register onto the stack
+    pub(in crate::cpu) fn pushf(&mut self, memory_bus: &mut MemoryBus) {
+        self.push(self.flags, memory_bus);
+
+        // PUSHF: 10 cycles
+        self.last_instruction_cycles = timing::cycles::PUSHF;
+    }
+
+    /// POPF - Pop Flags Register (opcode 9D)
+    /// Pops a word from the stack into the FLAGS register
+    /// On 8086: only bits 0-11 can be modified, bit 1 is always 1
+    pub(in crate::cpu) fn popf(&mut self, memory_bus: &mut MemoryBus) {
+        let value = self.pop(memory_bus);
+        // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
+        self.flags = (value & 0x0FFF) | 0x0002;
+
+        // POPF: 8 cycles
+        self.last_instruction_cycles = timing::cycles::POPF;
+    }
+
+    /// PUSHA - Push All General Registers (opcode 0x60)
+    /// Pushes AX, CX, DX, BX, original SP, BP, SI, DI onto the stack
+    /// 80186+ instruction
+    pub(in crate::cpu) fn pusha(&mut self, memory_bus: &mut MemoryBus) {
+        let original_sp = self.sp;
+        self.push(self.ax, memory_bus);
+        self.push(self.cx, memory_bus);
+        self.push(self.dx, memory_bus);
+        self.push(self.bx, memory_bus);
+        self.push(original_sp, memory_bus);
+        self.push(self.bp, memory_bus);
+        self.push(self.si, memory_bus);
+        self.push(self.di, memory_bus);
+
+        // PUSHA: 36 cycles (80186+)
+        self.last_instruction_cycles = timing::cycles::PUSHA;
+    }
+
+    /// PUSH immediate (opcode 68: 16-bit, 6A: sign-extended 8-bit)
+    pub(in crate::cpu) fn push_imm(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        let value = if opcode == 0x68 {
+            // PUSH imm16
+            self.fetch_word(memory_bus)
+        } else {
+            // PUSH imm8 (sign-extended to 16 bits)
+            let imm8 = self.fetch_byte(memory_bus);
+            if imm8 & 0x80 != 0 {
+                0xFF00 | (imm8 as u16)
+            } else {
+                imm8 as u16
+            }
+        };
+        self.push(value, memory_bus);
+
+        // PUSH immediate: 10 cycles (80186+)
+        self.last_instruction_cycles = timing::cycles::PUSH_IMM;
+    }
 }
 
 #[cfg(test)]

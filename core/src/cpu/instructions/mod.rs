@@ -4,13 +4,14 @@ use crate::{
     physical_address,
 };
 
-mod control_flow;
-mod data_transfer;
-mod logical;
-mod string;
 mod arithmetic;
 mod comparison;
+mod control_flow;
+mod data_transfer;
+mod decoder;
+mod logical;
 mod shift_rotate;
+mod string;
 
 impl Cpu {
     // Decode ModR/M byte and calculate effective address
@@ -194,7 +195,14 @@ impl Cpu {
     }
 
     // Write 16-bit value to register or memory based on mod field
-    fn write_rm16(&mut self, mode: u8, rm: u8, addr: usize, value: u16, memory_bus: &mut MemoryBus) {
+    fn write_rm16(
+        &mut self,
+        mode: u8,
+        rm: u8,
+        addr: usize,
+        value: u16,
+        memory_bus: &mut MemoryBus,
+    ) {
         if mode == 0b11 {
             // Register mode
             self.set_reg16(rm, value);
@@ -217,5 +225,16 @@ impl Cpu {
         let value = memory_bus.read_u16(addr);
         self.sp = self.sp.wrapping_add(2);
         value
+    }
+
+    // Get segment register value
+    fn get_segreg(&self, reg: u8) -> u16 {
+        match reg & 0x03 {
+            0 => self.es,
+            1 => self.cs,
+            2 => self.ss,
+            3 => self.ds,
+            _ => unreachable!(),
+        }
     }
 }
