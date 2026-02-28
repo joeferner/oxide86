@@ -319,69 +319,14 @@ impl Cpu {
         io_device: &mut IoDevice,
     ) {
         match opcode {
-            // ADD r/m to register
-            0x00..=0x03 => self.add_rm_reg(opcode, bus),
-
-            // ADD immediate to AL/AX
-            0x04..=0x05 => self.add_imm_acc(opcode, bus),
-
-            // PUSH ES (06)
-            0x06 => self.push_segreg(opcode, bus),
-
-            // POP ES (07)
-            0x07 => self.pop_segreg(opcode, bus),
-
-            // OR r/m to register
-            0x08..=0x0B => self.or_rm_reg(opcode, bus),
-
            // PUSH CS (0E)
             0x0E => self.push_segreg(opcode, bus),
-
-            // POP CS (0F) - 8086 only, repurposed as two-byte prefix on 80286+
-            0x0F => {
-                log::warn!(
-                    "POP CS at {:04X}:{:04X} (8086 instruction, dangerous!)",
-                    self.cs,
-                    self.ip.wrapping_sub(1)
-                );
-                self.pop_segreg(opcode, bus);
-            }
-
-            // ADC r/m to register (10-13)
-            0x10..=0x13 => self.adc_rm_reg(opcode, bus),
-
-            // ADC immediate to AL/AX (14-15)
-            0x14..=0x15 => self.adc_imm_acc(opcode, bus),
 
             // PUSH SS (16)
             0x16 => self.push_segreg(opcode, bus),
 
             // POP SS (17)
             0x17 => self.pop_segreg(opcode, bus),
-
-            // SBB r/m to register (18-1B)
-            0x18..=0x1B => self.sbb_rm_reg(opcode, bus),
-
-            // SBB immediate to AL/AX (1C-1D)
-            0x1C..=0x1D => self.sbb_imm_acc(opcode, bus),
-
-            // PUSH DS (1E)
-            0x1E => self.push_segreg(opcode, bus),
-
-            // POP DS (1F)
-            0x1F => self.pop_segreg(opcode, bus),
-
-            // AND r/m to register
-            0x20..=0x23 => self.and_rm_reg(opcode, bus),
-
-            // DAA - Decimal Adjust After Addition (27)
-            0x27 => self.daa(),
-
-            // SUB r/m to register
-            0x28..=0x2B => self.sub_rm_reg(opcode, bus),
-
-            // SUB immediate to AL/AX
-            0x2C..=0x2D => self.sub_imm_acc(opcode, bus),
 
             // CS: segment override prefix (2E)
             0x2E => {
@@ -391,15 +336,6 @@ impl Cpu {
                 self.segment_override = None;
             }
 
-            // DAS - Decimal Adjust After Subtraction (2F)
-            0x2F => self.das(),
-
-            // XOR r/m to register
-            0x30..=0x33 => self.xor_rm_reg(opcode, bus),
-
-            // XOR immediate to AL/AX
-            0x34..=0x35 => self.xor_imm_acc(opcode, bus),
-
             // SS: segment override prefix (36)
             0x36 => {
                 self.segment_override = Some(self.ss);
@@ -408,9 +344,6 @@ impl Cpu {
                 self.segment_override = None;
             }
 
-            // AAA - ASCII Adjust After Addition (37)
-            0x37 => self.aaa(),
-
             // DS: segment override prefix (3E)
             0x3E => {
                 self.segment_override = Some(self.ds);
@@ -418,12 +351,6 @@ impl Cpu {
                 self.execute_with_io(next_opcode, bus, bios, io_device);
                 self.segment_override = None;
             }
-
-            // AAS - ASCII Adjust After Subtraction (3F)
-            0x3F => self.aas(),
-
-            // PUSHA - Push All General Registers (60)
-            0x60 => self.pusha(bus),
 
             // POPA - Pop All General Registers (61)
             0x61 => self.popa(bus),
@@ -447,14 +374,6 @@ impl Cpu {
                 }
             }
 
-            // FS: segment override prefix (64) - 80386+
-            0x64 => {
-                self.segment_override = Some(self.fs);
-                let next_opcode = self.fetch_byte(bus);
-                self.execute_with_io(next_opcode, bus, bios, io_device);
-                self.segment_override = None;
-            }
-
             // GS: segment override prefix (65) - 80386+
             0x65 => {
                 self.segment_override = Some(self.gs);
@@ -463,78 +382,18 @@ impl Cpu {
                 self.segment_override = None;
             }
 
-            // PUSH immediate (68: imm16, 6A: imm8 sign-extended)
-            0x68 | 0x6A => self.push_imm(opcode, bus),
-
             // IMUL - Signed Multiply with Immediate (69: imm16, 6B: imm8 sign-extended)
             0x69 => self.imul_imm16(bus),
             0x6B => self.imul_imm8(bus),
 
-            // INS - Input String from Port (6C-6D)
-            0x6C..=0x6D => self.ins(opcode, bus, bios, io_device),
-
             // OUTS - Output String to Port (6E-6F)
             0x6E..=0x6F => self.outs(opcode, bus, bios, io_device),
-
-            // XCHG r/m and register (86-87)
-            0x86..=0x87 => self.xchg_rm_reg(opcode, bus),
-
-            // MOV segment register to r/m16 (8C)
-            0x8C => self.mov_segreg_to_rm(bus),
-
-            // LEA - Load Effective Address (8D)
-            0x8D => self.lea(bus),
 
             // POP r/m16 (8F) - Group 1A
             0x8F => self.pop_rm16(bus),
 
-            // NOP / XCHG AX, reg (90-97)
-            0x90..=0x97 => self.xchg_ax_reg(opcode),
-
-            // CBW - Convert Byte to Word (98)
-            0x98 => self.cbw(),
-
-            // CWD - Convert Word to Double word (99)
-            0x99 => self.cwd(),
-
             // CALL far (9A)
             0x9A => self.call_far(bus),
-
-            // PUSHF - Push Flags (9C)
-            0x9C => self.pushf(bus),
-
-            // POPF - Pop Flags (9D)
-            0x9D => self.popf(bus),
-
-            // SAHF - Store AH into Flags (9E)
-            0x9E => self.sahf(),
-
-            // LAHF - Load AH from Flags (9F)
-            0x9F => self.lahf(),
-
-            // MOVS - Move String (A4-A5)
-            0xA4..=0xA5 => self.movs(opcode, bus),
-
-            // CMPS - Compare String (A6-A7)
-            0xA6..=0xA7 => self.cmps(opcode, bus),
-
-            // STOS - Store String (AA-AB)
-            0xAA..=0xAB => self.stos(opcode, bus),
-
-            // SCAS - Scan String (AE-AF)
-            0xAE..=0xAF => self.scas(opcode, bus),
-
-            // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
-            0xC0..=0xC1 => self.shift_rotate_group(opcode, bus),
-
-            // LES - Load Pointer using ES (C4)
-            0xC4 => self.les(bus),
-
-            // LDS - Load Pointer using DS (C5)
-            0xC5 => self.lds(bus),
-
-            // ENTER - Make Stack Frame (C8, 80186+)
-            0xC8 => self.enter(bus),
 
             // LEAVE - High Level Procedure Exit (C9, 80186+)
             0xC9 => self.leave(bus),
@@ -542,39 +401,11 @@ impl Cpu {
             // RET far (CA: with imm16, CB: without)
             0xCA..=0xCB => self.retf(opcode, bus),
 
-            // INT 3 - Breakpoint (CC)
-            0xCC => self.int3(bus),
-
             // INTO - Interrupt on Overflow (CE)
             0xCE => self.into(bus),
 
             // IRET - Interrupt Return (CF)
             0xCF => self.iret(bus),
-
-            // AAM - ASCII Adjust After Multiplication (D4)
-            0xD4 => self.aam(bus),
-
-            // AAD - ASCII Adjust Before Division (D5)
-            0xD5 => self.aad(bus),
-
-            // XLAT - Table Look-up Translation (D7)
-            0xD7 => self.xlat(bus),
-
-            // ESC - Escape to coprocessor (D8-DF)
-            // Passes instruction to 8087 FPU; NOP without coprocessor
-            0xD8..=0xDF => self.esc(bus),
-
-            // LOOPNE/LOOPNZ (E0)
-            0xE0 => self.loopne(bus),
-
-            // LOOPE/LOOPZ (E1)
-            0xE1 => self.loope(bus),
-
-            // LOOP (E2)
-            0xE2 => self.loop_inst(bus),
-
-            // JCXZ (E3)
-            0xE3 => self.jcxz(bus),
 
             // IN AL, imm8 (E4)
             0xE4 => self.in_al_imm8(bus, bios, io_device),
@@ -606,49 +437,6 @@ impl Cpu {
             // OUT DX, AX (EF)
             0xEF => self.out_dx_ax(bus, bios, io_device),
 
-            // LOCK prefix (F0)
-            // Asserts LOCK# signal for atomic memory operations; no-op in single-processor emulator
-            0xF0 => {
-                let next_opcode = self.fetch_byte(bus);
-                self.execute_with_io(next_opcode, bus, bios, io_device);
-            }
-
-            // REPNE/REPNZ prefix (F2)
-            0xF2 => {
-                self.repeat_prefix = Some(RepeatPrefix::Repne);
-                let next_opcode = self.fetch_byte(bus);
-                self.execute_with_io(next_opcode, bus, bios, io_device);
-                self.repeat_prefix = None;
-            }
-
-            // REP/REPE/REPZ prefix (F3)
-            0xF3 => {
-                self.repeat_prefix = Some(RepeatPrefix::Rep);
-                let next_opcode = self.fetch_byte(bus);
-                self.execute_with_io(next_opcode, bus, bios, io_device);
-                self.repeat_prefix = None;
-            }
-
-            // CMC - Complement Carry Flag (F5)
-            0xF5 => self.cmc(),
-
-            // CLC - Clear Carry Flag (F8)
-            0xF8 => self.clc(),
-
-            // STC - Set Carry Flag (F9)
-            0xF9 => self.stc(),
-
-            // CLI - Clear Interrupt Flag (FA)
-            0xFA => self.cli(),
-
-            // STI - Set Interrupt Flag (FB)
-            0xFB => self.sti(),
-
-            // CLD - Clear Direction Flag (FC)
-            0xFC => self.cld(),
-
-            // STD - Set Direction Flag (FD)
-            0xFD => self.std_flag(),
         }
     }
 
@@ -712,17 +500,6 @@ impl Cpu {
         }
     }
 
-    // Get segment register value
-    pub(super) fn get_segreg(&self, reg: u8) -> u16 {
-        match reg & 0x03 {
-            0 => self.es,
-            1 => self.cs,
-            2 => self.ss,
-            3 => self.ds,
-            _ => unreachable!(),
-        }
-    }
-
     // Set segment register value
     pub(super) fn set_segreg(&mut self, reg: u8, value: u16) {
         match reg & 0x03 {
@@ -759,21 +536,6 @@ impl Cpu {
     pub(super) fn get_flag(&self, flag: u16) -> bool {
         (self.flags & flag) != 0
     }
-
-// MIGRATED      // Push 16-bit value onto stack
-// MIGRATED      pub(super) fn push(&mut self, value: u16, bus: &mut Bus) {
-// MIGRATED          self.sp = self.sp.wrapping_sub(2);
-// MIGRATED          let addr = Self::physical_address(self.ss, self.sp);
-// MIGRATED          bus.write_u16(addr, value);
-// MIGRATED      }
-
-// MIGRATED      // Pop 16-bit value from stack
-// MIGRATED      pub(super) fn pop(&mut self, bus: &Bus) -> u16 {
-// MIGRATED          let addr = Self::physical_address(self.ss, self.sp);
-// MIGRATED          let value = bus.read_u16(addr);
-// MIGRATED          self.sp = self.sp.wrapping_add(2);
-// MIGRATED          value
-// MIGRATED      }
 
     // Decode ModR/M byte and calculate effective address
     // Returns (mod, reg, r/m, effective_address, default_segment)

@@ -47,8 +47,6 @@ pub struct Computer<V: VideoController = NullVideoController> {
     /// Instruction step counter for debugging
     step_count: u64,
 
-    /// if set to true, opcode execution will be logged as info level
-    pub exec_logging_enabled: bool,
     /// if set to true, interrupts will be logged as info level
     log_interrupts_enabled: bool,
 
@@ -145,7 +143,6 @@ impl<V: VideoController> Computer<V> {
             cycle_count: 0,
             total_cycles: 0,
             step_count: 0,
-            exec_logging_enabled: false,
             log_interrupts_enabled: false,
             pending_keyboard_irqs: std::collections::VecDeque::new(),
             pending_serial_irqs: std::collections::VecDeque::new(),
@@ -1123,42 +1120,6 @@ impl<V: VideoController> Computer<V> {
 
         let addr = Cpu::physical_address(current_cs, current_ip);
         let opcode = self.bus.read_u8(addr);
-
-        if self.exec_logging_enabled {
-            let decoded = crate::decoder::decode_instruction_with_regs(
-                self.bus.memory(),
-                current_cs,
-                current_ip,
-                Some(&self.cpu),
-            );
-
-            // Combine register and memory values for logging
-            let mut values = String::new();
-            if !decoded.reg_values.is_empty() {
-                values.push_str(&decoded.reg_values);
-            }
-            if !decoded.mem_values.is_empty() {
-                if !values.is_empty() {
-                    values.push(' ');
-                }
-                values.push_str(&decoded.mem_values);
-            }
-
-            let bytes_hex = decoded
-                .bytes
-                .iter()
-                .map(|b| format!("{:02X}", b))
-                .collect::<Vec<_>>()
-                .join(" ");
-            log::info!(
-                "OP {:04X}:{:04X} {:<18} {:30} {}",
-                current_cs,
-                current_ip,
-                bytes_hex,
-                decoded.text,
-                values,
-            );
-        }
 
         // Check if it's an INT instruction
         match opcode {

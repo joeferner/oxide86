@@ -43,7 +43,6 @@ impl Cpu {
             0x06 => self.int21_direct_console_io(bus, io),
             0x07 => self.int21_direct_console_input(io),
             0x08 => self.int21_console_input_no_echo(io),
-// MIGRATED              0x09 => self.int21_write_string(bus),
             0x0B => self.int21_check_input_status(io),
             0x0C => self.int21_flush_and_input(bus, io),
             0x0E => self.int21_select_disk(io),
