@@ -1,11 +1,14 @@
-use crate::DeviceRef;
+use crate::{
+    Devices,
+    disk::{DiskError, DriveNumber},
+};
 
 pub struct IoBus {
-    devices: Vec<DeviceRef>,
+    devices: Devices,
 }
 
 impl IoBus {
-    pub fn new(devices: Vec<DeviceRef>) -> Self {
+    pub fn new(devices: Devices) -> Self {
         Self { devices }
     }
 
@@ -32,5 +35,22 @@ impl IoBus {
         }
 
         log::warn!("No device responded to io write port: 0x{port:04X}, val: 0x{val:02X}");
+    }
+
+    pub fn disk_read_sectors(
+        &self,
+        drive: DriveNumber,
+        cylinder: u8,
+        head: u8,
+        sector: u8,
+        count: u8,
+    ) -> Result<Vec<u8>, DiskError> {
+        if let Some(disk_controller) = self.devices.find_disk_controller(drive) {
+            disk_controller
+                .borrow()
+                .read_sectors(cylinder, head, sector, count)
+        } else {
+            Err(DiskError::DriveNotReady)
+        }
     }
 }

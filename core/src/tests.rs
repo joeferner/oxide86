@@ -1,12 +1,11 @@
 #[cfg(test)]
 mod tests {
     use anyhow::Context;
+    use std::fs::File;
     use std::io::Read;
-    use std::rc::Rc;
     use std::sync::Arc;
-    use std::{cell::RefCell, fs::File};
 
-    use crate::DeviceRef;
+    use crate::Devices;
     use crate::cpu::CpuType;
     use crate::io_bus::IoBus;
     use crate::video::video_buffer::RenderResult;
@@ -23,8 +22,8 @@ mod tests {
 
     fn create_computer() -> (Computer, Arc<VideoBuffer>) {
         let video_buffer = Arc::new(VideoBuffer::new());
-        let devices: Vec<DeviceRef> =
-            vec![Rc::new(RefCell::new(VideoCard::new(video_buffer.clone())))];
+        let mut devices = Devices::new();
+        devices.push(VideoCard::new(video_buffer.clone()));
         let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), devices.clone());
         let io_bus = IoBus::new(devices);
         let cpu = Cpu::new(CpuType::I8086);

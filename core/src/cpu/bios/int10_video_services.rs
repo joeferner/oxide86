@@ -12,6 +12,23 @@ use crate::{
 };
 
 impl Cpu {
+    /// INT 0x10 - Video Services
+    /// AH register contains the function number
+    pub(in crate::cpu) fn handle_int10_video_services(
+        &mut self,
+        memory_bus: &mut MemoryBus,
+        io_bus: &mut IoBus,
+    ) {
+        let function = (self.ax >> 8) as u8; // Get AH
+
+        match function {
+            0x0E => self.int10_teletype_output(memory_bus, io_bus),
+            _ => {
+                log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
+            }
+        }
+    }
+
     /// INT 10h, AH=0Eh - Teletype Output
     /// Input:
     ///   AL = character to write

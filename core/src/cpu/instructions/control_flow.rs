@@ -376,4 +376,53 @@ impl Cpu {
         // INT 3: 52 cycles
         self.last_instruction_cycles = timing::cycles::INT3;
     }
+
+    /// JMP near relative (opcode E9)
+    /// Jump to IP + signed 16-bit displacement
+    pub(in crate::cpu) fn jmp_near(&mut self, memory_bus: &MemoryBus) {
+        let offset = self.fetch_word(memory_bus) as i16;
+        self.ip = self.ip.wrapping_add(offset as u16);
+
+        // JMP near direct: 15 cycles
+        self.last_instruction_cycles = timing::cycles::JMP_NEAR_DIRECT;
+    }
+
+    /// JMP far direct (opcode EA)
+    /// Jump to far address (segment:offset)
+    pub(in crate::cpu) fn jmp_far(&mut self, memory_bus: &MemoryBus) {
+        let offset = self.fetch_word(memory_bus);
+        let segment = self.fetch_word(memory_bus);
+        self.ip = offset;
+        self.cs = segment;
+
+        // JMP far direct: 15 cycles
+        self.last_instruction_cycles = timing::cycles::JMP_FAR_DIRECT;
+    }
+
+    /// RET far (opcodes CA, CB)
+    /// CA: RET far with imm16 (pop additional bytes)
+    /// CB: RET far
+    pub(in crate::cpu) fn retf(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+        // If opcode is CA, fetch the immediate BEFORE popping
+        // (fetch_word reads from CS:IP which will change after pops)
+        let bytes_to_pop = if opcode == 0xCA {
+            self.fetch_word(memory_bus)
+        } else {
+            0
+        };
+
+        // Pop IP and CS
+        self.ip = self.pop(memory_bus);
+        self.cs = self.pop(memory_bus);
+
+        // Add the immediate to SP (if CA)
+        self.sp = self.sp.wrapping_add(bytes_to_pop);
+
+        // RET far: 18 cycles (CB), 17 cycles (CA with pop)
+        self.last_instruction_cycles = if opcode == 0xCA {
+            timing::cycles::RET_FAR_POP
+        } else {
+            timing::cycles::RET_FAR
+        };
+    }
 }

@@ -5,6 +5,7 @@ use crate::{
 
 pub mod bda;
 pub mod int10_video_services;
+pub mod int13_disk_services;
 pub mod int21_dos_services;
 
 // BIOS code segment

@@ -1,4 +1,7 @@
-use crate::{cpu::bios::BIOS_CODE_SEGMENT, io_bus::IoBus, memory_bus::MemoryBus, physical_address};
+use crate::{
+    cpu::bios::BIOS_CODE_SEGMENT, disk::DriveNumber, io_bus::IoBus, memory_bus::MemoryBus,
+    physical_address,
+};
 pub mod bios;
 mod cpu_type;
 mod instructions;
@@ -79,6 +82,9 @@ pub struct Cpu {
     /// Set by instructions that trigger CPU exceptions; fired by Computer::step()
     pending_exception: Option<u8>,
 
+    /// Last disk operation status (for INT 13h AH=01h)
+    pub last_disk_status: u8,
+
     /// if set to true, opcode execution will be logged as info level
     pub exec_logging_enabled: bool,
 }
@@ -108,6 +114,7 @@ impl Cpu {
             segment_override: None,
             repeat_prefix: None,
             pending_exception: None,
+            last_disk_status: 0,
             exec_logging_enabled: false,
         }
     }
@@ -189,6 +196,9 @@ impl Cpu {
             // OR immediate to AL/AX
             0x0C..=0x0D => self.or_imm_acc(opcode, memory_bus),
 
+            // PUSH CS (0E)
+            0x0E => self.push_segreg(opcode, memory_bus),
+
             // POP CS (0F) - 8086 only, repurposed as two-byte prefix on 80286+
             0x0F => {
                 log::warn!(
@@ -204,6 +214,9 @@ impl Cpu {
 
             // ADC immediate to AL/AX (14-15)
             0x14..=0x15 => self.adc_imm_acc(opcode, memory_bus),
+
+            // PUSH SS (16)
+            0x16 => self.push_segreg(opcode, memory_bus),
 
             // SBB r/m to register (18-1B)
             0x18..=0x1B => self.sbb_rm_reg(opcode, memory_bus),
@@ -239,6 +252,13 @@ impl Cpu {
             // SUB immediate to AL/AX
             0x2C..=0x2D => self.sub_imm_acc(opcode, memory_bus),
 
+            // CS: segment override prefix (2E)
+            0x2E => {
+                self.segment_override = Some(self.cs);
+                self.step(memory_bus, io_bus);
+                self.segment_override = None;
+            }
+
             // DAS - Decimal Adjust After Subtraction (2F)
             0x2F => self.das(),
 
@@ -248,6 +268,13 @@ impl Cpu {
             // XOR immediate to AL/AX
             0x34..=0x35 => self.xor_imm_acc(opcode, memory_bus),
 
+            // SS: segment override prefix (36)
+            0x36 => {
+                self.segment_override = Some(self.ss);
+                self.step(memory_bus, io_bus);
+                self.segment_override = None;
+            }
+
             // AAA - ASCII Adjust After Addition (37)
             0x37 => self.aaa(),
 
@@ -256,6 +283,13 @@ impl Cpu {
 
             // CMP immediate to AL/AX
             0x3C..=0x3D => self.cmp_imm_acc(opcode, memory_bus),
+
+            // DS: segment override prefix (3E)
+            0x3E => {
+                self.segment_override = Some(self.ds);
+                self.step(memory_bus, io_bus);
+                self.segment_override = None;
+            }
 
             // AAS - ASCII Adjust After Subtraction (3F)
             0x3F => self.aas(),
@@ -313,6 +347,9 @@ impl Cpu {
 
             // MOV r/m16 to segment register (8E)
             0x8E => self.mov_rm_to_segreg(memory_bus),
+
+            // POP r/m16 (8F) - Group 1A
+            0x8F => self.pop_rm16(memory_bus),
 
             // NOP / XCHG AX, reg (90-97)
             0x90..=0x97 => self.xchg_ax_reg(opcode),
@@ -377,11 +414,17 @@ impl Cpu {
             // ENTER - Make Stack Frame (C8, 80186+)
             0xC8 => self.enter(memory_bus),
 
+            // RET far (CA: with imm16, CB: without)
+            0xCA..=0xCB => self.retf(opcode, memory_bus),
+
             // INT 3 - Breakpoint (CC)
             0xCC => self.int3(memory_bus),
 
             // INT - Software Interrupt (CD)
             0xCD => self.int(memory_bus),
+
+            // IRET - Interrupt Return (CF)
+            0xCF => self.iret(memory_bus),
 
             // Shift/Rotate Group 2 (D0: r/m8, 1; D1: r/m16, 1; D2: r/m8, CL; D3: r/m16, CL)
             0xD0..=0xD3 => self.shift_rotate_group(opcode, memory_bus),
@@ -413,6 +456,12 @@ impl Cpu {
 
             // CALL near relative (E8)
             0xE8 => self.call_near(memory_bus),
+
+            // JMP near relative (E9)
+            0xE9 => self.jmp_near(memory_bus),
+
+            // JMP far (EA)
+            0xEA => self.jmp_far(memory_bus),
 
             // JMP short relative (EB)
             0xEB => self.jmp_short(memory_bus),
@@ -512,7 +561,7 @@ impl Cpu {
         (high << 8) | low
     }
 
-    pub fn reset(&mut self, segment: u16, offset: u16) {
+    pub fn reset(&mut self, segment: u16, offset: u16, boot_drive: Option<DriveNumber>) {
         self.ax = 0;
         self.bx = 0;
         self.cx = 0;
@@ -537,11 +586,20 @@ impl Cpu {
         self.cs = segment;
         self.ip = offset;
 
-        // Initialize other segments to reasonable defaults
-        self.ds = segment;
-        self.es = segment;
-        self.ss = segment;
-        self.sp = 0xFFFE; // Stack grows down from top of segment
+        if let Some(boot_drive) = boot_drive {
+            // DL contains boot drive number (0x00 for floppy A:, 0x80 for first hard disk)
+            self.dx = (self.dx & 0xFF00) | (boot_drive.to_standard() as u16);
+            // Set up stack at 0x0000:0x7C00 (just below boot sector)
+            // Some boot loaders expect this, others set up their own stack
+            self.ss = 0x0000;
+            self.sp = 0x7C00;
+        } else {
+            // Initialize other segments to reasonable defaults
+            self.ds = segment;
+            self.es = segment;
+            self.ss = segment;
+            self.sp = 0xFFFE; // Stack grows down from top of segment
+        }
 
         // Enable interrupts - DOS programs expect IF=1 (inherited from DOS environment)
         self.set_flag(cpu_flag::INTERRUPT, true);
@@ -550,6 +608,8 @@ impl Cpu {
     fn step_bios_int(&mut self, memory_bus: &mut MemoryBus, io_bus: &mut IoBus) {
         let int = self.ip / 4;
         match int {
+            0x10 => self.handle_int10_video_services(memory_bus, io_bus),
+            0x13 => self.handle_int13_disk_services(memory_bus, io_bus),
             0x21 => self.handle_int21_dos_services(memory_bus, io_bus),
             _ => log::error!("unhandled BIOS interrupt 0x{int:04X}"),
         }
@@ -560,9 +620,8 @@ impl Cpu {
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
-    use std::{cell::RefCell, rc::Rc};
 
-    use crate::DeviceRef;
+    use crate::Devices;
     use crate::cpu::CpuType;
     use crate::{
         cpu::Cpu,
@@ -574,7 +633,8 @@ mod tests {
     pub fn create_test_cpu() -> (Cpu, MemoryBus) {
         let cpu = Cpu::new(CpuType::I8086);
         let video_buffer = Arc::new(VideoBuffer::new());
-        let devices: Vec<DeviceRef> = vec![Rc::new(RefCell::new(VideoCard::new(video_buffer)))];
+        let mut devices = Devices::new();
+        devices.push(VideoCard::new(video_buffer));
         let memory_bus = MemoryBus::new(Memory::new(1024), devices);
 
         (cpu, memory_bus)

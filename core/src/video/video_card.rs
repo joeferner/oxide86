@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{any::Any, sync::Arc};
 
 use crate::{
     Device,
@@ -46,6 +46,10 @@ impl VideoCard {
 }
 
 impl Device for VideoCard {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+
     fn memory_read_u8(&self, addr: usize) -> Option<u8> {
         // Route to Video for memory-mapped ranges
         if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {

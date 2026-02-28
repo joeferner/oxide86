@@ -1,14 +1,14 @@
 use anyhow::Result;
 
-use crate::{DeviceRef, cpu::bios::bios_reset, memory::Memory};
+use crate::{Devices, cpu::bios::bios_reset, memory::Memory};
 
 pub struct MemoryBus {
     memory: Memory,
-    devices: Vec<DeviceRef>,
+    devices: Devices,
 }
 
 impl MemoryBus {
-    pub fn new(memory: Memory, devices: Vec<DeviceRef>) -> Self {
+    pub fn new(memory: Memory, devices: Devices) -> Self {
         Self { memory, devices }
     }
 
