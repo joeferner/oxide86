@@ -103,8 +103,7 @@ impl Cpu {
     }
 
     /// Get 8-bit register value
-    #[allow(dead_code)]
-    fn get_reg8(&self, reg: u8) -> u8 {
+    pub(in crate::cpu) fn get_reg8(&self, reg: u8) -> u8 {
         match reg {
             0 => (self.ax & 0xFF) as u8, // AL
             1 => (self.cx & 0xFF) as u8, // CL

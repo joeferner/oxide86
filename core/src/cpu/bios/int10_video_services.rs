@@ -108,6 +108,71 @@ fn set_cursor_pos(row: u8, col: u8, columns: u8, memory_bus: &mut MemoryBus, io_
     );
 }
 
-fn scroll_up(amt: u8, _memory_bus: &mut MemoryBus, _io_bus: &mut IoBus) {
-    todo!("scroll_up amt:{amt}");
+struct ScrollUp {
+    /// number of lines to scroll (0 = clear entire window)
+    pub lines: u8,
+    /// attribute for blank lines
+    pub attr: u8,
+    /// row of upper-left corner of window
+    pub top: u8,
+    /// column of upper-left corner
+    pub left: u8,
+    /// row of lower-right corner
+    pub bottom: u8,
+    /// column of lower-right corner
+    pub right: u8,
+    /// total number of columns in the video
+    pub cols: u8,
+}
+
+fn scroll_up_advanced(options: ScrollUp, memory_bus: &mut MemoryBus, _io_bus: &mut IoBus) {
+    if options.lines == 0 {
+        // Clear entire window
+        for row in options.top..=options.bottom {
+            for col in options.left..=options.right {
+                let offset = (row as usize * options.cols as usize + col as usize) * 2;
+                memory_bus.write_u8(CGA_MEMORY_START + offset, b' ');
+                memory_bus.write_u8(CGA_MEMORY_START + offset + 1, options.attr);
+            }
+        }
+    } else {
+        // Scroll up by 'lines' rows
+        for row in options.top..=options.bottom {
+            for col in options.left..=options.right {
+                let dest_offset = (row as usize * options.cols as usize + col as usize) * 2;
+                let src_row = row + options.lines;
+
+                if src_row <= options.bottom {
+                    // Copy from below - read from video buffer, not memory
+                    let src_offset = (src_row as usize * options.cols as usize + col as usize) * 2;
+                    let ch = memory_bus.read_u8(CGA_MEMORY_START + src_offset);
+                    let at = memory_bus.read_u8(CGA_MEMORY_START + src_offset + 1);
+                    memory_bus.write_u8(CGA_MEMORY_START + dest_offset, ch);
+                    memory_bus.write_u8(CGA_MEMORY_START + dest_offset + 1, at);
+                } else {
+                    // Fill with blanks
+                    memory_bus.write_u8(CGA_MEMORY_START + dest_offset, b' ');
+                    memory_bus.write_u8(CGA_MEMORY_START + dest_offset + 1, options.attr);
+                }
+            }
+        }
+    }
+}
+
+fn scroll_up(lines: u8, memory_bus: &mut MemoryBus, io_bus: &mut IoBus) {
+    let rows = bda_get_rows(memory_bus);
+    let cols = bda_get_columns(memory_bus);
+    scroll_up_advanced(
+        ScrollUp {
+            lines,
+            attr: 0x07,
+            top: 0,
+            left: 0,
+            bottom: rows,
+            right: cols,
+            cols,
+        },
+        memory_bus,
+        io_bus,
+    );
 }

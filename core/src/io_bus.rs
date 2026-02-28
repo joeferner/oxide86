@@ -17,7 +17,7 @@ impl IoBus {
         }
 
         log::warn!("No device responded to io write port: 0x{port:04X}");
-        return 0xff;
+        0xff
     }
 
     pub fn read_u16(&self, port: u16) -> u16 {

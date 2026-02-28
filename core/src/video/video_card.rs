@@ -39,7 +39,7 @@ impl VideoCard {
     fn _write_u8(&mut self, addr: usize, val: u8) {
         if addr < self.vram_size {
             let data = self.buffer.emu_get_back_buffer_mut();
-            log::info!("Write: [0x{addr:04X}] = 0x{val:02X}");
+            log::debug!("Write: [0x{addr:04X}] = 0x{val:02X}");
             data.vram[addr] = val;
         }
     }
