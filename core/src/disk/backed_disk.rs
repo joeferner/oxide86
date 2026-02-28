@@ -115,4 +115,8 @@ impl<B: DiskBackend> Disk for BackedDisk<B> {
 
         Ok(result)
     }
+
+    fn disk_geometry(&self) -> DiskGeometry {
+        self.geometry
+    }
 }

@@ -2,7 +2,7 @@ use std::any::Any;
 
 use crate::{
     Device,
-    disk::{Disk, DiskError, DriveNumber},
+    disk::{Disk, DiskError, DiskGeometry, DriveNumber},
 };
 
 pub struct DiskController {
@@ -17,6 +17,10 @@ impl DiskController {
 
     pub fn drive_number(&self) -> DriveNumber {
         self.drive_number
+    }
+
+    pub fn disk_geometry(&self) -> DiskGeometry {
+        self.disk.disk_geometry()
     }
 
     pub fn read_sectors(

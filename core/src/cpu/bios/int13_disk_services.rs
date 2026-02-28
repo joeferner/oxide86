@@ -6,6 +6,19 @@ use crate::{
     physical_address,
 };
 
+/// Drive parameters returned by INT 13h, AH=08h
+#[derive(Debug, Clone, Copy)]
+pub struct DriveParams {
+    /// Maximum cylinder number (0-based)
+    pub max_cylinder: u8,
+    /// Maximum head number (0-based)
+    pub max_head: u8,
+    /// Maximum sector number (1-based)
+    pub max_sector: u8,
+    /// Number of drives
+    pub drive_count: u8,
+}
+
 impl Cpu {
     /// INT 0x13 - BIOS Disk Services
     /// AH register contains the function number
@@ -26,6 +39,7 @@ impl Cpu {
 
         match function {
             0x02 => self.int13_read_sectors(memory_bus, io_bus),
+            0x08 => self.int13_get_drive_params(io_bus),
             _ => {
                 log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -84,6 +98,44 @@ impl Cpu {
                 );
                 self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.ax &= 0xFF00; // AL = 0 (no sectors read)
+                self.set_flag(cpu_flag::CARRY, true);
+                self.last_disk_status = error_code as u8;
+            }
+        }
+    }
+
+    /// INT 13h, AH=08h - Get Drive Parameters
+    /// Input:
+    ///   DL = drive number
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   CF = clear if success, set if error
+    ///   On success:
+    ///     CH = maximum cylinder number (low 8 bits)
+    ///     CL = maximum sector number (bits 0-5) + high 2 bits of max cylinder (bits 6-7)
+    ///     DH = maximum head number
+    ///     DL = number of drives
+    fn int13_get_drive_params(&mut self, io_bus: &mut IoBus) {
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
+
+        match io_bus.disk_get_params(drive) {
+            Ok(params) => {
+                // Pack cylinder into CH and CL
+                let cylinder = params.max_cylinder as u16;
+                let cylinder_low = (cylinder & 0xFF) as u8;
+                let cylinder_high = ((cylinder >> 8) & 0x03) as u8;
+
+                // Pack sector and cylinder high bits into CL
+                let cl = (params.max_sector & 0x3F) | (cylinder_high << 6);
+
+                self.cx = ((cylinder_low as u16) << 8) | (cl as u16); // CH:CL
+                self.dx = ((params.max_head as u16) << 8) | (params.drive_count as u16); // DH:DL
+                self.ax &= 0x00FF; // AH = 0 (success)
+                self.set_flag(cpu_flag::CARRY, false);
+                self.last_disk_status = DiskError::Success as u8;
+            }
+            Err(error_code) => {
+                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
                 self.set_flag(cpu_flag::CARRY, true);
                 self.last_disk_status = error_code as u8;
             }

@@ -36,4 +36,6 @@ pub trait Disk {
         sector: u8,
         count: u8,
     ) -> Result<Vec<u8>, DiskError>;
+
+    fn disk_geometry(&self) -> DiskGeometry;
 }

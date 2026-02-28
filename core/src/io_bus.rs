@@ -1,5 +1,9 @@
 use crate::{
     Devices,
+    cpu::bios::{
+        int13_disk_services::DriveParams,
+        int17_printer_services::{PrinterStatus, printer_status},
+    },
     disk::{DiskError, DriveNumber},
 };
 
@@ -51,6 +55,36 @@ impl IoBus {
                 .read_sectors(cylinder, head, sector, count)
         } else {
             Err(DiskError::DriveNotReady)
+        }
+    }
+
+    pub fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError> {
+        let disk_controller = self
+            .devices
+            .find_disk_controller(drive)
+            .ok_or(DiskError::DriveNotReady)?;
+
+        let geometry = disk_controller.borrow().disk_geometry();
+
+        // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
+        let drive_count = if drive.is_floppy() {
+            self.devices.floppy_drives_with_disk_count()
+        } else {
+            self.devices.hard_drive_count()
+        };
+
+        Ok(DriveParams {
+            max_cylinder: (geometry.cylinders - 1).min(255) as u8,
+            max_head: (geometry.heads - 1).min(255) as u8,
+            max_sector: geometry.sectors_per_track.min(255) as u8,
+            drive_count,
+        })
+    }
+
+    pub fn printer_init(&self, _printer: u8) -> PrinterStatus {
+        // No printer available - return timeout status
+        PrinterStatus {
+            status: printer_status::TIMEOUT,
         }
     }
 }
