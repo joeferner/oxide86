@@ -80,6 +80,10 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 :hourglass: - Partially Working
 :x: - Does not work
 
+## OS
+
+- :white_check_mark: MS-DOS 2.12
+
 ## Resources
 - [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
 - [x86 Reference](https://www.felixcloutier.com/x86/)
