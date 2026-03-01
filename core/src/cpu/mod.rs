@@ -609,6 +609,7 @@ impl Cpu {
             0x11 => self.handle_int11_get_equipment_list(bus),
             0x12 => self.handle_int12_get_memory_size(bus),
             0x13 => self.handle_int13_disk_services(bus),
+            0x16 => self.handle_int16_keyboard_services(bus),
             0x17 => self.handle_int17_printer_services(bus),
             0x1a => self.handle_int1a_time_services(bus),
             0x21 => self.handle_int21_dos_services(bus),
