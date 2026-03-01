@@ -9,6 +9,7 @@ mod comparison;
 mod control_flow;
 mod data_transfer;
 mod decoder;
+mod io;
 mod logical;
 mod shift_rotate;
 mod string;

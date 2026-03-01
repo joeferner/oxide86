@@ -12,6 +12,7 @@ use crate::{
     devices::{keyboard_controller::KeyboardController, pic::PIC},
     disk::{DiskController, DriveNumber},
     memory::Memory,
+    video::VideoCard,
 };
 
 const MEMORY_MAPPED_IO_START: usize = 0xA0000;
@@ -23,6 +24,7 @@ pub struct Bus {
     disk_controllers: Vec<Rc<RefCell<DiskController>>>,
     pic: Rc<RefCell<PIC>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
+    video_card: Option<Rc<RefCell<VideoCard>>>,
 }
 
 impl Bus {
@@ -35,6 +37,7 @@ impl Bus {
             disk_controllers: vec![],
             pic,
             keyboard_controller,
+            video_card: None,
         }
     }
 
@@ -54,12 +57,28 @@ impl Bus {
         self.keyboard_controller.borrow_mut()
     }
 
+    pub fn video_card_mut(&self) -> Option<RefMut<'_, VideoCard>> {
+        self.video_card
+            .as_ref()
+            .map(|video_card| video_card.borrow_mut())
+    }
+
     pub fn add_device<T: Device + 'static>(&mut self, device: T) {
         let rc = Rc::new(RefCell::new(device));
+
         let rc_any: Rc<dyn Any> = rc.clone();
         if let Ok(dc) = Rc::downcast::<RefCell<DiskController>>(rc_any) {
             self.disk_controllers.push(dc);
         }
+
+        let rc_any: Rc<dyn Any> = rc.clone();
+        if let Ok(dc) = Rc::downcast::<RefCell<VideoCard>>(rc_any) {
+            if self.video_card.is_some() {
+                panic!("video card already added");
+            }
+            self.video_card = Some(dc);
+        }
+
         self.devices.push(rc);
     }
 

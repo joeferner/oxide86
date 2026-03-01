@@ -218,6 +218,10 @@ pub fn bda_get_columns(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_SCREEN_COLUMNS)
 }
 
+pub fn bda_set_columns(bus: &mut Bus, cols: u8) {
+    bus.memory_write_u16(BDA_START + BDA_SCREEN_COLUMNS, cols as u16);
+}
+
 pub fn bda_get_rows(bus: &Bus) -> u8 {
     let rows = bus.memory_read_u8(BDA_START + BDA_EGA_ROWS);
     // On very old original IBM PCs (1981), the byte at 0x84 wasn't always
@@ -230,12 +234,24 @@ pub fn bda_get_rows(bus: &Bus) -> u8 {
     }
 }
 
+pub fn bda_set_rows(bus: &mut Bus, rows: u8) {
+    bus.memory_write_u8(BDA_START + BDA_EGA_ROWS, rows);
+}
+
 pub fn bda_get_video_mode(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_VIDEO_MODE)
 }
 
+pub fn bda_set_video_mode(bus: &mut Bus, mode: u8) {
+    bus.memory_write_u8(BDA_START + BDA_VIDEO_MODE, mode);
+}
+
 pub fn bda_get_video_page_size(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_VIDEO_PAGE_SIZE)
+}
+
+pub fn bda_set_video_page_size(bus: &mut Bus, page_size: u16) {
+    bus.memory_write_u16(BDA_START + BDA_VIDEO_PAGE_SIZE, page_size);
 }
 
 pub fn bda_set_video_page_offset(bus: &mut Bus, offset: u16) {

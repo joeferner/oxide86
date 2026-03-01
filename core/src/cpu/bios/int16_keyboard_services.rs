@@ -42,7 +42,8 @@ impl Cpu {
         if let Some(key) = bda_read_key(bus) {
             self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
         } else {
-            todo!("wait for a key press");
+            self.wait_for_key_press_patch_flags = false;
+            self.wait_for_key_press = true;
         }
     }
 

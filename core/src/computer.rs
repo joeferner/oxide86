@@ -36,7 +36,7 @@ impl Computer {
     }
 
     pub fn run(&mut self) {
-        while self.get_exit_code().is_none() {
+        while self.get_exit_code().is_none() && !self.cpu.wait_for_key_press() {
             self.step();
         }
     }
@@ -149,9 +149,14 @@ impl Computer {
 
     pub fn push_keyboard_key(&mut self, key: KeyPress) {
         self.bus.keyboard_controller_mut().push_key_press(key);
+        self.cpu.key_press(&mut self.bus);
     }
 
     pub fn get_exit_code(&self) -> Option<u8> {
         self.cpu.get_exit_code()
+    }
+
+    pub fn wait_for_key_press(&self) -> bool {
+        self.cpu.wait_for_key_press()
     }
 }

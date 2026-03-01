@@ -18,6 +18,11 @@ pub const VIDEO_CARD_START_ADDRESS_LOW_REGISTER: u8 = 0x0d;
 pub const VIDEO_CARD_REG_CURSOR_LOC_HIGH: u8 = 0x0e;
 pub const VIDEO_CARD_REG_CURSOR_LOC_LOW: u8 = 0x0f;
 
+pub struct ModeInfo {
+    pub rows: u8,
+    pub cols: u8,
+}
+
 pub struct VideoCard {
     buffer: Arc<RwLock<VideoBuffer>>,
     vram_size: usize,
@@ -52,6 +57,53 @@ impl VideoCard {
             );
             buffer.write_vram(addr, val);
         }
+    }
+
+    pub fn set_mode(&mut self, _mode: u8, _clear_screen: bool) -> Option<ModeInfo> {
+        // TODO
+
+        // // 3. Look up Mode Parameters in BIOS Video Parameter Table
+        // params = VideoParameterTable[actual_mode]
+
+        // // 4. Update the CRT Controller (CRTC) Registers
+        // // These define screen resolution, timing, and refresh rates
+        // FOR EACH register IN CRTC_Registers:
+        //     WriteToPort(0x3D4, register.index)
+        //     WriteToPort(0x3D5, params.value)
+        // END FOR
+
+        // // 5. Initialize the Sequencer and Graphics Controller
+        // InitializeSequencer(params)
+        // InitializeGraphicsController(params)
+
+        // // 6. Set up the Attribute Controller (Palette and Colors)
+        // InitializePalette(params.default_colors)
+
+        // // 7. Clear Video Buffer (VRAM)
+        // IF clear_screen_flag == TRUE THEN
+        //     FillMemory(start_address: 0xA0000, size: 64KB, value: 0)
+        // END IF
+
+        // Check if the requested mode is supported by the video card type
+        // if !bus.video().supports_mode(mode) {
+        //     log::warn!(
+        //         "INT 10h AH=00h: Video mode 0x{:02X} not supported by {} card - ignoring",
+        //         mode,
+        //         bus.video().card_type()
+        //     );
+        //     return;
+        // }
+
+        // // INT 10h mode set = RGB rendering; composite only via port 0x3D8
+        // bus.video_mut().set_composite_mode(false);
+        // bus.video_mut().set_mode(mode, false); // INT 10h clears video memory (real BIOS behavior)
+        // // Reset cursor to top-left (only relevant for text modes)
+        // bus.video_mut().set_cursor(0, 0);
+
+        // let cols = bus.video().get_cols();
+        // let rows = bus.video().get_rows();
+
+        None
     }
 }
 

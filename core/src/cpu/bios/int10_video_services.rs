@@ -5,8 +5,9 @@ use crate::{
         bios::bda::{
             bda_get_active_page, bda_get_columns, bda_get_crt_controller_port_address,
             bda_get_cursor_pos, bda_get_rows, bda_get_video_mode, bda_get_video_page_size,
-            bda_set_active_page, bda_set_cursor_end_line, bda_set_cursor_pos,
-            bda_set_cursor_start_line, bda_set_video_page_offset,
+            bda_set_active_page, bda_set_columns, bda_set_cursor_end_line, bda_set_cursor_pos,
+            bda_set_cursor_start_line, bda_set_rows, bda_set_video_mode, bda_set_video_page_offset,
+            bda_set_video_page_size,
         },
     },
     video::{
@@ -26,6 +27,7 @@ impl Cpu {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
+            0x00 => self.int10_set_video_mode(bus),
             0x01 => self.int10_set_cursor_shape(bus),
             0x02 => self.int10_set_cursor_position(bus),
             0x05 => self.int10_select_active_page(bus),
@@ -37,6 +39,59 @@ impl Cpu {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
             }
         }
+    }
+
+    /// INT 10h, AH=00h - Set Video Mode
+    /// Input:
+    ///   AL = video mode
+    ///     0x00-0x03 = text modes (40x25 or 80x25)
+    ///     0x04-0x05 = CGA 320x200, 4 colors
+    ///     0x06 = CGA 640x200, 2 colors
+    ///     0x07 = monochrome text 80x25
+    /// Output: None
+    fn int10_set_video_mode(&mut self, bus: &mut Bus) {
+        let mode = (self.ax & 0xFF) as u8; // AL
+
+        // Clear the "Clear Memory" bit (Bit 7 of AL)
+        // If Bit 7 is set, BIOS doesn't clear the screen memory
+        let clear_screen_flag = (mode & 0x80) == 0;
+        let mode = mode & 0x7f;
+
+        let mode_info = if let Some(mut video_card) = bus.video_card_mut() {
+            video_card.set_mode(mode, clear_screen_flag)
+        } else {
+            log::warn!("no video card found");
+            return;
+        };
+
+        let mode_info = if let Some(mode_info) = mode_info {
+            mode_info
+        } else {
+            log::warn!("unsupported mode 0x{mode:02X}");
+            return;
+        };
+
+        // Update BDA with new video mode settings
+        bda_set_video_mode(bus, mode);
+
+        bda_set_columns(bus, mode_info.cols);
+
+        // EGA/VGA rows-1 register: programs (e.g. Turbo Pascal, dBASE) read BDA[0x84] to get row count
+        bda_set_rows(bus, (mode_info.rows - 1) as u8);
+
+        // Page size = cols * rows * 2 (char + attr)
+        let page_size = mode_info.cols as u16 * mode_info.rows as u16 * 2;
+        bda_set_video_page_size(bus, page_size);
+
+        set_cursor_pos(bus, 0, 0, 0);
+
+        log::info!(
+            "INT 10h AH=00h: Updated BDA for mode 0x{:02X} - cols={}, rows={}, page_size={}",
+            mode,
+            mode_info.cols,
+            mode_info.rows,
+            page_size
+        );
     }
 
     /// INT 10h, AH=01h - Set Cursor Shape

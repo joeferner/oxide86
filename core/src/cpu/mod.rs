@@ -88,6 +88,12 @@ pub struct Cpu {
     /// Last disk operation status (for INT 13h AH=01h)
     last_disk_status: u8,
 
+    /// In INT 16h, AH=00h - Read Character if a key is not available we need to return to allow
+    /// key presses to be handled
+    wait_for_key_press: bool,
+    //// if this flag is set when returning from a key press we need to patch the flags
+    wait_for_key_press_patch_flags: bool,
+
     /// if set to true, opcode execution will be logged as info level
     pub exec_logging_enabled: bool,
 }
@@ -120,6 +126,8 @@ impl Cpu {
             repeat_prefix: None,
             pending_exception: None,
             last_disk_status: 0,
+            wait_for_key_press: false,
+            wait_for_key_press_patch_flags: false,
             exec_logging_enabled: false,
         }
     }
@@ -160,12 +168,11 @@ impl Cpu {
                 return;
             }
             self.step_bios_int(bus, self.ip as u8);
-            // Patch the stacked FLAGS with any changes the handler made, mirroring how a real
-            // BIOS handler modifies the caller's FLAGS on the stack before executing iret.
-            // Stack layout after `int`: SP+0=IP, SP+2=CS, SP+4=FLAGS
-            let stacked_flags_addr = physical_address(self.ss, self.sp.wrapping_add(4));
-            bus.memory_write_u16(stacked_flags_addr, self.flags);
-            self.iret(bus);
+            if self.wait_for_key_press {
+                self.wait_for_key_press_patch_flags = true;
+                return;
+            }
+            self.patch_flags_and_iret(bus);
             return;
         }
 
@@ -478,11 +485,20 @@ impl Cpu {
             // JCXZ (E3)
             0xE3 => self.jcxz(bus),
 
+            // IN AL, imm8 (E4)
+            0xE4 => self.in_al_imm8(bus),
+
+            // OUT imm8, AL (E6)
+            0xE6 => self.out_imm8_al(bus),
+
             // CALL near relative (E8)
             0xE8 => self.call_near(bus),
 
             // JMP near relative (E9)
             0xE9 => self.jmp_near(bus),
+
+            // OUT DX, AL (EE)
+            0xEE => self.out_dx_al(bus),
 
             // JMP far (EA)
             0xEA => self.jmp_far(bus),
@@ -570,6 +586,30 @@ impl Cpu {
         }
     }
 
+    pub fn wait_for_key_press(&self) -> bool {
+        self.wait_for_key_press
+    }
+
+    /// Signal that a key has been pressed, if we were waiting handle it
+    pub fn key_press(&mut self, bus: &mut Bus) {
+        if self.wait_for_key_press {
+            self.wait_for_key_press = false;
+            if self.wait_for_key_press_patch_flags {
+                self.patch_flags_and_iret(bus);
+            }
+            self.wait_for_key_press_patch_flags = false;
+        }
+    }
+
+    pub fn patch_flags_and_iret(&mut self, bus: &mut Bus) {
+        // Patch the stacked FLAGS with any changes the handler made, mirroring how a real
+        // BIOS handler modifies the caller's FLAGS on the stack before executing iret.
+        // Stack layout after `int`: SP+0=IP, SP+2=CS, SP+4=FLAGS
+        let stacked_flags_addr = physical_address(self.ss, self.sp.wrapping_add(4));
+        bus.memory_write_u16(stacked_flags_addr, self.flags);
+        self.iret(bus);
+    }
+
     /// Fetch a byte from memory at CS:IP and increment IP
     fn fetch_byte(&mut self, bus: &Bus) -> u8 {
         let addr = physical_address(self.cs, self.ip);
@@ -606,6 +646,8 @@ impl Cpu {
         self.segment_override = None;
         self.repeat_prefix = None;
         self.pending_exception = None;
+        self.wait_for_key_press = false;
+        self.wait_for_key_press_patch_flags = false;
 
         // Set CPU to start at this location
         self.cs = segment;

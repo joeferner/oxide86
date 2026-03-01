@@ -33,6 +33,7 @@ impl Cpu {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
+            0x00 => self.int13_reset_disk(bus),
             0x02 => self.int13_read_sectors(bus),
             0x08 => self.int13_get_drive_params(bus),
             _ => {
@@ -42,6 +43,74 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, true);
                 self.last_disk_status = DiskError::InvalidCommand as u8;
             }
+        }
+    }
+
+    /// INT 13h, AH=00h - Reset Disk System
+    /// Input:
+    ///   DL = drive number (0x00-0x7F for floppies, 0x80-0xFF for hard disks)
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   CF = clear if success, set if error
+    fn int13_reset_disk(&mut self, _bus: &mut Bus) {
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
+
+        let success = if drive.is_floppy() {
+            // TODO
+
+            // // Reset the Digital Output Register (DOR)
+            // Write_IO_Port(FDC_DOR, 0x00)
+            // Wait_Microseconds(50)
+            // Write_IO_Port(FDC_DOR, 0x0C) // Re-enable controller and DMA
+
+            // // Force recalibration: Move head to Track 0
+            // Command_FDC(RECALIBRATE_COMMAND, Drive)
+
+            // // Check if the controller is ready
+            // IF FDC_Timeout_Or_Error() THEN
+            //     Return 0x05 // Reset Failed
+
+            // // Reset Diskette Drive Data (BDA 0040h:003Eh)
+            // Update_BDA_Disk_Status(Drive, RESET_FLAG)
+
+            true
+        } else {
+            // TODO
+
+            // // 2. Send the "Reset" signal to the Fixed Disk Controller
+            // // This often involves toggling a bit in the Control Register
+            // Write_IO_Port(FixedDisk_Control_Reg, 0x04) // Set Soft Reset bit
+            // Wait_Microseconds(10)                      // Hold the reset
+            // Write_IO_Port(FixedDisk_Control_Reg, 0x00) // Clear Reset bit
+
+            // // 3. Wait for the Controller to clear the BUSY bit
+            // // We set a timeout because a dead drive shouldn't hang the BIOS
+            // StartTime = Get_System_Ticks()
+            // WHILE (Read_IO_Port(FixedDisk_Status_Reg) & STATUS_BUSY):
+            //     IF (Get_System_Ticks() - StartTime > TIMEOUT_VAL) THEN
+            //         Return 0x80 // Controller Timeout
+            //     END IF
+            // END WHILE
+
+            // // 4. Send "Recalibrate" (Execute Drive Diagnostics)
+            // // This tells the drive to verify internal parameters
+            // Command_HDD(DriveNumber, DRIVE_DIAGNOSTIC_CMD)
+
+            // // 5. Update BIOS Data Area (BDA)
+            // // 0040h:0074h stores the status of the last hard disk operation
+            // Update_BDA_HardDisk_Status(0x00)
+
+            true
+        };
+
+        if success {
+            self.ax &= 0x00FF; // AH = 0 (success)
+            self.set_flag(cpu_flag::CARRY, false);
+            self.last_disk_status = DiskError::Success as u8;
+        } else {
+            self.ax = (self.ax & 0x00FF) | ((DiskError::ResetFailed as u16) << 8);
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::ResetFailed as u8;
         }
     }
 

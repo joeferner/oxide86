@@ -68,10 +68,12 @@ fn main() -> Result<()> {
     // TODO
     let mut quit_from_command_mode = false;
     while computer.get_exit_code().is_none() && !quit_from_command_mode {
-        for _ in 0..BATCH_SIZE {
-            computer.step();
-            if computer.get_exit_code().is_some() {
-                break;
+        if !computer.wait_for_key_press() {
+            for _ in 0..BATCH_SIZE {
+                computer.step();
+                if computer.get_exit_code().is_some() || computer.wait_for_key_press() {
+                    break;
+                }
             }
         }
 
