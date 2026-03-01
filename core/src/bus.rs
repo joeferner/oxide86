@@ -1,4 +1,8 @@
-use std::{any::Any, cell::RefCell, rc::Rc};
+use std::{
+    any::Any,
+    cell::{RefCell, RefMut},
+    rc::Rc,
+};
 
 use anyhow::Result;
 
@@ -7,21 +11,29 @@ use crate::{
     cpu::bios::bios_reset,
     disk::{DiskController, DriveNumber},
     memory::Memory,
+    pic::PIC,
 };
 
 pub struct Bus {
     memory: Memory,
     devices: Vec<DeviceRef>,
     disk_controllers: Vec<Rc<RefCell<DiskController>>>,
+    pic: Rc<RefCell<PIC>>,
 }
 
 impl Bus {
     pub fn new(memory: Memory) -> Self {
+        let pic = Rc::new(RefCell::new(PIC::new()));
         Self {
             memory,
-            devices: vec![],
+            devices: vec![pic.clone()],
             disk_controllers: vec![],
+            pic,
         }
+    }
+
+    pub fn pic_mut(&self) -> RefMut<'_, PIC> {
+        self.pic.borrow_mut()
     }
 
     pub fn add_device<T: Device + 'static>(&mut self, device: T) {

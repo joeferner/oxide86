@@ -8,10 +8,10 @@ pub mod int10_video_services;
 pub mod int11_get_equipment_list;
 pub mod int12_get_memory_size;
 pub mod int13_disk_services;
+pub mod int16_keyboard_services;
 pub mod int17_printer_services;
 pub mod int1a_time_services;
 pub mod int21_dos_services;
-pub mod int16_keyboard_services;
 
 // BIOS code segment
 pub const BIOS_CODE_SEGMENT: u16 = 0xF000;

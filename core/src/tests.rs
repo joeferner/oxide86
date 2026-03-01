@@ -8,7 +8,6 @@ mod tests {
     use crate::cpu::CpuType;
     use crate::video::video_buffer::RenderResult;
     use crate::{
-        bus::Bus,
         computer::Computer,
         cpu::Cpu,
         memory::Memory,
@@ -20,10 +19,9 @@ mod tests {
 
     fn create_computer() -> (Computer, Arc<VideoBuffer>) {
         let video_buffer = Arc::new(VideoBuffer::new());
-        let mut bus = Bus::new(Memory::new(2048 * 1024));
-        bus.add_device(VideoCard::new(video_buffer.clone()));
         let cpu = Cpu::new(CpuType::I8086);
-        let computer = Computer::new(cpu, bus);
+        let mut computer = Computer::new(cpu, Memory::new(2048 * 1024));
+        computer.add_device(VideoCard::new(video_buffer.clone()));
         (computer, video_buffer)
     }
 

@@ -1,4 +1,5 @@
 use crate::{
+    KeyPress,
     bus::Bus,
     video::{
         TEXT_MODE_COLS, TEXT_MODE_SIZE, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
@@ -266,12 +267,7 @@ pub fn bda_clear_timer_overflow(bus: &mut Bus) {
     bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0);
 }
 
-pub struct Key {
-    pub scan_code: u8,
-    pub ascii_code: u8,
-}
-
-pub fn bda_peek_key(bus: &Bus) -> Option<Key> {
+pub fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {
     let head = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_HEAD);
     let tail = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_TAIL);
 
@@ -280,7 +276,7 @@ pub fn bda_peek_key(bus: &Bus) -> Option<Key> {
         let char_addr = BDA_START + head as usize;
         let scan_code = bus.memory_read_u8(char_addr);
         let ascii_code = bus.memory_read_u8(char_addr + 1);
-        Some(Key {
+        Some(KeyPress {
             scan_code,
             ascii_code,
         })

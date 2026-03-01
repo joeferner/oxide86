@@ -2,7 +2,6 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
-    bus::Bus,
     computer::Computer,
     cpu::{Cpu, CpuType},
     disk::{BackedDisk, DiskController, DriveNumber},
@@ -34,9 +33,9 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<VideoBuffer>) -> Result<Comp
 
     let memory = Memory::new(2048 * 1024); // TODO fill from cli args
 
-    let mut bus = Bus::new(memory);
+    let mut computer = Computer::new(cpu, memory);
 
-    bus.add_device(VideoCard::new(buffer));
+    computer.add_device(VideoCard::new(buffer));
 
     // Load floppy A:
     if let Some(path) = &cli.floppy_a {
@@ -44,11 +43,9 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<VideoBuffer>) -> Result<Comp
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
         let controller = DiskController::new(DriveNumber::floppy_a(), Box::new(disk));
-        bus.add_device(controller);
+        computer.add_device(controller);
         log::info!("Opened floppy A: from {}", path);
     }
-
-    let mut computer = Computer::new(cpu, bus);
 
     if let Some(program_path) = &cli.program {
         // Load program from file

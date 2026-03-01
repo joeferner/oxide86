@@ -1,7 +1,9 @@
 use crate::{
+    Device, KeyPress,
     bus::Bus,
     cpu::Cpu,
     disk::{DriveNumber, disk_read_sectors},
+    memory::Memory,
     physical_address,
 };
 use anyhow::{Result, anyhow};
@@ -12,10 +14,17 @@ pub struct Computer {
 }
 
 impl Computer {
-    pub fn new(cpu: Cpu, bus: Bus) -> Self {
-        let mut computer = Self { cpu, bus };
+    pub fn new(cpu: Cpu, memory: Memory) -> Self {
+        let mut computer = Self {
+            cpu,
+            bus: Bus::new(memory),
+        };
         computer.reset();
         computer
+    }
+
+    pub fn add_device<T: Device + 'static>(&mut self, device: T) {
+        self.bus.add_device(device);
     }
 
     /// Load a program at the specified segment:offset and set CPU to start there
@@ -136,5 +145,9 @@ impl Computer {
         // self.loaded_program = None;
 
         Ok(())
+    }
+
+    pub fn push_keyboard_key(&mut self, key: KeyPress) {
+        self.bus.pic_mut().push_keyboard_key(key);
     }
 }

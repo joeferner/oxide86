@@ -8,10 +8,20 @@ pub mod cpu;
 pub mod devices;
 pub mod disk;
 pub mod memory;
+pub mod pic;
 pub mod video;
 
 #[cfg(test)]
 pub mod tests;
+
+/// Key press data
+#[derive(Debug, Clone, Copy)]
+pub struct KeyPress {
+    /// BIOS scan code
+    pub scan_code: u8,
+    /// ASCII character code
+    pub ascii_code: u8,
+}
 
 // Calculate physical address from segment:offset
 pub fn physical_address(segment: u16, offset: u16) -> usize {

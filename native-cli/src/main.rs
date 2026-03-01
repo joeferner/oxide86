@@ -1,4 +1,9 @@
-use std::{io::Write, panic, sync::Arc};
+use std::{
+    io::{Stdout, Write},
+    panic,
+    sync::Arc,
+    time::Duration,
+};
 
 use anyhow::Result;
 use clap::Parser;
@@ -15,6 +20,10 @@ use oxide86_core::video::{
     text::{TextAttribute, cp437_to_unicode},
 };
 use oxide86_native_common::{cli::CommonCli, create_computer, logging::setup_logging};
+
+use crate::keyboard::{SCAN_CODE_F12, key_event_to_keypress};
+
+mod keyboard;
 
 const BATCH_SIZE: usize = 1000;
 
@@ -66,42 +75,26 @@ fn main() -> Result<()> {
             }
         }
 
-        video_buffer.emu_try_flip();
-        if let Some(frame) = video_buffer.ui_get_data() {
-            let mut i = 0;
-            for row in 0..TEXT_MODE_ROWS {
-                for col in 0..TEXT_MODE_COLS {
-                    let character = frame.vram[i];
-                    i += 1;
-                    let text_attr = TextAttribute::from_byte(frame.vram[i], frame.blink_enabled);
-                    i += 1;
+        draw_frame(&video_buffer, &mut stdout);
 
-                    // Position cursor (crossterm uses 0-indexed coordinates)
-                    stdout
-                        .queue(cursor::MoveTo(col as u16, row as u16))
-                        .unwrap();
+        while event::poll(Duration::from_secs(0))? {
+            if let Event::Key(key_event) = event::read()? {
+                // Only process key press events; ignore release and repeat to avoid
+                // duplicate input on Windows (which emits both Press and Release events)
+                if key_event.kind != KeyEventKind::Press {
+                    // skip
+                } else {
+                    let key = key_event_to_keypress(&key_event);
 
-                    // Set colors
-                    stdout
-                        .queue(SetForegroundColor(vga_to_crossterm_color(
-                            text_attr.foreground,
-                            &frame.vga_dac_palette,
-                        )))
-                        .unwrap();
-                    stdout
-                        .queue(SetBackgroundColor(vga_to_crossterm_color(
-                            text_attr.background,
-                            &frame.vga_dac_palette,
-                        )))
-                        .unwrap();
-
-                    // Print character (convert CP437 to Unicode)
-                    stdout
-                        .queue(crossterm::style::Print(cp437_to_unicode(character)))
-                        .unwrap();
+                    // Check if it's F12 (command mode) - intercept for emulator, don't send to program
+                    if key.scan_code == SCAN_CODE_F12 {
+                        // TODO command mode
+                    } else {
+                        // Fire INT 09h (keyboard hardware interrupt) for all other keys
+                        computer.push_keyboard_key(key);
+                    }
                 }
             }
-            video_buffer.ui_mark_as_consumed();
         }
     }
 
@@ -130,6 +123,46 @@ fn main() -> Result<()> {
     terminal::disable_raw_mode()?;
 
     Ok(())
+}
+
+fn draw_frame(video_buffer: &Arc<VideoBuffer>, stdout: &mut Stdout) {
+    video_buffer.emu_try_flip();
+    if let Some(frame) = video_buffer.ui_get_data() {
+        let mut i = 0;
+        for row in 0..TEXT_MODE_ROWS {
+            for col in 0..TEXT_MODE_COLS {
+                let character = frame.vram[i];
+                i += 1;
+                let text_attr = TextAttribute::from_byte(frame.vram[i], frame.blink_enabled);
+                i += 1;
+
+                // Position cursor (crossterm uses 0-indexed coordinates)
+                stdout
+                    .queue(cursor::MoveTo(col as u16, row as u16))
+                    .unwrap();
+
+                // Set colors
+                stdout
+                    .queue(SetForegroundColor(vga_to_crossterm_color(
+                        text_attr.foreground,
+                        &frame.vga_dac_palette,
+                    )))
+                    .unwrap();
+                stdout
+                    .queue(SetBackgroundColor(vga_to_crossterm_color(
+                        text_attr.background,
+                        &frame.vga_dac_palette,
+                    )))
+                    .unwrap();
+
+                // Print character (convert CP437 to Unicode)
+                stdout
+                    .queue(crossterm::style::Print(cp437_to_unicode(character)))
+                    .unwrap();
+            }
+        }
+        video_buffer.ui_mark_as_consumed();
+    }
 }
 
 /// Get 8-bit RGB color from VGA DAC palette
