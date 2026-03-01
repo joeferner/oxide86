@@ -2,13 +2,11 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
-    Devices,
+    bus::Bus,
     computer::Computer,
     cpu::{Cpu, CpuType},
     disk::{BackedDisk, DiskController, DriveNumber},
-    io_bus::IoBus,
     memory::Memory,
-    memory_bus::MemoryBus,
     parse_hex_or_dec,
     video::{VideoBuffer, VideoCard},
 };
@@ -36,26 +34,21 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<VideoBuffer>) -> Result<Comp
 
     let memory = Memory::new(2048 * 1024); // TODO fill from cli args
 
-    let devices = {
-        let mut devices = Devices::new();
-        devices.push(VideoCard::new(buffer));
+    let mut bus = Bus::new(memory);
 
-        // Load floppy A:
-        if let Some(path) = &cli.floppy_a {
-            let backend = FileDiskBackend::open(path, false)?;
-            let disk = BackedDisk::new(backend)
-                .with_context(|| format!("Failed to create disk from: {}", path))?;
-            let controller = DiskController::new(DriveNumber::floppy_a(), Box::new(disk));
-            devices.push(controller);
-            log::info!("Opened floppy A: from {}", path);
-        }
+    bus.add_device(VideoCard::new(buffer));
 
-        devices
-    };
+    // Load floppy A:
+    if let Some(path) = &cli.floppy_a {
+        let backend = FileDiskBackend::open(path, false)?;
+        let disk = BackedDisk::new(backend)
+            .with_context(|| format!("Failed to create disk from: {}", path))?;
+        let controller = DiskController::new(DriveNumber::floppy_a(), Box::new(disk));
+        bus.add_device(controller);
+        log::info!("Opened floppy A: from {}", path);
+    }
 
-    let memory_bus = MemoryBus::new(memory, devices.clone());
-    let io_bus = IoBus::new(devices);
-    let mut computer = Computer::new(cpu, memory_bus, io_bus);
+    let mut computer = Computer::new(cpu, bus);
 
     if let Some(program_path) = &cli.program {
         // Load program from file

@@ -1,18 +1,18 @@
 use crate::{
+    bus::Bus,
     cpu::{Cpu, cpu_flag, timing},
-    memory_bus::MemoryBus,
 };
 
 impl Cpu {
     /// CMP immediate to accumulator (opcodes 3C-3D)
     /// 3C: CMP AL, imm8
     /// 3D: CMP AX, imm16
-    pub(in crate::cpu) fn cmp_imm_acc(&mut self, opcode: u8, memory_bus: &MemoryBus) {
+    pub(in crate::cpu) fn cmp_imm_acc(&mut self, opcode: u8, bus: &Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
             // CMP AX, imm16
-            let imm = self.fetch_word(memory_bus);
+            let imm = self.fetch_word(bus);
             let (result, carry) = self.ax.overflowing_sub(imm);
             let overflow = ((self.ax ^ imm) & (self.ax ^ result) & 0x8000) != 0;
 
@@ -21,7 +21,7 @@ impl Cpu {
             self.set_flag(cpu_flag::OVERFLOW, overflow);
         } else {
             // CMP AL, imm8
-            let imm = self.fetch_byte(memory_bus);
+            let imm = self.fetch_byte(bus);
             let al = (self.ax & 0xFF) as u8;
             let (result, carry) = al.overflowing_sub(imm);
             let overflow = ((al ^ imm) & (al ^ result) & 0x80) != 0;
@@ -42,24 +42,24 @@ impl Cpu {
     /// 39: CMP r/m16, r16
     /// 3A: CMP r8, r/m8
     /// 3B: CMP r16, r/m16
-    pub(in crate::cpu) fn cmp_rm_reg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn cmp_rm_reg(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         if is_word {
             // 16-bit cmp
             let src = if dir {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             } else {
                 self.get_reg16(reg)
             };
             let dst = if dir {
                 self.get_reg16(reg)
             } else {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             };
 
             let (result, carry) = dst.overflowing_sub(src);
@@ -71,14 +71,14 @@ impl Cpu {
         } else {
             // 8-bit cmp
             let src = if dir {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             } else {
                 self.get_reg8(reg)
             };
             let dst = if dir {
                 self.get_reg8(reg)
             } else {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             };
 
             let (result, carry) = dst.overflowing_sub(src);

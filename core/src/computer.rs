@@ -1,19 +1,19 @@
-use crate::{cpu::Cpu, disk::DriveNumber, io_bus::IoBus, memory_bus::MemoryBus, physical_address};
+use crate::{
+    bus::Bus,
+    cpu::Cpu,
+    disk::{DriveNumber, disk_read_sectors},
+    physical_address,
+};
 use anyhow::{Result, anyhow};
 
 pub struct Computer {
     cpu: Cpu,
-    memory_bus: MemoryBus,
-    io_bus: IoBus,
+    bus: Bus,
 }
 
 impl Computer {
-    pub fn new(cpu: Cpu, memory_bus: MemoryBus, io_bus: IoBus) -> Self {
-        let mut computer = Self {
-            cpu,
-            memory_bus,
-            io_bus,
-        };
+    pub fn new(cpu: Cpu, bus: Bus) -> Self {
+        let mut computer = Self { cpu, bus };
         computer.reset();
         computer
     }
@@ -21,7 +21,7 @@ impl Computer {
     /// Load a program at the specified segment:offset and set CPU to start there
     pub fn load_program(&mut self, program_data: &[u8], segment: u16, offset: u16) -> Result<()> {
         let physical_addr = physical_address(segment, offset);
-        self.memory_bus.load_at(physical_addr, program_data)?;
+        self.bus.load_at(physical_addr, program_data)?;
         self.cpu.reset(segment, offset, None);
         Ok(())
     }
@@ -33,7 +33,7 @@ impl Computer {
     }
 
     pub fn step(&mut self) {
-        self.cpu.step(&mut self.memory_bus, &mut self.io_bus);
+        self.cpu.step(&mut self.bus);
     }
 
     pub fn is_halted(&self) -> bool {
@@ -41,7 +41,7 @@ impl Computer {
     }
 
     fn reset(&mut self) {
-        self.memory_bus.reset();
+        self.bus.reset();
         self.cpu.reset(0xffff, 0x0000, None);
     }
 
@@ -73,9 +73,7 @@ impl Computer {
     fn boot_from(&mut self, drive: DriveNumber) -> Result<()> {
         // Read boot sector using BIOS disk services
         // Boot sector is at cylinder 0, head 0, sector 1
-        let boot_sector = self
-            .io_bus
-            .disk_read_sectors(drive, 0, 0, 1, 1)
+        let boot_sector = disk_read_sectors(&self.bus, drive, 0, 0, 1, 1)
             .map_err(|err| anyhow!("failed to read boot sector: {err}"))?;
 
         if boot_sector.len() != 512 {
@@ -99,7 +97,7 @@ impl Computer {
         const BOOT_SEGMENT: u16 = 0x0000;
         const BOOT_OFFSET: u16 = 0x7C00;
         let boot_addr = physical_address(BOOT_SEGMENT, BOOT_OFFSET);
-        self.memory_bus.load_at(boot_addr, &boot_sector)?;
+        self.bus.load_at(boot_addr, &boot_sector)?;
         self.cpu.reset(BOOT_SEGMENT, BOOT_OFFSET, Some(drive));
 
         // TODO

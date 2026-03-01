@@ -1,8 +1,7 @@
 use crate::{
+    bus::Bus,
     cpu::{Cpu, cpu_flag},
-    disk::{DiskError, DriveNumber},
-    io_bus::IoBus,
-    memory_bus::MemoryBus,
+    disk::{DiskError, DriveNumber, disk_get_params, disk_read_sectors},
     physical_address,
 };
 
@@ -26,11 +25,7 @@ impl Cpu {
     /// Note: AT-class BIOS enables interrupts (STI) during disk operations so that
     /// timer IRQs (INT 0x08) can still fire. This is important for programs that
     /// depend on the BDA timer counter advancing during disk benchmarks.
-    pub(in crate::cpu) fn handle_int13_disk_services(
-        &mut self,
-        memory_bus: &mut MemoryBus,
-        io_bus: &mut IoBus,
-    ) {
+    pub(in crate::cpu) fn handle_int13_disk_services(&mut self, bus: &mut Bus) {
         // Enable interrupts during disk operations (AT-class BIOS behavior)
         // This allows timer IRQs to fire even during extended disk operations
         self.set_flag(cpu_flag::INTERRUPT, true);
@@ -38,8 +33,8 @@ impl Cpu {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
-            0x02 => self.int13_read_sectors(memory_bus, io_bus),
-            0x08 => self.int13_get_drive_params(io_bus),
+            0x02 => self.int13_read_sectors(bus),
+            0x08 => self.int13_get_drive_params(bus),
             _ => {
                 log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -62,7 +57,7 @@ impl Cpu {
     ///   AH = status (0 = success)
     ///   AL = number of sectors read
     ///   CF = clear if success, set if error
-    fn int13_read_sectors(&mut self, memory_bus: &mut MemoryBus, io_bus: &mut IoBus) {
+    fn int13_read_sectors(&mut self, bus: &mut Bus) {
         let count = (self.ax & 0xFF) as u8; // AL
         let cylinder_low = (self.cx >> 8) as u8; // CH
         let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
@@ -74,12 +69,12 @@ impl Cpu {
         // For 8086, we only support 8-bit cylinders (compatibility mode)
         let cylinder_8bit = cylinder_low;
 
-        match io_bus.disk_read_sectors(drive, cylinder_8bit, head, sector, count) {
+        match disk_read_sectors(bus, drive, cylinder_8bit, head, sector, count) {
             Ok(data) => {
                 // Write data to ES:BX
                 let buffer_addr = physical_address(self.es, self.bx);
                 for (i, &byte) in data.iter().enumerate() {
-                    memory_bus.write_u8(buffer_addr + i, byte);
+                    bus.memory_write_u8(buffer_addr + i, byte);
                 }
 
                 // Calculate actual sectors read
@@ -115,10 +110,10 @@ impl Cpu {
     ///     CL = maximum sector number (bits 0-5) + high 2 bits of max cylinder (bits 6-7)
     ///     DH = maximum head number
     ///     DL = number of drives
-    fn int13_get_drive_params(&mut self, io_bus: &mut IoBus) {
+    fn int13_get_drive_params(&mut self, bus: &Bus) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
-        match io_bus.disk_get_params(drive) {
+        match disk_get_params(bus, drive) {
             Ok(params) => {
                 // Pack cylinder into CH and CL
                 let cylinder = params.max_cylinder as u16;

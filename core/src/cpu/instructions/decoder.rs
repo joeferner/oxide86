@@ -1,5 +1,5 @@
+use crate::bus::Bus;
 use crate::cpu::Cpu;
-use crate::memory_bus::MemoryBus;
 use crate::physical_address;
 
 /// Information about a decoded instruction
@@ -16,11 +16,8 @@ pub struct DecodedInstruction {
 
 /// Decode instruction at given CS:IP and return detailed information with register values
 impl Cpu {
-    pub(in crate::cpu) fn decode_instruction_with_regs(
-        &self,
-        memory_bus: &MemoryBus,
-    ) -> DecodedInstruction {
-        let mut decoder = InstructionDecoder::new(memory_bus, self.cs, self.ip);
+    pub(in crate::cpu) fn decode_instruction_with_regs(&self, bus: &Bus) -> DecodedInstruction {
+        let mut decoder = InstructionDecoder::new(bus, self.cs, self.ip);
         let text = decoder.decode();
 
         let reg_values = decoder.format_input_registers(self);
@@ -30,7 +27,7 @@ impl Cpu {
         let bytes: Vec<u8> = {
             let start = ((self.cs as usize) << 4) + (self.ip as usize);
             let end = ((self.cs as usize) << 4) + (decoder.ip as usize);
-            (start..end).map(|addr| memory_bus.read_u8(addr)).collect()
+            (start..end).map(|addr| bus.memory_read_u8(addr)).collect()
         };
 
         DecodedInstruction {
@@ -60,7 +57,7 @@ struct MemoryRef {
 }
 
 struct InstructionDecoder<'a> {
-    memory_bus: &'a MemoryBus,
+    bus: &'a Bus,
     cs: u16,
     ip: u16,
     segment_override: Option<&'static str>,
@@ -74,9 +71,9 @@ struct InstructionDecoder<'a> {
 }
 
 impl<'a> InstructionDecoder<'a> {
-    fn new(memory_bus: &'a MemoryBus, cs: u16, ip: u16) -> Self {
+    fn new(bus: &'a Bus, cs: u16, ip: u16) -> Self {
         Self {
-            memory_bus,
+            bus,
             cs,
             ip,
             segment_override: None,
@@ -180,9 +177,9 @@ impl<'a> InstructionDecoder<'a> {
 
             // Read the value from memory
             let value = if mem_ref.is_word {
-                self.memory_bus.read_u16(address)
+                self.bus.memory_read_u16(address)
             } else {
-                self.memory_bus.read_u8(address) as u16
+                self.bus.memory_read_u8(address) as u16
             };
 
             // Calculate segment for display (only for direct addresses without override)
@@ -241,7 +238,7 @@ impl<'a> InstructionDecoder<'a> {
 
     fn fetch_byte(&mut self) -> u8 {
         let addr = Self::physical_address(self.cs, self.ip);
-        let byte = self.memory_bus.read_u8(addr);
+        let byte = self.bus.memory_read_u8(addr);
         self.ip = self.ip.wrapping_add(1);
         byte
     }
@@ -254,7 +251,7 @@ impl<'a> InstructionDecoder<'a> {
 
     fn peek_byte(&self) -> u8 {
         let addr = Self::physical_address(self.cs, self.ip);
-        self.memory_bus.read_u8(addr)
+        self.bus.memory_read_u8(addr)
     }
 
     fn reg8_name(reg: u8) -> &'static str {

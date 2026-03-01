@@ -2,14 +2,12 @@ use std::{any::Any, cell::RefCell, rc::Rc};
 
 use anyhow::{Context, Result};
 
-use crate::disk::{DiskController, DriveNumber};
-
+pub mod bus;
 pub mod computer;
 pub mod cpu;
+pub mod devices;
 pub mod disk;
-pub mod io_bus;
 pub mod memory;
-pub mod memory_bus;
 pub mod video;
 
 #[cfg(test)]
@@ -39,44 +37,4 @@ pub trait Device {
 
     fn io_read_u8(&self, port: u16) -> Option<u8>;
     fn io_write_u8(&mut self, port: u16, val: u8) -> bool;
-}
-
-#[derive(Clone)]
-pub struct Devices {
-    list: Vec<DeviceRef>,
-    disk_controllers: Vec<Rc<RefCell<DiskController>>>,
-}
-
-impl Devices {
-    pub fn new() -> Self {
-        Self {
-            list: vec![],
-            disk_controllers: vec![],
-        }
-    }
-
-    pub fn push<T: Device + 'static>(&mut self, device: T) {
-        let rc = Rc::new(RefCell::new(device));
-        let rc_any: Rc<dyn Any> = rc.clone();
-        if let Ok(dc) = Rc::downcast::<RefCell<DiskController>>(rc_any) {
-            self.disk_controllers.push(dc);
-        }
-        self.list.push(rc);
-    }
-
-    pub fn find_disk_controller(&self, drive: DriveNumber) -> Option<Rc<RefCell<DiskController>>> {
-        self.disk_controllers
-            .iter()
-            .find(|c| c.borrow().drive_number() == drive)
-            .cloned()
-    }
-}
-
-impl<'a> IntoIterator for &'a Devices {
-    type Item = &'a DeviceRef;
-    type IntoIter = std::slice::Iter<'a, DeviceRef>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        self.list.iter()
-    }
 }

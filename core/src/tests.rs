@@ -5,15 +5,13 @@ mod tests {
     use std::io::Read;
     use std::sync::Arc;
 
-    use crate::Devices;
     use crate::cpu::CpuType;
-    use crate::io_bus::IoBus;
     use crate::video::video_buffer::RenderResult;
     use crate::{
+        bus::Bus,
         computer::Computer,
         cpu::Cpu,
         memory::Memory,
-        memory_bus::MemoryBus,
         video::{VideoBuffer, VideoCard},
     };
 
@@ -22,12 +20,10 @@ mod tests {
 
     fn create_computer() -> (Computer, Arc<VideoBuffer>) {
         let video_buffer = Arc::new(VideoBuffer::new());
-        let mut devices = Devices::new();
-        devices.push(VideoCard::new(video_buffer.clone()));
-        let memory_bus = MemoryBus::new(Memory::new(2048 * 1024), devices.clone());
-        let io_bus = IoBus::new(devices);
+        let mut bus = Bus::new(Memory::new(2048 * 1024));
+        bus.add_device(VideoCard::new(video_buffer.clone()));
         let cpu = Cpu::new(CpuType::I8086);
-        let computer = Computer::new(cpu, memory_bus, io_bus);
+        let computer = Computer::new(cpu, bus);
         (computer, video_buffer)
     }
 

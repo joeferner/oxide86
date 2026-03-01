@@ -1,16 +1,16 @@
 use crate::{
+    bus::Bus,
     cpu::{Cpu, cpu_flag, timing},
-    memory_bus::MemoryBus,
 };
 
 impl Cpu {
     /// Arithmetic with immediate to r/m (opcode 0x80)
     /// 80: Immediate Group 1 - ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m8, imm8
-    pub(in crate::cpu) fn arith_imm8_rm8(&mut self, memory_bus: &mut MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
-        let imm = self.fetch_byte(memory_bus);
-        let dst = self.read_rm8(mode, rm, addr, memory_bus);
+    pub(in crate::cpu) fn arith_imm8_rm8(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, bus);
+        let imm = self.fetch_byte(bus);
+        let dst = self.read_rm8(mode, rm, addr, bus);
 
         match operation {
             0 => {
@@ -18,7 +18,7 @@ impl Cpu {
                 let (result, carry) = dst.overflowing_add(imm);
                 let overflow = ((dst ^ result) & (imm ^ result) & 0x80) != 0;
                 let aux_carry = ((dst & 0x0F) + (imm & 0x0F)) > 0x0F;
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
                 self.set_flags_8(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -27,7 +27,7 @@ impl Cpu {
             1 => {
                 // OR
                 let result = dst | imm;
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
                 self.set_flags_8(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -40,7 +40,7 @@ impl Cpu {
                 let carry = carry1 || carry2;
                 let overflow = ((dst ^ result) & (imm ^ result) & 0x80) != 0;
                 let aux_carry = ((dst & 0x0F) + (imm & 0x0F) + carry_in) > 0x0F;
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
                 self.set_flags_8(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -54,7 +54,7 @@ impl Cpu {
                 let borrow = borrow1 || borrow2;
                 let overflow = ((dst ^ imm) & (dst ^ result) & 0x80) != 0;
                 let aux_borrow = (dst & 0x0F) < ((imm & 0x0F) + borrow_in);
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
                 self.set_flags_8(result);
                 self.set_flag(cpu_flag::CARRY, borrow);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -63,7 +63,7 @@ impl Cpu {
             4 => {
                 // AND
                 let result = dst & imm;
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
                 self.set_flags_8(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -73,7 +73,7 @@ impl Cpu {
                 let (result, carry) = dst.overflowing_sub(imm);
                 let overflow = ((dst ^ imm) & (dst ^ result) & 0x80) != 0;
                 let aux_carry = (dst & 0x0F) < (imm & 0x0F);
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
                 self.set_flags_8(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -82,7 +82,7 @@ impl Cpu {
             6 => {
                 // XOR
                 let result = dst ^ imm;
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
                 self.set_flags_8(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -113,24 +113,24 @@ impl Cpu {
 
     /// Arithmetic with sign-extended immediate to r/m (opcode 0x83)
     /// 83: Immediate Group 1 - ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m16, imm8 (sign-extended)
-    pub(in crate::cpu) fn arith_imm8_rm(&mut self, memory_bus: &mut MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
-        let imm8 = self.fetch_byte(memory_bus);
+    pub(in crate::cpu) fn arith_imm8_rm(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, bus);
+        let imm8 = self.fetch_byte(bus);
         // Sign-extend the 8-bit immediate to 16 bits
         let imm = if imm8 & 0x80 != 0 {
             0xFF00 | (imm8 as u16)
         } else {
             imm8 as u16
         };
-        let dst = self.read_rm16(mode, rm, addr, memory_bus);
+        let dst = self.read_rm16(mode, rm, addr, bus);
 
         match operation {
             0 => {
                 // ADD
                 let (result, carry) = dst.overflowing_add(imm);
                 let overflow = ((dst ^ result) & (imm ^ result) & 0x8000) != 0;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -138,7 +138,7 @@ impl Cpu {
             1 => {
                 // OR
                 let result = dst | imm;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -150,7 +150,7 @@ impl Cpu {
                 let (result, carry2) = temp.overflowing_add(carry_in);
                 let carry = carry1 || carry2;
                 let overflow = ((dst ^ result) & (imm ^ result) & 0x8000) != 0;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -162,7 +162,7 @@ impl Cpu {
                 let (result, borrow2) = temp.overflowing_sub(borrow_in);
                 let borrow = borrow1 || borrow2;
                 let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, borrow);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -170,7 +170,7 @@ impl Cpu {
             4 => {
                 // AND
                 let result = dst & imm;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -179,7 +179,7 @@ impl Cpu {
                 // SUB
                 let (result, carry) = dst.overflowing_sub(imm);
                 let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -187,7 +187,7 @@ impl Cpu {
             6 => {
                 // XOR
                 let result = dst ^ imm;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -214,18 +214,18 @@ impl Cpu {
 
     /// Arithmetic with immediate to r/m (opcode 0x81)
     /// 81: Immediate Group 1 - ADD/OR/ADC/SBB/AND/SUB/XOR/CMP r/m16, imm16
-    pub(in crate::cpu) fn arith_imm16_rm(&mut self, memory_bus: &mut MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
-        let imm = self.fetch_word(memory_bus);
-        let dst = self.read_rm16(mode, rm, addr, memory_bus);
+    pub(in crate::cpu) fn arith_imm16_rm(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, bus);
+        let imm = self.fetch_word(bus);
+        let dst = self.read_rm16(mode, rm, addr, bus);
 
         match operation {
             0 => {
                 // ADD
                 let (result, carry) = dst.overflowing_add(imm);
                 let overflow = ((dst ^ result) & (imm ^ result) & 0x8000) != 0;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -233,7 +233,7 @@ impl Cpu {
             1 => {
                 // OR
                 let result = dst | imm;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -245,7 +245,7 @@ impl Cpu {
                 let (result, carry2) = temp.overflowing_add(carry_in);
                 let carry = carry1 || carry2;
                 let overflow = ((dst ^ result) & (imm ^ result) & 0x8000) != 0;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -257,7 +257,7 @@ impl Cpu {
                 let (result, borrow2) = temp.overflowing_sub(borrow_in);
                 let borrow = borrow1 || borrow2;
                 let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, borrow);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -265,7 +265,7 @@ impl Cpu {
             4 => {
                 // AND
                 let result = dst & imm;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -274,7 +274,7 @@ impl Cpu {
                 // SUB
                 let (result, carry) = dst.overflowing_sub(imm);
                 let overflow = ((dst ^ imm) & (dst ^ result) & 0x8000) != 0;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, carry);
                 self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -282,7 +282,7 @@ impl Cpu {
             6 => {
                 // XOR
                 let result = dst ^ imm;
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
                 self.set_flags_16(result);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.set_flag(cpu_flag::OVERFLOW, false);
@@ -312,27 +312,27 @@ impl Cpu {
     /// FE /1: DEC r/m8
     /// FF /0: INC r/m16
     /// FF /1: DEC r/m16
-    pub(in crate::cpu) fn inc_dec_rm(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn inc_dec_rm(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         match operation {
             0 => {
                 // INC
                 if is_word {
-                    let value = self.read_rm16(mode, rm, addr, memory_bus);
+                    let value = self.read_rm16(mode, rm, addr, bus);
                     let result = value.wrapping_add(1);
-                    self.write_rm16(mode, rm, addr, result, memory_bus);
+                    self.write_rm16(mode, rm, addr, result, bus);
                     self.set_flags_16(result);
                     let overflow = value == 0x7FFF;
                     self.set_flag(cpu_flag::OVERFLOW, overflow);
                     let aux_carry = (value & 0x0F) == 0x0F;
                     self.set_flag(cpu_flag::AUXILIARY, aux_carry);
                 } else {
-                    let value = self.read_rm8(mode, rm, addr, memory_bus);
+                    let value = self.read_rm8(mode, rm, addr, bus);
                     let result = value.wrapping_add(1);
-                    self.write_rm8(mode, rm, addr, result, memory_bus);
+                    self.write_rm8(mode, rm, addr, result, bus);
                     self.set_flags_8(result);
                     let overflow = value == 0x7F;
                     self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -343,18 +343,18 @@ impl Cpu {
             1 => {
                 // DEC
                 if is_word {
-                    let value = self.read_rm16(mode, rm, addr, memory_bus);
+                    let value = self.read_rm16(mode, rm, addr, bus);
                     let result = value.wrapping_sub(1);
-                    self.write_rm16(mode, rm, addr, result, memory_bus);
+                    self.write_rm16(mode, rm, addr, result, bus);
                     self.set_flags_16(result);
                     let overflow = value == 0x8000;
                     self.set_flag(cpu_flag::OVERFLOW, overflow);
                     let aux_carry = (value & 0x0F) == 0;
                     self.set_flag(cpu_flag::AUXILIARY, aux_carry);
                 } else {
-                    let value = self.read_rm8(mode, rm, addr, memory_bus);
+                    let value = self.read_rm8(mode, rm, addr, bus);
                     let result = value.wrapping_sub(1);
-                    self.write_rm8(mode, rm, addr, result, memory_bus);
+                    self.write_rm8(mode, rm, addr, result, bus);
                     self.set_flags_8(result);
                     let overflow = value == 0x80;
                     self.set_flag(cpu_flag::OVERFLOW, overflow);
@@ -419,24 +419,24 @@ impl Cpu {
     /// 01: ADD r/m16, r16
     /// 02: ADD r8, r/m8
     /// 03: ADD r16, r/m16
-    pub(in crate::cpu) fn add_rm_reg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn add_rm_reg(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         if is_word {
             // 16-bit add
             let src = if dir {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             } else {
                 self.get_reg16(reg)
             };
             let dst = if dir {
                 self.get_reg16(reg)
             } else {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             };
 
             let (result, carry) = dst.overflowing_add(src);
@@ -445,7 +445,7 @@ impl Cpu {
             if dir {
                 self.set_reg16(reg, result);
             } else {
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
             }
 
             self.set_flags_16(result);
@@ -454,14 +454,14 @@ impl Cpu {
         } else {
             // 8-bit add
             let src = if dir {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             } else {
                 self.get_reg8(reg)
             };
             let dst = if dir {
                 self.get_reg8(reg)
             } else {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             };
 
             let (result, carry) = dst.overflowing_add(src);
@@ -471,7 +471,7 @@ impl Cpu {
             if dir {
                 self.set_reg8(reg, result);
             } else {
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
             }
 
             self.set_flags_8(result);
@@ -500,26 +500,26 @@ impl Cpu {
     /// 11: ADC r/m16, r16
     /// 12: ADC r8, r/m8
     /// 13: ADC r16, r/m16
-    pub(in crate::cpu) fn adc_rm_reg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn adc_rm_reg(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         let carry_in = if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 };
 
         if is_word {
             // 16-bit adc
             let src = if dir {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             } else {
                 self.get_reg16(reg)
             };
             let dst = if dir {
                 self.get_reg16(reg)
             } else {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             };
 
             let (temp, carry1) = dst.overflowing_add(src);
@@ -530,7 +530,7 @@ impl Cpu {
             if dir {
                 self.set_reg16(reg, result);
             } else {
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
             }
 
             self.set_flags_16(result);
@@ -539,14 +539,14 @@ impl Cpu {
         } else {
             // 8-bit adc
             let src = if dir {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             } else {
                 self.get_reg8(reg)
             };
             let dst = if dir {
                 self.get_reg8(reg)
             } else {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             };
 
             let (temp, carry1) = dst.overflowing_add(src);
@@ -558,7 +558,7 @@ impl Cpu {
             if dir {
                 self.set_reg8(reg, result);
             } else {
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
             }
 
             self.set_flags_8(result);
@@ -584,24 +584,24 @@ impl Cpu {
     /// 29: SUB r/m16, r16
     /// 2A: SUB r8, r/m8
     /// 2B: SUB r16, r/m16
-    pub(in crate::cpu) fn sub_rm_reg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn sub_rm_reg(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         if is_word {
             // 16-bit sub
             let src = if dir {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             } else {
                 self.get_reg16(reg)
             };
             let dst = if dir {
                 self.get_reg16(reg)
             } else {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             };
 
             let (result, carry) = dst.overflowing_sub(src);
@@ -610,7 +610,7 @@ impl Cpu {
             if dir {
                 self.set_reg16(reg, result);
             } else {
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
             }
 
             self.set_flags_16(result);
@@ -619,14 +619,14 @@ impl Cpu {
         } else {
             // 8-bit sub
             let src = if dir {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             } else {
                 self.get_reg8(reg)
             };
             let dst = if dir {
                 self.get_reg8(reg)
             } else {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             };
 
             let (result, carry) = dst.overflowing_sub(src);
@@ -636,7 +636,7 @@ impl Cpu {
             if dir {
                 self.set_reg8(reg, result);
             } else {
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
             }
 
             self.set_flags_8(result);
@@ -662,26 +662,26 @@ impl Cpu {
     /// 19: SBB r/m16, r16
     /// 1A: SBB r8, r/m8
     /// 1B: SBB r16, r/m16
-    pub(in crate::cpu) fn sbb_rm_reg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn sbb_rm_reg(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         let borrow_in = if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 };
 
         if is_word {
             // 16-bit sbb
             let src = if dir {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             } else {
                 self.get_reg16(reg)
             };
             let dst = if dir {
                 self.get_reg16(reg)
             } else {
-                self.read_rm16(mode, rm, addr, memory_bus)
+                self.read_rm16(mode, rm, addr, bus)
             };
 
             let (temp, borrow1) = dst.overflowing_sub(src);
@@ -692,7 +692,7 @@ impl Cpu {
             if dir {
                 self.set_reg16(reg, result);
             } else {
-                self.write_rm16(mode, rm, addr, result, memory_bus);
+                self.write_rm16(mode, rm, addr, result, bus);
             }
 
             self.set_flags_16(result);
@@ -701,14 +701,14 @@ impl Cpu {
         } else {
             // 8-bit sbb
             let src = if dir {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             } else {
                 self.get_reg8(reg)
             };
             let dst = if dir {
                 self.get_reg8(reg)
             } else {
-                self.read_rm8(mode, rm, addr, memory_bus)
+                self.read_rm8(mode, rm, addr, bus)
             };
 
             let (temp, borrow1) = dst.overflowing_sub(src);
@@ -720,7 +720,7 @@ impl Cpu {
             if dir {
                 self.set_reg8(reg, result);
             } else {
-                self.write_rm8(mode, rm, addr, result, memory_bus);
+                self.write_rm8(mode, rm, addr, result, bus);
             }
 
             self.set_flags_8(result);
@@ -744,12 +744,12 @@ impl Cpu {
     /// ADD immediate to accumulator (opcodes 04-05)
     /// 04: ADD AL, imm8
     /// 05: ADD AX, imm16
-    pub(in crate::cpu) fn add_imm_acc(&mut self, opcode: u8, memory_bus: &MemoryBus) {
+    pub(in crate::cpu) fn add_imm_acc(&mut self, opcode: u8, bus: &Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
             // ADD AX, imm16
-            let imm = self.fetch_word(memory_bus);
+            let imm = self.fetch_word(bus);
             let (result, carry) = self.ax.overflowing_add(imm);
             let overflow = ((self.ax ^ result) & (imm ^ result) & 0x8000) != 0;
 
@@ -759,7 +759,7 @@ impl Cpu {
             self.set_flag(cpu_flag::OVERFLOW, overflow);
         } else {
             // ADD AL, imm8
-            let imm = self.fetch_byte(memory_bus);
+            let imm = self.fetch_byte(bus);
             let al = (self.ax & 0xFF) as u8;
             let (result, carry) = al.overflowing_add(imm);
             let overflow = ((al ^ result) & (imm ^ result) & 0x80) != 0;
@@ -810,12 +810,12 @@ impl Cpu {
     /// SUB immediate to accumulator (opcodes 2C-2D)
     /// 2C: SUB AL, imm8
     /// 2D: SUB AX, imm16
-    pub(in crate::cpu) fn sub_imm_acc(&mut self, opcode: u8, memory_bus: &MemoryBus) {
+    pub(in crate::cpu) fn sub_imm_acc(&mut self, opcode: u8, bus: &Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
             // SUB AX, imm16
-            let imm = self.fetch_word(memory_bus);
+            let imm = self.fetch_word(bus);
             let (result, carry) = self.ax.overflowing_sub(imm);
             let overflow = ((self.ax ^ imm) & (self.ax ^ result) & 0x8000) != 0;
 
@@ -825,7 +825,7 @@ impl Cpu {
             self.set_flag(cpu_flag::OVERFLOW, overflow);
         } else {
             // SUB AL, imm8
-            let imm = self.fetch_byte(memory_bus);
+            let imm = self.fetch_byte(bus);
             let al = (self.ax & 0xFF) as u8;
             let (result, carry) = al.overflowing_sub(imm);
             let overflow = ((al ^ imm) & (al ^ result) & 0x80) != 0;
@@ -910,8 +910,8 @@ impl Cpu {
 
     /// AAM - ASCII Adjust After Multiplication (opcode 0xD4)
     /// Converts binary product in AL to unpacked BCD in AX
-    pub(in crate::cpu) fn aam(&mut self, memory_bus: &MemoryBus) {
-        let base = self.fetch_byte(memory_bus); // Usually 0x0A (10), but can be customized
+    pub(in crate::cpu) fn aam(&mut self, bus: &Bus) {
+        let base = self.fetch_byte(bus); // Usually 0x0A (10), but can be customized
         let al = (self.ax & 0xFF) as u8;
         if base == 0 {
             panic!("Division by zero in AAM instruction");
@@ -928,8 +928,8 @@ impl Cpu {
 
     /// AAD - ASCII Adjust Before Division (opcode 0xD5)
     /// Converts unpacked BCD in AX to binary in AL
-    pub(in crate::cpu) fn aad(&mut self, memory_bus: &MemoryBus) {
-        let base = self.fetch_byte(memory_bus); // Usually 0x0A (10), but can be customized
+    pub(in crate::cpu) fn aad(&mut self, bus: &Bus) {
+        let base = self.fetch_byte(bus); // Usually 0x0A (10), but can be customized
         let al = (self.ax & 0xFF) as u8;
         let ah = ((self.ax >> 8) & 0xFF) as u8;
         let result = al.wrapping_add(ah.wrapping_mul(base));
@@ -945,13 +945,13 @@ impl Cpu {
     /// ADC immediate to accumulator (opcodes 14-15)
     /// 14: ADC AL, imm8
     /// 15: ADC AX, imm16
-    pub(in crate::cpu) fn adc_imm_acc(&mut self, opcode: u8, memory_bus: &MemoryBus) {
+    pub(in crate::cpu) fn adc_imm_acc(&mut self, opcode: u8, bus: &Bus) {
         let is_word = opcode & 0x01 != 0;
         let carry_in = if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 };
 
         if is_word {
             // ADC AX, imm16
-            let imm = self.fetch_word(memory_bus);
+            let imm = self.fetch_word(bus);
             let (temp, carry1) = self.ax.overflowing_add(imm);
             let (result, carry2) = temp.overflowing_add(carry_in);
             let carry = carry1 || carry2;
@@ -963,7 +963,7 @@ impl Cpu {
             self.set_flag(cpu_flag::OVERFLOW, overflow);
         } else {
             // ADC AL, imm8
-            let imm = self.fetch_byte(memory_bus);
+            let imm = self.fetch_byte(bus);
             let al = (self.ax & 0xFF) as u8;
             let (temp, carry1) = al.overflowing_add(imm);
             let (result, carry2) = temp.overflowing_add(carry_in as u8);
@@ -985,13 +985,13 @@ impl Cpu {
     /// SBB immediate to accumulator (opcodes 1C-1D)
     /// 1C: SBB AL, imm8
     /// 1D: SBB AX, imm16
-    pub(in crate::cpu) fn sbb_imm_acc(&mut self, opcode: u8, memory_bus: &MemoryBus) {
+    pub(in crate::cpu) fn sbb_imm_acc(&mut self, opcode: u8, bus: &Bus) {
         let is_word = opcode & 0x01 != 0;
         let borrow_in = if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 };
 
         if is_word {
             // SBB AX, imm16
-            let imm = self.fetch_word(memory_bus);
+            let imm = self.fetch_word(bus);
             let (temp, borrow1) = self.ax.overflowing_sub(imm);
             let (result, borrow2) = temp.overflowing_sub(borrow_in);
             let borrow = borrow1 || borrow2;
@@ -1003,7 +1003,7 @@ impl Cpu {
             self.set_flag(cpu_flag::OVERFLOW, overflow);
         } else {
             // SBB AL, imm8
-            let imm = self.fetch_byte(memory_bus);
+            let imm = self.fetch_byte(bus);
             let al = (self.ax & 0xFF) as u8;
             let (temp, borrow1) = al.overflowing_sub(imm);
             let (result, borrow2) = temp.overflowing_sub(borrow_in as u8);

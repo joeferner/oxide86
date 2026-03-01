@@ -1,6 +1,6 @@
 use crate::{
+    bus::Bus,
     cpu::{Cpu, cpu_flag},
-    memory_bus::MemoryBus,
     physical_address,
 };
 
@@ -18,7 +18,7 @@ impl Cpu {
     // Returns (mod, reg, r/m, effective_address, default_segment)
     // mod: 00=no disp (except r/m=110), 01=8-bit disp, 10=16-bit disp, 11=register
     // For mod=11, effective_address is unused
-    fn decode_modrm(&mut self, modrm: u8, bus: &MemoryBus) -> (u8, u8, u8, usize, u16) {
+    fn decode_modrm(&mut self, modrm: u8, bus: &Bus) -> (u8, u8, u8, usize, u16) {
         let mode = modrm >> 6;
         let reg = (modrm >> 3) & 0x07;
         let rm = modrm & 0x07;
@@ -161,67 +161,60 @@ impl Cpu {
     }
 
     /// Read 8-bit value from register or memory based on mod field
-    fn read_rm8(&self, mode: u8, rm: u8, addr: usize, memory_bus: &MemoryBus) -> u8 {
+    fn read_rm8(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u8 {
         if mode == 0b11 {
             // Register mode
             self.get_reg8(rm)
         } else {
             // Memory mode
-            memory_bus.read_u8(addr)
+            bus.memory_read_u8(addr)
         }
     }
 
     // Read 16-bit value from register or memory based on mod field
-    fn read_rm16(&self, mode: u8, rm: u8, addr: usize, memory_bus: &MemoryBus) -> u16 {
+    fn read_rm16(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u16 {
         if mode == 0b11 {
             // Register mode
             self.get_reg16(rm)
         } else {
             // Memory mode
-            memory_bus.read_u16(addr)
+            bus.memory_read_u16(addr)
         }
     }
 
     // Write 8-bit value to register or memory based on mod field
-    fn write_rm8(&mut self, mode: u8, rm: u8, addr: usize, value: u8, memory_bus: &mut MemoryBus) {
+    fn write_rm8(&mut self, mode: u8, rm: u8, addr: usize, value: u8, bus: &mut Bus) {
         if mode == 0b11 {
             // Register mode
             self.set_reg8(rm, value);
         } else {
             // Memory mode
-            memory_bus.write_u8(addr, value);
+            bus.memory_write_u8(addr, value);
         }
     }
 
     // Write 16-bit value to register or memory based on mod field
-    fn write_rm16(
-        &mut self,
-        mode: u8,
-        rm: u8,
-        addr: usize,
-        value: u16,
-        memory_bus: &mut MemoryBus,
-    ) {
+    fn write_rm16(&mut self, mode: u8, rm: u8, addr: usize, value: u16, bus: &mut Bus) {
         if mode == 0b11 {
             // Register mode
             self.set_reg16(rm, value);
         } else {
             // Memory mode
-            memory_bus.write_u16(addr, value);
+            bus.memory_write_u16(addr, value);
         }
     }
 
     /// Push 16-bit value onto stack
-    fn push(&mut self, value: u16, memory_bus: &mut MemoryBus) {
+    fn push(&mut self, value: u16, bus: &mut Bus) {
         self.sp = self.sp.wrapping_sub(2);
         let addr = physical_address(self.ss, self.sp);
-        memory_bus.write_u16(addr, value);
+        bus.memory_write_u16(addr, value);
     }
 
     /// Pop 16-bit value from stack
-    fn pop(&mut self, memory_bus: &MemoryBus) -> u16 {
+    fn pop(&mut self, bus: &Bus) -> u16 {
         let addr = physical_address(self.ss, self.sp);
-        let value = memory_bus.read_u16(addr);
+        let value = bus.memory_read_u16(addr);
         self.sp = self.sp.wrapping_add(2);
         value
     }

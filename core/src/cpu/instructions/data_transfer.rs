@@ -1,6 +1,6 @@
 use crate::{
+    bus::Bus,
     cpu::{Cpu, CpuType, timing},
-    memory_bus::MemoryBus,
     physical_address,
 };
 
@@ -8,17 +8,17 @@ impl Cpu {
     /// MOV immediate to register (opcodes B0-BF)
     /// B0-B7: MOV reg8, imm8
     /// B8-BF: MOV reg16, imm16
-    pub(in crate::cpu) fn mov_imm_to_reg(&mut self, opcode: u8, memory_bus: &MemoryBus) {
+    pub(in crate::cpu) fn mov_imm_to_reg(&mut self, opcode: u8, bus: &Bus) {
         let reg = opcode & 0x07;
         let is_word = opcode & 0x08 != 0;
 
         if is_word {
             // 16-bit register
-            let value = self.fetch_word(memory_bus);
+            let value = self.fetch_word(bus);
             self.set_reg16(reg, value);
         } else {
             // 8-bit register
-            let value = self.fetch_byte(memory_bus);
+            let value = self.fetch_byte(bus);
             self.set_reg8(reg, value);
         }
 
@@ -31,7 +31,7 @@ impl Cpu {
     /// A1: MOV AX, [moffs16] - Move word at direct address to AX
     /// A2: MOV [moffs8], AL - Move AL to byte at direct address
     /// A3: MOV [moffs16], AX - Move AX to word at direct address
-    pub(in crate::cpu) fn mov_acc_moffs(&mut self, opcode: u8, bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn mov_acc_moffs(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let to_acc = opcode & 0x02 == 0; // 0 = to accumulator, 1 = from accumulator
 
@@ -44,19 +44,19 @@ impl Cpu {
         if is_word {
             if to_acc {
                 // MOV AX, [offset]
-                self.ax = bus.read_u16(addr);
+                self.ax = bus.memory_read_u16(addr);
             } else {
                 // MOV [offset], AX
-                bus.write_u16(addr, self.ax);
+                bus.memory_write_u16(addr, self.ax);
             }
         } else if to_acc {
             // MOV AL, [offset]
-            let value = bus.read_u8(addr);
+            let value = bus.memory_read_u8(addr);
             self.ax = (self.ax & 0xFF00) | (value as u16);
         } else {
             // MOV [offset], AL
             let value = (self.ax & 0xFF) as u8;
-            bus.write_u8(addr, value);
+            bus.memory_write_u8(addr, value);
         }
 
         // MOV acc, [addr] or [addr], acc: 10 cycles (direct addressing)
@@ -71,7 +71,7 @@ impl Cpu {
     /// 8E: MOV segreg, r/m16
     /// Copies a 16-bit register or bus value to a segment register (ES, CS, SS, DS)
     /// Note: MOV to CS is not recommended as it affects instruction fetching
-    pub(in crate::cpu) fn mov_rm_to_segreg(&mut self, bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn mov_rm_to_segreg(&mut self, bus: &mut Bus) {
         let modrm = self.fetch_byte(bus);
         let (mode, seg_reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
@@ -92,9 +92,9 @@ impl Cpu {
 
     /// POP 16-bit register (opcodes 58-5F)
     /// Pop from stack to register
-    pub(in crate::cpu) fn pop_reg16(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn pop_reg16(&mut self, opcode: u8, bus: &mut Bus) {
         let reg = opcode & 0x07;
-        let value = self.pop(memory_bus);
+        let value = self.pop(bus);
         self.set_reg16(reg, value);
 
         // POP register: 8 cycles
@@ -105,17 +105,17 @@ impl Cpu {
     /// Push register onto stack
     /// 8086 PUSH SP behavior: pushes SP-2 (value after decrement)
     /// 80286+ PUSH SP behavior: pushes original SP value
-    pub(in crate::cpu) fn push_reg16(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn push_reg16(&mut self, opcode: u8, bus: &mut Bus) {
         let reg = opcode & 0x07;
         if reg == 4 && self.cpu_type == CpuType::I8086 {
             // PUSH SP on 8086: push the decremented value (post-decrement SP)
             self.sp = self.sp.wrapping_sub(2);
             let value = self.sp;
             let addr = physical_address(self.ss, self.sp);
-            memory_bus.write_u16(addr, value);
+            bus.memory_write_u16(addr, value);
         } else {
             let value = self.get_reg16(reg);
-            self.push(value, memory_bus);
+            self.push(value, bus);
         }
 
         // PUSH register: 11 cycles
@@ -125,9 +125,9 @@ impl Cpu {
     /// PUSH r/m16 (opcode FF /6) - Group 5
     /// FF /6: PUSH r/m16
     /// Pushes a word from register or bus location onto stack
-    pub(in crate::cpu) fn push_rm16(&mut self, memory_bus: &mut MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+    pub(in crate::cpu) fn push_rm16(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         // The reg field should be 6 for PUSH (it's an opcode extension)
         if reg_field != 6 {
@@ -137,8 +137,8 @@ impl Cpu {
             );
         }
 
-        let value = self.read_rm16(mode, rm, addr, memory_bus);
-        self.push(value, memory_bus);
+        let value = self.read_rm16(mode, rm, addr, bus);
+        self.push(value, bus);
 
         // Calculate cycle timing
         self.last_instruction_cycles = if mode == 0b11 {
@@ -156,34 +156,34 @@ impl Cpu {
     /// 89: MOV r/m16, r16
     /// 8A: MOV r8, r/m8
     /// 8B: MOV r16, r/m16
-    pub(in crate::cpu) fn mov_reg_rm(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn mov_reg_rm(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let dir = opcode & 0x02 != 0; // 0 = reg is source, 1 = reg is dest
 
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         if is_word {
             // 16-bit move
             if dir {
                 // MOV reg16, r/m16
-                let value = self.read_rm16(mode, rm, addr, memory_bus);
+                let value = self.read_rm16(mode, rm, addr, bus);
                 self.set_reg16(reg, value);
             } else {
                 // MOV r/m16, reg16
                 let value = self.get_reg16(reg);
-                self.write_rm16(mode, rm, addr, value, memory_bus);
+                self.write_rm16(mode, rm, addr, value, bus);
             }
         } else {
             // 8-bit move
             if dir {
                 // MOV reg8, r/m8
-                let value = self.read_rm8(mode, rm, addr, memory_bus);
+                let value = self.read_rm8(mode, rm, addr, bus);
                 self.set_reg8(reg, value);
             } else {
                 // MOV r/m8, reg8
                 let value = self.get_reg8(reg);
-                self.write_rm8(mode, rm, addr, value, memory_bus);
+                self.write_rm8(mode, rm, addr, value, bus);
             }
         }
 
@@ -205,22 +205,22 @@ impl Cpu {
     /// MOV immediate to r/m (opcodes C6-C7)
     /// C6: MOV r/m8, imm8
     /// C7: MOV r/m16, imm16
-    pub(in crate::cpu) fn mov_imm_to_rm(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn mov_imm_to_rm(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, _reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, _reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         // The reg field should be 0 for MOV immediate
         // (it's part of the opcode extension)
 
         if is_word {
             // MOV r/m16, imm16
-            let value = self.fetch_word(memory_bus);
-            self.write_rm16(mode, rm, addr, value, memory_bus);
+            let value = self.fetch_word(bus);
+            self.write_rm16(mode, rm, addr, value, bus);
         } else {
             // MOV r/m8, imm8
-            let value = self.fetch_byte(memory_bus);
-            self.write_rm8(mode, rm, addr, value, memory_bus);
+            let value = self.fetch_byte(bus);
+            self.write_rm8(mode, rm, addr, value, bus);
         }
 
         // Calculate cycle timing
@@ -239,7 +239,7 @@ impl Cpu {
     /// 0E: PUSH CS
     /// 16: PUSH SS
     /// 1E: PUSH DS
-    pub(in crate::cpu) fn push_segreg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn push_segreg(&mut self, opcode: u8, bus: &mut Bus) {
         let seg = match opcode {
             0x06 => 0, // ES
             0x0E => 1, // CS
@@ -248,7 +248,7 @@ impl Cpu {
             _ => unreachable!(),
         };
         let value = self.get_segreg(seg);
-        self.push(value, memory_bus);
+        self.push(value, bus);
 
         // PUSH segment register: 10 cycles
         self.last_instruction_cycles = timing::cycles::PUSH_SEGREG;
@@ -256,9 +256,9 @@ impl Cpu {
 
     /// LDS - Load Pointer using DS (opcode 0xC5)
     /// Loads far pointer from bus into register and DS
-    pub(in crate::cpu) fn lds(&mut self, memory_bus: &MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+    pub(in crate::cpu) fn lds(&mut self, bus: &Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         // LDS only works with bus operands
         if mode == 0b11 {
@@ -266,8 +266,8 @@ impl Cpu {
         }
 
         // Read offset and segment from bus (4 bytes total)
-        let offset = memory_bus.read_u16(addr);
-        let segment = memory_bus.read_u16(addr + 2);
+        let offset = bus.memory_read_u16(addr);
+        let segment = bus.memory_read_u16(addr + 2);
 
         self.set_reg16(reg, offset);
         self.ds = segment;
@@ -281,13 +281,13 @@ impl Cpu {
     /// MOV segment register to r/m16 (opcode 8C)
     /// 8C: MOV r/m16, segreg
     /// Copies a segment register (ES, CS, SS, DS) to a 16-bit register or bus location
-    pub(in crate::cpu) fn mov_segreg_to_rm(&mut self, memory_bus: &mut MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, seg_reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+    pub(in crate::cpu) fn mov_segreg_to_rm(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, seg_reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         // The reg field specifies which segment register (ES=0, CS=1, SS=2, DS=3)
         let value = self.get_segreg(seg_reg);
-        self.write_rm16(mode, rm, addr, value, memory_bus);
+        self.write_rm16(mode, rm, addr, value, bus);
 
         // Calculate cycle timing
         self.last_instruction_cycles = if mode == 0b11 {
@@ -305,7 +305,7 @@ impl Cpu {
     /// 0F: POP CS (note: POP CS is unusual, typically not used)
     /// 17: POP SS
     /// 1F: POP DS
-    pub(in crate::cpu) fn pop_segreg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn pop_segreg(&mut self, opcode: u8, bus: &mut Bus) {
         let seg = match opcode {
             0x07 => 0, // ES
             0x0F => 1, // CS
@@ -313,7 +313,7 @@ impl Cpu {
             0x1F => 3, // DS
             _ => unreachable!(),
         };
-        let value = self.pop(memory_bus);
+        let value = self.pop(bus);
         self.set_segreg(seg, value);
 
         // POP segment register: 8 cycles
@@ -322,9 +322,9 @@ impl Cpu {
 
     /// LES - Load Pointer using ES (opcode 0xC4)
     /// Loads far pointer from bus into register and ES
-    pub(in crate::cpu) fn les(&mut self, memory_bus: &MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+    pub(in crate::cpu) fn les(&mut self, bus: &Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         // LES only works with bus operands
         if mode == 0b11 {
@@ -332,8 +332,8 @@ impl Cpu {
         }
 
         // Read offset and segment from bus (4 bytes total)
-        let offset = memory_bus.read_u16(addr);
-        let segment = memory_bus.read_u16(addr + 2);
+        let offset = bus.memory_read_u16(addr);
+        let segment = bus.memory_read_u16(addr + 2);
 
         self.set_reg16(reg, offset);
         self.es = segment;
@@ -365,23 +365,23 @@ impl Cpu {
     /// XCHG register/bus with register (opcodes 86-87)
     /// 86: XCHG r/m8, r8
     /// 87: XCHG r/m16, r16
-    pub(in crate::cpu) fn xchg_rm_reg(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn xchg_rm_reg(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         if is_word {
             // 16-bit exchange
             let reg_val = self.get_reg16(reg);
-            let rm_val = self.read_rm16(mode, rm, addr, memory_bus);
+            let rm_val = self.read_rm16(mode, rm, addr, bus);
             self.set_reg16(reg, rm_val);
-            self.write_rm16(mode, rm, addr, reg_val, memory_bus);
+            self.write_rm16(mode, rm, addr, reg_val, bus);
         } else {
             // 8-bit exchange
             let reg_val = self.get_reg8(reg);
-            let rm_val = self.read_rm8(mode, rm, addr, memory_bus);
+            let rm_val = self.read_rm8(mode, rm, addr, bus);
             self.set_reg8(reg, rm_val);
-            self.write_rm8(mode, rm, addr, reg_val, memory_bus);
+            self.write_rm8(mode, rm, addr, reg_val, bus);
         }
 
         // Calculate cycle timing
@@ -397,8 +397,8 @@ impl Cpu {
 
     /// LEA - Load Effective Address (opcode 0x8D)
     /// Loads the offset of the source operand into destination register
-    pub(in crate::cpu) fn lea(&mut self, memory_bus: &MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
+    pub(in crate::cpu) fn lea(&mut self, bus: &Bus) {
+        let modrm = self.fetch_byte(bus);
         let mode = modrm >> 6;
         let reg = (modrm >> 3) & 0x07;
         let rm = modrm & 0x07;
@@ -419,7 +419,7 @@ impl Cpu {
             0b110 => {
                 if mode == 0b00 {
                     // Special case: direct address
-                    self.fetch_word(memory_bus)
+                    self.fetch_word(bus)
                 } else {
                     self.bp // [BP]
                 }
@@ -433,12 +433,12 @@ impl Cpu {
             0b00 => offset, // No displacement (except for direct addressing handled above)
             0b01 => {
                 // 8-bit signed displacement
-                let disp = self.fetch_byte(memory_bus) as i8;
+                let disp = self.fetch_byte(bus) as i8;
                 offset.wrapping_add(disp as i16 as u16)
             }
             0b10 => {
                 // 16-bit displacement
-                let disp = self.fetch_word(memory_bus);
+                let disp = self.fetch_word(bus);
                 offset.wrapping_add(disp)
             }
             _ => unreachable!(),
@@ -476,13 +476,13 @@ impl Cpu {
     /// XLAT - Table Look-up Translation (opcode 0xD7)
     /// Translates AL using lookup table at DS:BX
     /// AL = [DS:BX + AL]
-    pub(in crate::cpu) fn xlat(&mut self, memory_bus: &MemoryBus) {
+    pub(in crate::cpu) fn xlat(&mut self, bus: &Bus) {
         let al = (self.ax & 0xFF) as u8;
         let offset = self.bx.wrapping_add(al as u16);
         // Use segment override if present, otherwise use DS
         let segment = self.segment_override.unwrap_or(self.ds);
         let addr = physical_address(segment, offset);
-        let value = memory_bus.read_u8(addr);
+        let value = bus.memory_read_u8(addr);
         self.ax = (self.ax & 0xFF00) | (value as u16);
 
         // XLAT: 11 cycles
@@ -491,8 +491,8 @@ impl Cpu {
 
     /// PUSHF - Push Flags Register (opcode 9C)
     /// Pushes the FLAGS register onto the stack
-    pub(in crate::cpu) fn pushf(&mut self, memory_bus: &mut MemoryBus) {
-        self.push(self.flags, memory_bus);
+    pub(in crate::cpu) fn pushf(&mut self, bus: &mut Bus) {
+        self.push(self.flags, bus);
 
         // PUSHF: 10 cycles
         self.last_instruction_cycles = timing::cycles::PUSHF;
@@ -501,8 +501,8 @@ impl Cpu {
     /// POPF - Pop Flags Register (opcode 9D)
     /// Pops a word from the stack into the FLAGS register
     /// On 8086: only bits 0-11 can be modified, bit 1 is always 1
-    pub(in crate::cpu) fn popf(&mut self, memory_bus: &mut MemoryBus) {
-        let value = self.pop(memory_bus);
+    pub(in crate::cpu) fn popf(&mut self, bus: &mut Bus) {
+        let value = self.pop(bus);
         // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
         self.flags = (value & 0x0FFF) | 0x0002;
 
@@ -513,36 +513,36 @@ impl Cpu {
     /// PUSHA - Push All General Registers (opcode 0x60)
     /// Pushes AX, CX, DX, BX, original SP, BP, SI, DI onto the stack
     /// 80186+ instruction
-    pub(in crate::cpu) fn pusha(&mut self, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn pusha(&mut self, bus: &mut Bus) {
         let original_sp = self.sp;
-        self.push(self.ax, memory_bus);
-        self.push(self.cx, memory_bus);
-        self.push(self.dx, memory_bus);
-        self.push(self.bx, memory_bus);
-        self.push(original_sp, memory_bus);
-        self.push(self.bp, memory_bus);
-        self.push(self.si, memory_bus);
-        self.push(self.di, memory_bus);
+        self.push(self.ax, bus);
+        self.push(self.cx, bus);
+        self.push(self.dx, bus);
+        self.push(self.bx, bus);
+        self.push(original_sp, bus);
+        self.push(self.bp, bus);
+        self.push(self.si, bus);
+        self.push(self.di, bus);
 
         // PUSHA: 36 cycles (80186+)
         self.last_instruction_cycles = timing::cycles::PUSHA;
     }
 
     /// PUSH immediate (opcode 68: 16-bit, 6A: sign-extended 8-bit)
-    pub(in crate::cpu) fn push_imm(&mut self, opcode: u8, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn push_imm(&mut self, opcode: u8, bus: &mut Bus) {
         let value = if opcode == 0x68 {
             // PUSH imm16
-            self.fetch_word(memory_bus)
+            self.fetch_word(bus)
         } else {
             // PUSH imm8 (sign-extended to 16 bits)
-            let imm8 = self.fetch_byte(memory_bus);
+            let imm8 = self.fetch_byte(bus);
             if imm8 & 0x80 != 0 {
                 0xFF00 | (imm8 as u16)
             } else {
                 imm8 as u16
             }
         };
-        self.push(value, memory_bus);
+        self.push(value, bus);
 
         // PUSH immediate: 10 cycles (80186+)
         self.last_instruction_cycles = timing::cycles::PUSH_IMM;
@@ -551,9 +551,9 @@ impl Cpu {
     /// POP r/m16 (opcode 8F) - Group 1A
     /// 8F /0: POP r/m16
     /// Pops a word from stack to register or bus location
-    pub(in crate::cpu) fn pop_rm16(&mut self, memory_bus: &mut MemoryBus) {
-        let modrm = self.fetch_byte(memory_bus);
-        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, memory_bus);
+    pub(in crate::cpu) fn pop_rm16(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
         // The reg field should be 0 for POP (it's an opcode extension)
         if reg_field != 0 {
@@ -563,8 +563,8 @@ impl Cpu {
             );
         }
 
-        let value = self.pop(memory_bus);
-        self.write_rm16(mode, rm, addr, value, memory_bus);
+        let value = self.pop(bus);
+        self.write_rm16(mode, rm, addr, value, bus);
 
         // Calculate cycle timing
         self.last_instruction_cycles = if mode == 0b11 {
@@ -587,7 +587,7 @@ mod tests {
     #[test_log::test]
     fn test_mov_imm_to_reg_8bit() {
         // 1. Setup: Initialize CPU and Memory
-        let (mut cpu, mut memory_bus) = create_test_cpu();
+        let (mut cpu, mut bus) = create_test_cpu();
 
         // 2. Test 8-bit Move: MOV AL, 0x42 (Opcode 0xB0)
         // AL is usually register index 0
@@ -595,9 +595,9 @@ mod tests {
         let imm_val_8 = 0x42;
 
         // Place the immediate value in memory at the current IP
-        memory_bus.write_u8(physical_address(0, cpu.ip), imm_val_8);
+        bus.memory_write_u8(physical_address(0, cpu.ip), imm_val_8);
 
-        cpu.mov_imm_to_reg(opcode_al, &memory_bus);
+        cpu.mov_imm_to_reg(opcode_al, &bus);
 
         assert_eq!(cpu.get_reg8(0), imm_val_8, "AL should contain 0x42");
         assert_eq!(cpu.last_instruction_cycles, 4, "Should take 4 cycles");
@@ -607,7 +607,7 @@ mod tests {
     #[test_log::test]
     fn test_mov_imm_to_reg_16bit() {
         // 1. Setup: Initialize CPU and Memory
-        let (mut cpu, mut memory_bus) = create_test_cpu();
+        let (mut cpu, mut bus) = create_test_cpu();
 
         // 2. Test 16-bit Move: MOV AX, 0x1234 (Opcode 0xB8)
         // AX is usually register index 0 (with the is_word bit set)
@@ -615,9 +615,9 @@ mod tests {
         let imm_val_16 = 0x1234;
 
         // Place the word in memory (handling little-endian if applicable)
-        memory_bus.write_u16(physical_address(0, cpu.ip), imm_val_16);
+        bus.memory_write_u16(physical_address(0, cpu.ip), imm_val_16);
 
-        cpu.mov_imm_to_reg(opcode_ax, &memory_bus);
+        cpu.mov_imm_to_reg(opcode_ax, &bus);
 
         assert_eq!(cpu.get_reg16(0), imm_val_16, "AX should contain 0x1234");
         assert_eq!(cpu.ip, 2, "IP should have advanced by 2 bytes");

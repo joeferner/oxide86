@@ -1,7 +1,4 @@
-use crate::{
-    cpu::bios::BIOS_CODE_SEGMENT, disk::DriveNumber, io_bus::IoBus, memory_bus::MemoryBus,
-    physical_address,
-};
+use crate::{bus::Bus, cpu::bios::BIOS_CODE_SEGMENT, disk::DriveNumber, physical_address};
 pub mod bios;
 mod cpu_type;
 mod instructions;
@@ -139,14 +136,14 @@ impl Cpu {
         self.halted
     }
 
-    pub fn step(&mut self, memory_bus: &mut MemoryBus, io_bus: &mut IoBus) {
+    pub fn step(&mut self, bus: &mut Bus) {
         if self.cs == BIOS_CODE_SEGMENT {
-            self.step_bios_int(memory_bus, io_bus);
+            self.step_bios_int(bus);
             return;
         }
 
         if self.exec_logging_enabled {
-            let decoded = self.decode_instruction_with_regs(memory_bus);
+            let decoded = self.decode_instruction_with_regs(bus);
 
             // Combine register and memory values for logging
             let mut values = String::new();
@@ -176,28 +173,28 @@ impl Cpu {
             );
         }
 
-        let opcode = self.fetch_byte(memory_bus);
+        let opcode = self.fetch_byte(bus);
         match opcode {
             // ADD r/m to register
-            0x00..=0x03 => self.add_rm_reg(opcode, memory_bus),
+            0x00..=0x03 => self.add_rm_reg(opcode, bus),
 
             // ADD immediate to AL/AX
-            0x04..=0x05 => self.add_imm_acc(opcode, memory_bus),
+            0x04..=0x05 => self.add_imm_acc(opcode, bus),
 
             // PUSH ES (06)
-            0x06 => self.push_segreg(opcode, memory_bus),
+            0x06 => self.push_segreg(opcode, bus),
 
             // POP ES (07)
-            0x07 => self.pop_segreg(opcode, memory_bus),
+            0x07 => self.pop_segreg(opcode, bus),
 
             // OR r/m to register
-            0x08..=0x0B => self.or_rm_reg(opcode, memory_bus),
+            0x08..=0x0B => self.or_rm_reg(opcode, bus),
 
             // OR immediate to AL/AX
-            0x0C..=0x0D => self.or_imm_acc(opcode, memory_bus),
+            0x0C..=0x0D => self.or_imm_acc(opcode, bus),
 
             // PUSH CS (0E)
-            0x0E => self.push_segreg(opcode, memory_bus),
+            0x0E => self.push_segreg(opcode, bus),
 
             // POP CS (0F) - 8086 only, repurposed as two-byte prefix on 80286+
             0x0F => {
@@ -206,40 +203,40 @@ impl Cpu {
                     self.cs,
                     self.ip.wrapping_sub(1)
                 );
-                self.pop_segreg(opcode, memory_bus);
+                self.pop_segreg(opcode, bus);
             }
 
             // ADC r/m to register (10-13)
-            0x10..=0x13 => self.adc_rm_reg(opcode, memory_bus),
+            0x10..=0x13 => self.adc_rm_reg(opcode, bus),
 
             // ADC immediate to AL/AX (14-15)
-            0x14..=0x15 => self.adc_imm_acc(opcode, memory_bus),
+            0x14..=0x15 => self.adc_imm_acc(opcode, bus),
 
             // PUSH SS (16)
-            0x16 => self.push_segreg(opcode, memory_bus),
+            0x16 => self.push_segreg(opcode, bus),
 
             // SBB r/m to register (18-1B)
-            0x18..=0x1B => self.sbb_rm_reg(opcode, memory_bus),
+            0x18..=0x1B => self.sbb_rm_reg(opcode, bus),
 
             // SBB immediate to AL/AX (1C-1D)
-            0x1C..=0x1D => self.sbb_imm_acc(opcode, memory_bus),
+            0x1C..=0x1D => self.sbb_imm_acc(opcode, bus),
 
             // PUSH DS (1E)
-            0x1E => self.push_segreg(opcode, memory_bus),
+            0x1E => self.push_segreg(opcode, bus),
 
             // POP DS (1F)
-            0x1F => self.pop_segreg(opcode, memory_bus),
+            0x1F => self.pop_segreg(opcode, bus),
 
             // AND r/m to register
-            0x20..=0x23 => self.and_rm_reg(opcode, memory_bus),
+            0x20..=0x23 => self.and_rm_reg(opcode, bus),
 
             // AND immediate to AL/AX
-            0x24..=0x25 => self.and_imm_acc(opcode, memory_bus),
+            0x24..=0x25 => self.and_imm_acc(opcode, bus),
 
             // ES: segment override prefix (26)
             0x26 => {
                 self.segment_override = Some(self.es);
-                self.step(memory_bus, io_bus);
+                self.step(bus);
                 self.segment_override = None;
             }
 
@@ -247,15 +244,15 @@ impl Cpu {
             0x27 => self.daa(),
 
             // SUB r/m to register
-            0x28..=0x2B => self.sub_rm_reg(opcode, memory_bus),
+            0x28..=0x2B => self.sub_rm_reg(opcode, bus),
 
             // SUB immediate to AL/AX
-            0x2C..=0x2D => self.sub_imm_acc(opcode, memory_bus),
+            0x2C..=0x2D => self.sub_imm_acc(opcode, bus),
 
             // CS: segment override prefix (2E)
             0x2E => {
                 self.segment_override = Some(self.cs);
-                self.step(memory_bus, io_bus);
+                self.step(bus);
                 self.segment_override = None;
             }
 
@@ -263,15 +260,15 @@ impl Cpu {
             0x2F => self.das(),
 
             // XOR r/m to register
-            0x30..=0x33 => self.xor_rm_reg(opcode, memory_bus),
+            0x30..=0x33 => self.xor_rm_reg(opcode, bus),
 
             // XOR immediate to AL/AX
-            0x34..=0x35 => self.xor_imm_acc(opcode, memory_bus),
+            0x34..=0x35 => self.xor_imm_acc(opcode, bus),
 
             // SS: segment override prefix (36)
             0x36 => {
                 self.segment_override = Some(self.ss);
-                self.step(memory_bus, io_bus);
+                self.step(bus);
                 self.segment_override = None;
             }
 
@@ -279,15 +276,15 @@ impl Cpu {
             0x37 => self.aaa(),
 
             // CMP r/m to register
-            0x38..=0x3B => self.cmp_rm_reg(opcode, memory_bus),
+            0x38..=0x3B => self.cmp_rm_reg(opcode, bus),
 
             // CMP immediate to AL/AX
-            0x3C..=0x3D => self.cmp_imm_acc(opcode, memory_bus),
+            0x3C..=0x3D => self.cmp_imm_acc(opcode, bus),
 
             // DS: segment override prefix (3E)
             0x3E => {
                 self.segment_override = Some(self.ds);
-                self.step(memory_bus, io_bus);
+                self.step(bus);
                 self.segment_override = None;
             }
 
@@ -301,55 +298,55 @@ impl Cpu {
             0x48..=0x4F => self.dec_reg16(opcode),
 
             // PUSH 16-bit register (50-57)
-            0x50..=0x57 => self.push_reg16(opcode, memory_bus),
+            0x50..=0x57 => self.push_reg16(opcode, bus),
 
             // POP 16-bit register (58-5F)
-            0x58..=0x5F => self.pop_reg16(opcode, memory_bus),
+            0x58..=0x5F => self.pop_reg16(opcode, bus),
 
             // PUSHA - Push All General Registers (60)
-            0x60 => self.pusha(memory_bus),
+            0x60 => self.pusha(bus),
 
             // FS: segment override prefix (64) - 80386+
             0x64 => {
                 self.segment_override = Some(self.fs);
-                self.step(memory_bus, io_bus);
+                self.step(bus);
                 self.segment_override = None;
             }
 
             // PUSH immediate (68: imm16, 6A: imm8 sign-extended)
-            0x68 | 0x6A => self.push_imm(opcode, memory_bus),
+            0x68 | 0x6A => self.push_imm(opcode, bus),
 
             // INS - Input String from Port (6C-6D)
-            0x6C..=0x6D => self.ins(opcode, memory_bus, io_bus),
+            0x6C..=0x6D => self.ins(opcode, bus),
 
             // Conditional jumps (70-7F)
-            0x70..=0x7F => self.jmp_conditional(opcode, memory_bus),
+            0x70..=0x7F => self.jmp_conditional(opcode, bus),
 
             // Arithmetic/logical immediate to r/m (80: 8-bit, 81: 16-bit, 82: same as 80, 83: sign-extended 8-bit to 16-bit)
-            0x80 | 0x82 => self.arith_imm8_rm8(memory_bus),
-            0x81 => self.arith_imm16_rm(memory_bus),
-            0x83 => self.arith_imm8_rm(memory_bus),
+            0x80 | 0x82 => self.arith_imm8_rm8(bus),
+            0x81 => self.arith_imm16_rm(bus),
+            0x83 => self.arith_imm8_rm(bus),
 
             // TEST r/m and register (84-85)
-            0x84..=0x85 => self.test_rm_reg(opcode, memory_bus),
+            0x84..=0x85 => self.test_rm_reg(opcode, bus),
 
             // XCHG r/m and register (86-87)
-            0x86..=0x87 => self.xchg_rm_reg(opcode, memory_bus),
+            0x86..=0x87 => self.xchg_rm_reg(opcode, bus),
 
             // MOV register to/from r/m (88-8B)
-            0x88..=0x8B => self.mov_reg_rm(opcode, memory_bus),
+            0x88..=0x8B => self.mov_reg_rm(opcode, bus),
 
             // MOV segment register to r/m16 (8C)
-            0x8C => self.mov_segreg_to_rm(memory_bus),
+            0x8C => self.mov_segreg_to_rm(bus),
 
             // LEA - Load Effective Address (8D)
-            0x8D => self.lea(memory_bus),
+            0x8D => self.lea(bus),
 
             // MOV r/m16 to segment register (8E)
-            0x8E => self.mov_rm_to_segreg(memory_bus),
+            0x8E => self.mov_rm_to_segreg(bus),
 
             // POP r/m16 (8F) - Group 1A
-            0x8F => self.pop_rm16(memory_bus),
+            0x8F => self.pop_rm16(bus),
 
             // NOP / XCHG AX, reg (90-97)
             0x90..=0x97 => self.xchg_ax_reg(opcode),
@@ -361,10 +358,10 @@ impl Cpu {
             0x99 => self.cwd(),
 
             // PUSHF - Push Flags (9C)
-            0x9C => self.pushf(memory_bus),
+            0x9C => self.pushf(bus),
 
             // POPF - Pop Flags (9D)
-            0x9D => self.popf(memory_bus),
+            0x9D => self.popf(bus),
 
             // SAHF - Store AH into Flags (9E)
             0x9E => self.sahf(),
@@ -373,116 +370,116 @@ impl Cpu {
             0x9F => self.lahf(),
 
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
-            0xA0..=0xA3 => self.mov_acc_moffs(opcode, memory_bus),
+            0xA0..=0xA3 => self.mov_acc_moffs(opcode, bus),
 
             // MOVS - Move String (A4-A5)
-            0xA4..=0xA5 => self.movs(opcode, memory_bus),
+            0xA4..=0xA5 => self.movs(opcode, bus),
 
             // CMPS - Compare String (A6-A7)
-            0xA6..=0xA7 => self.cmps(opcode, memory_bus),
+            0xA6..=0xA7 => self.cmps(opcode, bus),
 
             // TEST immediate to AL/AX (A8-A9)
-            0xA8..=0xA9 => self.test_imm_acc(opcode, memory_bus),
+            0xA8..=0xA9 => self.test_imm_acc(opcode, bus),
 
             // STOS - Store String (AA-AB)
-            0xAA..=0xAB => self.stos(opcode, memory_bus),
+            0xAA..=0xAB => self.stos(opcode, bus),
 
             // LODS - Load String (AC-AD)
-            0xAC..=0xAD => self.lods(opcode, memory_bus),
+            0xAC..=0xAD => self.lods(opcode, bus),
 
             // SCAS - Scan String (AE-AF)
-            0xAE..=0xAF => self.scas(opcode, memory_bus),
+            0xAE..=0xAF => self.scas(opcode, bus),
 
             // MOV immediate to register (B0-BF)
-            0xB0..=0xBF => self.mov_imm_to_reg(opcode, memory_bus),
+            0xB0..=0xBF => self.mov_imm_to_reg(opcode, bus),
 
             // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
-            0xC0..=0xC1 => self.shift_rotate_group(opcode, memory_bus),
+            0xC0..=0xC1 => self.shift_rotate_group(opcode, bus),
 
             // RET with optional pop (C2: with imm16, C3: without)
-            0xC2..=0xC3 => self.ret(opcode, memory_bus),
+            0xC2..=0xC3 => self.ret(opcode, bus),
 
             // LES - Load Pointer using ES (C4)
-            0xC4 => self.les(memory_bus),
+            0xC4 => self.les(bus),
 
             // LDS - Load Pointer using DS (C5)
-            0xC5 => self.lds(memory_bus),
+            0xC5 => self.lds(bus),
 
             // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
-            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, memory_bus),
+            0xC6..=0xC7 => self.mov_imm_to_rm(opcode, bus),
 
             // ENTER - Make Stack Frame (C8, 80186+)
-            0xC8 => self.enter(memory_bus),
+            0xC8 => self.enter(bus),
 
             // RET far (CA: with imm16, CB: without)
-            0xCA..=0xCB => self.retf(opcode, memory_bus),
+            0xCA..=0xCB => self.retf(opcode, bus),
 
             // INT 3 - Breakpoint (CC)
-            0xCC => self.int3(memory_bus),
+            0xCC => self.int3(bus),
 
             // INT - Software Interrupt (CD)
-            0xCD => self.int(memory_bus),
+            0xCD => self.int(bus),
 
             // IRET - Interrupt Return (CF)
-            0xCF => self.iret(memory_bus),
+            0xCF => self.iret(bus),
 
             // Shift/Rotate Group 2 (D0: r/m8, 1; D1: r/m16, 1; D2: r/m8, CL; D3: r/m16, CL)
-            0xD0..=0xD3 => self.shift_rotate_group(opcode, memory_bus),
+            0xD0..=0xD3 => self.shift_rotate_group(opcode, bus),
 
             // AAM - ASCII Adjust After Multiplication (D4)
-            0xD4 => self.aam(memory_bus),
+            0xD4 => self.aam(bus),
 
             // AAD - ASCII Adjust Before Division (D5)
-            0xD5 => self.aad(memory_bus),
+            0xD5 => self.aad(bus),
 
             // XLAT - Table Look-up Translation (D7)
-            0xD7 => self.xlat(memory_bus),
+            0xD7 => self.xlat(bus),
 
             // ESC - Escape to coprocessor (D8-DF)
             // Passes instruction to 8087 FPU; NOP without coprocessor
-            0xD8..=0xDF => self.esc(memory_bus),
+            0xD8..=0xDF => self.esc(bus),
 
             // LOOPNE/LOOPNZ (E0)
-            0xE0 => self.loopne(memory_bus),
+            0xE0 => self.loopne(bus),
 
             // LOOPE/LOOPZ (E1)
-            0xE1 => self.loope(memory_bus),
+            0xE1 => self.loope(bus),
 
             // LOOP (E2)
-            0xE2 => self.loop_inst(memory_bus),
+            0xE2 => self.loop_inst(bus),
 
             // JCXZ (E3)
-            0xE3 => self.jcxz(memory_bus),
+            0xE3 => self.jcxz(bus),
 
             // CALL near relative (E8)
-            0xE8 => self.call_near(memory_bus),
+            0xE8 => self.call_near(bus),
 
             // JMP near relative (E9)
-            0xE9 => self.jmp_near(memory_bus),
+            0xE9 => self.jmp_near(bus),
 
             // JMP far (EA)
-            0xEA => self.jmp_far(memory_bus),
+            0xEA => self.jmp_far(bus),
 
             // JMP short relative (EB)
-            0xEB => self.jmp_short(memory_bus),
+            0xEB => self.jmp_short(bus),
 
             // LOCK prefix (F0)
             // Asserts LOCK# signal for atomic memory operations; no-op in single-processor emulator
             0xF0 => {
-                self.step(memory_bus, io_bus);
+                self.step(bus);
             }
 
             // REPNE/REPNZ prefix (F2)
             0xF2 => {
                 self.repeat_prefix = Some(RepeatPrefix::Repne);
-                self.step(memory_bus, io_bus);
+                self.step(bus);
                 self.repeat_prefix = None;
             }
 
             // REP/REPE/REPZ prefix (F3)
             0xF3 => {
                 self.repeat_prefix = Some(RepeatPrefix::Rep);
-                self.step(memory_bus, io_bus);
+                self.step(bus);
                 self.repeat_prefix = None;
             }
 
@@ -493,7 +490,7 @@ impl Cpu {
             0xF5 => self.cmc(),
 
             // NOT/NEG/MUL/DIV Group 3 (F6: 8-bit, F7: 16-bit)
-            0xF6..=0xF7 => self.unary_group3(opcode, memory_bus),
+            0xF6..=0xF7 => self.unary_group3(opcode, bus),
 
             // CLC - Clear Carry Flag (F8)
             0xF8 => self.clc(),
@@ -514,16 +511,16 @@ impl Cpu {
             0xFD => self.std_flag(),
 
             // INC/DEC/CALL/JMP Group 4/5 (FE: 8-bit, FF: 16-bit)
-            0xFE => self.inc_dec_rm(opcode, memory_bus),
+            0xFE => self.inc_dec_rm(opcode, bus),
             0xFF => {
                 // For FF, we need to check the reg field to determine operation
-                let modrm_peek = memory_bus.read_u8(physical_address(self.cs, self.ip));
+                let modrm_peek = bus.memory_read_u8(physical_address(self.cs, self.ip));
                 let reg_field = (modrm_peek >> 3) & 0x07;
                 match reg_field {
-                    0 | 1 => self.inc_dec_rm(opcode, memory_bus), // INC/DEC
-                    2 | 3 => self.call_indirect(memory_bus),      // CALL near/far
-                    4 | 5 => self.jmp_indirect(memory_bus),       // JMP near/far
-                    6 => self.push_rm16(memory_bus),              // PUSH r/m16
+                    0 | 1 => self.inc_dec_rm(opcode, bus), // INC/DEC
+                    2 | 3 => self.call_indirect(bus),      // CALL near/far
+                    4 | 5 => self.jmp_indirect(bus),       // JMP near/far
+                    6 => self.push_rm16(bus),              // PUSH r/m16
                     _ => log::warn!(
                         "Invalid FF /{}  at {:04X}:{:04X} (undefined, skipping)",
                         reg_field,
@@ -547,17 +544,17 @@ impl Cpu {
     }
 
     /// Fetch a byte from memory at CS:IP and increment IP
-    fn fetch_byte(&mut self, memory_bus: &MemoryBus) -> u8 {
+    fn fetch_byte(&mut self, bus: &Bus) -> u8 {
         let addr = physical_address(self.cs, self.ip);
-        let byte = memory_bus.read_u8(addr);
+        let byte = bus.memory_read_u8(addr);
         self.ip = self.ip.wrapping_add(1);
         byte
     }
 
     /// Fetch a word (2 bytes, little-endian) from memory at CS:IP
-    fn fetch_word(&mut self, memory_bus: &MemoryBus) -> u16 {
-        let low = self.fetch_byte(memory_bus) as u16;
-        let high = self.fetch_byte(memory_bus) as u16;
+    fn fetch_word(&mut self, bus: &Bus) -> u16 {
+        let low = self.fetch_byte(bus) as u16;
+        let high = self.fetch_byte(bus) as u16;
         (high << 8) | low
     }
 
@@ -605,17 +602,17 @@ impl Cpu {
         self.set_flag(cpu_flag::INTERRUPT, true);
     }
 
-    fn step_bios_int(&mut self, memory_bus: &mut MemoryBus, io_bus: &mut IoBus) {
+    fn step_bios_int(&mut self, bus: &mut Bus) {
         let int = self.ip / 4;
         match int {
-            0x10 => self.handle_int10_video_services(memory_bus, io_bus),
-            0x11 => self.handle_int11_get_equipment_list(memory_bus),
-            0x13 => self.handle_int13_disk_services(memory_bus, io_bus),
-            0x17 => self.handle_int17_printer_services(memory_bus, io_bus),
-            0x21 => self.handle_int21_dos_services(memory_bus, io_bus),
+            0x10 => self.handle_int10_video_services(bus),
+            0x11 => self.handle_int11_get_equipment_list(bus),
+            0x13 => self.handle_int13_disk_services(bus),
+            0x17 => self.handle_int17_printer_services(bus),
+            0x21 => self.handle_int21_dos_services(bus),
             _ => log::error!("unhandled BIOS interrupt 0x{int:02X}"),
         }
-        self.iret(memory_bus);
+        self.iret(bus);
     }
 }
 
@@ -623,22 +620,20 @@ impl Cpu {
 mod tests {
     use std::sync::Arc;
 
-    use crate::Devices;
     use crate::cpu::CpuType;
     use crate::{
+        bus::Bus,
         cpu::Cpu,
         memory::Memory,
-        memory_bus::MemoryBus,
         video::{VideoBuffer, VideoCard},
     };
 
-    pub fn create_test_cpu() -> (Cpu, MemoryBus) {
+    pub fn create_test_cpu() -> (Cpu, Bus) {
         let cpu = Cpu::new(CpuType::I8086);
         let video_buffer = Arc::new(VideoBuffer::new());
-        let mut devices = Devices::new();
-        devices.push(VideoCard::new(video_buffer));
-        let memory_bus = MemoryBus::new(Memory::new(1024), devices);
+        let mut bus = Bus::new(Memory::new(1024));
+        bus.add_device(VideoCard::new(video_buffer));
 
-        (cpu, memory_bus)
+        (cpu, bus)
     }
 }

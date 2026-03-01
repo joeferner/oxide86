@@ -1,9 +1,9 @@
 use crate::{
+    bus::Bus,
     cpu::{
         Cpu,
         bios::bda::{BDA_EQUIPMENT_LIST, BDA_START},
     },
-    memory_bus::MemoryBus,
 };
 
 impl Cpu {
@@ -19,9 +19,9 @@ impl Cpu {
     /// - Bits 6-7: Number of floppy drives minus 1
     /// - Bits 9-11: Number of serial ports
     /// - Bits 14-15: Number of printers
-    pub(in crate::cpu) fn handle_int11_get_equipment_list(&mut self, memory_bus: &mut MemoryBus) {
+    pub(in crate::cpu) fn handle_int11_get_equipment_list(&mut self, bus: &mut Bus) {
         // Read equipment list from BDA at offset 0x10 (2 bytes)
-        let equipment = memory_bus.read_u16(BDA_START + BDA_EQUIPMENT_LIST);
+        let equipment = bus.memory_read_u16(BDA_START + BDA_EQUIPMENT_LIST);
         self.ax = equipment;
     }
 }
