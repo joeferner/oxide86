@@ -160,6 +160,11 @@ impl Cpu {
                 return;
             }
             self.step_bios_int(bus, self.ip as u8);
+            // Patch the stacked FLAGS with any changes the handler made, mirroring how a real
+            // BIOS handler modifies the caller's FLAGS on the stack before executing iret.
+            // Stack layout after `int`: SP+0=IP, SP+2=CS, SP+4=FLAGS
+            let stacked_flags_addr = physical_address(self.ss, self.sp.wrapping_add(4));
+            bus.memory_write_u16(stacked_flags_addr, self.flags);
             self.iret(bus);
             return;
         }
