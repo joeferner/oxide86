@@ -2,12 +2,14 @@ use std::{any::Any, collections::VecDeque};
 
 use crate::{Device, KeyPress};
 
-pub struct PIC {
-    /// Queue of pending keyboard keys
+pub struct KeyboardController {
+    /// Queue of pending keyboard keys, although not completely accurate since keyboard
+    /// controllers typically only held one key, this is a quality of life and performance
+    /// improvement
     pending_keyboard_keys: VecDeque<KeyPress>,
 }
 
-impl PIC {
+impl KeyboardController {
     pub fn new() -> Self {
         Self {
             pending_keyboard_keys: VecDeque::new(),
@@ -26,7 +28,7 @@ impl PIC {
     ///
     /// Programs like edit.exe install custom INT 09h handlers to implement enhanced
     /// keyboard features and maintain their own keyboard buffers.
-    pub fn push_keyboard_key(&mut self, key: KeyPress) {
+    pub fn push_key_press(&mut self, key: KeyPress) {
         log::trace!(
             "Queueing keyboard IRQ: scan=0x{:02X}, ascii=0x{:02X}",
             key.scan_code,
@@ -36,7 +38,7 @@ impl PIC {
     }
 }
 
-impl Device for PIC {
+impl Device for KeyboardController {
     fn as_any(&self) -> &dyn Any {
         self
     }

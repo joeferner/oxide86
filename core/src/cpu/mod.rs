@@ -126,7 +126,6 @@ impl Cpu {
     }
 
     /// Get a specific flag
-    #[allow(dead_code)]
     fn get_flag(&self, flag: u16) -> bool {
         (self.flags & flag) != 0
     }
@@ -137,6 +136,12 @@ impl Cpu {
     }
 
     pub fn step(&mut self, bus: &mut Bus) {
+        if self.get_flag(cpu_flag::INTERRUPT)
+            && let Some(irq) = bus.pic_mut().take_irq()
+        {
+            todo!("dispatch irq {irq}");
+        }
+
         if self.cs == BIOS_CODE_SEGMENT {
             self.step_bios_int(bus);
             return;

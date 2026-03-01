@@ -148,6 +148,6 @@ impl Computer {
     }
 
     pub fn push_keyboard_key(&mut self, key: KeyPress) {
-        self.bus.pic_mut().push_keyboard_key(key);
+        self.bus.keyboard_controller_mut().push_key_press(key);
     }
 }

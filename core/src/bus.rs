@@ -1,6 +1,6 @@
 use std::{
     any::Any,
-    cell::{RefCell, RefMut},
+    cell::{Ref, RefCell, RefMut},
     rc::Rc,
 };
 
@@ -9,9 +9,9 @@ use anyhow::Result;
 use crate::{
     Device, DeviceRef,
     cpu::bios::bios_reset,
+    devices::{keyboard_controller::KeyboardController, pic::PIC},
     disk::{DiskController, DriveNumber},
     memory::Memory,
-    pic::PIC,
 };
 
 pub struct Bus {
@@ -19,21 +19,36 @@ pub struct Bus {
     devices: Vec<DeviceRef>,
     disk_controllers: Vec<Rc<RefCell<DiskController>>>,
     pic: Rc<RefCell<PIC>>,
+    keyboard_controller: Rc<RefCell<KeyboardController>>,
 }
 
 impl Bus {
     pub fn new(memory: Memory) -> Self {
         let pic = Rc::new(RefCell::new(PIC::new()));
+        let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
         Self {
             memory,
-            devices: vec![pic.clone()],
+            devices: vec![pic.clone(), keyboard_controller.clone()],
             disk_controllers: vec![],
             pic,
+            keyboard_controller,
         }
+    }
+
+    pub fn pic(&self) -> Ref<'_, PIC> {
+        self.pic.borrow()
     }
 
     pub fn pic_mut(&self) -> RefMut<'_, PIC> {
         self.pic.borrow_mut()
+    }
+
+    pub fn keyboard_controller(&self) -> Ref<'_, KeyboardController> {
+        self.keyboard_controller.borrow()
+    }
+
+    pub fn keyboard_controller_mut(&self) -> RefMut<'_, KeyboardController> {
+        self.keyboard_controller.borrow_mut()
     }
 
     pub fn add_device<T: Device + 'static>(&mut self, device: T) {
