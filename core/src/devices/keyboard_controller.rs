@@ -1,12 +1,21 @@
-use std::any::Any;
+use std::{any::Any, cell::Cell};
 
 use crate::{Device, KeyPress};
 
 pub const KEYBOARD_IO_PORT_DATA: u16 = 0x0060;
+pub const KEYBOARD_IO_PORT_STATUS: u16 = 0x0064;
+
+/// Status register bit 0: Output Buffer Full — scan code ready to be read from port 0x60
+const STATUS_OBF: u8 = 0x01;
+/// Status register bit 2: System flag — set after POST to indicate normal operation
+const STATUS_SYSTEM: u8 = 0x04;
 
 pub struct KeyboardController {
     scan_code: u8,
+    /// used by the PIC to check if a key has been pressed
     pending_key: bool,
+    /// Output Buffer Full flag; uses Cell for interior mutability since io_read_u8 takes &self
+    obf: Cell<bool>,
 }
 
 impl KeyboardController {
@@ -14,29 +23,14 @@ impl KeyboardController {
         Self {
             scan_code: 0,
             pending_key: false,
+            obf: Cell::new(false),
         }
     }
 
-    /// Queue a keyboard IRQ to be processed before the next instruction
-    ///
-    /// This method should be called from the event loop when a keyboard event is detected.
-    /// The IRQ will be processed at the next opportunity (before the next instruction),
-    /// which simulates the asynchronous nature of hardware interrupts.
-    ///
-    /// The INT 09h handler will:
-    /// 1. Add the key to the BIOS keyboard buffer
-    /// 2. Call any custom INT 09h handlers installed by the program
-    ///
-    /// Programs like edit.exe install custom INT 09h handlers to implement enhanced
-    /// keyboard features and maintain their own keyboard buffers.
     pub fn push_key_press(&mut self, key: KeyPress) {
-        log::trace!(
-            "Queueing keyboard IRQ: scan=0x{:02X}, ascii=0x{:02X}",
-            key.scan_code,
-            key.ascii_code
-        );
         self.scan_code = key.scan_code;
         self.pending_key = true;
+        self.obf.set(true);
     }
 
     pub fn take_pending_key(&mut self) -> bool {
@@ -60,10 +54,19 @@ impl Device for KeyboardController {
     }
 
     fn io_read_u8(&self, port: u16) -> Option<u8> {
-        if port == KEYBOARD_IO_PORT_DATA {
-            Some(self.scan_code)
-        } else {
-            None
+        match port {
+            KEYBOARD_IO_PORT_DATA => {
+                self.obf.set(false);
+                Some(self.scan_code)
+            }
+            KEYBOARD_IO_PORT_STATUS => {
+                let mut status = STATUS_SYSTEM;
+                if self.obf.get() {
+                    status |= STATUS_OBF;
+                }
+                Some(status)
+            }
+            _ => None,
         }
     }
 
