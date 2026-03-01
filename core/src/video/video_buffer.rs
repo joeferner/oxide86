@@ -12,7 +12,32 @@ pub struct RenderResult {
     pub height: u32,
 }
 
+/// Video mode type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VideoMode {
+    /// Text modes: 80x25 or 40x25
+    Text { cols: usize, rows: usize },
+    /// CGA 320x200, 4 colors
+    Graphics320x200,
+    /// CGA 640x200, 2 colors
+    Graphics640x200,
+    /// EGA 320x200, 16 colors (mode 0x0D)
+    Graphics320x200x16,
+    /// VGA 320x200, 256 colors (mode 0x13) — linear framebuffer, 1 byte per pixel
+    Graphics320x200x256,
+}
+
+/// Cursor position
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CursorPosition {
+    pub row: u8,
+    pub col: u8,
+}
+
 pub struct VideoBuffer {
+    mode: VideoMode,
+    text_columns: u8,
+
     /// Raw video RAM (64KB).
     /// In CGA/text modes: framebuffer at B8000-BFFFF.
     /// In EGA mode 0x0D: 4 planes × EGA_PLANE_SIZE bytes (plane N at vram[N*EGA_PLANE_SIZE..]).
@@ -27,7 +52,11 @@ pub struct VideoBuffer {
     /// true  = bit 7 enables character blinking (8 background colors, default)
     /// false = bit 7 selects high-intensity background (16 background colors, no blink)
     blink_enabled: bool,
+    /// Cursor position as a character cell index, written by CRT controller
+    /// registers 0x0E (high byte) and 0x0F (low byte). Row-major within the
+    /// current text mode grid: col = loc % cols, row = loc / cols.
     cursor_loc: u16,
+    /// If any value changes in the struct which could result in different output this will be set to true
     dirty: bool,
 }
 
@@ -39,6 +68,11 @@ impl VideoBuffer {
             vram[i + 1] = 0x07; // Light Gray on Black
         }
         Self {
+            mode: VideoMode::Text {
+                cols: TEXT_MODE_COLS,
+                rows: TEXT_MODE_ROWS,
+            },
+            text_columns: TEXT_MODE_COLS as u8,
             vram,
             font: Cp437Font::new(),
             vga_dac_palette: Self::default_vga_dac_palette(),
@@ -58,6 +92,10 @@ impl VideoBuffer {
         palette
     }
 
+    pub fn mode(&self) -> VideoMode {
+        self.mode
+    }
+
     pub fn read_vram(&self, addr: usize) -> u8 {
         self.vram[addr]
     }
@@ -74,6 +112,13 @@ impl VideoBuffer {
     pub fn set_cursor_loc(&mut self, loc: u16) {
         self.cursor_loc = loc;
         self.dirty = true;
+    }
+
+    pub fn get_cursor_position(&self) -> CursorPosition {
+        CursorPosition {
+            row: (self.cursor_loc as u16 / self.text_columns as u16) as u8,
+            col: (self.cursor_loc as u16 % self.text_columns as u16) as u8,
+        }
     }
 
     pub fn blink_enabled(&self) -> bool {

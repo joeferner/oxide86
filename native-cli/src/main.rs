@@ -62,8 +62,7 @@ fn main() -> Result<()> {
         EnterAlternateScreen,
         SetForegroundColor(Color::White),
         SetBackgroundColor(Color::Black),
-        terminal::Clear(ClearType::All),
-        cursor::Hide
+        terminal::Clear(ClearType::All)
     )?;
 
     // TODO

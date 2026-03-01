@@ -32,7 +32,6 @@ pub fn draw_frame(
     }
 
     let mut addr = 0;
-    let mut changed = false;
     for row in 0..TEXT_MODE_ROWS {
         for col in 0..TEXT_MODE_COLS {
             let cache_location = addr;
@@ -57,8 +56,6 @@ pub fn draw_frame(
                 // Print character (convert CP437 to Unicode)
                 stdout.queue(crossterm::style::Print(cp437_to_unicode(character)))?;
 
-                changed = true;
-
                 if video_cache.len() <= cache_location {
                     video_cache.resize_with(cache_location + 1, || VideoCachedValue {
                         character: 0,
@@ -70,9 +67,11 @@ pub fn draw_frame(
             }
         }
     }
-    if changed {
-        stdout.flush()?;
-    }
+
+    let cursor_pos = buffer.get_cursor_position();
+    stdout.queue(cursor::MoveTo(cursor_pos.col as u16, cursor_pos.row as u16))?;
+
+    stdout.flush()?;
 
     Ok(())
 }
