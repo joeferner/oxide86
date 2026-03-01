@@ -45,6 +45,12 @@ impl Device for KeyboardController {
         self
     }
 
+    fn reset(&mut self) {
+        self.scan_code = 0;
+        self.pending_key = false;
+        self.obf.set(false);
+    }
+
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
         None
     }

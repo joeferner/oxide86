@@ -32,6 +32,8 @@ pub fn draw_frame(
         return Ok(());
     }
 
+    // TODO use start address for scrolling
+
     if let VideoMode::Text { cols, rows } = buffer.mode() {
         let mut addr = 0;
         for row in 0..rows {

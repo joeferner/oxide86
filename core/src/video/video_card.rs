@@ -13,6 +13,8 @@ pub const VIDEO_CARD_DATA_ADDR: u16 = 0x03D5;
 
 pub const VIDEO_CARD_REG_CURSOR_START_LINE: u8 = 0x0a;
 pub const VIDEO_CARD_REG_CURSOR_END_LINE: u8 = 0x0b;
+pub const VIDEO_CARD_START_ADDRESS_HIGH_REGISTER: u8 = 0x0c;
+pub const VIDEO_CARD_START_ADDRESS_LOW_REGISTER: u8 = 0x0d;
 pub const VIDEO_CARD_REG_CURSOR_LOC_HIGH: u8 = 0x0e;
 pub const VIDEO_CARD_REG_CURSOR_LOC_LOW: u8 = 0x0f;
 
@@ -56,6 +58,13 @@ impl VideoCard {
 impl Device for VideoCard {
     fn as_any(&self) -> &dyn Any {
         self
+    }
+
+    fn reset(&mut self) {
+        let mut buffer = self.buffer.write().unwrap();
+        buffer.reset();
+        self.vram_size = CGA_MEMORY_SIZE; // TODO change based on video card type
+        self.io_register = 0;
     }
 
     fn memory_read_u8(&self, addr: usize) -> Option<u8> {

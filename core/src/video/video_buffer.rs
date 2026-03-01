@@ -75,18 +75,13 @@ pub struct VideoBuffer {
 
 impl VideoBuffer {
     pub fn new() -> Self {
-        let mut vram = vec![0; VIDEO_MEMORY_SIZE];
-        for i in (0..TEXT_MODE_SIZE).step_by(2) {
-            vram[i] = 0x20; // space
-            vram[i + 1] = 0x07; // Light Gray on Black
-        }
-        Self {
+        let mut me = Self {
             mode: VideoMode::Text {
                 cols: TEXT_MODE_COLS,
                 rows: TEXT_MODE_ROWS,
             },
             text_columns: TEXT_MODE_COLS as u8,
-            vram,
+            vram: vec![0; VIDEO_MEMORY_SIZE],
             font: Cp437Font::new(),
             vga_dac_palette: Self::default_vga_dac_palette(),
             blink_enabled: false,
@@ -94,6 +89,27 @@ impl VideoBuffer {
             cursor_start_line: DEFAULT_CURSOR_START_LINE,
             cursor_end_line: DEFAULT_CURSOR_END_LINE,
             dirty: false,
+        };
+        me.reset();
+        me
+    }
+
+    pub fn reset(&mut self) {
+        self.mode = VideoMode::Text {
+            cols: TEXT_MODE_COLS,
+            rows: TEXT_MODE_ROWS,
+        };
+        self.text_columns = TEXT_MODE_COLS as u8;
+        self.font = Cp437Font::new();
+        self.vga_dac_palette = Self::default_vga_dac_palette();
+        self.blink_enabled = false;
+        self.cursor_loc = 0;
+        self.cursor_start_line = DEFAULT_CURSOR_START_LINE;
+        self.cursor_end_line = DEFAULT_CURSOR_END_LINE;
+        self.dirty = false;
+        for i in (0..TEXT_MODE_SIZE).step_by(2) {
+            self.vram[i] = 0x20; // space
+            self.vram[i + 1] = 0x07; // Light Gray on Black
         }
     }
 
@@ -163,6 +179,8 @@ impl VideoBuffer {
         let width = CHAR_WIDTH * TEXT_MODE_COLS;
         let height = CHAR_HEIGHT * TEXT_MODE_ROWS;
         let mut data = vec![0; width * height * bytes_per_pixel];
+
+        // TODO use start address for scrolling
 
         // Render all cells
         let mut i = 0;

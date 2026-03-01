@@ -49,6 +49,8 @@ pub type DeviceRef = Rc<RefCell<dyn Device>>;
 pub trait Device {
     fn as_any(&self) -> &dyn Any;
 
+    fn reset(&mut self);
+
     fn memory_read_u8(&self, addr: usize) -> Option<u8>;
     fn memory_write_u8(&mut self, addr: usize, val: u8) -> bool;
 

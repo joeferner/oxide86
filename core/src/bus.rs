@@ -152,5 +152,8 @@ impl Bus {
 
     pub fn reset(&mut self) {
         bios_reset(self);
+        for device in &self.devices {
+            device.borrow_mut().reset();
+        }
     }
 }

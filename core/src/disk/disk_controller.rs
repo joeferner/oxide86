@@ -39,6 +39,8 @@ impl Device for DiskController {
         self
     }
 
+    fn reset(&mut self) {}
+
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
         None
     }
