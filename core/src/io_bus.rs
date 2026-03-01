@@ -67,11 +67,13 @@ impl IoBus {
         let geometry = disk_controller.borrow().disk_geometry();
 
         // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
-        let drive_count = if drive.is_floppy() {
-            self.devices.floppy_drives_with_disk_count()
-        } else {
-            self.devices.hard_drive_count()
-        };
+        // TODO
+        // let drive_count = if drive.is_floppy() {
+        //     self.devices.floppy_drives_with_disk_count()
+        // } else {
+        //     self.devices.hard_drive_count()
+        // };
+        let drive_count = 0;
 
         Ok(DriveParams {
             max_cylinder: (geometry.cylinders - 1).min(255) as u8,

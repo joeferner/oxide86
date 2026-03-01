@@ -5,10 +5,10 @@ use crate::{
 
 pub mod bda;
 pub mod int10_video_services;
-pub mod int13_disk_services;
-pub mod int21_dos_services;
 pub mod int11_get_equipment_list;
+pub mod int13_disk_services;
 pub mod int17_printer_services;
+pub mod int21_dos_services;
 
 // BIOS code segment
 pub const BIOS_CODE_SEGMENT: u16 = 0xF000;
