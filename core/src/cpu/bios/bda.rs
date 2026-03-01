@@ -205,9 +205,8 @@ pub fn bda_set_cursor_pos(bus: &mut Bus, row: u8, col: u8) {
     bus.memory_write_u16(BDA_START + BDA_CURSOR_POS, pos);
 }
 
-pub fn bda_get_columns(bus: &Bus) -> u8 {
-    // TODO do columns really take up u16
-    bus.memory_read_u16(BDA_START + BDA_SCREEN_COLUMNS) as u8
+pub fn bda_get_columns(bus: &Bus) -> u16 {
+    bus.memory_read_u16(BDA_START + BDA_SCREEN_COLUMNS)
 }
 
 pub fn bda_get_rows(bus: &Bus) -> u8 {
@@ -220,6 +219,14 @@ pub fn bda_get_rows(bus: &Bus) -> u8 {
     } else {
         rows
     }
+}
+
+pub fn bda_get_video_mode(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_VIDEO_MODE)
+}
+
+pub fn bda_get_active_page(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_ACTIVE_PAGE)
 }
 
 pub fn bda_get_crt_controller_port_address(bus: &Bus) -> u16 {

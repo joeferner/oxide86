@@ -3,8 +3,8 @@ use crate::{
     cpu::{
         Cpu,
         bios::bda::{
-            bda_get_columns, bda_get_crt_controller_port_address, bda_get_cursor_pos, bda_get_rows,
-            bda_set_cursor_pos,
+            bda_get_active_page, bda_get_columns, bda_get_crt_controller_port_address,
+            bda_get_cursor_pos, bda_get_rows, bda_get_video_mode, bda_set_cursor_pos,
         },
     },
     video::{CGA_MEMORY_START, video_calculate_linear_offset, video_set_cursor_pos},
@@ -18,6 +18,7 @@ impl Cpu {
 
         match function {
             0x0E => self.int10_teletype_output(bus),
+            0x0F => self.int10_get_video_mode(bus),
             _ => {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
             }
@@ -33,7 +34,7 @@ impl Cpu {
     pub(in crate::cpu) fn int10_teletype_output(&mut self, bus: &mut Bus) {
         let ch = (self.ax & 0xFF) as u8; // AL
         let (cursor_row, cursor_col) = bda_get_cursor_pos(bus);
-        let columns = bda_get_columns(bus);
+        let columns = bda_get_columns(bus) as u8;
         let rows = bda_get_rows(bus);
 
         match ch {
@@ -102,6 +103,21 @@ impl Cpu {
                 }
             }
         }
+    }
+
+    /// INT 10h, AH=0Fh - Get Current Video Mode
+    /// Input: None
+    /// Output:
+    ///   AH = number of screen columns
+    ///   AL = video mode
+    ///   BH = active display page
+    fn int10_get_video_mode(&mut self, bus: &mut Bus) {
+        let mode = bda_get_video_mode(bus);
+        let columns = bda_get_columns(bus);
+        let page = bda_get_active_page(bus);
+
+        self.ax = (columns << 8) | (mode as u16);
+        self.bx = (self.bx & 0x00FF) | ((page as u16) << 8);
     }
 }
 
@@ -177,8 +193,8 @@ fn scroll_up(lines: u8, bus: &mut Bus) {
             top: 0,
             left: 0,
             bottom: rows,
-            right: cols,
-            cols,
+            right: cols as u8,
+            cols: cols as u8,
         },
         bus,
     );

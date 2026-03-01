@@ -9,9 +9,10 @@ use crossterm::{
     style::{Color, SetBackgroundColor, SetForegroundColor},
 };
 use oxide86_core::video::{
-    TEXT_MODE_COLS, TEXT_MODE_ROWS, VideoBuffer,
+    VideoBuffer,
     renderer::dac_to_8bit,
     text::{TextAttribute, cp437_to_unicode},
+    video_buffer::VideoMode,
 };
 
 #[derive(Debug, PartialEq)]
@@ -31,45 +32,49 @@ pub fn draw_frame(
         return Ok(());
     }
 
-    let mut addr = 0;
-    for row in 0..TEXT_MODE_ROWS {
-        for col in 0..TEXT_MODE_COLS {
-            let cache_location = addr;
-            let cached_value = video_cache.get(cache_location);
-            let character = buffer.read_vram(addr);
-            addr += 1;
-            let text_attr =
-                TextAttribute::from_byte(buffer.read_vram(addr), buffer.blink_enabled());
-            addr += 1;
-            let fg = vga_to_crossterm_color(text_attr.foreground, buffer.vga_dac_palette());
-            let bg = vga_to_crossterm_color(text_attr.background, buffer.vga_dac_palette());
-            let new_cached_value = VideoCachedValue { character, fg, bg };
+    if let VideoMode::Text { cols, rows } = buffer.mode() {
+        let mut addr = 0;
+        for row in 0..rows {
+            for col in 0..cols {
+                let cache_location = addr;
+                let cached_value = video_cache.get(cache_location);
+                let character = buffer.read_vram(addr);
+                addr += 1;
+                let text_attr =
+                    TextAttribute::from_byte(buffer.read_vram(addr), buffer.blink_enabled());
+                addr += 1;
+                let fg = vga_to_crossterm_color(text_attr.foreground, buffer.vga_dac_palette());
+                let bg = vga_to_crossterm_color(text_attr.background, buffer.vga_dac_palette());
+                let new_cached_value = VideoCachedValue { character, fg, bg };
 
-            if cached_value.is_none() || cached_value.unwrap() != &new_cached_value {
-                // Position cursor (crossterm uses 0-indexed coordinates)
-                stdout.queue(cursor::MoveTo(col as u16, row as u16))?;
+                if cached_value.is_none() || cached_value.unwrap() != &new_cached_value {
+                    // Position cursor (crossterm uses 0-indexed coordinates)
+                    stdout.queue(cursor::MoveTo(col as u16, row as u16))?;
 
-                // Set colors
-                stdout.queue(SetForegroundColor(fg))?;
-                stdout.queue(SetBackgroundColor(bg))?;
+                    // Set colors
+                    stdout.queue(SetForegroundColor(fg))?;
+                    stdout.queue(SetBackgroundColor(bg))?;
 
-                // Print character (convert CP437 to Unicode)
-                stdout.queue(crossterm::style::Print(cp437_to_unicode(character)))?;
+                    // Print character (convert CP437 to Unicode)
+                    stdout.queue(crossterm::style::Print(cp437_to_unicode(character)))?;
 
-                if video_cache.len() <= cache_location {
-                    video_cache.resize_with(cache_location + 1, || VideoCachedValue {
-                        character: 0,
-                        fg: Color::Black,
-                        bg: Color::Black,
-                    });
+                    if video_cache.len() <= cache_location {
+                        video_cache.resize_with(cache_location + 1, || VideoCachedValue {
+                            character: 0,
+                            fg: Color::Black,
+                            bg: Color::Black,
+                        });
+                    }
+                    video_cache[cache_location] = new_cached_value;
                 }
-                video_cache[cache_location] = new_cached_value;
             }
         }
-    }
 
-    let cursor_pos = buffer.get_cursor_position();
-    stdout.queue(cursor::MoveTo(cursor_pos.col as u16, cursor_pos.row as u16))?;
+        let cursor_pos = buffer.get_cursor_position();
+        stdout.queue(cursor::MoveTo(cursor_pos.col as u16, cursor_pos.row as u16))?;
+    } else {
+        todo!("graphics unsupported, clear the screen and write a message")
+    }
 
     stdout.flush()?;
 

@@ -116,8 +116,8 @@ impl VideoBuffer {
 
     pub fn get_cursor_position(&self) -> CursorPosition {
         CursorPosition {
-            row: (self.cursor_loc as u16 / self.text_columns as u16) as u8,
-            col: (self.cursor_loc as u16 % self.text_columns as u16) as u8,
+            row: (self.cursor_loc / self.text_columns as u16) as u8,
+            col: (self.cursor_loc % self.text_columns as u16) as u8,
         }
     }
 
