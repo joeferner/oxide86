@@ -111,6 +111,8 @@ pub struct VideoBuffer {
     // Flags for synchronization
     pub has_new_data: AtomicBool,
     pub ui_consumed: AtomicBool,
+    /// Set when the back buffer is mutably accessed; cleared after a successful flip.
+    back_modified: AtomicBool,
 }
 
 impl VideoBuffer {
@@ -123,6 +125,7 @@ impl VideoBuffer {
             back: AtomicPtr::new(b2),
             has_new_data: AtomicBool::new(false),
             ui_consumed: AtomicBool::new(true), // Start ready to accept
+            back_modified: AtomicBool::new(false),
         }
     }
 
@@ -145,6 +148,7 @@ impl VideoBuffer {
     /// EMULATOR THREAD: Get the buffer to write to
     #[allow(clippy::mut_from_ref)]
     pub fn emu_get_back_buffer_mut(&self) -> &mut VideoData {
+        self.back_modified.store(true, Ordering::Relaxed);
         let ptr = self.back.load(Ordering::Acquire);
         unsafe { &mut *ptr }
     }
@@ -159,6 +163,11 @@ impl VideoBuffer {
     /// Call this whenever the emulator reaches a point where it wants
     /// the UI to see the current state.
     pub fn emu_try_flip(&self) {
+        // Skip entirely if nothing was written to the back buffer since last flip
+        if !self.back_modified.load(Ordering::Relaxed) {
+            return;
+        }
+
         // Only flip if the UI has finished reading the previous front buffer
         if self.ui_consumed.load(Ordering::Acquire) {
             let back_ptr = self.back.load(Ordering::Relaxed);
@@ -175,6 +184,8 @@ impl VideoBuffer {
             unsafe {
                 (*front_ptr).copy_from(&*back_ptr);
             }
+
+            self.back_modified.store(false, Ordering::Relaxed);
 
             // Signal to UI that 'front' is ready
             self.ui_consumed.store(false, Ordering::Release);
