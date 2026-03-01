@@ -39,7 +39,6 @@ impl Cpu {
 
         match function {
             0x01 => self.int21_read_char_with_echo(bus, io),
-            0x02 => self.int21_write_char(bus),
             0x06 => self.int21_direct_console_io(bus, io),
             0x07 => self.int21_direct_console_input(io),
             0x08 => self.int21_console_input_no_echo(io),
@@ -82,9 +81,6 @@ impl Cpu {
             0x4F => self.int21_find_next(bus, io),
             0x50 => self.int21_set_psp(io),
             0x63 => self.int21_get_dbcs_lead_byte_table(bus),
-// MIGRATED              _ => {
-// MIGRATED                  log::warn!("Unhandled INT 0x21 function: AH=0x{:02X}", function);
-// MIGRATED              }
         }
     }
 
@@ -109,17 +105,6 @@ impl Cpu {
             // Store in AL (restore AH, keep AL as the character)
             self.ax = (saved_ax & 0xFF00) | (ch as u16);
         }
-    }
-
-    /// INT 21h, AH=02h - Write Character to STDOUT
-    /// Input: DL = character to write
-    fn int21_write_char(&mut self, bus: &mut Bus) {
-        let ch = self.get_reg8(2); // DL register
-        // Use teletype output for proper screen handling
-        let saved_ax = self.ax;
-        self.ax = (self.ax & 0xFF00) | (ch as u16);
-        self.int10_teletype_output(bus);
-        self.ax = saved_ax;
     }
 
     /// INT 21h, AH=06h - Direct Console I/O

@@ -319,38 +319,9 @@ impl Cpu {
         io_device: &mut IoDevice,
     ) {
         match opcode {
-           // PUSH CS (0E)
-            0x0E => self.push_segreg(opcode, bus),
-
-            // PUSH SS (16)
-            0x16 => self.push_segreg(opcode, bus),
-
             // POP SS (17)
             0x17 => self.pop_segreg(opcode, bus),
 
-            // CS: segment override prefix (2E)
-            0x2E => {
-                self.segment_override = Some(self.cs);
-                let next_opcode = self.fetch_byte(bus);
-                self.execute_with_io(next_opcode, bus, bios, io_device);
-                self.segment_override = None;
-            }
-
-            // SS: segment override prefix (36)
-            0x36 => {
-                self.segment_override = Some(self.ss);
-                let next_opcode = self.fetch_byte(bus);
-                self.execute_with_io(next_opcode, bus, bios, io_device);
-                self.segment_override = None;
-            }
-
-            // DS: segment override prefix (3E)
-            0x3E => {
-                self.segment_override = Some(self.ds);
-                let next_opcode = self.fetch_byte(bus);
-                self.execute_with_io(next_opcode, bus, bios, io_device);
-                self.segment_override = None;
-            }
 
             // POPA - Pop All General Registers (61)
             0x61 => self.popa(bus),
@@ -389,23 +360,14 @@ impl Cpu {
             // OUTS - Output String to Port (6E-6F)
             0x6E..=0x6F => self.outs(opcode, bus, bios, io_device),
 
-            // POP r/m16 (8F) - Group 1A
-            0x8F => self.pop_rm16(bus),
-
             // CALL far (9A)
             0x9A => self.call_far(bus),
 
             // LEAVE - High Level Procedure Exit (C9, 80186+)
             0xC9 => self.leave(bus),
 
-            // RET far (CA: with imm16, CB: without)
-            0xCA..=0xCB => self.retf(opcode, bus),
-
             // INTO - Interrupt on Overflow (CE)
             0xCE => self.into(bus),
-
-            // IRET - Interrupt Return (CF)
-            0xCF => self.iret(bus),
 
             // IN AL, imm8 (E4)
             0xE4 => self.in_al_imm8(bus, bios, io_device),
@@ -418,12 +380,6 @@ impl Cpu {
 
             // OUT imm8, AX (E7)
             0xE7 => self.out_imm8_ax(bus, bios, io_device),
-
-            // JMP near relative (E9)
-            0xE9 => self.jmp_near(bus),
-
-            // JMP far (EA)
-            0xEA => self.jmp_far(bus),
 
             // IN AL, DX (EC)
             0xEC => self.in_al_dx(bios, io_device),

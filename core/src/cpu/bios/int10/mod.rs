@@ -19,11 +19,7 @@ enum GraphicsDrawMode {
 }
 
 impl Cpu {
-    /// INT 0x10 - Video Services
-    /// AH register contains the function number
     pub(super) fn handle_int10(&mut self, bus: &mut Bus) {
-        let function = (self.ax >> 8) as u8; // Get AH
-
         match function {
             0x00 => self.int10_set_video_mode(bus),
             0x01 => self.int10_set_cursor_shape(bus),
@@ -38,7 +34,6 @@ impl Cpu {
             0x0B => self.int10_set_color_palette(bus),
             0x0C => self.int10_write_pixel(bus),
             0x0D => self.int10_read_pixel(bus),
-            0x0E => self.int10_teletype_output(bus),
             0x0F => self.int10_get_video_mode(bus),
             0x10 => self.int10_palette_registers(bus),
             0x11 => self.int10_character_generator(bus),
@@ -50,9 +45,7 @@ impl Cpu {
             0x4F => self.int10_vbe(),
             0xFA => self.int10_installation_checks(),
             0xFE => self.int10_get_video_buffer(bus),
-            _ => {
-                log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
-            }
+            
         }
     }
 

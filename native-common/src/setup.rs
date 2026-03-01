@@ -87,17 +87,7 @@ pub fn load_disks<V: VideoController>(
     floppy_b: &Option<String>,
     hard_disks: &[String],
 ) -> Result<()> {
-    // Load floppy A:
-    if let Some(path) = floppy_a {
-        let backend = FileDiskBackend::open(path, false)?;
-        let disk = BackedDisk::new(backend)
-            .with_context(|| format!("Failed to create disk from: {}", path))?;
-        computer
-            .bios_mut()
-            .insert_floppy(DriveNumber::floppy_a(), Box::new(disk))
-            .map_err(|e| anyhow::anyhow!("Failed to insert floppy A:: {}", e))?;
-        log::info!("Opened floppy A: from {}", path);
-    }
+    // MIGRATED load floppy A:
 
     // Load floppy B:
     if let Some(path) = floppy_b {
@@ -197,57 +187,6 @@ pub fn load_disks<V: VideoController>(
     Ok(())
 }
 
-/// Load a program or boot from disk based on CLI arguments.
-pub fn load_program_or_boot<V: VideoController>(
-    computer: &mut Computer<V>,
-    cli: &CommonCli,
-) -> Result<()> {
-    // Validate that drives are specified if booting
-    if cli.floppy_a.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() && cli.boot {
-        return Err(anyhow::anyhow!(
-            "No disk images specified. Use --floppy-a, --floppy-b, or --hdd to specify disk images."
-        ));
-    }
-
-    if cli.boot {
-        // Boot from disk
-        let boot_drive = parse_hex_or_dec(&cli.boot_drive)?;
-        if boot_drive > 0xFF {
-            return Err(anyhow::anyhow!(
-                "Boot drive must be 0x00-0xFF, got 0x{:04X}",
-                boot_drive
-            ));
-        }
-        let boot_drive = DriveNumber::from_standard(boot_drive as u8);
-
-        log::info!("Booting from drive {}...", boot_drive);
-        computer
-            .boot(boot_drive)
-            .context("Failed to boot from disk")?;
-
-        log::info!("Boot sector loaded at 0x0000:0x7C00");
-    } else if let Some(program_path) = &cli.program {
-// MIGRATED          // Load program from file
-// MIGRATED          let program_data = std::fs::read(program_path)
-// MIGRATED              .with_context(|| format!("Failed to read program file: {}", program_path))?;
-// MIGRATED  
-// MIGRATED          let segment = parse_hex_or_dec(&cli.segment)?;
-// MIGRATED          let offset = parse_hex_or_dec(&cli.offset)?;
-// MIGRATED  
-// MIGRATED          computer
-// MIGRATED              .load_program(&program_data, segment, offset)
-// MIGRATED              .context("Failed to load program")?;
-// MIGRATED  
-// MIGRATED          log::info!(
-// MIGRATED              "Loaded {} bytes at {:04X}:{:04X}",
-// MIGRATED              program_data.len(),
-// MIGRATED              segment,
-// MIGRATED              offset
-// MIGRATED          );
-    }
-
-    Ok(())
-}
 
 /// Attach a serial device (e.g., mouse) to a COM port.
 pub fn attach_serial_device<V: VideoController>(

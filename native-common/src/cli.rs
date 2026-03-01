@@ -2,29 +2,6 @@ use clap::Parser;
 
 #[derive(Parser)]
 pub struct CommonCli {
-// MIGRATED      /// Path to the program binary to load and execute (not used with --boot)
-// MIGRATED      #[arg(required_unless_present = "boot")]
-// MIGRATED      pub program: Option<String>,
-
-// MIGRATED      /// Boot from disk image instead of loading a program
-// MIGRATED      #[arg(long)]
-// MIGRATED      pub boot: bool,
-
-    /// Boot drive number (0x00 for floppy A:, 0x01 for floppy B:, 0x80 for hard disk C:)
-    #[arg(long, default_value = "0x00")]
-    pub boot_drive: String,
-
-// MIGRATED      /// Starting segment address (default: 0x1000)
-// MIGRATED      #[arg(long, default_value = "0x1000")]
-// MIGRATED      pub segment: String,
-
-// MIGRATED      /// Starting offset address (default: 0x0100, like .COM files)
-// MIGRATED      #[arg(long, default_value = "0x0100")]
-// MIGRATED      pub offset: String,
-
-    /// Path to disk image file for floppy A:
-    #[arg(long = "floppy-a")]
-    pub floppy_a: Option<String>,
 
     /// Path to disk image file for floppy B:
     #[arg(long = "floppy-b")]
@@ -46,17 +23,9 @@ pub struct CommonCli {
     #[arg(long = "com2", value_name = "DEVICE")]
     pub com2_device: Option<String>,
 
-    /// Enable execution logging (logs each instruction to oxide86.log)
-    #[arg(long = "exec-log")]
-    pub exec_log: bool,
-
     /// Enable interrupt logging (logs INT calls to oxide86.log)
     #[arg(long = "int-log")]
     pub int_log: bool,
-
-// MIGRATED      /// CPU type to emulate (8086, 286, 386, 486)
-// MIGRATED      #[arg(long = "cpu", default_value = "286")]
-// MIGRATED      pub cpu_type: String,
 
     /// CPU clock speed in MHz (default: 8 for a standard 286)
     #[arg(long, default_value = "8")]

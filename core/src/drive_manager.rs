@@ -1520,37 +1520,38 @@ impl DriveManager {
                 .ok_or(DiskError::DriveNotReady)?
         };
 
-        // Get disk geometry for proper C/H/S wrapping
-        let geometry = adapter.disk().geometry();
-        let sectors_per_track = geometry.sectors_per_track;
-        let heads = geometry.heads;
+        // MIGRATED Disk.read_sectors
+        // // Get disk geometry for proper C/H/S wrapping
+        // let geometry = adapter.disk().geometry();
+        // let sectors_per_track = geometry.sectors_per_track;
+        // let heads = geometry.heads;
 
-        let mut current_cylinder = cylinder as u16;
-        let mut current_head = head as u16;
-        let mut current_sector = sector as u16;
+        // let mut current_cylinder = cylinder as u16;
+        // let mut current_head = head as u16;
+        // let mut current_sector = sector as u16;
 
-        let mut result = Vec::new();
+        // let mut result = Vec::new();
 
-        for _ in 0..count {
-            let sector_data = adapter
-                .disk()
-                .read_sector_chs(current_cylinder, current_head, current_sector)
-                .map_err(|_| DiskError::SectorNotFound)?;
-            result.extend_from_slice(&sector_data);
+        // for _ in 0..count {
+        //     let sector_data = adapter
+        //         .disk()
+        //         .read_sector_chs(current_cylinder, current_head, current_sector)
+        //         .map_err(|_| DiskError::SectorNotFound)?;
+        //     result.extend_from_slice(&sector_data);
 
-            // Advance to next sector with proper C/H/S wrapping
-            current_sector += 1;
-            if current_sector > sectors_per_track {
-                current_sector = 1;
-                current_head += 1;
-                if current_head >= heads {
-                    current_head = 0;
-                    current_cylinder += 1;
-                }
-            }
-        }
+        //     // Advance to next sector with proper C/H/S wrapping
+        //     current_sector += 1;
+        //     if current_sector > sectors_per_track {
+        //         current_sector = 1;
+        //         current_head += 1;
+        //         if current_head >= heads {
+        //             current_head = 0;
+        //             current_cylinder += 1;
+        //         }
+        //     }
+        // }
 
-        Ok(result)
+        // Ok(result)
     }
 
     pub fn disk_write_sectors(
@@ -1638,34 +1639,7 @@ impl DriveManager {
             return Err(DiskError::DriveNotReady);
         }
 
-        let drive_state = self.get_drive(drive).ok_or(DiskError::DriveNotReady)?;
-
-        // Use raw_adapter for INT 13h if available (partitioned hard drives)
-        let adapter = if let Some(ref raw) = drive_state.raw_adapter {
-            raw
-        } else {
-            drive_state
-                .adapter
-                .as_ref()
-                .ok_or(DiskError::DriveNotReady)?
-        };
-
-        let geometry = adapter.disk().geometry();
-
-        // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
-        let drive_count = if drive.is_floppy() {
-            // Count floppy drives with disks
-            self.floppy_drives.iter().filter(|d| d.has_disk()).count() as u8
-        } else {
-            self.hard_drive_count() as u8
-        };
-
-        Ok(DriveParams {
-            max_cylinder: (geometry.cylinders - 1).min(255) as u8,
-            max_head: (geometry.heads - 1).min(255) as u8,
-            max_sector: geometry.sectors_per_track.min(255) as u8,
-            drive_count,
-        })
+        // MIGRATED
     }
 
     pub fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError> {

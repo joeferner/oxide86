@@ -87,35 +87,6 @@ impl Cpu {
         };
     }
 
-    /// POP r/m16 (opcode 8F) - Group 1A
-    /// 8F /0: POP r/m16
-    /// Pops a word from stack to register or bus location
-    pub(in crate::cpu) fn pop_rm16(&mut self, bus: &mut Bus) {
-        let modrm = self.fetch_byte(bus);
-        let (mode, reg_field, rm, addr, _seg) = self.decode_modrm(modrm, bus);
-
-        // The reg field should be 0 for POP (it's an opcode extension)
-        if reg_field != 0 {
-            panic!(
-                "Invalid opcode extension for 8F: expected /0, got /{}",
-                reg_field
-            );
-        }
-
-        let value = self.pop(bus);
-        self.write_rm16(mode, rm, addr, value, bus);
-
-        // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
-            // POP reg: 8 cycles
-            timing::cycles::POP_REG
-        } else {
-            // POP mem: 17 + EA cycles
-            timing::cycles::POP_MEM
-                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
-    }
-
     /// POPA - Pop All General Registers (opcode 0x61)
     /// Pops DI, SI, BP, (discard), BX, DX, CX, AX from stack
     /// 80186+ instruction

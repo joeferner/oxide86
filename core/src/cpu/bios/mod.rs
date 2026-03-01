@@ -40,19 +40,6 @@ pub use int21::FileAccess;
 use std::collections::HashMap;
 use std::io::{self, Read};
 
-/// Drive parameters returned by INT 13h, AH=08h
-#[derive(Debug, Clone, Copy)]
-pub struct DriveParams {
-    /// Maximum cylinder number (0-based)
-    pub max_cylinder: u8,
-    /// Maximum head number (0-based)
-    pub max_head: u8,
-    /// Maximum sector number (1-based)
-    pub max_sector: u8,
-    /// Number of drives
-    pub drive_count: u8,
-}
-
 /// Key press data returned by INT 16h keyboard services
 #[derive(Debug, Clone, Copy)]
 pub struct KeyPress {
@@ -140,8 +127,6 @@ pub struct SharedBiosState {
     pub device_handles: HashMap<u16, DosDevice>,
     /// Next device handle to allocate. Shared between device handles and file handles.
     pub next_device_handle: u16,
-    /// Last disk operation status (for INT 13h AH=01h)
-    pub last_disk_status: u8,
     /// Current DTA (Disk Transfer Area) physical address, set by INT 21h AH=1Ah
     /// Default is 0 (unset); DOS programs must set it before calling FindFirst/FindNext
     pub current_dta: usize,
@@ -382,10 +367,6 @@ impl Bios {
         self.shared
             .drive_manager
             .disk_write_sectors(drive, cylinder, head, sector, count, data)
-    }
-
-    pub fn disk_get_params(&self, drive: DriveNumber) -> Result<DriveParams, DiskError> {
-        self.shared.drive_manager.disk_get_params(drive)
     }
 
     pub fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError> {
