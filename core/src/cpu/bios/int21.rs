@@ -298,44 +298,6 @@ impl Cpu {
         self.bx = offset;
     }
 
-    /// INT 21h, AH=4Ch - Exit Program
-    /// Input: AL = return code
-    fn int21_exit(&mut self, bus: &mut Bus, io: &mut super::Bios) {
-        // INT 21h AH=4Ch - Terminate Program
-        // Read the terminate address (INT 22h) from the PSP at offset 0x0A
-        let psp_segment = io.get_psp();
-        let terminate_offset_addr = Self::physical_address(psp_segment, 0x0A);
-        let terminate_ip = bus.read_u16(terminate_offset_addr);
-        let terminate_cs = bus.read_u16(terminate_offset_addr + 2);
-
-        log::info!(
-            "INT 21h AH=4Ch: Terminating from PSP {:04X}, jumping to {:04X}:{:04X}",
-            psp_segment,
-            terminate_cs,
-            terminate_ip
-        );
-
-        // Restore parent's PSP
-        let parent_psp_addr = Self::physical_address(psp_segment, 0x16);
-        let parent_psp = bus.read_u16(parent_psp_addr);
-        if parent_psp != 0 {
-            io.set_psp(parent_psp);
-        }
-
-        // Jump to the terminate address
-        if terminate_cs == 0 && terminate_ip == 0 {
-            // No return address - halt the CPU (top-level program).
-            // Clear IF so that pending IRQs (e.g. timer) cannot wake the CPU
-            // and resume execution after the INT 21h instruction.
-            self.halted = true;
-            self.set_flag(cpu_flag::INTERRUPT, false);
-        } else {
-            // Return to parent program
-            self.cs = terminate_cs;
-            self.ip = terminate_ip;
-        }
-    }
-
     /// INT 21h, AH=31h - Terminate and Stay Resident (TSR)
     /// Input:
     ///   AL = exit code

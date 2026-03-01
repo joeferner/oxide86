@@ -34,47 +34,6 @@ pub const EGA_MEMORY_END: usize = 0xAFFFF;
 // MIGRATED  pub const TEXT_MODE_ROWS: usize = 25;
 pub const TEXT_MODE_BUFFER_SIZE: usize = TEXT_MODE_COLS * TEXT_MODE_ROWS * 2; // char + attr
 
-// MIGRATED  // VGA color constants
-// MIGRATED  pub mod colors {
-// MIGRATED      pub const BLACK: u8 = 0x0;
-// MIGRATED      pub const BLUE: u8 = 0x1;
-// MIGRATED      pub const GREEN: u8 = 0x2;
-// MIGRATED      pub const CYAN: u8 = 0x3;
-// MIGRATED      pub const RED: u8 = 0x4;
-// MIGRATED      pub const MAGENTA: u8 = 0x5;
-// MIGRATED      pub const BROWN: u8 = 0x6;
-// MIGRATED      pub const LIGHT_GRAY: u8 = 0x7;
-// MIGRATED      pub const DARK_GRAY: u8 = 0x8;
-// MIGRATED      pub const LIGHT_BLUE: u8 = 0x9;
-// MIGRATED      pub const LIGHT_GREEN: u8 = 0xA;
-// MIGRATED      pub const LIGHT_CYAN: u8 = 0xB;
-// MIGRATED      pub const LIGHT_RED: u8 = 0xC;
-// MIGRATED      pub const LIGHT_MAGENTA: u8 = 0xD;
-// MIGRATED      pub const YELLOW: u8 = 0xE;
-// MIGRATED      pub const WHITE: u8 = 0xF;
-// MIGRATED  }
-
-/// Cursor position
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct CursorPosition {
-    pub row: usize,
-    pub col: usize,
-}
-
-/// Video mode type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VideoMode {
-    /// Text modes: 80x25 or 40x25
-    Text { cols: usize, rows: usize },
-    /// CGA 320x200, 4 colors
-    Graphics320x200,
-    /// CGA 640x200, 2 colors
-    Graphics640x200,
-    /// EGA 320x200, 16 colors (mode 0x0D)
-    Graphics320x200x16,
-    /// VGA 320x200, 256 colors (mode 0x13) — linear framebuffer, 1 byte per pixel
-    Graphics320x200x256,
-}
 
 /// Video controller trait - platform-specific implementations provide rendering
 pub trait VideoController {

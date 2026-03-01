@@ -49,9 +49,6 @@ pub struct Computer<V: VideoController = NullVideoController> {
 
     /// if set to true, interrupts will be logged as info level
     log_interrupts_enabled: bool,
-
-    /// Queue of pending keyboard IRQs (INT 09h)
-    pending_keyboard_irqs: std::collections::VecDeque<KeyPress>,
     pending_serial_irqs: std::collections::VecDeque<u8>, // Serial port numbers (0=COM1, 1=COM2)
     /// Pending timer IRQs (INT 08h) - counter to handle multiple ticks if CPU is slow
     pending_timer_irqs: u32,
@@ -306,27 +303,6 @@ impl<V: VideoController> Computer<V> {
         }
 
         self.draw_bios_splash();
-    }
-
-    /// Queue a keyboard IRQ to be processed before the next instruction
-    ///
-    /// This method should be called from the event loop when a keyboard event is detected.
-    /// The IRQ will be processed at the next opportunity (before the next instruction),
-    /// which simulates the asynchronous nature of hardware interrupts.
-    ///
-    /// The INT 09h handler will:
-    /// 1. Add the key to the BIOS keyboard buffer
-    /// 2. Call any custom INT 09h handlers installed by the program
-    ///
-    /// Programs like edit.exe install custom INT 09h handlers to implement enhanced
-    /// keyboard features and maintain their own keyboard buffers.
-    pub fn process_keyboard_irq(&mut self, key: KeyPress) {
-        log::trace!(
-            "Queueing keyboard IRQ: scan=0x{:02X}, ascii=0x{:02X}",
-            key.scan_code,
-            key.ascii_code
-        );
-        self.pending_keyboard_irqs.push_back(key);
     }
 
     /// Fire INT 09h (keyboard hardware interrupt)

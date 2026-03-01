@@ -4,50 +4,12 @@ use crate::cpu::cpu_flag;
 use crate::memory::{BDA_START, BDA_TIMER_COUNTER, BDA_TIMER_OVERFLOW};
 
 impl Cpu {
-    /// INT 0x1A - Time Services
-    /// AH register contains the function number
-    ///
-    /// Note: Like INT 0x13, we enable interrupts (STI) during time services so that
-    /// timer IRQs (INT 0x08) can fire. This is important for programs that poll
-    /// the system time in a tight loop waiting for it to change.
     pub(super) fn handle_int1a(&mut self, bus: &mut Bus, io: &mut super::Bios) {
-        // Enable interrupts during time services (allows timer IRQs to fire)
-        self.set_flag(cpu_flag::INTERRUPT, true);
-
-        let function = (self.ax >> 8) as u8; // Get AH
-
         match function {
-            0x00 => self.int1a_get_system_time(bus),
             0x01 => self.int1a_set_system_time(bus),
             0x02 => self.int1a_read_rtc_time(io),
             0x04 => self.int1a_read_rtc_date(io),
-            _ => {
-                log::warn!("Unhandled INT 0x1A function: AH=0x{:02X}", function);
-            }
         }
-    }
-
-    /// INT 1Ah, AH=00h - Get System Time
-    /// Reads the system timer tick counter
-    /// Input: None
-    /// Output:
-    ///   CX:DX = number of clock ticks since midnight (CX = high word, DX = low word)
-    ///   AL = midnight flag (non-zero if midnight passed since last read, then flag is reset)
-    fn int1a_get_system_time(&mut self, bus: &mut Bus) {
-        // Read timer counter from BDA (4 bytes, little-endian)
-        let counter_addr = BDA_START + BDA_TIMER_COUNTER;
-        let low_word = bus.read_u16(counter_addr);
-        let high_word = bus.read_u16(counter_addr + 2);
-
-        // Read and clear midnight flag
-        let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
-        let midnight_flag = bus.read_u8(overflow_addr);
-        bus.write_u8(overflow_addr, 0); // Clear the flag
-
-        // Return values
-        self.cx = high_word; // CX = high word of tick count
-        self.dx = low_word; // DX = low word of tick count
-        self.ax = (self.ax & 0xFF00) | (midnight_flag as u16); // AL = midnight flag
     }
 
     /// INT 1Ah, AH=01h - Set System Time

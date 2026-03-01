@@ -6,23 +6,9 @@ use crate::memory::{
 };
 
 impl Cpu {
-    /// INT 0x16 - Keyboard Services
-    /// AH register contains the function number
-    ///
-    /// Note: Like INT 0x13 and INT 0x1A, we enable interrupts (STI) during keyboard
-    /// services so that keyboard IRQs (INT 0x09) and timer IRQs (INT 0x08) can fire.
-    /// This is important for programs that poll keyboard status in tight loops with
-    /// interrupts disabled, or block waiting for input via AH=00h.
     pub(super) fn handle_int16(&mut self, bus: &mut Bus, io: &mut super::Bios) {
-        // Enable interrupts during keyboard operations (AT-class BIOS behavior)
-        // This allows keyboard and timer IRQs to fire even when programs poll with IF=0
-        self.set_flag(cpu_flag::INTERRUPT, true);
-
-        let function = (self.ax >> 8) as u8; // Get AH
-
         match function {
-            0x00 => self.int16_read_char(bus, io),
-            0x01 => self.int16_check_keystroke(bus, io),
+            
             0x02 => self.int16_get_shift_flags(bus),
             0x10 => self.int16_read_char(bus, io), // Extended read (same as 00h)
             0x11 => self.int16_check_keystroke(bus, io), // Extended check (same as 01h)
@@ -30,79 +16,6 @@ impl Cpu {
             0x55 => self.int16_word_tsr_check(),
             0x92 => self.int16_get_keyboard_capabilities(),
             0xA2 => self.int16_122_key_capability_check(),
-            _ => {
-                log::warn!("Unhandled INT 0x16 function: AH=0x{:02X}", function);
-            }
-        }
-    }
-
-    /// INT 16h, AH=00h - Read Character
-    /// Waits for a keypress and returns it
-    /// Input: None
-    /// Output:
-    ///   AH = BIOS scan code
-    ///   AL = ASCII character
-    pub(crate) fn int16_read_char(&mut self, bus: &mut Bus, io: &mut super::Bios) {
-        // Check if there's already a character in the keyboard buffer
-        let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
-        let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-        let head = bus.read_u16(head_addr);
-        let tail = bus.read_u16(tail_addr);
-
-        if head != tail {
-            // Buffer has data - read from it
-            let buffer_start = 0x001E; // Relative to BDA
-            let char_addr = BDA_START + head as usize;
-            let scan_code = bus.read_u8(char_addr);
-            let ascii_code = bus.read_u8(char_addr + 1);
-
-            log::debug!(
-                "INT 16h AH=00h: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
-                scan_code,
-                ascii_code,
-                if (0x20..0x7F).contains(&ascii_code) {
-                    ascii_code as char
-                } else {
-                    '.'
-                }
-            );
-
-            // Update head pointer (circular buffer)
-            let new_head = if head == buffer_start + 30 {
-                buffer_start // Wrap around
-            } else {
-                head + 2
-            };
-            bus.write_u16(head_addr, new_head);
-
-            // Set return values
-            self.ax = ((scan_code as u16) << 8) | (ascii_code as u16);
-        } else {
-            // Buffer is empty - read from I/O
-            if let Some(key) = io.read_key() {
-                log::debug!(
-                    "INT 16h AH=00h: Read key from I/O - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
-                    key.scan_code,
-                    key.ascii_code,
-                    if key.ascii_code >= 0x20 && key.ascii_code < 0x7F {
-                        key.ascii_code as char
-                    } else {
-                        '.'
-                    }
-                );
-                self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
-            } else {
-                // No key available - enter wait state
-                // For blocking keyboards (terminal), read_key() should block internally and never return None
-                // For non-blocking keyboards (GUI, WASM), we enter wait state and pause execution
-                log::debug!("INT 16h AH=00h: No key available, entering wait state");
-                self.set_waiting_for_keyboard();
-                // Don't modify AX - when we resume, we need to re-execute this INT
-                // The INT instruction is 2 bytes (0xCD nn), but we're being called after
-                // the interrupt dispatch which has already advanced IP. We need to rewind
-                // so the next execution retry happens at the instruction after the INT.
-                // Actually, we'll handle the retry in the wait state resume logic.
-            }
         }
     }
 
@@ -116,34 +29,10 @@ impl Cpu {
     ///     AH = BIOS scan code
     ///     AL = ASCII character
     fn int16_check_keystroke(&mut self, bus: &mut Bus, io: &mut super::Bios) {
-        // Check keyboard buffer
-        let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
-        let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
-        let head = bus.read_u16(head_addr);
-        let tail = bus.read_u16(tail_addr);
+        // MIGRATED
 
         if head != tail {
-            // Buffer has data - peek at it without removing
-            let char_addr = BDA_START + head as usize;
-            let scan_code = bus.read_u8(char_addr);
-            let ascii_code = bus.read_u8(char_addr + 1);
-
-            log::debug!(
-                "INT 16h AH=01h: Key available in buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
-                scan_code,
-                ascii_code,
-                if (0x20..0x7F).contains(&ascii_code) {
-                    ascii_code as char
-                } else {
-                    '.'
-                }
-            );
-
-            // Set return values
-            self.ax = ((scan_code as u16) << 8) | (ascii_code as u16);
-
-            // Clear ZF to indicate keystroke available
-            self.set_flag(cpu_flag::ZERO, false);
+            // MIGRATED
         } else {
             // Buffer is empty - check if a key is available from the host (non-blocking)
             if let Some(key) = io.check_key() {

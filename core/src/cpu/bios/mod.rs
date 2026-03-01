@@ -40,15 +40,6 @@ pub use int21::FileAccess;
 use std::collections::HashMap;
 use std::io::{self, Read};
 
-/// Key press data returned by INT 16h keyboard services
-#[derive(Debug, Clone, Copy)]
-pub struct KeyPress {
-    /// BIOS scan code
-    pub scan_code: u8,
-    /// ASCII character code
-    pub ascii_code: u8,
-}
-
 /// File seek methods for INT 21h, AH=42h
 #[derive(Debug, Clone, Copy)]
 pub enum SeekMethod {
@@ -613,16 +604,6 @@ impl Bios {
 
     pub fn memory_resize(&mut self, segment: u16, paragraphs: u16) -> Result<(), (DosError, u16)> {
         self.shared.memory_allocator.resize(segment, paragraphs)
-    }
-
-    // PSP management
-    pub fn get_psp(&self) -> u16 {
-        // Default PSP segment for simple programs
-        0x0100
-    }
-
-    pub fn set_psp(&mut self, _segment: u16) {
-        // PSP tracking is not implemented in this simple BIOS
     }
 
     // IOCTL
