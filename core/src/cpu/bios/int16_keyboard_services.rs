@@ -1,5 +1,6 @@
 use crate::{
     bus::Bus,
+    byte_to_printable_char,
     cpu::{
         Cpu,
         bios::bda::{bda_peek_key, bda_read_key},
@@ -60,11 +61,7 @@ impl Cpu {
                 "INT 16h AH=01h: Key available in buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
                 key.scan_code,
                 key.ascii_code,
-                if (0x20..0x7F).contains(&key.ascii_code) {
-                    key.ascii_code as char
-                } else {
-                    '.'
-                }
+                byte_to_printable_char(key.ascii_code)
             );
 
             // Set return values

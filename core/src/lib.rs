@@ -36,6 +36,14 @@ pub fn parse_hex_or_dec(s: &str) -> Result<u16> {
     }
 }
 
+pub fn byte_to_printable_char(v: u8) -> char {
+    if (0x20..0x7F).contains(&v) {
+        v as char
+    } else {
+        '.'
+    }
+}
+
 pub type DeviceRef = Rc<RefCell<dyn Device>>;
 
 pub trait Device {

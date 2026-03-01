@@ -4,15 +4,17 @@ use std::{
 };
 
 use crate::{
-    Device,
+    Device, byte_to_printable_char,
     video::{CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, VideoBuffer},
 };
 
 pub const VIDEO_CARD_CONTROL_ADDR: u16 = 0x03D4;
 pub const VIDEO_CARD_DATA_ADDR: u16 = 0x03D5;
 
-pub const VIDEO_CARD_REG_CURSOR_LOC_HIGH: u8 = 0x0E;
-pub const VIDEO_CARD_REG_CURSOR_LOC_LOW: u8 = 0x0F;
+pub const VIDEO_CARD_REG_CURSOR_START_LINE: u8 = 0x0a;
+pub const VIDEO_CARD_REG_CURSOR_END_LINE: u8 = 0x0b;
+pub const VIDEO_CARD_REG_CURSOR_LOC_HIGH: u8 = 0x0e;
+pub const VIDEO_CARD_REG_CURSOR_LOC_LOW: u8 = 0x0f;
 
 pub struct VideoCard {
     buffer: Arc<RwLock<VideoBuffer>>,
@@ -42,7 +44,10 @@ impl VideoCard {
     fn internal_write_u8(&mut self, addr: usize, val: u8) {
         if addr < self.vram_size {
             let mut buffer = self.buffer.write().unwrap();
-            log::debug!("Write: [0x{addr:04X}] = 0x{val:02X}");
+            log::debug!(
+                "Write: [0x{addr:04X}] = 0x{val:02X} '{}'",
+                byte_to_printable_char(val)
+            );
             buffer.write_vram(addr, val);
         }
     }
@@ -85,6 +90,12 @@ impl Device for VideoCard {
         } else if port == VIDEO_CARD_DATA_ADDR {
             let mut buffer = self.buffer.write().unwrap();
             match self.io_register {
+                VIDEO_CARD_REG_CURSOR_START_LINE => {
+                    buffer.set_cursor_start_line(val);
+                }
+                VIDEO_CARD_REG_CURSOR_END_LINE => {
+                    buffer.set_cursor_end_line(val);
+                }
                 VIDEO_CARD_REG_CURSOR_LOC_HIGH => {
                     let new_cursor_loc = (buffer.cursor_loc() & 0x00ff) | ((val as u16) << 8);
                     buffer.set_cursor_loc(new_cursor_loc);

@@ -1,9 +1,10 @@
 use crate::{
     KeyPress,
     bus::Bus,
+    byte_to_printable_char,
     video::{
-        TEXT_MODE_COLS, TEXT_MODE_SIZE, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
-        video_card::VIDEO_CARD_CONTROL_ADDR,
+        DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_SIZE,
+        VIDEO_MODE_03H_COLOR_TEXT_80_X_25, video_card::VIDEO_CARD_CONTROL_ADDR,
     },
 };
 
@@ -137,8 +138,8 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     }
 
     // Cursor shape (0x0040:0060-0061)
-    bus.memory_write_u8(BDA_START + BDA_CURSOR_END_LINE, 0x0D); // Cursor end scan line
-    bus.memory_write_u8(BDA_START + BDA_CURSOR_START_LINE, 0x0C); // Cursor start scan line
+    bus.memory_write_u8(BDA_START + BDA_CURSOR_END_LINE, DEFAULT_CURSOR_END_LINE); // Cursor end scan line
+    bus.memory_write_u8(BDA_START + BDA_CURSOR_START_LINE, DEFAULT_CURSOR_START_LINE); // Cursor start scan line
 
     // Active display page (0x0040:0062)
     bus.memory_write_u8(BDA_START + BDA_ACTIVE_PAGE, 0); // Page 0
@@ -191,18 +192,26 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     bus.memory_write_u16(BDA_START + BDA_MOUSE_MAX_Y, 199); // Maximum Y
 }
 
-pub fn bda_get_cursor_pos(bus: &Bus) -> (u8, u8) {
+pub fn bda_get_cursor_pos(bus: &Bus, page: u8) -> (u8, u8) {
     // low byte = column, high byte = row
-    let pos = bus.memory_read_u16(BDA_START + BDA_CURSOR_POS);
+    let pos = bus.memory_read_u16(BDA_START + BDA_CURSOR_POS + (page as usize * 2));
     let col = (pos & 0xff) as u8;
     let row = ((pos >> 8) & 0xff) as u8;
     (row, col)
 }
 
-pub fn bda_set_cursor_pos(bus: &mut Bus, row: u8, col: u8) {
+pub fn bda_set_cursor_pos(bus: &mut Bus, page: u8, row: u8, col: u8) {
     // low byte = column, high byte = row
     let pos = ((row as u16) << 8) | col as u16;
-    bus.memory_write_u16(BDA_START + BDA_CURSOR_POS, pos);
+    bus.memory_write_u16(BDA_START + BDA_CURSOR_POS + (page as usize * 2), pos);
+}
+
+pub fn bda_set_cursor_start_line(bus: &mut Bus, start_line: u8) {
+    bus.memory_write_u8(BDA_START + BDA_CURSOR_START_LINE, start_line);
+}
+
+pub fn bda_set_cursor_end_line(bus: &mut Bus, end_line: u8) {
+    bus.memory_write_u8(BDA_START + BDA_CURSOR_END_LINE, end_line);
 }
 
 pub fn bda_get_columns(bus: &Bus) -> u16 {
@@ -225,8 +234,20 @@ pub fn bda_get_video_mode(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_VIDEO_MODE)
 }
 
+pub fn bda_get_video_page_size(bus: &Bus) -> u16 {
+    bus.memory_read_u16(BDA_START + BDA_VIDEO_PAGE_SIZE)
+}
+
+pub fn bda_set_video_page_offset(bus: &mut Bus, offset: u16) {
+    bus.memory_write_u16(BDA_START + BDA_VIDEO_PAGE_OFFSET, offset);
+}
+
 pub fn bda_get_active_page(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_ACTIVE_PAGE)
+}
+
+pub fn bda_set_active_page(bus: &mut Bus, page: u8) {
+    bus.memory_write_u8(BDA_START + BDA_ACTIVE_PAGE, page);
 }
 
 pub fn bda_get_crt_controller_port_address(bus: &Bus) -> u16 {
@@ -307,11 +328,7 @@ pub fn bda_read_key(bus: &mut Bus) -> Option<KeyPress> {
             "INT 16h AH=00h: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
             scan_code,
             ascii_code,
-            if (0x20..0x7F).contains(&ascii_code) {
-                ascii_code as char
-            } else {
-                '.'
-            }
+            byte_to_printable_char(ascii_code)
         );
 
         // Update head pointer (circular buffer)

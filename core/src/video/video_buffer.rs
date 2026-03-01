@@ -2,7 +2,10 @@ use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
 use crate::video::palette::TextModePalette;
 use crate::video::renderer::{RenderTextArgs, render_text};
 use crate::video::text::TextAttribute;
-use crate::video::{TEXT_MODE_COLS, TEXT_MODE_ROWS, TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE};
+use crate::video::{
+    DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_ROWS,
+    TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE,
+};
 
 #[derive(PartialEq)]
 pub struct RenderResult {
@@ -56,6 +59,16 @@ pub struct VideoBuffer {
     /// registers 0x0E (high byte) and 0x0F (low byte). Row-major within the
     /// current text mode grid: col = loc % cols, row = loc / cols.
     cursor_loc: u16,
+    /// Scan line within a character cell where the cursor begins, written by
+    /// CRT controller register 0x0A (bits 4:0). Together with `cursor_end_line`
+    /// this defines the vertical extent of the cursor block (0 = top of cell).
+    /// Bit 5 (0x20) is the cursor-disable flag: when set the cursor is hidden;
+    /// when clear the cursor is visible. This is standard CGA/EGA/VGA behavior.
+    cursor_start_line: u8,
+    /// Scan line within a character cell where the cursor ends (inclusive),
+    /// written by CRT controller register 0x0B (bits 4:0). A value equal to
+    /// `CHAR_HEIGHT - 1` produces an underline cursor at the bottom of the cell.
+    cursor_end_line: u8,
     /// If any value changes in the struct which could result in different output this will be set to true
     dirty: bool,
 }
@@ -78,6 +91,8 @@ impl VideoBuffer {
             vga_dac_palette: Self::default_vga_dac_palette(),
             blink_enabled: false,
             cursor_loc: 0,
+            cursor_start_line: DEFAULT_CURSOR_START_LINE,
+            cursor_end_line: DEFAULT_CURSOR_END_LINE,
             dirty: false,
         }
     }
@@ -111,6 +126,16 @@ impl VideoBuffer {
 
     pub fn set_cursor_loc(&mut self, loc: u16) {
         self.cursor_loc = loc;
+        self.dirty = true;
+    }
+
+    pub fn set_cursor_start_line(&mut self, start_line: u8) {
+        self.cursor_start_line = start_line;
+        self.dirty = true;
+    }
+
+    pub fn set_cursor_end_line(&mut self, end_line: u8) {
+        self.cursor_end_line = end_line;
         self.dirty = true;
     }
 
