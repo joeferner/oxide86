@@ -3,8 +3,10 @@ mod tests {
     use anyhow::Context;
     use std::fs::File;
     use std::io::Read;
+    use std::path::Path;
     use std::sync::Arc;
 
+    use crate::KeyPress;
     use crate::cpu::CpuType;
     use crate::video::video_buffer::RenderResult;
     use crate::{
@@ -25,7 +27,7 @@ mod tests {
         (computer, video_buffer)
     }
 
-    fn load_data(name: &str) -> (Vec<u8>, RenderResult) {
+    fn load_data(name: &str) -> (Vec<u8>, Option<RenderResult>) {
         let program_data = {
             let filename = format!("src/test_data/{name}.com");
             let mut f = File::open(&filename)
@@ -40,14 +42,18 @@ mod tests {
 
         let expected_image_data = {
             let filename = format!("src/test_data/{name}.png");
-            let f = image::open(&filename)
-                .context(format!("failed to open: {filename}"))
-                .unwrap();
-            let data = f.to_rgba8().into_raw();
-            RenderResult {
-                data,
-                width: f.width(),
-                height: f.height(),
+            if Path::new(&filename).exists() {
+                let f = image::open(&filename)
+                    .context(format!("failed to open: {filename}"))
+                    .unwrap();
+                let data = f.to_rgba8().into_raw();
+                Some(RenderResult {
+                    data,
+                    width: f.width(),
+                    height: f.height(),
+                })
+            } else {
+                None
             }
         };
 
@@ -75,16 +81,25 @@ mod tests {
         }
     }
 
-    fn run_test(name: &str) {
+    fn run_test_with_interaction(name: &str, f: fn(&mut Computer)) {
         let (program_data, expected_screen) = load_data(name);
 
         let (mut computer, video_buffer) = create_computer();
         computer
             .load_program(&program_data, TEST_SEGMENT, TEST_OFFSET)
             .unwrap();
-        computer.run();
+        f(&mut computer);
 
-        assert_screen(name, expected_screen, video_buffer);
+        if let Some(expected_screen) = expected_screen {
+            assert_screen(name, expected_screen, video_buffer);
+        }
+        assert_eq!(Some(0), computer.get_exit_code());
+    }
+
+    fn run_test(name: &str) {
+        run_test_with_interaction(name, |computer| {
+            computer.run();
+        });
     }
 
     #[test_log::test]
@@ -100,5 +115,16 @@ mod tests {
     #[test_log::test]
     pub fn cpu_op8086() {
         run_test("cpu/op8086");
+    }
+
+    #[test_log::test]
+    pub fn keyboard_check_keystroke_int16() {
+        run_test_with_interaction("keyboard/check_keystroke_int16", |computer| {
+            computer.push_keyboard_key(KeyPress {
+                ascii_code: 0x6F, // 'o'
+                scan_code: 0x18,
+            });
+            computer.run();
+        });
     }
 }

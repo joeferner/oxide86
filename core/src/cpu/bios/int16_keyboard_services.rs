@@ -1,6 +1,10 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, bios::bda::bda_peek_key, cpu_flag},
+    cpu::{
+        Cpu,
+        bios::bda::{bda_peek_key, bda_read_key},
+        cpu_flag,
+    },
 };
 
 impl Cpu {
@@ -19,10 +23,25 @@ impl Cpu {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
+            0x00 => self.int16_read_char(bus),
             0x01 => self.int16_check_keystroke(bus),
             _ => {
                 log::warn!("Unhandled INT 0x16 function: AH=0x{:02X}", function);
             }
+        }
+    }
+
+    /// INT 16h, AH=00h - Read Character
+    /// Waits for a keypress and returns it
+    /// Input: None
+    /// Output:
+    ///   AH = BIOS scan code
+    ///   AL = ASCII character
+    pub(crate) fn int16_read_char(&mut self, bus: &mut Bus) {
+        if let Some(key) = bda_read_key(bus) {
+            self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
+        } else {
+            todo!("wait for a key press");
         }
     }
 

@@ -1,16 +1,27 @@
-use std::any::Any;
+use std::{any::Any, cell::RefCell, rc::Rc};
 
-use crate::Device;
+use crate::{Device, devices::keyboard_controller::KeyboardController};
 
-pub struct PIC {}
+pub const KEYBOARD_IRQ: u8 = 0x09;
+
+pub struct PIC {
+    keyboard_controller: Rc<RefCell<KeyboardController>>,
+}
 
 impl PIC {
-    pub fn new() -> Self {
-        Self {}
+    pub fn new(keyboard_controller: Rc<RefCell<KeyboardController>>) -> Self {
+        Self {
+            keyboard_controller,
+        }
     }
 
     pub fn take_irq(&mut self) -> Option<u8> {
-        todo!("take_irq");
+        // TODO this needs more logic on priorities etc
+        if self.keyboard_controller.borrow_mut().take_pending_key() {
+            Some(KEYBOARD_IRQ)
+        } else {
+            None
+        }
     }
 }
 

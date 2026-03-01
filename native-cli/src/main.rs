@@ -67,10 +67,10 @@ fn main() -> Result<()> {
 
     // TODO
     let quit_from_command_mode = false;
-    while !computer.is_halted() {
+    while computer.get_exit_code().is_none() {
         for _ in 0..BATCH_SIZE {
             computer.step();
-            if computer.is_halted() {
+            if computer.get_exit_code().is_some() {
                 break;
             }
         }

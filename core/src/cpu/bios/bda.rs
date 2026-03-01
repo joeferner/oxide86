@@ -284,3 +284,86 @@ pub fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {
         None
     }
 }
+
+pub fn bda_read_key(bus: &mut Bus) -> Option<KeyPress> {
+    let head = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_HEAD);
+    let tail = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_TAIL);
+
+    if head != tail {
+        // Buffer has data - read from it
+        let buffer_start = 0x001E; // Relative to BDA
+        let char_addr = BDA_START + head as usize;
+        let scan_code = bus.memory_read_u8(char_addr);
+        let ascii_code = bus.memory_read_u8(char_addr + 1);
+
+        log::debug!(
+            "INT 16h AH=00h: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+            scan_code,
+            ascii_code,
+            if (0x20..0x7F).contains(&ascii_code) {
+                ascii_code as char
+            } else {
+                '.'
+            }
+        );
+
+        // Update head pointer (circular buffer)
+        let new_head = if head == buffer_start + 30 {
+            buffer_start // Wrap around
+        } else {
+            head + 2
+        };
+        bus.memory_write_u16(BDA_START + BDA_KEYBOARD_BUFFER_HEAD, new_head);
+
+        Some(KeyPress {
+            ascii_code,
+            scan_code,
+        })
+    } else {
+        None
+    }
+}
+
+pub fn bda_add_key_to_buffer(bus: &mut Bus, key: KeyPress) {
+    // Add key press to BIOS keyboard buffer
+    let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
+    let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;
+    let head = bus.memory_read_u16(head_addr);
+    let tail = bus.memory_read_u16(tail_addr);
+
+    // Calculate what tail would be after adding this key
+    let buffer_start: u16 = 0x001E; // Relative to BDA
+    let new_tail = if tail == buffer_start + 30 {
+        buffer_start // Wrap around
+    } else {
+        tail + 2
+    };
+
+    // Check if buffer would become full
+    if new_tail == head {
+        // Buffer full - discard key (beep would be appropriate here)
+        log::warn!(
+            "INT 09h (BIOS): Keyboard buffer full! Discarding scan=0x{:02X}, ascii=0x{:02X}",
+            key.scan_code,
+            key.ascii_code
+        );
+        return;
+    }
+
+    // Add key to buffer
+    let char_addr = BDA_START + tail as usize;
+    bus.memory_write_u8(char_addr, key.scan_code);
+    bus.memory_write_u8(char_addr + 1, key.ascii_code);
+    bus.memory_write_u16(tail_addr, new_tail);
+
+    log::debug!(
+        "INT 09h (BIOS): Added to buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+        key.scan_code,
+        key.ascii_code,
+        if (0x20..0x7F).contains(&key.ascii_code) {
+            key.ascii_code as char
+        } else {
+            '.'
+        }
+    );
+}

@@ -1,18 +1,19 @@
-use std::{any::Any, collections::VecDeque};
+use std::any::Any;
 
 use crate::{Device, KeyPress};
 
+pub const KEYBOARD_IO_PORT_DATA: u16 = 0x0060;
+
 pub struct KeyboardController {
-    /// Queue of pending keyboard keys, although not completely accurate since keyboard
-    /// controllers typically only held one key, this is a quality of life and performance
-    /// improvement
-    pending_keyboard_keys: VecDeque<KeyPress>,
+    scan_code: u8,
+    pending_key: bool,
 }
 
 impl KeyboardController {
     pub fn new() -> Self {
         Self {
-            pending_keyboard_keys: VecDeque::new(),
+            scan_code: 0,
+            pending_key: false,
         }
     }
 
@@ -34,7 +35,14 @@ impl KeyboardController {
             key.scan_code,
             key.ascii_code
         );
-        self.pending_keyboard_keys.push_back(key);
+        self.scan_code = key.scan_code;
+        self.pending_key = true;
+    }
+
+    pub fn take_pending_key(&mut self) -> bool {
+        let result = self.pending_key;
+        self.pending_key = false;
+        result
     }
 }
 
@@ -51,8 +59,12 @@ impl Device for KeyboardController {
         false
     }
 
-    fn io_read_u8(&self, _port: u16) -> Option<u8> {
-        None
+    fn io_read_u8(&self, port: u16) -> Option<u8> {
+        if port == KEYBOARD_IO_PORT_DATA {
+            Some(self.scan_code)
+        } else {
+            None
+        }
     }
 
     fn io_write_u8(&mut self, _port: u16, _val: u8) -> bool {

@@ -14,6 +14,9 @@ use crate::{
     memory::Memory,
 };
 
+const MEMORY_MAPPED_IO_START: usize = 0xA0000;
+const MEMORY_MAPPED_IO_END: usize = 0xF0000;
+
 pub struct Bus {
     memory: Memory,
     devices: Vec<DeviceRef>,
@@ -24,8 +27,8 @@ pub struct Bus {
 
 impl Bus {
     pub fn new(memory: Memory) -> Self {
-        let pic = Rc::new(RefCell::new(PIC::new()));
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
+        let pic = Rc::new(RefCell::new(PIC::new(keyboard_controller.clone())));
         Self {
             memory,
             devices: vec![pic.clone(), keyboard_controller.clone()],
@@ -68,9 +71,11 @@ impl Bus {
     }
 
     pub fn memory_read_u8(&self, addr: usize) -> u8 {
-        for device in &self.devices {
-            if let Some(val) = device.borrow().memory_read_u8(addr) {
-                return val;
+        if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
+            for device in &self.devices {
+                if let Some(val) = device.borrow().memory_read_u8(addr) {
+                    return val;
+                }
             }
         }
 
@@ -78,9 +83,11 @@ impl Bus {
     }
 
     pub fn memory_write_u8(&mut self, addr: usize, val: u8) {
-        for device in &self.devices {
-            if device.borrow_mut().memory_write_u8(addr, val) {
-                return;
+        if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
+            for device in &self.devices {
+                if device.borrow_mut().memory_write_u8(addr, val) {
+                    return;
+                }
             }
         }
 

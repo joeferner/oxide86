@@ -62,8 +62,14 @@ pub struct Cpu {
     /// Flags (start with just carry, zero, sign)
     flags: u16,
 
+    /// Program Segment Prefix
+    current_psp: u16,
+
     /// Halted flag
     halted: bool,
+
+    /// If INT 21h, AH=4Ch - Exit Program is called without a place to return it will set this value
+    exit_code: Option<u8>,
 
     /// Cycle count for the last executed instruction
     /// Used by Computer::step() to accurately track CPU cycles
@@ -80,7 +86,7 @@ pub struct Cpu {
     pending_exception: Option<u8>,
 
     /// Last disk operation status (for INT 13h AH=01h)
-    pub last_disk_status: u8,
+    last_disk_status: u8,
 
     /// if set to true, opcode execution will be logged as info level
     pub exec_logging_enabled: bool,
@@ -106,7 +112,9 @@ impl Cpu {
             gs: 0,
             ip: 0,
             flags: 0,
+            current_psp: 0x100,
             halted: false,
+            exit_code: None,
             last_instruction_cycles: 0,
             segment_override: None,
             repeat_prefix: None,
@@ -136,14 +144,23 @@ impl Cpu {
     }
 
     pub fn step(&mut self, bus: &mut Bus) {
-        if self.get_flag(cpu_flag::INTERRUPT)
-            && let Some(irq) = bus.pic_mut().take_irq()
-        {
-            todo!("dispatch irq {irq}");
+        // service any interrupts coming from the PIC
+        if self.get_flag(cpu_flag::INTERRUPT) {
+            let irq = bus.pic_mut().take_irq();
+            if let Some(irq) = irq {
+                self.step_bios_int(bus, irq);
+                return;
+            }
         }
 
+        // service any bios routines
         if self.cs == BIOS_CODE_SEGMENT {
-            self.step_bios_int(bus);
+            if self.ip > 0xff {
+                log::error!("Invalid BIOS handler 0x{:02X}", self.ip);
+                return;
+            }
+            self.step_bios_int(bus, self.ip as u8);
+            self.iret(bus);
             return;
         }
 
@@ -579,6 +596,7 @@ impl Cpu {
         self.ip = 0;
         self.flags = 0x0002; // Reserved bit always set
         self.halted = false;
+        self.exit_code = None;
         self.last_instruction_cycles = 0;
         self.segment_override = None;
         self.repeat_prefix = None;
@@ -607,9 +625,9 @@ impl Cpu {
         self.set_flag(cpu_flag::INTERRUPT, true);
     }
 
-    fn step_bios_int(&mut self, bus: &mut Bus) {
-        let int = self.ip / 4;
-        match int {
+    fn step_bios_int(&mut self, bus: &mut Bus, irq: u8) {
+        match irq {
+            0x09 => self.handle_int09_keyboard_hardware_interrupt(bus),
             0x10 => self.handle_int10_video_services(bus),
             0x11 => self.handle_int11_get_equipment_list(bus),
             0x12 => self.handle_int12_get_memory_size(bus),
@@ -618,9 +636,12 @@ impl Cpu {
             0x17 => self.handle_int17_printer_services(bus),
             0x1a => self.handle_int1a_time_services(bus),
             0x21 => self.handle_int21_dos_services(bus),
-            _ => log::error!("unhandled BIOS interrupt 0x{int:02X}"),
+            _ => log::error!("unhandled BIOS interrupt 0x{irq:02X}"),
         }
-        self.iret(bus);
+    }
+
+    pub fn get_exit_code(&self) -> Option<u8> {
+        self.exit_code
     }
 }
 

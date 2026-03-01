@@ -4,6 +4,7 @@ use crate::{
 };
 
 pub mod bda;
+pub mod int09_keyboard_hardware_interrupt;
 pub mod int10_video_services;
 pub mod int11_get_equipment_list;
 pub mod int12_get_memory_size;
@@ -23,6 +24,7 @@ pub fn bios_reset(bus: &mut Bus) {
 
 fn bios_interrupt_handlers_reset(bus: &mut Bus) {
     for addr in (IVT_START..=IVT_END).step_by(IVT_ENTRY_SIZE) {
-        bus.memory_write_u32(addr, ((BIOS_CODE_SEGMENT as u32) << 16) | addr as u32);
+        let irq = addr / IVT_ENTRY_SIZE;
+        bus.memory_write_u32(addr, ((BIOS_CODE_SEGMENT as u32) << 16) | irq as u32);
     }
 }
