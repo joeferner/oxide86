@@ -108,7 +108,11 @@ start:
     call print_summary
 
     mov ah, 0x4C    ; DOS terminate with return code
-    mov al, 0x00    ; exit code 0
+    mov al, 0x00    ; exit code 0 (pass)
+    cmp word [fail_count], 0
+    je .exit
+    mov al, 0x01    ; exit code 1 if any tests failed
+.exit:
     int 0x21        ; In DOS: exits. In emulator: halts.
 
 ;=============================================================================
