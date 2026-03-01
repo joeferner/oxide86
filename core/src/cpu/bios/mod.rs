@@ -6,8 +6,10 @@ use crate::{
 pub mod bda;
 pub mod int10_video_services;
 pub mod int11_get_equipment_list;
+pub mod int12_get_memory_size;
 pub mod int13_disk_services;
 pub mod int17_printer_services;
+pub mod int1a_time_services;
 pub mod int21_dos_services;
 
 // BIOS code segment

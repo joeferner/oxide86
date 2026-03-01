@@ -7,57 +7,67 @@ use crate::{
 };
 
 // BIOS Data Area (BDA) constants
-pub const BDA_SEGMENT: u16 = 0x0040;
-pub const BDA_START: usize = 0x0400; // Physical address (0x40 * 16)
-pub const BDA_SIZE: usize = 0x100; // 256 bytes
+#[allow(dead_code)]
+const BDA_SEGMENT: u16 = 0x0040;
+const BDA_START: usize = 0x0400; // Physical address (0x40 * 16)
+#[allow(dead_code)]
+const BDA_SIZE: usize = 0x100; // 256 bytes
 
 // BDA field offsets (from 0x0040:0000)
-pub const BDA_COM_PORTS: usize = 0x00; // COM1-COM4 port addresses (4 words)
-pub const BDA_LPT_PORTS: usize = 0x08; // LPT1-LPT4 port addresses (4 words)
-pub const BDA_EQUIPMENT_LIST: usize = 0x10; // Equipment list word
-pub const BDA_MEMORY_SIZE: usize = 0x13; // Memory size in KB (word)
-pub const BDA_KEYBOARD_FLAGS1: usize = 0x17; // Keyboard shift flags
-pub const BDA_KEYBOARD_FLAGS2: usize = 0x18; // Keyboard shift flags
-pub const BDA_KEYBOARD_BUFFER_HEAD: usize = 0x1A; // Keyboard buffer head pointer
-pub const BDA_KEYBOARD_BUFFER_TAIL: usize = 0x1C; // Keyboard buffer tail pointer
-pub const BDA_KEYBOARD_BUFFER: usize = 0x1E; // Keyboard buffer (32 bytes)
-pub const BDA_VIDEO_MODE: usize = 0x49; // Current video mode
-pub const BDA_SCREEN_COLUMNS: usize = 0x4A; // Number of screen columns
-pub const BDA_VIDEO_PAGE_SIZE: usize = 0x4C; // Video page size in bytes
-pub const BDA_VIDEO_PAGE_OFFSET: usize = 0x4E; // Current page start address
-pub const BDA_CURSOR_POS: usize = 0x50; // Cursor positions for 8 pages (16 bytes)
-pub const BDA_CURSOR_END_LINE: usize = 0x60; // Cursor end scan line
-pub const BDA_CURSOR_START_LINE: usize = 0x61; // Cursor start scan line
-pub const BDA_ACTIVE_PAGE: usize = 0x62; // Active display page
-pub const BDA_CRTC_PORT: usize = 0x63; // CRT controller base port address
-pub const BDA_CRT_MODE_CONTROL: usize = 0x65; // CRT mode control register
-pub const BDA_CRT_PALETTE: usize = 0x66; // CRT palette register
-pub const BDA_TIMER_COUNTER: usize = 0x6C; // Timer counter (dword) - ticks since midnight
-pub const BDA_TIMER_OVERFLOW: usize = 0x70; // Timer midnight rollover flag (byte)
-pub const BDA_NUM_HARD_DRIVES: usize = 0x75; // Number of hard drives installed (byte)
-pub const BDA_KEYBOARD_BUFFER_START: usize = 0x80; // Keyboard buffer start pointer (word, normally 0x001E)
-pub const BDA_KEYBOARD_BUFFER_END: usize = 0x82; // Keyboard buffer end pointer (word, normally 0x003E)
-pub const BDA_EGA_ROWS: usize = 0x84; // EGA/VGA: number of rows on screen minus 1 (byte, e.g. 24 for 25-row mode)
-pub const BDA_EGA_CHAR_HEIGHT: usize = 0x85; // EGA/VGA: bytes per character (byte, e.g. 16 for 8x16 font)
-pub const BDA_MOUSE_X: usize = 0xE0; // Mouse X position (word)
-pub const BDA_MOUSE_Y: usize = 0xE2; // Mouse Y position (word)
-pub const BDA_MOUSE_BUTTONS: usize = 0xE4; // Mouse button state (byte)
-pub const BDA_MOUSE_VISIBLE: usize = 0xE5; // Mouse cursor visibility counter (byte)
-pub const BDA_MOUSE_MIN_X: usize = 0xE6; // Mouse horizontal minimum (word)
-pub const BDA_MOUSE_MAX_X: usize = 0xE8; // Mouse horizontal maximum (word)
-pub const BDA_MOUSE_MIN_Y: usize = 0xEA; // Mouse vertical minimum (word)
-pub const BDA_MOUSE_MAX_Y: usize = 0xEC; // Mouse vertical maximum (word)
+const BDA_COM_PORTS: usize = 0x00; // COM1-COM4 port addresses (4 words)
+const BDA_LPT_PORTS: usize = 0x08; // LPT1-LPT4 port addresses (4 words)
+const BDA_EQUIPMENT_LIST: usize = 0x10; // Equipment list word
+const BDA_MEMORY_SIZE: usize = 0x13; // Memory size in KB (word)
+const BDA_KEYBOARD_FLAGS1: usize = 0x17; // Keyboard shift flags
+const BDA_KEYBOARD_FLAGS2: usize = 0x18; // Keyboard shift flags
+const BDA_KEYBOARD_BUFFER_HEAD: usize = 0x1A; // Keyboard buffer head pointer
+const BDA_KEYBOARD_BUFFER_TAIL: usize = 0x1C; // Keyboard buffer tail pointer
+const BDA_KEYBOARD_BUFFER: usize = 0x1E; // Keyboard buffer (32 bytes)
+const BDA_VIDEO_MODE: usize = 0x49; // Current video mode
+const BDA_SCREEN_COLUMNS: usize = 0x4A; // Number of screen columns
+const BDA_VIDEO_PAGE_SIZE: usize = 0x4C; // Video page size in bytes
+const BDA_VIDEO_PAGE_OFFSET: usize = 0x4E; // Current page start address
+const BDA_CURSOR_POS: usize = 0x50; // Cursor positions for 8 pages (16 bytes)
+const BDA_CURSOR_END_LINE: usize = 0x60; // Cursor end scan line
+const BDA_CURSOR_START_LINE: usize = 0x61; // Cursor start scan line
+const BDA_ACTIVE_PAGE: usize = 0x62; // Active display page
+const BDA_CRTC_PORT: usize = 0x63; // CRT controller base port address
+const BDA_CRT_MODE_CONTROL: usize = 0x65; // CRT mode control register
+const BDA_CRT_PALETTE: usize = 0x66; // CRT palette register
+const BDA_TIMER_COUNTER: usize = 0x6C; // Timer counter (dword) - ticks since midnight
+const BDA_TIMER_OVERFLOW: usize = 0x70; // Timer midnight rollover flag (byte)
+#[allow(dead_code)]
+const BDA_NUM_HARD_DRIVES: usize = 0x75; // Number of hard drives installed (byte)
+const BDA_KEYBOARD_BUFFER_START: usize = 0x80; // Keyboard buffer start pointer (word, normally 0x001E)
+const BDA_KEYBOARD_BUFFER_END: usize = 0x82; // Keyboard buffer end pointer (word, normally 0x003E)
+const BDA_EGA_ROWS: usize = 0x84; // EGA/VGA: number of rows on screen minus 1 (byte, e.g. 24 for 25-row mode)
+const BDA_EGA_CHAR_HEIGHT: usize = 0x85; // EGA/VGA: bytes per character (byte, e.g. 16 for 8x16 font)
+const BDA_MOUSE_X: usize = 0xE0; // Mouse X position (word)
+const BDA_MOUSE_Y: usize = 0xE2; // Mouse Y position (word)
+const BDA_MOUSE_BUTTONS: usize = 0xE4; // Mouse button state (byte)
+const BDA_MOUSE_VISIBLE: usize = 0xE5; // Mouse cursor visibility counter (byte)
+const BDA_MOUSE_MIN_X: usize = 0xE6; // Mouse horizontal minimum (word)
+const BDA_MOUSE_MAX_X: usize = 0xE8; // Mouse horizontal maximum (word)
+const BDA_MOUSE_MIN_Y: usize = 0xEA; // Mouse vertical minimum (word)
+const BDA_MOUSE_MAX_Y: usize = 0xEC; // Mouse vertical maximum (word)
 
 // Equipment list bits
-pub const EQUIPMENT_FLOPPY_INSTALLED: u16 = 0x0001;
-pub const EQUIPMENT_MATH_COPROCESSOR: u16 = 0x0002;
-pub const EQUIPMENT_POINTING_DEVICE: u16 = 0x0004; // PS/2 mouse
-pub const EQUIPMENT_VIDEO_MODE_MASK: u16 = 0x0030; // Bits 4-5: initial video mode
-pub const EQUIPMENT_VIDEO_MODE_80X25_COLOR: u16 = 0x0020;
-pub const EQUIPMENT_VIDEO_MODE_80X25_MONO: u16 = 0x0030;
-pub const EQUIPMENT_FLOPPY_COUNT_MASK: u16 = 0x00C0; // Bits 6-7: number of floppies - 1
-pub const EQUIPMENT_SERIAL_COUNT_MASK: u16 = 0x0E00; // Bits 9-11: number of serial ports
-pub const EQUIPMENT_PRINTER_COUNT_MASK: u16 = 0xC000; // Bits 14-15: number of printers
+const EQUIPMENT_FLOPPY_INSTALLED: u16 = 0x0001;
+#[allow(dead_code)]
+const EQUIPMENT_MATH_COPROCESSOR: u16 = 0x0002;
+#[allow(dead_code)]
+const EQUIPMENT_POINTING_DEVICE: u16 = 0x0004; // PS/2 mouse
+#[allow(dead_code)]
+const EQUIPMENT_VIDEO_MODE_MASK: u16 = 0x0030; // Bits 4-5: initial video mode
+const EQUIPMENT_VIDEO_MODE_80X25_COLOR: u16 = 0x0020;
+#[allow(dead_code)]
+const EQUIPMENT_VIDEO_MODE_80X25_MONO: u16 = 0x0030;
+#[allow(dead_code)]
+const EQUIPMENT_FLOPPY_COUNT_MASK: u16 = 0x00C0; // Bits 6-7: number of floppies - 1
+#[allow(dead_code)]
+const EQUIPMENT_SERIAL_COUNT_MASK: u16 = 0x0E00; // Bits 9-11: number of serial ports
+#[allow(dead_code)]
+const EQUIPMENT_PRINTER_COUNT_MASK: u16 = 0xC000; // Bits 14-15: number of printers
 
 pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // COM port addresses (0x0040:0000 - 4 words)
@@ -76,6 +86,7 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
 
     // Equipment list word (0x0040:0010)
     // Bits indicate installed hardware
+    // TODO properly fill out equipment list
     let mut equipment = 0u16;
     equipment |= EQUIPMENT_FLOPPY_INSTALLED; // Floppy drive installed
     equipment |= EQUIPMENT_VIDEO_MODE_80X25_COLOR; // 80x25 color text mode
@@ -179,7 +190,7 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     bus.memory_write_u16(BDA_START + BDA_MOUSE_MAX_Y, 199); // Maximum Y
 }
 
-pub(in crate::cpu) fn bda_get_cursor_pos(bus: &Bus) -> (u8, u8) {
+pub fn bda_get_cursor_pos(bus: &Bus) -> (u8, u8) {
     // low byte = column, high byte = row
     let pos = bus.memory_read_u16(BDA_START + BDA_CURSOR_POS);
     let col = (pos & 0xff) as u8;
@@ -187,18 +198,18 @@ pub(in crate::cpu) fn bda_get_cursor_pos(bus: &Bus) -> (u8, u8) {
     (row, col)
 }
 
-pub(in crate::cpu) fn bda_set_cursor_pos(bus: &mut Bus, row: u8, col: u8) {
+pub fn bda_set_cursor_pos(bus: &mut Bus, row: u8, col: u8) {
     // low byte = column, high byte = row
     let pos = ((row as u16) << 8) | col as u16;
     bus.memory_write_u16(BDA_START + BDA_CURSOR_POS, pos);
 }
 
-pub(in crate::cpu) fn bda_get_columns(bus: &Bus) -> u8 {
+pub fn bda_get_columns(bus: &Bus) -> u8 {
     // TODO do columns really take up u16
     bus.memory_read_u16(BDA_START + BDA_SCREEN_COLUMNS) as u8
 }
 
-pub(in crate::cpu) fn bda_get_rows(bus: &Bus) -> u8 {
+pub fn bda_get_rows(bus: &Bus) -> u8 {
     let rows = bus.memory_read_u8(BDA_START + BDA_EGA_ROWS);
     // On very old original IBM PCs (1981), the byte at 0x84 wasn't always
     // initialized because 25 lines was the only option. However, for any
@@ -210,6 +221,47 @@ pub(in crate::cpu) fn bda_get_rows(bus: &Bus) -> u8 {
     }
 }
 
-pub(in crate::cpu) fn bda_get_crt_controller_port_address(bus: &Bus) -> u16 {
+pub fn bda_get_crt_controller_port_address(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_CRTC_PORT)
+}
+
+pub fn bda_get_memory_size(bus: &Bus) -> u16 {
+    bus.memory_read_u16(BDA_START + BDA_MEMORY_SIZE)
+}
+
+/// Equipment list bits:
+/// - Bit 0: Floppy drive installed
+/// - Bits 1: Math coprocessor installed
+/// - Bits 4-5: Initial video mode (00=reserved, 01=40x25 color, 10=80x25 color, 11=80x25 mono)
+/// - Bits 6-7: Number of floppy drives minus 1
+/// - Bits 9-11: Number of serial ports
+/// - Bits 14-15: Number of printers
+pub fn bda_get_equipment_list(bus: &Bus) -> u16 {
+    bus.memory_read_u16(BDA_START + BDA_EQUIPMENT_LIST)
+}
+
+pub struct SystemTime {
+    pub low_word: u16,
+    pub high_word: u16,
+    pub midnight_flag: u8,
+}
+
+pub fn bda_get_system_time(bus: &Bus) -> SystemTime {
+    // Read timer counter from BDA (4 bytes, little-endian)
+    let counter_addr = BDA_START + BDA_TIMER_COUNTER;
+    let low_word = bus.memory_read_u16(counter_addr);
+    let high_word = bus.memory_read_u16(counter_addr + 2);
+
+    // Read midnight flag
+    let midnight_flag = bus.memory_read_u8(BDA_START + BDA_TIMER_OVERFLOW);
+
+    SystemTime {
+        low_word,
+        high_word,
+        midnight_flag,
+    }
+}
+
+pub fn bda_clear_timer_overflow(bus: &mut Bus) {
+    bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0);
 }

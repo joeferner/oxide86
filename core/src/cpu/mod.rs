@@ -607,8 +607,10 @@ impl Cpu {
         match int {
             0x10 => self.handle_int10_video_services(bus),
             0x11 => self.handle_int11_get_equipment_list(bus),
+            0x12 => self.handle_int12_get_memory_size(bus),
             0x13 => self.handle_int13_disk_services(bus),
             0x17 => self.handle_int17_printer_services(bus),
+            0x1a => self.handle_int1a_time_services(bus),
             0x21 => self.handle_int21_dos_services(bus),
             _ => log::error!("unhandled BIOS interrupt 0x{int:02X}"),
         }
