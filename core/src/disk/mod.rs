@@ -67,13 +67,12 @@ pub fn disk_get_params(bus: &Bus, drive: DriveNumber) -> Result<DriveParams, Dis
     let geometry = disk_controller.borrow().disk_geometry();
 
     // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
-    // TODO
-    // let drive_count = if drive.is_floppy() {
-    //     self.devices.floppy_drives_with_disk_count()
-    // } else {
-    //     self.devices.hard_drive_count()
-    // };
-    let drive_count = 0;
+    // TODO verify how CD-ROM should be handled
+    let drive_count = if drive.is_floppy() {
+        disk_floppy_drives_with_disk_count(bus)
+    } else {
+        disk_hard_drive_count(bus)
+    };
 
     Ok(DriveParams {
         max_cylinder: (geometry.cylinders - 1).min(255) as u8,
@@ -81,4 +80,14 @@ pub fn disk_get_params(bus: &Bus, drive: DriveNumber) -> Result<DriveParams, Dis
         max_sector: geometry.sectors_per_track.min(255) as u8,
         drive_count,
     })
+}
+
+pub fn disk_floppy_drives_with_disk_count(_bus: &Bus) -> u8 {
+    // TODO write me
+    1
+}
+
+pub fn disk_hard_drive_count(_bus: &Bus) -> u8 {
+    // TODO write me
+    0
 }
