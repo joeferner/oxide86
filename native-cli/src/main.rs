@@ -1,7 +1,7 @@
 use std::{
     io::{Stdout, Write},
     panic,
-    sync::Arc,
+    sync::{Arc, RwLock},
     time::Duration,
 };
 
@@ -27,6 +27,13 @@ mod keyboard;
 
 const BATCH_SIZE: usize = 1000;
 
+#[derive(Debug, PartialEq)]
+struct VideoCachedValue {
+    character: u8,
+    fg: Color,
+    bg: Color,
+}
+
 #[derive(Parser)]
 #[command(name = "Oxide86")]
 #[command(about = "Intel 8086 CPU Emulator", long_about = None)]
@@ -48,8 +55,9 @@ fn main() -> Result<()> {
         default_panic(info);
     }));
 
+    let mut video_cache: Vec<VideoCachedValue> = vec![];
     let cli = Cli::parse();
-    let video_buffer = Arc::new(VideoBuffer::new());
+    let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
     let mut computer = create_computer(&cli.common, video_buffer.clone())?;
 
     let mut stdout = std::io::stdout();
@@ -66,8 +74,8 @@ fn main() -> Result<()> {
     )?;
 
     // TODO
-    let quit_from_command_mode = false;
-    while computer.get_exit_code().is_none() {
+    let mut quit_from_command_mode = false;
+    while computer.get_exit_code().is_none() && !quit_from_command_mode {
         for _ in 0..BATCH_SIZE {
             computer.step();
             if computer.get_exit_code().is_some() {
@@ -75,7 +83,7 @@ fn main() -> Result<()> {
             }
         }
 
-        draw_frame(&video_buffer, &mut stdout);
+        draw_frame(&mut video_cache, &video_buffer, &mut stdout)?;
 
         while event::poll(Duration::from_secs(0))? {
             if let Event::Key(key_event) = event::read()? {
@@ -88,7 +96,7 @@ fn main() -> Result<()> {
 
                     // Check if it's F12 (command mode) - intercept for emulator, don't send to program
                     if key.scan_code == SCAN_CODE_F12 {
-                        // TODO command mode
+                        quit_from_command_mode = true;
                     } else {
                         // Fire INT 09h (keyboard hardware interrupt) for all other keys
                         computer.push_keyboard_key(key);
@@ -125,44 +133,60 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn draw_frame(video_buffer: &Arc<VideoBuffer>, stdout: &mut Stdout) {
-    video_buffer.emu_try_flip();
-    if let Some(frame) = video_buffer.ui_get_data() {
-        let mut i = 0;
-        for row in 0..TEXT_MODE_ROWS {
-            for col in 0..TEXT_MODE_COLS {
-                let character = frame.vram[i];
-                i += 1;
-                let text_attr = TextAttribute::from_byte(frame.vram[i], frame.blink_enabled);
-                i += 1;
+fn draw_frame(
+    video_cache: &mut Vec<VideoCachedValue>,
+    buffer: &Arc<RwLock<VideoBuffer>>,
+    stdout: &mut Stdout,
+) -> Result<()> {
+    let buffer = buffer.read().unwrap();
+    if !buffer.is_dirty() {
+        return Ok(());
+    }
 
+    let mut addr = 0;
+    let mut changed = false;
+    for row in 0..TEXT_MODE_ROWS {
+        for col in 0..TEXT_MODE_COLS {
+            let cache_location = addr;
+            let cached_value = video_cache.get(cache_location);
+            let character = buffer.read_vram(addr);
+            addr += 1;
+            let text_attr =
+                TextAttribute::from_byte(buffer.read_vram(addr), buffer.blink_enabled());
+            addr += 1;
+            let fg = vga_to_crossterm_color(text_attr.foreground, buffer.vga_dac_palette());
+            let bg = vga_to_crossterm_color(text_attr.background, buffer.vga_dac_palette());
+            let new_cached_value = VideoCachedValue { character, fg, bg };
+
+            if cached_value.is_none() || cached_value.unwrap() != &new_cached_value {
                 // Position cursor (crossterm uses 0-indexed coordinates)
-                stdout
-                    .queue(cursor::MoveTo(col as u16, row as u16))
-                    .unwrap();
+                stdout.queue(cursor::MoveTo(col as u16, row as u16))?;
 
                 // Set colors
-                stdout
-                    .queue(SetForegroundColor(vga_to_crossterm_color(
-                        text_attr.foreground,
-                        &frame.vga_dac_palette,
-                    )))
-                    .unwrap();
-                stdout
-                    .queue(SetBackgroundColor(vga_to_crossterm_color(
-                        text_attr.background,
-                        &frame.vga_dac_palette,
-                    )))
-                    .unwrap();
+                stdout.queue(SetForegroundColor(fg))?;
+                stdout.queue(SetBackgroundColor(bg))?;
 
                 // Print character (convert CP437 to Unicode)
-                stdout
-                    .queue(crossterm::style::Print(cp437_to_unicode(character)))
-                    .unwrap();
+                stdout.queue(crossterm::style::Print(cp437_to_unicode(character)))?;
+
+                changed = true;
+
+                if video_cache.len() <= cache_location {
+                    video_cache.resize_with(cache_location + 1, || VideoCachedValue {
+                        character: 0,
+                        fg: Color::Black,
+                        bg: Color::Black,
+                    });
+                }
+                video_cache[cache_location] = new_cached_value;
             }
         }
-        video_buffer.ui_mark_as_consumed();
     }
+    if changed {
+        stdout.flush()?;
+    }
+
+    Ok(())
 }
 
 /// Get 8-bit RGB color from VGA DAC palette

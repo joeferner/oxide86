@@ -1,5 +1,3 @@
-use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
-
 use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
 use crate::video::palette::TextModePalette;
 use crate::video::renderer::{RenderTextArgs, render_text};
@@ -14,24 +12,26 @@ pub struct RenderResult {
     pub height: u32,
 }
 
-pub struct VideoData {
+pub struct VideoBuffer {
     /// Raw video RAM (64KB).
     /// In CGA/text modes: framebuffer at B8000-BFFFF.
     /// In EGA mode 0x0D: 4 planes × EGA_PLANE_SIZE bytes (plane N at vram[N*EGA_PLANE_SIZE..]).
     /// In VGA mode 0x13: linear framebuffer vram[0..64000], 1 byte per pixel.
     /// Persists across mode changes, just like real hardware.
-    pub vram: Vec<u8>,
-    pub font: Cp437Font,
+    vram: Vec<u8>,
+
+    font: Cp437Font,
     /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
-    pub vga_dac_palette: [[u8; 3]; 256],
+    vga_dac_palette: [[u8; 3]; 256],
     /// Blink/intensity mode for text attribute bit 7.
     /// true  = bit 7 enables character blinking (8 background colors, default)
     /// false = bit 7 selects high-intensity background (16 background colors, no blink)
-    pub blink_enabled: bool,
-    pub cursor_loc: u16,
+    blink_enabled: bool,
+    cursor_loc: u16,
+    dirty: bool,
 }
 
-impl VideoData {
+impl VideoBuffer {
     pub fn new() -> Self {
         let mut vram = vec![0; VIDEO_MEMORY_SIZE];
         for i in (0..TEXT_MODE_SIZE).step_by(2) {
@@ -44,17 +44,8 @@ impl VideoData {
             vga_dac_palette: Self::default_vga_dac_palette(),
             blink_enabled: false,
             cursor_loc: 0,
+            dirty: false,
         }
-    }
-
-    fn copy_from(&mut self, src: &VideoData) {
-        self.vram.as_mut_slice().copy_from_slice(&src.vram);
-        self.font = src.font.clone();
-        self.vga_dac_palette
-            .as_mut_slice()
-            .copy_from_slice(&src.vga_dac_palette);
-        self.blink_enabled = src.blink_enabled;
-        self.cursor_loc = src.cursor_loc;
     }
 
     /// Initialize VGA DAC palette with EGA defaults
@@ -65,6 +56,36 @@ impl VideoData {
             *entry = TextModePalette::get_dac_color(i as u8);
         }
         palette
+    }
+
+    pub fn read_vram(&self, addr: usize) -> u8 {
+        self.vram[addr]
+    }
+
+    pub fn write_vram(&mut self, addr: usize, val: u8) {
+        self.vram[addr] = val;
+        self.dirty = true;
+    }
+
+    pub fn cursor_loc(&self) -> u16 {
+        self.cursor_loc
+    }
+
+    pub fn set_cursor_loc(&mut self, loc: u16) {
+        self.cursor_loc = loc;
+        self.dirty = true;
+    }
+
+    pub fn blink_enabled(&self) -> bool {
+        self.blink_enabled
+    }
+
+    pub fn vga_dac_palette(&self) -> &[[u8; 3]; 256] {
+        &self.vga_dac_palette
+    }
+
+    pub fn is_dirty(&self) -> bool {
+        self.dirty
     }
 
     pub fn render(&self) -> RenderResult {
@@ -100,96 +121,6 @@ impl VideoData {
             data,
             width: width as u32,
             height: height as u32,
-        }
-    }
-}
-
-pub struct VideoBuffer {
-    front: AtomicPtr<VideoData>, // UI reads from here
-    back: AtomicPtr<VideoData>,  // Emulator writes here
-
-    // Flags for synchronization
-    pub has_new_data: AtomicBool,
-    pub ui_consumed: AtomicBool,
-    /// Set when the back buffer is mutably accessed; cleared after a successful flip.
-    back_modified: AtomicBool,
-}
-
-impl VideoBuffer {
-    pub fn new() -> Self {
-        let b1 = Box::into_raw(Box::new(VideoData::new()));
-        let b2 = Box::into_raw(Box::new(VideoData::new()));
-
-        Self {
-            front: AtomicPtr::new(b1),
-            back: AtomicPtr::new(b2),
-            has_new_data: AtomicBool::new(false),
-            ui_consumed: AtomicBool::new(true), // Start ready to accept
-            back_modified: AtomicBool::new(false),
-        }
-    }
-
-    /// UI THREAD: Called during the requestAnimationFrame loop
-    pub fn ui_get_data(&self) -> Option<&VideoData> {
-        // Only provide data if the emulator says there's something new
-        if self.has_new_data.load(Ordering::Acquire) {
-            let ptr = self.front.load(Ordering::Acquire);
-            return Some(unsafe { &*ptr });
-        }
-        None
-    }
-
-    /// UI THREAD: Call this after pixels.render() is done
-    pub fn ui_mark_as_consumed(&self) {
-        self.has_new_data.store(false, Ordering::Release);
-        self.ui_consumed.store(true, Ordering::Release);
-    }
-
-    /// EMULATOR THREAD: Get the buffer to write to
-    #[allow(clippy::mut_from_ref)]
-    pub fn emu_get_back_buffer_mut(&self) -> &mut VideoData {
-        self.back_modified.store(true, Ordering::Relaxed);
-        let ptr = self.back.load(Ordering::Acquire);
-        unsafe { &mut *ptr }
-    }
-
-    /// EMULATOR THREAD: Get the buffer to read from
-    pub fn emu_get_back_buffer(&self) -> &VideoData {
-        let ptr = self.back.load(Ordering::Acquire);
-        unsafe { &*ptr }
-    }
-
-    /// EMULATOR THREAD: The "Internal Flip"
-    /// Call this whenever the emulator reaches a point where it wants
-    /// the UI to see the current state.
-    pub fn emu_try_flip(&self) {
-        // Skip entirely if nothing was written to the back buffer since last flip
-        if !self.back_modified.load(Ordering::Relaxed) {
-            return;
-        }
-
-        // Only flip if the UI has finished reading the previous front buffer
-        if self.ui_consumed.load(Ordering::Acquire) {
-            let back_ptr = self.back.load(Ordering::Relaxed);
-            let front_ptr = self.front.load(Ordering::Relaxed);
-
-            // Swap the pointers
-            self.back.store(front_ptr, Ordering::Release);
-            self.front.store(back_ptr, Ordering::Release);
-
-            // PERSISTENCE: Copy current state to the new back buffer
-            // This is safe because the UI is NOT reading 'front' yet
-            // (has_new_data is still false) and the emulator hasn't
-            // resumed work yet.
-            unsafe {
-                (*front_ptr).copy_from(&*back_ptr);
-            }
-
-            self.back_modified.store(false, Ordering::Relaxed);
-
-            // Signal to UI that 'front' is ready
-            self.ui_consumed.store(false, Ordering::Release);
-            self.has_new_data.store(true, Ordering::Release);
         }
     }
 }

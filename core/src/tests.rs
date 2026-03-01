@@ -4,7 +4,7 @@ mod tests {
     use std::fs::File;
     use std::io::Read;
     use std::path::Path;
-    use std::sync::Arc;
+    use std::sync::{Arc, RwLock};
 
     use crate::KeyPress;
     use crate::cpu::CpuType;
@@ -19,8 +19,8 @@ mod tests {
     const TEST_SEGMENT: u16 = 0x1000;
     const TEST_OFFSET: u16 = 0x0100;
 
-    fn create_computer() -> (Computer, Arc<VideoBuffer>) {
-        let video_buffer = Arc::new(VideoBuffer::new());
+    fn create_computer() -> (Computer, Arc<RwLock<VideoBuffer>>) {
+        let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
         let cpu = Cpu::new(CpuType::I8086);
         let mut computer = Computer::new(cpu, Memory::new(2048 * 1024));
         computer.add_device(VideoCard::new(video_buffer.clone()));
@@ -60,24 +60,20 @@ mod tests {
         (program_data, expected_image_data)
     }
 
-    fn assert_screen(name: &str, expected_screen: RenderResult, video_buffer: Arc<VideoBuffer>) {
-        video_buffer.emu_try_flip();
-        if let Some(frame) = video_buffer.ui_get_data() {
-            let render = frame.render();
-            if render != expected_screen {
-                let filename = format!("src/test_data/{name}_actual.png");
-                image::save_buffer(
-                    &filename,
-                    &render.data,
-                    render.width,
-                    render.height,
-                    image::ColorType::Rgba8,
-                )
-                .expect(&format!("failed to save {filename}"));
-                panic!("frame mismatch");
-            }
-        } else {
-            panic!("could not get frame");
+    fn assert_screen(name: &str, expected_screen: RenderResult, buffer: Arc<RwLock<VideoBuffer>>) {
+        let buffer = buffer.read().unwrap();
+        let render = buffer.render();
+        if render != expected_screen {
+            let filename = format!("src/test_data/{name}_actual.png");
+            image::save_buffer(
+                &filename,
+                &render.data,
+                render.width,
+                render.height,
+                image::ColorType::Rgba8,
+            )
+            .expect(&format!("failed to save {filename}"));
+            panic!("frame mismatch");
         }
     }
 

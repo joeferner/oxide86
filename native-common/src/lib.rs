@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
@@ -16,7 +16,7 @@ pub mod cli;
 pub mod disk;
 pub mod logging;
 
-pub fn create_computer(cli: &CommonCli, buffer: Arc<VideoBuffer>) -> Result<Computer> {
+pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Result<Computer> {
     let cpu_type = if let Some(cpu_type) = CpuType::parse(&cli.cpu_type) {
         cpu_type
     } else {

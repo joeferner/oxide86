@@ -1,4 +1,7 @@
-use std::{any::Any, sync::Arc};
+use std::{
+    any::Any,
+    sync::{Arc, RwLock},
+};
 
 use crate::{
     Device,
@@ -12,13 +15,13 @@ pub const VIDEO_CARD_REG_CURSOR_LOC_HIGH: u8 = 0x0E;
 pub const VIDEO_CARD_REG_CURSOR_LOC_LOW: u8 = 0x0F;
 
 pub struct VideoCard {
-    buffer: Arc<VideoBuffer>,
+    buffer: Arc<RwLock<VideoBuffer>>,
     vram_size: usize,
     io_register: u8,
 }
 
 impl VideoCard {
-    pub fn new(buffer: Arc<VideoBuffer>) -> Self {
+    pub fn new(buffer: Arc<RwLock<VideoBuffer>>) -> Self {
         Self {
             buffer,
             vram_size: CGA_MEMORY_SIZE, // TODO change based on video card type
@@ -26,21 +29,21 @@ impl VideoCard {
         }
     }
 
-    fn _read_u8(&self, addr: usize) -> u8 {
+    fn internal_read_u8(&self, addr: usize) -> u8 {
         // Read from raw VRAM (source of truth)
         if addr < self.vram_size {
-            let data = self.buffer.emu_get_back_buffer();
-            data.vram[addr]
+            let buffer = self.buffer.read().unwrap();
+            buffer.read_vram(addr)
         } else {
             0
         }
     }
 
-    fn _write_u8(&mut self, addr: usize, val: u8) {
+    fn internal_write_u8(&mut self, addr: usize, val: u8) {
         if addr < self.vram_size {
-            let data = self.buffer.emu_get_back_buffer_mut();
+            let mut buffer = self.buffer.write().unwrap();
             log::debug!("Write: [0x{addr:04X}] = 0x{val:02X}");
-            data.vram[addr] = val;
+            buffer.write_vram(addr, val);
         }
     }
 }
@@ -54,7 +57,7 @@ impl Device for VideoCard {
         // Route to Video for memory-mapped ranges
         if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
-            Some(self._read_u8(offset))
+            Some(self.internal_read_u8(offset))
         } else {
             None
         }
@@ -64,7 +67,7 @@ impl Device for VideoCard {
         // Route to Video for memory-mapped ranges
         if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
-            self._write_u8(offset, val);
+            self.internal_write_u8(offset, val);
             true
         } else {
             false
@@ -80,13 +83,15 @@ impl Device for VideoCard {
             self.io_register = val;
             true
         } else if port == VIDEO_CARD_DATA_ADDR {
-            let data = self.buffer.emu_get_back_buffer_mut();
+            let mut buffer = self.buffer.write().unwrap();
             match self.io_register {
                 VIDEO_CARD_REG_CURSOR_LOC_HIGH => {
-                    data.cursor_loc = (data.cursor_loc & 0x00ff) | ((val as u16) << 8)
+                    let new_cursor_loc = (buffer.cursor_loc() & 0x00ff) | ((val as u16) << 8);
+                    buffer.set_cursor_loc(new_cursor_loc);
                 }
                 VIDEO_CARD_REG_CURSOR_LOC_LOW => {
-                    data.cursor_loc = (data.cursor_loc & 0xff00) | val as u16
+                    let new_cursor_loc = (buffer.cursor_loc() & 0xff00) | val as u16;
+                    buffer.set_cursor_loc(new_cursor_loc);
                 }
                 _ => log::warn!("invalid IO Register: 0x{:04X}", self.io_register),
             }

@@ -652,7 +652,7 @@ impl Cpu {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, RwLock};
 
     use crate::cpu::CpuType;
     use crate::{
@@ -664,7 +664,7 @@ mod tests {
 
     pub fn create_test_cpu() -> (Cpu, Bus) {
         let cpu = Cpu::new(CpuType::I8086);
-        let video_buffer = Arc::new(VideoBuffer::new());
+        let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
         let mut bus = Bus::new(Memory::new(1024));
         bus.add_device(VideoCard::new(video_buffer));
 
