@@ -19,8 +19,9 @@ mod tests {
     const TEST_OFFSET: u16 = 0x0100;
 
     fn create_computer() -> (Computer, Arc<RwLock<VideoBuffer>>) {
+        let cpu_clock_speed = 8_000_000;
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
-        let cpu = Cpu::new(CpuType::I8086);
+        let cpu = Cpu::new(CpuType::I8086, cpu_clock_speed);
         let mut computer = Computer::new(cpu, Memory::new(2048 * 1024));
         computer.add_device(VideoCard::new(video_buffer.clone()));
         (computer, video_buffer)
@@ -107,16 +108,33 @@ mod tests {
         run_test("hello_world_int21_write_string");
     }
 
-    #[test_log::test]
-    pub fn cpu_op8086() {
-        run_test("cpu/op8086");
+    mod cpu {
+        use super::*;
+
+        #[test_log::test]
+        pub fn cpu_op8086() {
+            run_test("cpu/op8086");
+        }
     }
 
-    #[test_log::test]
-    pub fn keyboard_check_keystroke_int16() {
-        run_test_with_interaction("keyboard/check_keystroke_int16", |computer| {
-            computer.push_key_press(0x18 /* 'o' */);
-            computer.run();
-        });
+    mod keyboard {
+        use super::*;
+
+        #[test_log::test]
+        pub fn keyboard_check_keystroke_int16() {
+            run_test_with_interaction("keyboard/check_keystroke_int16", |computer| {
+                computer.push_key_press(0x18 /* 'o' */);
+                computer.run();
+            });
+        }
+    }
+
+    mod pit {
+        use super::*;
+
+        #[test_log::test]
+        pub fn pit_check_timer_tick() {
+            run_test("pit/check_timer_tick");
+        }
     }
 }

@@ -18,6 +18,10 @@ pub struct CommonCli {
     #[arg(long = "cpu", default_value = "286")]
     pub cpu_type: String,
 
+    /// CPU clock speed in MHz (default: 8 for a standard 286)
+    #[arg(long, default_value = "8")]
+    pub speed: f64,
+
     /// Enable execution logging (logs each instruction to oxide86.log)
     #[arg(long = "exec-log")]
     pub exec_log: bool,

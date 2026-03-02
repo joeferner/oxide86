@@ -24,7 +24,7 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
     };
 
     let cpu = {
-        let mut cpu = Cpu::new(cpu_type);
+        let mut cpu = Cpu::new(cpu_type, (cli.speed * 1_000_000.0) as u32);
         if cli.exec_log {
             cpu.exec_logging_enabled = true;
         }

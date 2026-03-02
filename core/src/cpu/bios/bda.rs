@@ -76,6 +76,9 @@ const EQUIPMENT_PRINTER_COUNT_MASK: u16 = 0xC000; // Bits 14-15: number of print
 pub const BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT: u8 = 0x01; // Right Shift key pressed
 pub const BDA_KEYBOARD_FLAGS1_LEFT_SHIFT: u8 = 0x02; // Left Shift key pressed
 
+/// Timer ticks per 24-hour day at 18.2065 Hz (1,193,182 Hz ÷ 65,536)
+const TICKS_PER_DAY: u32 = 0x0018_00B0; // 1,573,040
+
 pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // COM port addresses (0x0040:0000 - 4 words)
     // Standard COM port I/O addresses
@@ -330,6 +333,27 @@ pub fn bda_get_system_time(bus: &Bus) -> SystemTime {
 
 pub fn bda_clear_timer_overflow(bus: &mut Bus) {
     bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0);
+}
+
+/// Increment the BDA timer counter by one tick.
+///
+/// If the counter reaches `TICKS_PER_DAY` it wraps to zero and the midnight
+/// overflow flag (0x0040:0070) is set to 1.
+pub fn bda_increment_timer_counter(bus: &mut Bus) {
+    let counter_addr = BDA_START + BDA_TIMER_COUNTER;
+    let low = bus.memory_read_u16(counter_addr) as u32;
+    let high = bus.memory_read_u16(counter_addr + 2) as u32;
+    let counter = (high << 16) | low;
+
+    let new_counter = if counter >= TICKS_PER_DAY - 1 {
+        bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 1);
+        0
+    } else {
+        counter + 1
+    };
+
+    bus.memory_write_u16(counter_addr, (new_counter & 0xFFFF) as u16);
+    bus.memory_write_u16(counter_addr + 2, ((new_counter >> 16) & 0xFFFF) as u16);
 }
 
 pub fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {

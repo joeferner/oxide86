@@ -65,6 +65,9 @@ pub struct Cpu {
     /// Program Segment Prefix
     current_psp: u16,
 
+    /// clock speed in Hz
+    clock_speed: u32,
+
     /// Halted flag
     halted: bool,
 
@@ -95,9 +98,10 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(cpu_type: CpuType) -> Self {
+    pub fn new(cpu_type: CpuType, clock_speed: u32) -> Self {
         Self {
             cpu_type,
+            clock_speed,
             ax: 0,
             bx: 0,
             cx: 0,
@@ -125,6 +129,10 @@ impl Cpu {
             wait_for_key_press_patch_flags: false,
             exec_logging_enabled: false,
         }
+    }
+
+    pub fn clock_speed(&self) -> u32 {
+        self.clock_speed
     }
 
     /// Set a specific flag
@@ -672,6 +680,7 @@ impl Cpu {
 
     fn step_bios_int(&mut self, bus: &mut Bus, irq: u8) {
         match irq {
+            0x08 => self.handle_int08_timer_interrupt(bus),
             0x09 => self.handle_int09_keyboard_hardware_interrupt(bus),
             0x10 => self.handle_int10_video_services(bus),
             0x11 => self.handle_int11_get_equipment_list(bus),
@@ -703,9 +712,10 @@ mod tests {
     };
 
     pub fn create_test_cpu() -> (Cpu, Bus) {
-        let cpu = Cpu::new(CpuType::I8086);
+        let cpu_clock_speed = 8_000_000;
+        let cpu = Cpu::new(CpuType::I8086, cpu_clock_speed);
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
-        let mut bus = Bus::new(Memory::new(1024));
+        let mut bus = Bus::new(Memory::new(1024), cpu_clock_speed);
         bus.add_device(VideoCard::new(video_buffer));
 
         (cpu, bus)

@@ -4,6 +4,7 @@ use crate::{
 };
 
 pub mod bda;
+pub mod int08_timer_interrupt;
 pub mod int09_keyboard_hardware_interrupt;
 pub mod int10_video_services;
 pub mod int11_get_equipment_list;

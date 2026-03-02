@@ -18,9 +18,10 @@ pub struct Computer {
 
 impl Computer {
     pub fn new(cpu: Cpu, memory: Memory) -> Self {
+        let clock_speed = cpu.clock_speed();
         let mut computer = Self {
             cpu,
-            bus: Bus::new(memory),
+            bus: Bus::new(memory, clock_speed),
             key_presses: VecDeque::new(),
         };
         computer.reset();

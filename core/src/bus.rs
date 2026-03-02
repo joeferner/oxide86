@@ -32,9 +32,9 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(memory: Memory) -> Self {
+    pub fn new(memory: Memory, cpu_clock_speed: u32) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
-        let pit = Rc::new(RefCell::new(PIT::new()));
+        let pit = Rc::new(RefCell::new(PIT::new(cpu_clock_speed)));
         let pic = Rc::new(RefCell::new(PIC::new(
             pit.clone(),
             keyboard_controller.clone(),
