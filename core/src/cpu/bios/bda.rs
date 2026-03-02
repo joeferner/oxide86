@@ -207,8 +207,16 @@ pub fn bda_set_cursor_pos(bus: &mut Bus, page: u8, row: u8, col: u8) {
     bus.memory_write_u16(BDA_START + BDA_CURSOR_POS + (page as usize * 2), pos);
 }
 
+pub fn bda_get_cursor_start_line(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_CURSOR_START_LINE)
+}
+
 pub fn bda_set_cursor_start_line(bus: &mut Bus, start_line: u8) {
     bus.memory_write_u8(BDA_START + BDA_CURSOR_START_LINE, start_line);
+}
+
+pub fn bda_get_cursor_end_line(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_CURSOR_END_LINE)
 }
 
 pub fn bda_set_cursor_end_line(bus: &mut Bus, end_line: u8) {

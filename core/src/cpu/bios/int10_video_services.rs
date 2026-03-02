@@ -4,10 +4,10 @@ use crate::{
         Cpu,
         bios::bda::{
             bda_get_active_page, bda_get_columns, bda_get_crt_controller_port_address,
-            bda_get_cursor_pos, bda_get_rows, bda_get_video_mode, bda_get_video_page_size,
-            bda_set_active_page, bda_set_columns, bda_set_cursor_end_line, bda_set_cursor_pos,
-            bda_set_cursor_start_line, bda_set_rows, bda_set_video_mode, bda_set_video_page_offset,
-            bda_set_video_page_size,
+            bda_get_cursor_end_line, bda_get_cursor_pos, bda_get_cursor_start_line, bda_get_rows,
+            bda_get_video_mode, bda_get_video_page_size, bda_set_active_page, bda_set_columns,
+            bda_set_cursor_end_line, bda_set_cursor_pos, bda_set_cursor_start_line, bda_set_rows,
+            bda_set_video_mode, bda_set_video_page_offset, bda_set_video_page_size,
         },
     },
     video::{
@@ -31,6 +31,7 @@ impl Cpu {
             0x00 => self.int10_set_video_mode(bus),
             0x01 => self.int10_set_cursor_shape(bus),
             0x02 => self.int10_set_cursor_position(bus),
+            0x03 => self.int10_get_cursor_position(bus),
             0x05 => self.int10_select_active_page(bus),
             0x06 => self.int10_scroll_up(bus),
             0x09 => self.int10_write_char_attr(bus),
@@ -147,6 +148,29 @@ impl Cpu {
         );
 
         set_cursor_pos(bus, page, row, col);
+    }
+
+    /// INT 10h, AH=03h - Get Cursor Position and Shape
+    /// Input:
+    ///   BH = page number
+    /// Output:
+    ///   CH = cursor start scan line
+    ///   CL = cursor end scan line
+    ///   DH = row
+    ///   DL = column
+    fn int10_get_cursor_position(&mut self, bus: &mut Bus) {
+        let page = bda_get_active_page(bus);
+        let cursor = bda_get_cursor_pos(bus, page);
+
+        // Get cursor shape from BDA
+        let start_line = bda_get_cursor_start_line(bus);
+        let end_line = bda_get_cursor_end_line(bus);
+
+        // Return cursor shape in CX
+        self.cx = ((start_line as u16) << 8) | (end_line as u16);
+
+        // Return cursor position in DX
+        self.dx = ((cursor.row as u16) << 8) | (cursor.col as u16);
     }
 
     /// INT 10h, AH=05h - Select Active Display Page
