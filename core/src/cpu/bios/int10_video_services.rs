@@ -11,7 +11,8 @@ use crate::{
         },
     },
     video::{
-        CGA_MEMORY_START, VIDEO_MODE_03H_COLOR_TEXT_80_X_25, video_calculate_linear_offset,
+        CGA_MEMORY_START, VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
+        video_calculate_linear_offset,
         video_card::{
             VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_DATA_ADDR, VIDEO_CARD_REG_CURSOR_END_LINE,
             VIDEO_CARD_REG_CURSOR_START_LINE,
@@ -33,6 +34,7 @@ impl Cpu {
             0x05 => self.int10_select_active_page(bus),
             0x06 => self.int10_scroll_up(bus),
             0x09 => self.int10_write_char_attr(bus),
+            0x0A => self.int10_write_char(bus),
             0x0E => self.int10_teletype_output(bus),
             0x0F => self.int10_get_video_mode(bus),
             _ => {
@@ -153,7 +155,7 @@ impl Cpu {
     /// Output: None
     fn int10_select_active_page(&mut self, bus: &mut Bus) {
         let page = bda_get_active_page(bus);
-        let (old_cursor_row, old_cursor_col) = bda_get_cursor_pos(bus, page);
+        let old_cursor = bda_get_cursor_pos(bus, page);
 
         let page = (self.ax & 0xFF) as u8; // AL
 
@@ -190,7 +192,7 @@ impl Cpu {
 
         // The BIOS also tracks cursor X/Y for EACH page
         // refresh the hardware cursor to match the stored position for the NEW page.
-        bda_set_cursor_pos(bus, page, old_cursor_row, old_cursor_col);
+        bda_set_cursor_pos(bus, page, old_cursor.row, old_cursor.col);
 
         log::debug!(
             "INT 10h/AH=05h: Selected active page {} (offset 0x{:04X})",
@@ -239,8 +241,9 @@ impl Cpu {
 
         let rows = bda_get_rows(bus);
         let cols = bda_get_columns(bus);
+        let mode = bda_get_video_mode(bus);
 
-        if bda_get_video_mode(bus) == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
+        if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
             scroll_up_advanced(
                 bus,
                 ScrollUp {
@@ -271,14 +274,14 @@ impl Cpu {
         let attr = (self.bx & 0xFF) as u8; // BL
         let count = self.cx;
         let page = bda_get_active_page(bus);
-        let (cursor_row, cursor_col) = bda_get_cursor_pos(bus, page);
+        let cursor = bda_get_cursor_pos(bus, page);
         let cols = bda_get_columns(bus) as usize;
         let rows = bda_get_rows(bus) as usize;
 
         if bda_get_video_mode(bus) == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
             // Text mode: write to video memory
             for i in 0..count {
-                let pos = cursor_row as usize * cols + cursor_col as usize + (i as usize);
+                let pos = cursor.row as usize * cols + cursor.col as usize + (i as usize);
                 if pos >= cols * rows {
                     break; // Don't write beyond screen
                 }
@@ -329,6 +332,52 @@ impl Cpu {
         // Cursor position is NOT updated by this function
     }
 
+    /// INT 10h, AH=0Ah - Write Character at Cursor
+    /// Input:
+    ///   AL = character to write
+    ///   BL = color (in graphics modes only)
+    ///   BH = page number (0 for text mode)
+    ///   CX = number of times to write character
+    /// Output: None (cursor position unchanged, attribute preserved)
+    fn int10_write_char(&mut self, bus: &mut Bus) {
+        let ch = (self.ax & 0xFF) as u8; // AL
+        let count = self.cx;
+        let page = bda_get_active_page(bus);
+        let cursor = bda_get_cursor_pos(bus, page);
+        let cols = bda_get_columns(bus);
+        let rows = bda_get_rows(bus);
+
+        // TODO
+        // if bus.video().is_graphics_mode() {
+        //     // Graphics mode: draw character pixel-by-pixel
+        //     // BL contains foreground color
+        //     let fg_color = (self.bx & 0xFF) as u8; // BL
+
+        //     for i in 0..count {
+        //         let col = cursor.col + (i as usize) % cols;
+        //         let row = cursor.row + (i as usize) / cols;
+        //         if row >= rows {
+        //             break;
+        //         }
+        //         // AH=0Ah draws transparent characters - no background, no XOR
+        //         self.draw_char_graphics(bus, ch, row, col, fg_color, GraphicsDrawMode::Transparent);
+        //     }
+        // } else {
+        // Text mode: write to video memory
+        for i in 0..count {
+            let pos = cursor.row as usize * cols as usize + cursor.col as usize + (i as usize);
+            if pos >= cols as usize * rows as usize {
+                break; // Don't write beyond screen
+            }
+            let offset = pos * 2;
+            bus.memory_write_u8(CGA_MEMORY_START + offset, ch);
+            // Don't modify attribute byte (offset + 1) - preserve existing color
+        }
+        // }
+
+        // Cursor position is NOT updated by this function
+    }
+
     /// INT 10h, AH=0Eh - Teletype Output
     /// Input:
     ///   AL = character to write
@@ -338,30 +387,30 @@ impl Cpu {
     pub(in crate::cpu) fn int10_teletype_output(&mut self, bus: &mut Bus) {
         let ch = (self.ax & 0xFF) as u8; // AL
         let page = bda_get_active_page(bus);
-        let (cursor_row, cursor_col) = bda_get_cursor_pos(bus, page);
+        let cursor = bda_get_cursor_pos(bus, page);
         let columns = bda_get_columns(bus) as u8;
         let rows = bda_get_rows(bus);
 
         match ch {
             b'\r' => {
                 // Carriage return - move to column 0
-                set_cursor_pos(bus, page, cursor_row, 0);
+                set_cursor_pos(bus, page, cursor.row, 0);
             }
             b'\n' => {
                 // Line feed - move to next line
-                let new_row = if cursor_row >= rows - 1 {
+                let new_row = if cursor.row >= rows - 1 {
                     // Need to scroll
                     scroll_up(bus, 1);
                     rows - 1
                 } else {
-                    cursor_row + 1
+                    cursor.row + 1
                 };
-                set_cursor_pos(bus, page, new_row, cursor_col);
+                set_cursor_pos(bus, page, new_row, cursor.col);
             }
             b'\x08' => {
                 // Backspace
-                if cursor_col > 0 {
-                    set_cursor_pos(bus, page, cursor_row, cursor_col - 1);
+                if cursor.col > 0 {
+                    set_cursor_pos(bus, page, cursor.row, cursor.col - 1);
                 }
             }
             ch => {
@@ -380,7 +429,7 @@ impl Cpu {
                 // TODO      );
                 // TODO  } else {
                 // Text mode: write character byte directly
-                let offset = (cursor_row as usize * columns as usize + cursor_col as usize) * 2;
+                let offset = (cursor.row as usize * columns as usize + cursor.col as usize) * 2;
                 bus.memory_write_u8(CGA_MEMORY_START + offset, ch);
                 // TODO     // Preserve existing color, but substitute 0x07 for 0x00 (black on black)
                 // TODO     // since text with attribute 0x00 is always invisible. Many BIOS implementations
@@ -393,18 +442,18 @@ impl Cpu {
                 // TODO  }
 
                 // Advance cursor
-                let new_col = cursor_col + 1;
+                let new_col = cursor.col + 1;
                 if new_col >= columns {
                     // Wrap to next line
-                    let new_row = if cursor_row >= rows - 1 {
+                    let new_row = if cursor.row >= rows - 1 {
                         scroll_up(bus, 1);
                         rows - 1
                     } else {
-                        cursor_row + 1
+                        cursor.row + 1
                     };
                     set_cursor_pos(bus, page, new_row, 0);
                 } else {
-                    set_cursor_pos(bus, page, cursor_row, new_col);
+                    set_cursor_pos(bus, page, cursor.row, new_col);
                 }
             }
         }

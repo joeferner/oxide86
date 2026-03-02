@@ -5,7 +5,10 @@ use std::{
 
 use crate::{
     Device, byte_to_printable_char,
-    video::{CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, VideoBuffer},
+    video::{
+        CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, TEXT_MODE_COLS, TEXT_MODE_ROWS,
+        VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VideoBuffer,
+    },
 };
 
 pub const VIDEO_CARD_CONTROL_ADDR: u16 = 0x03D4;
@@ -59,7 +62,14 @@ impl VideoCard {
         }
     }
 
-    pub fn set_mode(&mut self, _mode: u8, _clear_screen: bool) -> Option<ModeInfo> {
+    pub fn set_mode(&mut self, mode: u8, _clear_screen: bool) -> Option<ModeInfo> {
+        if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
+            return Some(ModeInfo {
+                rows: TEXT_MODE_ROWS as u8,
+                cols: TEXT_MODE_COLS as u8,
+            });
+        }
+
         // TODO
 
         // // 3. Look up Mode Parameters in BIOS Video Parameter Table

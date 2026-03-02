@@ -13,6 +13,7 @@ use crate::{
     video::video_card::{VIDEO_CARD_REG_CURSOR_LOC_HIGH, VIDEO_CARD_REG_CURSOR_LOC_LOW},
 };
 
+pub const VIDEO_MODE_02H_COLOR_TEXT_80_X_25: u8 = 0x02;
 pub const VIDEO_MODE_03H_COLOR_TEXT_80_X_25: u8 = 0x03;
 
 // CGA video memory constants

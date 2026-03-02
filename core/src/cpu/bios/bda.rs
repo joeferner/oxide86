@@ -4,7 +4,8 @@ use crate::{
     byte_to_printable_char,
     video::{
         DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_SIZE,
-        VIDEO_MODE_03H_COLOR_TEXT_80_X_25, video_card::VIDEO_CARD_CONTROL_ADDR,
+        VIDEO_MODE_03H_COLOR_TEXT_80_X_25, video_buffer::CursorPosition,
+        video_card::VIDEO_CARD_CONTROL_ADDR,
     },
 };
 
@@ -192,12 +193,12 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     bus.memory_write_u16(BDA_START + BDA_MOUSE_MAX_Y, 199); // Maximum Y
 }
 
-pub fn bda_get_cursor_pos(bus: &Bus, page: u8) -> (u8, u8) {
+pub fn bda_get_cursor_pos(bus: &Bus, page: u8) -> CursorPosition {
     // low byte = column, high byte = row
     let pos = bus.memory_read_u16(BDA_START + BDA_CURSOR_POS + (page as usize * 2));
     let col = (pos & 0xff) as u8;
     let row = ((pos >> 8) & 0xff) as u8;
-    (row, col)
+    CursorPosition { row, col }
 }
 
 pub fn bda_set_cursor_pos(bus: &mut Bus, page: u8, row: u8, col: u8) {
