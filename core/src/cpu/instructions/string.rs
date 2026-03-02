@@ -22,12 +22,13 @@ impl Cpu {
                 self.cx = self.cx.wrapping_sub(1);
             }
             // REP LODS: 9 + 13*CX cycles
-            self.last_instruction_cycles =
-                timing::cycles::REP_LODS_BASE + (timing::cycles::REP_LODS_PER_ITER * count as u64);
+            self.cycle_count = self.cycle_count.wrapping_add(
+                timing::cycles::REP_LODS_BASE + (timing::cycles::REP_LODS_PER_ITER * count as u64),
+            );
         } else {
             self.lods_once(is_word, bus);
             // LODS (no REP): 12 cycles
-            self.last_instruction_cycles = timing::cycles::LODS;
+            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::LODS)
         }
     }
 
@@ -66,7 +67,7 @@ impl Cpu {
         self.set_flag(cpu_flag::DIRECTION, false);
 
         // CLD: 2 cycles
-        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
     }
 
     /// STOS - Store String (opcodes AA-AB)
@@ -85,12 +86,13 @@ impl Cpu {
                 self.cx = self.cx.wrapping_sub(1);
             }
             // REP STOS: 9 + 10*CX cycles
-            self.last_instruction_cycles =
-                timing::cycles::REP_STOS_BASE + (timing::cycles::REP_STOS_PER_ITER * count as u64);
+            self.cycle_count = self.cycle_count.wrapping_add(
+                timing::cycles::REP_STOS_BASE + (timing::cycles::REP_STOS_PER_ITER * count as u64),
+            );
         } else {
             self.stos_once(is_word, bus);
             // STOS (no REP): 11 cycles
-            self.last_instruction_cycles = timing::cycles::STOS;
+            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::STOS)
         }
     }
 
@@ -140,12 +142,13 @@ impl Cpu {
                 self.cx = self.cx.wrapping_sub(1);
             }
             // REP MOVS: 9 + 17*CX cycles
-            self.last_instruction_cycles =
-                timing::cycles::REP_MOVS_BASE + (timing::cycles::REP_MOVS_PER_ITER * count as u64);
+            self.cycle_count = self.cycle_count.wrapping_add(
+                timing::cycles::REP_MOVS_BASE + (timing::cycles::REP_MOVS_PER_ITER * count as u64),
+            );
         } else {
             self.movs_once(is_word, bus);
             // MOVS (no REP): 18 cycles
-            self.last_instruction_cycles = timing::cycles::MOVS;
+            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::MOVS)
         }
     }
 
@@ -215,8 +218,10 @@ impl Cpu {
                 // Calculate actual iterations performed
                 let iterations = start_cx - self.cx;
                 // REP CMPS: 9 + 22*count cycles
-                self.last_instruction_cycles = timing::cycles::REP_CMPS_BASE
-                    + (timing::cycles::REP_CMPS_PER_ITER * iterations as u64);
+                self.cycle_count = self.cycle_count.wrapping_add(
+                    timing::cycles::REP_CMPS_BASE
+                        + (timing::cycles::REP_CMPS_PER_ITER * iterations as u64),
+                );
             }
             Some(RepeatPrefix::Repne) => {
                 // REPNE/REPNZ: Repeat while CX != 0 and ZF = 0
@@ -231,13 +236,17 @@ impl Cpu {
                 // Calculate actual iterations performed
                 let iterations = start_cx - self.cx;
                 // REP CMPS: 9 + 22*count cycles
-                self.last_instruction_cycles = timing::cycles::REP_CMPS_BASE
-                    + (timing::cycles::REP_CMPS_PER_ITER * iterations as u64);
+                self.cycle_count = self.cycle_count.wrapping_add(
+                    timing::cycles::REP_CMPS_BASE
+                        + (timing::cycles::REP_CMPS_PER_ITER * iterations as u64),
+                );
             }
             None => {
                 self.cmps_once(is_word, bus);
                 // CMPS (no REP): 22 cycles
-                self.last_instruction_cycles = timing::cycles::CMPS;
+                self.cycle_count = self
+                    .cycle_count
+                    .wrapping_add(self.cycle_count.wrapping_add(timing::cycles::CMPS))
             }
         }
     }
@@ -310,8 +319,10 @@ impl Cpu {
                 // Calculate actual iterations performed
                 let iterations = start_cx - self.cx;
                 // REP SCAS: 9 + 15*count cycles
-                self.last_instruction_cycles = timing::cycles::REP_SCAS_BASE
-                    + (timing::cycles::REP_SCAS_PER_ITER * iterations as u64);
+                self.cycle_count = self.cycle_count.wrapping_add(
+                    timing::cycles::REP_SCAS_BASE
+                        + (timing::cycles::REP_SCAS_PER_ITER * iterations as u64),
+                );
             }
             Some(RepeatPrefix::Repne) => {
                 // REPNE/REPNZ: Repeat while CX != 0 and ZF = 0
@@ -326,13 +337,15 @@ impl Cpu {
                 // Calculate actual iterations performed
                 let iterations = start_cx - self.cx;
                 // REP SCAS: 9 + 15*count cycles
-                self.last_instruction_cycles = timing::cycles::REP_SCAS_BASE
-                    + (timing::cycles::REP_SCAS_PER_ITER * iterations as u64);
+                self.cycle_count = self.cycle_count.wrapping_add(
+                    timing::cycles::REP_SCAS_BASE
+                        + (timing::cycles::REP_SCAS_PER_ITER * iterations as u64),
+                );
             }
             None => {
                 self.scas_once(is_word, bus);
                 // SCAS (no REP): 15 cycles
-                self.last_instruction_cycles = timing::cycles::SCAS;
+                self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::SCAS)
             }
         }
     }
@@ -427,7 +440,7 @@ impl Cpu {
         self.set_flag(cpu_flag::DIRECTION, true);
 
         // STD: 2 cycles
-        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
     }
 
     /// INS - Input String from Port (opcodes 6C-6D)

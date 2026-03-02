@@ -8,8 +8,13 @@ pub const PIC_IO_PORT_MASK: u16 = 0x0021;
 /// End of Interrupt
 pub const PIC_COMMAND_EOI: u8 = 0x20;
 
-pub const KEYBOARD_IRQ: u8 = 0x09;
+/// IRQ that PIT interrupts map to on the CPU
+pub const PIT_CPU_IRQ: u8 = 0x08;
+/// IRQ that keyboard interrupts map to on the CPU
+pub const KEYBOARD_CPU_IRQ: u8 = 0x09;
 
+/// IRQ line for the PIT (IRQ1 → INT 9)
+const PIT_IRQ_LINE: u8 = 0;
 /// IRQ line for the keyboard (IRQ1 → INT 9)
 const KEYBOARD_IRQ_LINE: u8 = 1;
 
@@ -36,7 +41,7 @@ impl PIC {
 
         if !masked && !in_service && self.keyboard_controller.borrow_mut().take_pending_key() {
             self.in_service |= kbd_bit;
-            Some(KEYBOARD_IRQ)
+            Some(KEYBOARD_CPU_IRQ)
         } else {
             None
         }

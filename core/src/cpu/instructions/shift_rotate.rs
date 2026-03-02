@@ -55,7 +55,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing based on shift type and count
-        self.last_instruction_cycles = match opcode {
+        self.cycle_count = self.cycle_count.wrapping_add(match opcode {
             0xD0 | 0xD1 => {
                 // Shift by 1
                 if mode == 0b11 {
@@ -88,7 +88,7 @@ impl Cpu {
                 }
             }
             _ => unreachable!(),
-        };
+        });
     }
 
     // 8-bit shift/rotate operations

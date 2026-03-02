@@ -101,14 +101,14 @@ impl Cpu {
         }
 
         // Calculate cycle timing based on operation and operand type
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // Immediate to register: 4 cycles (all operations)
             4
         } else {
             // Immediate to memory: 17 + EA cycles (or 10+EA for CMP)
             let base = if operation == 7 { 10 } else { 17 };
             base + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// Arithmetic with sign-extended immediate to r/m (opcode 0x83)
@@ -204,12 +204,12 @@ impl Cpu {
         }
 
         // Calculate cycle timing (same as other arith_imm functions)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             4 // Immediate to register: 4 cycles (all operations)
         } else {
             let base = if operation == 7 { 10 } else { 17 };
             base + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// Arithmetic with immediate to r/m (opcode 0x81)
@@ -299,12 +299,12 @@ impl Cpu {
         }
 
         // Calculate cycle timing (same as arith_imm8_rm8)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             4 // Immediate to register: 4 cycles (all operations)
         } else {
             let base = if operation == 7 { 10 } else { 17 };
             base + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// INC/DEC r/m (opcode 0xFE for 8-bit, 0xFF for 16-bit)
@@ -366,14 +366,14 @@ impl Cpu {
         }
 
         // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // INC/DEC register: 2 cycles
             timing::cycles::INC_REG // Same timing for INC and DEC
         } else {
             // INC/DEC memory: 15 + EA cycles
             timing::cycles::INC_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// INC 16-bit register (opcodes 40-47)
@@ -392,7 +392,7 @@ impl Cpu {
         self.set_flag(cpu_flag::AUXILIARY, aux_carry);
 
         // INC register: 2 cycles
-        self.last_instruction_cycles = timing::cycles::INC_REG;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::INC_REG)
     }
 
     /// DEC 16-bit register (opcodes 48-4F)
@@ -411,7 +411,7 @@ impl Cpu {
         self.set_flag(cpu_flag::AUXILIARY, aux_carry);
 
         // DEC register: 2 cycles
-        self.last_instruction_cycles = timing::cycles::DEC_REG;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::DEC_REG)
     }
 
     /// ADD r/m and register (opcodes 00-03)
@@ -481,7 +481,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing based on operands
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // ADD reg, reg: 3 cycles
             timing::cycles::ADD_REG_REG
         } else if dir {
@@ -492,7 +492,7 @@ impl Cpu {
             // ADD mem, reg: 16 + EA cycles
             timing::cycles::ADD_REG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// ADC r/m and register (opcodes 10-13)
@@ -568,7 +568,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing (same pattern as ADD)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             timing::cycles::ADC_REG_REG // 3 cycles
         } else if dir {
             timing::cycles::ADC_MEM_REG +  // 9 + EA cycles
@@ -576,7 +576,7 @@ impl Cpu {
         } else {
             timing::cycles::ADC_REG_MEM +  // 16 + EA cycles
                 timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// SUB r/m and register (opcodes 28-2B)
@@ -646,7 +646,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing (same pattern as ADD)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             timing::cycles::SUB_REG_REG // 3 cycles
         } else if dir {
             timing::cycles::SUB_MEM_REG +  // 9 + EA cycles
@@ -654,7 +654,7 @@ impl Cpu {
         } else {
             timing::cycles::SUB_REG_MEM +  // 16 + EA cycles
                 timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// SBB r/m and register (opcodes 18-1B)
@@ -730,7 +730,7 @@ impl Cpu {
         }
 
         // SBB r/m, reg: 3 cycles (reg), 16+EA (mem to reg), 9+EA (reg to mem)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             timing::cycles::SBB_REG_REG
         } else if dir {
             timing::cycles::SBB_MEM_REG
@@ -738,7 +738,7 @@ impl Cpu {
         } else {
             timing::cycles::SBB_REG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// ADD immediate to accumulator (opcodes 04-05)
@@ -773,7 +773,7 @@ impl Cpu {
         }
 
         // ADD immediate to accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::ADD_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::ADD_IMM_ACC)
     }
 
     /// NEG - Two's Complement Negation (F6/F7 Group 3, operation 3)
@@ -804,7 +804,7 @@ impl Cpu {
         self.set_flags_8(al);
 
         // DAA: 4 cycles
-        self.last_instruction_cycles = timing::cycles::DAA;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::DAA)
     }
 
     /// SUB immediate to accumulator (opcodes 2C-2D)
@@ -839,7 +839,7 @@ impl Cpu {
         }
 
         // SUB immediate to accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::SUB_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::SUB_IMM_ACC)
     }
 
     /// DAS - Decimal Adjust After Subtraction (opcode 0x2F)
@@ -867,7 +867,7 @@ impl Cpu {
         self.set_flags_8(al);
 
         // DAS: 4 cycles
-        self.last_instruction_cycles = timing::cycles::DAS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::DAS)
     }
 
     /// AAA - ASCII Adjust After Addition (opcode 0x37)
@@ -885,7 +885,7 @@ impl Cpu {
         self.ax &= 0xFF0F; // Clear high nibble of AL
 
         // AAA: 4 cycles
-        self.last_instruction_cycles = timing::cycles::AAA;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AAA)
     }
 
     /// AAS - ASCII Adjust After Subtraction (opcode 0x3F)
@@ -905,7 +905,7 @@ impl Cpu {
         self.ax &= 0xFF0F; // Clear high nibble of AL
 
         // AAS: 4 cycles
-        self.last_instruction_cycles = timing::cycles::AAS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AAS)
     }
 
     /// AAM - ASCII Adjust After Multiplication (opcode 0xD4)
@@ -923,7 +923,7 @@ impl Cpu {
         self.set_flag(cpu_flag::PARITY, self.ax.count_ones().is_multiple_of(2));
 
         // AAM: 83 cycles
-        self.last_instruction_cycles = timing::cycles::AAM;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AAM)
     }
 
     /// AAD - ASCII Adjust Before Division (opcode 0xD5)
@@ -939,7 +939,7 @@ impl Cpu {
         self.set_flags_8(result);
 
         // AAD: 60 cycles
-        self.last_instruction_cycles = timing::cycles::AAD;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AAD)
     }
 
     /// ADC immediate to accumulator (opcodes 14-15)
@@ -979,7 +979,7 @@ impl Cpu {
         }
 
         // ADC immediate to accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::ADC_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::ADC_IMM_ACC)
     }
 
     /// SBB immediate to accumulator (opcodes 1C-1D)
@@ -1019,6 +1019,6 @@ impl Cpu {
         }
 
         // SBB immediate to accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::SBB_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::SBB_IMM_ACC)
     }
 }

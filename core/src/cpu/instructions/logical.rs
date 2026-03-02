@@ -32,12 +32,12 @@ impl Cpu {
         }
 
         // TEST r/m, reg: 3 cycles (reg), 9+EA (mem)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             timing::cycles::TEST_REG_REG
         } else {
             timing::cycles::TEST_REG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// NOT/NEG/MUL/DIV/TEST Group 3 (opcode 0xF6 for 8-bit, 0xF7 for 16-bit)
@@ -79,12 +79,12 @@ impl Cpu {
                     self.set_flag(cpu_flag::OVERFLOW, false);
                 }
                 // TEST r/m, imm: 5 cycles (reg), 11+EA (mem)
-                self.last_instruction_cycles = if mode == 0b11 {
+                self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
                     timing::cycles::TEST_IMM_REG
                 } else {
                     timing::cycles::TEST_IMM_MEM
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
+                });
             }
             2 => {
                 // NOT
@@ -97,12 +97,12 @@ impl Cpu {
                 }
                 // NOT doesn't affect flags
                 // NOT: 3 cycles (reg), 16+EA (mem)
-                self.last_instruction_cycles = if mode == 0b11 {
+                self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
                     timing::cycles::NOT_REG
                 } else {
                     timing::cycles::NOT_MEM
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
+                });
             }
             3 => {
                 // NEG (two's complement negation)
@@ -126,12 +126,12 @@ impl Cpu {
                     self.set_flag(cpu_flag::AUXILIARY, (value & 0x0F) != 0);
                 }
                 // NEG: 3 cycles (reg), 16+EA (mem)
-                self.last_instruction_cycles = if mode == 0b11 {
+                self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
                     timing::cycles::NEG_REG
                 } else {
                     timing::cycles::NEG_MEM
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
+                });
             }
             4 => {
                 // MUL (unsigned multiply)
@@ -156,7 +156,7 @@ impl Cpu {
                     self.set_flag(cpu_flag::OVERFLOW, upper_non_zero);
                 }
                 // MUL: 70-77 cycles (8-bit reg), 76-83+EA (8-bit mem), 118-133 (16-bit reg), 124-139+EA (16-bit mem)
-                self.last_instruction_cycles = if is_word {
+                self.cycle_count = self.cycle_count.wrapping_add(if is_word {
                     if mode == 0b11 {
                         timing::cycles::MUL_REG16
                     } else {
@@ -168,7 +168,7 @@ impl Cpu {
                 } else {
                     timing::cycles::MUL_MEM8
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
+                });
             }
             5 => {
                 // IMUL (signed multiply)
@@ -195,7 +195,7 @@ impl Cpu {
                     self.set_flag(cpu_flag::OVERFLOW, overflow);
                 }
                 // IMUL: 80-98 cycles (8-bit reg), 86-104+EA (8-bit mem), 128-154 (16-bit reg), 134-160+EA (16-bit mem)
-                self.last_instruction_cycles = if is_word {
+                self.cycle_count = self.cycle_count.wrapping_add(if is_word {
                     if mode == 0b11 {
                         timing::cycles::IMUL_REG16
                     } else {
@@ -207,7 +207,7 @@ impl Cpu {
                 } else {
                     timing::cycles::IMUL_MEM8
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
+                });
             }
             6 => {
                 // DIV (unsigned divide)
@@ -248,7 +248,7 @@ impl Cpu {
                     // Flags are undefined after DIV
                 }
                 // DIV: 80-90 cycles (8-bit reg), 86-96+EA (8-bit mem), 144-162 (16-bit reg), 150-168+EA (16-bit mem)
-                self.last_instruction_cycles = if is_word {
+                self.cycle_count = self.cycle_count.wrapping_add(if is_word {
                     if mode == 0b11 {
                         timing::cycles::DIV_REG16
                     } else {
@@ -260,7 +260,7 @@ impl Cpu {
                 } else {
                     timing::cycles::DIV_MEM8
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
+                });
             }
             7 => {
                 // IDIV (signed divide)
@@ -307,7 +307,7 @@ impl Cpu {
                     // Flags are undefined after IDIV
                 }
                 // IDIV: 101-112 cycles (8-bit reg), 107-118+EA (8-bit mem), 165-184 (16-bit reg), 171-190+EA (16-bit mem)
-                self.last_instruction_cycles = if is_word {
+                self.cycle_count = self.cycle_count.wrapping_add(if is_word {
                     if mode == 0b11 {
                         timing::cycles::IDIV_REG16
                     } else {
@@ -319,7 +319,7 @@ impl Cpu {
                 } else {
                     timing::cycles::IDIV_MEM8
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-                };
+                });
             }
             _ => panic!("Unimplemented Group 3 operation: {}", operation),
         }
@@ -348,7 +348,7 @@ impl Cpu {
         }
 
         // AND immediate to accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::AND_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AND_IMM_ACC)
     }
 
     /// OR immediate to accumulator (opcodes 0C-0D)
@@ -374,7 +374,7 @@ impl Cpu {
         }
 
         // OR immediate to accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::OR_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::OR_IMM_ACC)
     }
 
     /// TEST immediate to accumulator (opcodes A8-A9)
@@ -399,7 +399,7 @@ impl Cpu {
         }
 
         // TEST immediate to accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::TEST_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::TEST_IMM_ACC)
     }
 
     /// CMC - Complement Carry Flag (opcode 0xF5)
@@ -408,7 +408,7 @@ impl Cpu {
         self.set_flag(cpu_flag::CARRY, !carry);
 
         // CMC: 2 cycles
-        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
     }
 
     /// CLI - Clear Interrupt Flag (opcode 0xFA)
@@ -416,7 +416,7 @@ impl Cpu {
         self.set_flag(cpu_flag::INTERRUPT, false);
 
         // CLI: 2 cycles
-        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
     }
 
     /// STI - Set Interrupt Flag (opcode 0xFB)
@@ -424,7 +424,7 @@ impl Cpu {
         self.set_flag(cpu_flag::INTERRUPT, true);
 
         // STI: 2 cycles
-        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
     }
 
     /// CLC - Clear Carry Flag (opcode 0xF8)
@@ -432,7 +432,7 @@ impl Cpu {
         self.set_flag(cpu_flag::CARRY, false);
 
         // CLC: 2 cycles
-        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
     }
 
     /// STC - Set Carry Flag (opcode 0xF9)
@@ -440,7 +440,7 @@ impl Cpu {
         self.set_flag(cpu_flag::CARRY, true);
 
         // STC: 2 cycles
-        self.last_instruction_cycles = timing::cycles::FLAG_OPS;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
     }
 
     /// OR r/m and register (opcodes 08-0B)
@@ -502,7 +502,7 @@ impl Cpu {
         }
 
         // OR r/m, reg: 3 cycles (reg), 16+EA (mem to reg), 9+EA (reg to mem)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             timing::cycles::OR_REG_REG
         } else if dir {
             timing::cycles::OR_MEM_REG
@@ -510,7 +510,7 @@ impl Cpu {
         } else {
             timing::cycles::OR_REG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// XOR r/m and register (opcodes 30-33)
@@ -572,7 +572,7 @@ impl Cpu {
         }
 
         // XOR r/m, reg: 3 cycles (reg), 16+EA (mem to reg), 9+EA (reg to mem)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             timing::cycles::XOR_REG_REG
         } else if dir {
             timing::cycles::XOR_MEM_REG
@@ -580,7 +580,7 @@ impl Cpu {
         } else {
             timing::cycles::XOR_REG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// AND r/m and register (opcodes 20-23)
@@ -642,7 +642,7 @@ impl Cpu {
         }
 
         // AND r/m, reg: 3 cycles (reg), 16+EA (mem to reg), 9+EA (reg to mem)
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             timing::cycles::AND_REG_REG
         } else if dir {
             timing::cycles::AND_MEM_REG
@@ -650,7 +650,7 @@ impl Cpu {
         } else {
             timing::cycles::AND_REG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// XOR immediate to accumulator (opcodes 34-35)
@@ -676,6 +676,6 @@ impl Cpu {
         }
 
         // XOR immediate to accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::XOR_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::XOR_IMM_ACC)
     }
 }

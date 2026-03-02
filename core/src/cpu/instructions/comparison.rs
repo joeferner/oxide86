@@ -34,7 +34,7 @@ impl Cpu {
         }
 
         // CMP immediate with accumulator: 4 cycles
-        self.last_instruction_cycles = timing::cycles::CMP_IMM_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::CMP_IMM_ACC)
     }
 
     /// CMP r/m and register (opcodes 38-3B)
@@ -92,7 +92,7 @@ impl Cpu {
         }
 
         // Set cycle count
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // CMP reg, reg: 3 cycles
             timing::cycles::CMP_REG_REG
         } else if dir {
@@ -103,6 +103,6 @@ impl Cpu {
             // CMP mem, reg: 9 + EA cycles
             timing::cycles::CMP_MEM_REG
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 }

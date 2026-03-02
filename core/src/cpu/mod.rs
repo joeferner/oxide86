@@ -71,9 +71,8 @@ pub struct Cpu {
     /// If INT 21h, AH=4Ch - Exit Program is called without a place to return it will set this value
     exit_code: Option<u8>,
 
-    /// Cycle count for the last executed instruction
-    /// Used by Computer::step() to accurately track CPU cycles
-    last_instruction_cycles: u64,
+    /// Cycle count to accurately track CPU cycles
+    cycle_count: u64,
 
     /// Segment override prefix (for next instruction only)
     segment_override: Option<u16>,
@@ -121,7 +120,7 @@ impl Cpu {
             current_psp: 0x100,
             halted: false,
             exit_code: None,
-            last_instruction_cycles: 0,
+            cycle_count: 0,
             segment_override: None,
             repeat_prefix: None,
             pending_exception: None,
@@ -646,7 +645,7 @@ impl Cpu {
         self.flags = 0x0002; // Reserved bit always set
         self.halted = false;
         self.exit_code = None;
-        self.last_instruction_cycles = 0;
+        self.cycle_count = 0;
         self.segment_override = None;
         self.repeat_prefix = None;
         self.pending_exception = None;

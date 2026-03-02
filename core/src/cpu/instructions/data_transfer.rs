@@ -23,7 +23,7 @@ impl Cpu {
         }
 
         // MOV immediate to register: 4 cycles
-        self.last_instruction_cycles = timing::cycles::MOV_IMM_REG;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::MOV_IMM_REG)
     }
 
     /// MOV accumulator to/from direct bus offset (opcodes A0-A3)
@@ -60,11 +60,11 @@ impl Cpu {
         }
 
         // MOV acc, [addr] or [addr], acc: 10 cycles (direct addressing)
-        self.last_instruction_cycles = if to_acc {
+        self.cycle_count = self.cycle_count.wrapping_add(if to_acc {
             timing::cycles::MOV_MEM_ACC
         } else {
             timing::cycles::MOV_ACC_MEM
-        };
+        });
     }
 
     /// MOV r/m16 to segment register (opcode 8E)
@@ -80,14 +80,14 @@ impl Cpu {
         self.set_segreg(seg_reg, value);
 
         // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // MOV segreg, reg: 2 cycles
             timing::cycles::MOV_RM_SEGREG_REG
         } else {
             // MOV segreg, mem: 8 + EA cycles
             timing::cycles::MOV_RM_SEGREG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// POP 16-bit register (opcodes 58-5F)
@@ -98,7 +98,7 @@ impl Cpu {
         self.set_reg16(reg, value);
 
         // POP register: 8 cycles
-        self.last_instruction_cycles = timing::cycles::POP_REG;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::POP_REG)
     }
 
     /// PUSH 16-bit register (opcodes 50-57)
@@ -119,7 +119,7 @@ impl Cpu {
         }
 
         // PUSH register: 11 cycles
-        self.last_instruction_cycles = timing::cycles::PUSH_REG;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSH_REG)
     }
 
     /// PUSH r/m16 (opcode FF /6) - Group 5
@@ -141,14 +141,14 @@ impl Cpu {
         self.push(value, bus);
 
         // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // PUSH reg: 11 cycles
             timing::cycles::PUSH_REG
         } else {
             // PUSH mem: 16 + EA cycles
             timing::cycles::PUSH_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// MOV register to/from r/m (opcodes 88-8B)
@@ -188,7 +188,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing based on operands
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // MOV reg, reg: 2 cycles
             timing::cycles::MOV_REG_REG
         } else if dir {
@@ -199,7 +199,7 @@ impl Cpu {
             // MOV mem, reg: 9 + EA cycles
             timing::cycles::MOV_REG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// MOV immediate to r/m (opcodes C6-C7)
@@ -224,14 +224,14 @@ impl Cpu {
         }
 
         // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // MOV reg, imm: 4 cycles
             timing::cycles::MOV_IMM_REG
         } else {
             // MOV mem, imm: 10 + EA cycles
             timing::cycles::MOV_IMM_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// PUSH segment register (opcodes 06, 0E, 16, 1E)
@@ -251,7 +251,7 @@ impl Cpu {
         self.push(value, bus);
 
         // PUSH segment register: 10 cycles
-        self.last_instruction_cycles = timing::cycles::PUSH_SEGREG;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSH_SEGREG)
     }
 
     /// LDS - Load Pointer using DS (opcode 0xC5)
@@ -274,8 +274,10 @@ impl Cpu {
 
         // LDS: 16 + EA cycles
         let rm = modrm & 0x07;
-        self.last_instruction_cycles = timing::cycles::LDS
-            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
+        self.cycle_count = self.cycle_count.wrapping_add(
+            timing::cycles::LDS
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some()),
+        );
     }
 
     /// MOV segment register to r/m16 (opcode 8C)
@@ -290,14 +292,14 @@ impl Cpu {
         self.write_rm16(mode, rm, addr, value, bus);
 
         // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // MOV reg, segreg: 2 cycles
             timing::cycles::MOV_SEGREG_RM_REG
         } else {
             // MOV mem, segreg: 9 + EA cycles
             timing::cycles::MOV_SEGREG_RM_MEM
                 + timing::calculate_ea_cycles(mode, seg_reg, self.segment_override.is_some())
-        };
+        });
     }
 
     /// POP segment register (opcodes 07, 0F, 17, 1F)
@@ -317,7 +319,7 @@ impl Cpu {
         self.set_segreg(seg, value);
 
         // POP segment register: 8 cycles
-        self.last_instruction_cycles = timing::cycles::POP_SEGREG;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::POP_SEGREG)
     }
 
     /// LES - Load Pointer using ES (opcode 0xC4)
@@ -340,8 +342,10 @@ impl Cpu {
 
         // LES: 16 + EA cycles
         let rm = modrm & 0x07;
-        self.last_instruction_cycles = timing::cycles::LES
-            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
+        self.cycle_count = self.cycle_count.wrapping_add(
+            timing::cycles::LES
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some()),
+        );
     }
 
     /// XCHG register with accumulator (opcodes 90-97)
@@ -351,7 +355,7 @@ impl Cpu {
         let reg = opcode & 0x07;
         if reg == 0 {
             // NOP - XCHG AX, AX does nothing
-            self.last_instruction_cycles = timing::cycles::NOP;
+            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::NOP);
             return;
         }
         let temp = self.ax;
@@ -359,7 +363,7 @@ impl Cpu {
         self.set_reg16(reg, temp);
 
         // XCHG AX, reg: 3 cycles
-        self.last_instruction_cycles = timing::cycles::XCHG_REG_ACC;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::XCHG_REG_ACC)
     }
 
     /// XCHG register/bus with register (opcodes 86-87)
@@ -385,14 +389,14 @@ impl Cpu {
         }
 
         // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // XCHG reg, reg: 4 cycles
             timing::cycles::XCHG_REG_REG
         } else {
             // XCHG reg, mem: 17 + EA cycles
             timing::cycles::XCHG_REG_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 
     /// LEA - Load Effective Address (opcode 0x8D)
@@ -447,8 +451,10 @@ impl Cpu {
         self.set_reg16(reg, effective_offset);
 
         // LEA: 2 + EA cycles (EA calculation is done even though bus isn't accessed)
-        self.last_instruction_cycles = timing::cycles::LEA
-            + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some());
+        self.cycle_count = self.cycle_count.wrapping_add(
+            timing::cycles::LEA
+                + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some()),
+        );
     }
 
     /// LAHF - Load AH from Flags (opcode 0x9F)
@@ -458,7 +464,7 @@ impl Cpu {
         self.ax = (self.ax & 0x00FF) | ((ah as u16) << 8);
 
         // LAHF: 4 cycles
-        self.last_instruction_cycles = timing::cycles::LAHF;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::LAHF)
     }
 
     /// SAHF - Store AH into Flags (opcode 0x9E)
@@ -470,7 +476,7 @@ impl Cpu {
         self.flags = (self.flags & 0xFF00) | (ah as u16);
 
         // SAHF: 4 cycles
-        self.last_instruction_cycles = timing::cycles::SAHF;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::SAHF)
     }
 
     /// XLAT - Table Look-up Translation (opcode 0xD7)
@@ -486,7 +492,7 @@ impl Cpu {
         self.ax = (self.ax & 0xFF00) | (value as u16);
 
         // XLAT: 11 cycles
-        self.last_instruction_cycles = timing::cycles::XLAT;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::XLAT)
     }
 
     /// PUSHF - Push Flags Register (opcode 9C)
@@ -495,7 +501,7 @@ impl Cpu {
         self.push(self.flags, bus);
 
         // PUSHF: 10 cycles
-        self.last_instruction_cycles = timing::cycles::PUSHF;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSHF)
     }
 
     /// POPF - Pop Flags Register (opcode 9D)
@@ -507,7 +513,7 @@ impl Cpu {
         self.flags = (value & 0x0FFF) | 0x0002;
 
         // POPF: 8 cycles
-        self.last_instruction_cycles = timing::cycles::POPF;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::POPF)
     }
 
     /// PUSHA - Push All General Registers (opcode 0x60)
@@ -525,7 +531,7 @@ impl Cpu {
         self.push(self.di, bus);
 
         // PUSHA: 36 cycles (80186+)
-        self.last_instruction_cycles = timing::cycles::PUSHA;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSHA)
     }
 
     /// PUSH immediate (opcode 68: 16-bit, 6A: sign-extended 8-bit)
@@ -545,7 +551,7 @@ impl Cpu {
         self.push(value, bus);
 
         // PUSH immediate: 10 cycles (80186+)
-        self.last_instruction_cycles = timing::cycles::PUSH_IMM;
+        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSH_IMM)
     }
 
     /// POP r/m16 (opcode 8F) - Group 1A
@@ -567,14 +573,14 @@ impl Cpu {
         self.write_rm16(mode, rm, addr, value, bus);
 
         // Calculate cycle timing
-        self.last_instruction_cycles = if mode == 0b11 {
+        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
             // POP reg: 8 cycles
             timing::cycles::POP_REG
         } else {
             // POP mem: 17 + EA cycles
             timing::cycles::POP_MEM
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
-        };
+        });
     }
 }
 
@@ -600,7 +606,7 @@ mod tests {
         cpu.mov_imm_to_reg(opcode_al, &bus);
 
         assert_eq!(cpu.get_reg8(0), imm_val_8, "AL should contain 0x42");
-        assert_eq!(cpu.last_instruction_cycles, 4, "Should take 4 cycles");
+        assert_eq!(cpu.cycle_count, 4, "Should take 4 cycles");
         assert_eq!(cpu.ip, 1, "IP should have advanced by 1 bytes");
     }
 
