@@ -369,26 +369,14 @@ impl Cpu {
             // INTO - Interrupt on Overflow (CE)
             0xCE => self.into(bus),
 
-            // IN AL, imm8 (E4)
-            0xE4 => self.in_al_imm8(bus, bios, io_device),
-
             // IN AX, imm8 (E5)
             0xE5 => self.in_ax_imm8(bus, bios, io_device),
-
-            // OUT imm8, AL (E6)
-            0xE6 => self.out_imm8_al(bus, bios, io_device),
 
             // OUT imm8, AX (E7)
             0xE7 => self.out_imm8_ax(bus, bios, io_device),
 
-            // IN AL, DX (EC)
-            0xEC => self.in_al_dx(bios, io_device),
-
             // IN AX, DX (ED)
             0xED => self.in_ax_dx(bios, io_device),
-
-            // OUT DX, AL (EE)
-            0xEE => self.out_dx_al(bus, bios, io_device),
 
             // OUT DX, AX (EF)
             0xEF => self.out_dx_ax(bus, bios, io_device),

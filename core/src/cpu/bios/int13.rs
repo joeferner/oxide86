@@ -16,7 +16,6 @@ impl Cpu {
 
 
         match function {
-            0x00 => self.int13_reset_disk(io),
             0x01 => self.int13_get_status(io),
             0x03 => self.int13_write_sectors(bus, io),
             0x04 => self.int13_verify_sectors(io),
@@ -25,28 +24,6 @@ impl Cpu {
             0x16 => self.int13_detect_disk_change(io),
             0x18 => self.int13_set_dasd_type(bus, io),
             0x41 => self.int13_check_extensions_present(io),
-        }
-    }
-
-    /// INT 13h, AH=00h - Reset Disk System
-    /// Input:
-    ///   DL = drive number (0x00-0x7F for floppies, 0x80-0xFF for hard disks)
-    /// Output:
-    ///   AH = status (0 = success)
-    ///   CF = clear if success, set if error
-    fn int13_reset_disk(&mut self, io: &mut super::Bios) {
-        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
-
-        let success = io.disk_reset(drive);
-
-        if success {
-            self.ax &= 0x00FF; // AH = 0 (success)
-            self.set_flag(cpu_flag::CARRY, false);
-            io.set_last_disk_status(DiskError::Success as u8);
-        } else {
-            self.ax = (self.ax & 0x00FF) | ((DiskError::ResetFailed as u16) << 8);
-            self.set_flag(cpu_flag::CARRY, true);
-            io.set_last_disk_status(DiskError::ResetFailed as u8);
         }
     }
 
