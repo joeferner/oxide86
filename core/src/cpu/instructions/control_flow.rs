@@ -413,4 +413,20 @@ impl Cpu {
             timing::cycles::RET_FAR
         });
     }
+
+    /// CALL far direct (opcode 9A)
+    /// Call far procedure
+    pub(in crate::cpu) fn call_far(&mut self, bus: &mut Bus) {
+        let offset = self.fetch_word(bus);
+        let segment = self.fetch_word(bus);
+        // Push CS and IP
+        self.push(self.cs, bus);
+        self.push(self.ip, bus);
+        // Jump to far address
+        self.ip = offset;
+        self.cs = segment;
+
+        // CALL far direct: 28 cycles
+        bus.increment_cycle_count(timing::cycles::CALL_FAR_DIRECT);
+    }
 }

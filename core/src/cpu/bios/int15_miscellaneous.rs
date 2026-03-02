@@ -1,0 +1,48 @@
+use crate::{
+    bus::Bus,
+    cpu::{
+        Cpu,
+        bios::{INT15_SYSTEM_CONFIG_OFFSET, INT15_SYSTEM_CONFIG_SEGMENT},
+        cpu_flag,
+    },
+};
+
+impl Cpu {
+    /// INT 0x15 - Miscellaneous System Services
+    /// AH register contains the function number
+    pub(in crate::cpu) fn handle_int15_miscellaneous(&mut self, bus: &mut Bus) {
+        let function = (self.ax >> 8) as u8; // Get AH
+
+        match function {
+            0xC0 => self.int15_get_system_config(bus),
+            _ => {
+                log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
+                // Set carry flag to indicate function not supported
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 15h AH=C0h - Get System Configuration Parameters
+    ///
+    /// Output:
+    ///   ES:BX = pointer to system descriptor table
+    ///   CF = 0 if successful, 1 if not supported
+    ///
+    /// System Descriptor Table format:
+    ///   Offset 0-1: Table length in bytes (not including these 2 bytes)
+    ///   Offset 2: Model byte (0xFF for PC, 0xFE for XT, 0xFC for AT)
+    ///   Offset 3: Submodel byte
+    ///   Offset 4: BIOS revision level
+    ///   Offset 5: Feature information byte 1
+    ///   Offset 6: Feature information byte 2
+    ///   Offset 7: Feature information byte 3
+    ///   Offset 8: Feature information byte 4
+    ///   Offset 9: Feature information byte 5
+    fn int15_get_system_config(&mut self, _bus: &mut Bus) {
+        // Table was written to ROM area at reset; just return the pointer
+        self.es = INT15_SYSTEM_CONFIG_SEGMENT;
+        self.bx = INT15_SYSTEM_CONFIG_OFFSET;
+        self.set_flag(cpu_flag::CARRY, false);
+    }
+}

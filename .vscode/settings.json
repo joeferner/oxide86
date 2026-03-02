@@ -91,5 +91,8 @@
         "winit",
         "XCHG",
         "XLAT"
-    ]
+    ],
+    {
+        "rust-analyzer.files.excludeDirs": ["target"]
+    }
 }
