@@ -112,8 +112,13 @@ mod tests {
         use super::*;
 
         #[test_log::test]
-        pub fn cpu_op8086() {
+        pub fn op8086() {
             run_test("cpu/op8086");
+        }
+
+        #[test_log::test]
+        pub fn irq_chain() {
+            run_test("cpu/irq_chain");
         }
     }
 
@@ -121,7 +126,7 @@ mod tests {
         use super::*;
 
         #[test_log::test]
-        pub fn keyboard_check_keystroke_int16() {
+        pub fn check_keystroke_int16() {
             run_test_with_interaction("keyboard/check_keystroke_int16", |computer| {
                 computer.push_key_press(0x18 /* 'o' */);
                 computer.run();
@@ -133,7 +138,7 @@ mod tests {
         use super::*;
 
         #[test_log::test]
-        pub fn pit_check_timer_tick() {
+        pub fn check_timer_tick() {
             run_test("pit/check_timer_tick");
         }
     }

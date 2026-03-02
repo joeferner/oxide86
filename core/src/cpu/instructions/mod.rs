@@ -206,7 +206,7 @@ impl Cpu {
     }
 
     /// Push 16-bit value onto stack
-    fn push(&mut self, value: u16, bus: &mut Bus) {
+    pub(in crate::cpu) fn push(&mut self, value: u16, bus: &mut Bus) {
         self.sp = self.sp.wrapping_sub(2);
         let addr = physical_address(self.ss, self.sp);
         bus.memory_write_u16(addr, value);

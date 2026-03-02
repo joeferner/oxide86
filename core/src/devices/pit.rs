@@ -48,7 +48,9 @@ impl Device for PIT {
         self
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        self.last_irq_0_cycle_count = 0;
+    }
 
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
         None

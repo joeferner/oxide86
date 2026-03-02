@@ -18,23 +18,7 @@ impl Cpu {
     /// Calls interrupt handler
     pub(in crate::cpu) fn int(&mut self, bus: &mut Bus) {
         let int_num = self.fetch_byte(bus);
-
-        // Push flags, CS, and IP
-        self.push(self.flags, bus);
-        self.push(self.cs, bus);
-        self.push(self.ip, bus);
-        // Clear IF and TF
-        self.set_flag(cpu_flag::INTERRUPT, false);
-        self.set_flag(cpu_flag::TRAP, false);
-        // Load interrupt vector from interrupt vector table (IVT)
-        // IVT starts at 0x00000, each entry is 4 bytes (offset, segment)
-        let ivt_addr = (int_num as usize) * 4;
-        let offset = bus.memory_read_u16(ivt_addr);
-        let segment = bus.memory_read_u16(ivt_addr + 2);
-        self.ip = offset;
-        self.cs = segment;
-
-        // INT: 51 cycles
+        self.dispatch_interrupt(bus, int_num);
         bus.increment_cycle_count(timing::cycles::INT)
     }
 

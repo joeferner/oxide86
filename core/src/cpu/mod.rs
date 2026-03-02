@@ -159,7 +159,7 @@ impl Cpu {
         if self.get_flag(cpu_flag::INTERRUPT) {
             let irq = bus.pic_mut().take_irq(bus.cycle_count());
             if let Some(irq) = irq {
-                self.step_bios_int(bus, irq);
+                self.dispatch_interrupt(bus, irq);
                 return;
             }
         }
@@ -606,6 +606,21 @@ impl Cpu {
             }
             self.wait_for_key_press_patch_flags = false;
         }
+    }
+
+    /// Dispatch an interrupt: push FLAGS/CS/IP, clear IF/TF, load CS:IP from IVT.
+    /// Common mechanism for INT instructions and hardware IRQs.
+    fn dispatch_interrupt(&mut self, bus: &mut Bus, int_num: u8) {
+        self.push(self.flags, bus);
+        self.push(self.cs, bus);
+        self.push(self.ip, bus);
+        self.set_flag(cpu_flag::INTERRUPT, false);
+        self.set_flag(cpu_flag::TRAP, false);
+        let ivt_addr = (int_num as usize) * 4;
+        let offset = bus.memory_read_u16(ivt_addr);
+        let segment = bus.memory_read_u16(ivt_addr + 2);
+        self.ip = offset;
+        self.cs = segment;
     }
 
     pub fn patch_flags_and_iret(&mut self, bus: &mut Bus) {
