@@ -13,6 +13,10 @@ impl PIT {
     pub fn new() -> Self {
         Self {}
     }
+
+    pub fn take_pending_timer_irq(&mut self, cycle_count: u32) -> bool {
+        todo!("calculate if timer should fire {cycle_count}");
+    }
 }
 
 impl Device for PIT {

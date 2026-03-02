@@ -34,8 +34,11 @@ pub struct Bus {
 impl Bus {
     pub fn new(memory: Memory) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
-        let pic = Rc::new(RefCell::new(PIC::new(keyboard_controller.clone())));
         let pit = Rc::new(RefCell::new(PIT::new()));
+        let pic = Rc::new(RefCell::new(PIC::new(
+            pit.clone(),
+            keyboard_controller.clone(),
+        )));
         Self {
             memory,
             devices: vec![pic.clone(), pit.clone(), keyboard_controller.clone()],

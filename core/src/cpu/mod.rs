@@ -149,7 +149,7 @@ impl Cpu {
     pub fn step(&mut self, bus: &mut Bus) {
         // service any interrupts coming from the PIC
         if self.get_flag(cpu_flag::INTERRUPT) {
-            let irq = bus.pic_mut().take_irq();
+            let irq = bus.pic_mut().take_irq(bus.cycle_count());
             if let Some(irq) = irq {
                 self.step_bios_int(bus, irq);
                 return;
