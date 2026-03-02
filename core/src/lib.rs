@@ -8,6 +8,7 @@ pub mod cpu;
 pub mod devices;
 pub mod disk;
 pub mod memory;
+pub mod scan_code;
 pub mod video;
 
 #[cfg(test)]

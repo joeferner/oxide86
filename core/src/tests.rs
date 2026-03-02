@@ -116,10 +116,7 @@ mod tests {
     #[test_log::test]
     pub fn keyboard_check_keystroke_int16() {
         run_test_with_interaction("keyboard/check_keystroke_int16", |computer| {
-            computer.push_keyboard_key(KeyPress {
-                ascii_code: 0x6F, // 'o'
-                scan_code: 0x18,
-            });
+            computer.push_key_press(0x18 /* 'o' */);
             computer.run();
         });
     }

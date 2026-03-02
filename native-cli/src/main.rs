@@ -9,16 +9,19 @@ use anyhow::Result;
 use clap::Parser;
 use crossterm::{
     cursor,
-    event::{self, DisableMouseCapture, Event, KeyEventKind},
+    event::{self, DisableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     style::{Color, Print, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode},
 };
-use oxide86_core::video::VideoBuffer;
+use oxide86_core::{
+    scan_code::{SCAN_CODE_F12, SCAN_CODE_LEFT_SHIFT, SCAN_CODE_RELEASE},
+    video::VideoBuffer,
+};
 use oxide86_native_common::{cli::CommonCli, create_computer, logging::setup_logging};
 
 use crate::{
-    keyboard::{SCAN_CODE_F12, key_event_to_keypress},
+    keyboard::{char_requires_shift, key_code_to_scan_code},
     video::{VideoCachedValue, draw_frame},
 };
 
@@ -54,6 +57,7 @@ fn main() -> Result<()> {
     let mut computer = create_computer(&cli.common, video_buffer.clone())?;
 
     let mut stdout = std::io::stdout();
+    let mut last_modifiers = KeyModifiers::empty();
 
     // Enable raw mode and alternate screen
     terminal::enable_raw_mode()?;
@@ -83,17 +87,40 @@ fn main() -> Result<()> {
             if let Event::Key(key_event) = event::read()? {
                 // Only process key press events; ignore release and repeat to avoid
                 // duplicate input on Windows (which emits both Press and Release events)
-                if key_event.kind != KeyEventKind::Press {
-                    // skip
-                } else {
-                    let key = key_event_to_keypress(&key_event);
+                if key_event.kind == KeyEventKind::Press {
+                    let scan_code = key_code_to_scan_code(&key_event.code);
 
                     // Check if it's F12 (command mode) - intercept for emulator, don't send to program
-                    if key.scan_code == SCAN_CODE_F12 {
+                    if scan_code == SCAN_CODE_F12 {
                         quit_from_command_mode = true;
                     } else {
-                        // Fire INT 09h (keyboard hardware interrupt) for all other keys
-                        computer.push_keyboard_key(key);
+                        // Some terminals omit KeyModifiers::SHIFT for symbol characters
+                        // (e.g. Shift+' produces '"' with no modifier reported), so also
+                        // infer shift from the character itself.
+                        let char_needs_shift = if let KeyCode::Char(c) = key_event.code {
+                            char_requires_shift(c)
+                        } else {
+                            false
+                        };
+                        let shift_active =
+                            key_event.modifiers.contains(KeyModifiers::SHIFT) || char_needs_shift;
+                        let last_shift = last_modifiers.contains(KeyModifiers::SHIFT);
+
+                        if !shift_active && last_shift {
+                            computer.push_key_press(SCAN_CODE_RELEASE | SCAN_CODE_LEFT_SHIFT);
+                        }
+                        if shift_active && !last_shift {
+                            computer.push_key_press(SCAN_CODE_LEFT_SHIFT);
+                        }
+                        computer.push_key_press(scan_code);
+                        computer.push_key_press(SCAN_CODE_RELEASE | scan_code);
+                        // Store effective modifiers so shift-release is tracked correctly
+                        // even when the terminal omitted SHIFT from the event.
+                        last_modifiers = if shift_active {
+                            key_event.modifiers | KeyModifiers::SHIFT
+                        } else {
+                            key_event.modifiers
+                        };
                     }
                 }
             }

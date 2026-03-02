@@ -1,6 +1,6 @@
 use std::{any::Any, cell::Cell};
 
-use crate::{Device, KeyPress};
+use crate::Device;
 
 pub const KEYBOARD_IO_PORT_DATA: u16 = 0x0060;
 pub const KEYBOARD_IO_PORT_STATUS: u16 = 0x0064;
@@ -27,8 +27,8 @@ impl KeyboardController {
         }
     }
 
-    pub fn push_key_press(&mut self, key: KeyPress) {
-        self.scan_code = key.scan_code;
+    pub fn key_press(&mut self, scan_code: u8) {
+        self.scan_code = scan_code;
         self.pending_key = true;
         self.obf.set(true);
     }
@@ -37,6 +37,10 @@ impl KeyboardController {
         let result = self.pending_key;
         self.pending_key = false;
         result
+    }
+
+    pub fn pending_key(&self) -> bool {
+        self.pending_key
     }
 }
 

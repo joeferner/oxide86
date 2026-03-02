@@ -320,8 +320,9 @@ impl Cpu {
         let cursor = bda_get_cursor_pos(bus, page);
         let cols = bda_get_columns(bus) as usize;
         let rows = bda_get_rows(bus) as usize;
+        let mode = bda_get_video_mode(bus);
 
-        if bda_get_video_mode(bus) == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
+        if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
             // Text mode: write to video memory
             for i in 0..count {
                 let pos = cursor.row as usize * cols + cursor.col as usize + (i as usize);

@@ -1,159 +1,8 @@
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use oxide86_core::KeyPress;
-
-pub const SCAN_CODE_F12: u8 = 0x86;
-
-/// Convert crossterm KeyEvent to KeyPress with scan code and ASCII code
-pub fn key_event_to_keypress(key_event: &KeyEvent) -> KeyPress {
-    let base_scan_code = key_code_to_scan_code(&key_event.code);
-    let mut ascii_code = key_event_to_ascii(key_event).unwrap_or(0x00);
-
-    // Apply modifier key adjustments for function keys
-    let scan_code = apply_modifier_to_scan_code(
-        base_scan_code,
-        &key_event.code,
-        &key_event.modifiers,
-        &mut ascii_code,
-    );
-
-    KeyPress {
-        scan_code,
-        ascii_code,
-    }
-}
-
-/// Convert crossterm KeyEvent to ASCII character (for simple key presses)
-fn key_event_to_ascii(key_event: &KeyEvent) -> Option<u8> {
-    match key_event.code {
-        KeyCode::Char(c) => {
-            // Handle Ctrl+letter combinations
-            if key_event.modifiers.contains(KeyModifiers::CONTROL) {
-                match c {
-                    'a'..='z' => return Some(c as u8 - b'a' + 1), // Ctrl+A = 0x01, etc.
-                    'A'..='Z' => return Some(c as u8 - b'A' + 1),
-                    _ => {}
-                }
-            }
-            // For Alt+letter combinations, return 0 (will be handled by apply_modifier_to_scan_code)
-            if key_event.modifiers.contains(KeyModifiers::ALT) && c.is_ascii_alphabetic() {
-                return Some(0x00);
-            }
-            // For Alt+number combinations, return 0 (will be handled by apply_modifier_to_scan_code)
-            if key_event.modifiers.contains(KeyModifiers::ALT) && c.is_ascii_digit() {
-                return Some(0x00);
-            }
-            Some(c as u8)
-        }
-        KeyCode::Enter => Some(0x0D),     // CR
-        KeyCode::Backspace => Some(0x08), // BS
-        KeyCode::Tab => Some(0x09),       // TAB
-        KeyCode::Esc => Some(0x1B),       // ESC
-        KeyCode::Delete => Some(0x7F),    // DEL
-        _ => None,                        // Non-ASCII keys (arrows, function keys) return None
-    }
-}
-
-/// Apply modifier keys (Shift, Ctrl, Alt) to scan codes
-/// This is needed for function keys and Alt+letter combinations
-fn apply_modifier_to_scan_code(
-    base_scan_code: u8,
-    key_code: &KeyCode,
-    modifiers: &KeyModifiers,
-    ascii_code: &mut u8,
-) -> u8 {
-    // Handle function keys with modifiers (F1-F10)
-    if let KeyCode::F(n) = key_code {
-        if *n >= 1 && *n <= 10 {
-            // Base scan codes for F1-F10: 0x3B-0x44
-            let base = 0x3B + *n - 1;
-
-            return if modifiers.contains(KeyModifiers::ALT) {
-                // Alt+F1..F10: 0x68-0x71
-                *ascii_code = 0x00;
-                0x68 + *n - 1
-            } else if modifiers.contains(KeyModifiers::CONTROL) {
-                // Ctrl+F1..F10: 0x5E-0x67
-                *ascii_code = 0x00;
-                0x5E + *n - 1
-            } else if modifiers.contains(KeyModifiers::SHIFT) {
-                // Shift+F1..F10: 0x54-0x5D
-                *ascii_code = 0x00;
-                0x54 + *n - 1
-            } else {
-                // No modifier
-                *ascii_code = 0x00;
-                base
-            };
-        } else if *n == 11 || *n == 12 {
-            // F11 and F12 don't have standard shifted scan codes in BIOS
-            // Just clear ASCII for these
-            *ascii_code = 0x00;
-            return base_scan_code;
-        }
-    }
-
-    // Handle Alt+letter combinations
-    if modifiers.contains(KeyModifiers::ALT)
-        && let KeyCode::Char(c) = key_code
-        && c.is_ascii_alphabetic()
-    {
-        // For Alt+letter, scan code is the letter's scan code, ASCII is 0
-        *ascii_code = 0x00;
-        return base_scan_code;
-    }
-
-    // Handle Alt+number combinations (top row 1-0)
-    if modifiers.contains(KeyModifiers::ALT) {
-        match key_code {
-            KeyCode::Char('1') => {
-                *ascii_code = 0x00;
-                return 0x78;
-            } // Alt+1
-            KeyCode::Char('2') => {
-                *ascii_code = 0x00;
-                return 0x79;
-            } // Alt+2
-            KeyCode::Char('3') => {
-                *ascii_code = 0x00;
-                return 0x7A;
-            } // Alt+3
-            KeyCode::Char('4') => {
-                *ascii_code = 0x00;
-                return 0x7B;
-            } // Alt+4
-            KeyCode::Char('5') => {
-                *ascii_code = 0x00;
-                return 0x7C;
-            } // Alt+5
-            KeyCode::Char('6') => {
-                *ascii_code = 0x00;
-                return 0x7D;
-            } // Alt+6
-            KeyCode::Char('7') => {
-                *ascii_code = 0x00;
-                return 0x7E;
-            } // Alt+7
-            KeyCode::Char('8') => {
-                *ascii_code = 0x00;
-                return 0x7F;
-            } // Alt+8
-            KeyCode::Char('9') => {
-                *ascii_code = 0x00;
-                return 0x80;
-            } // Alt+9
-            KeyCode::Char('0') => {
-                *ascii_code = 0x00;
-                return 0x81;
-            } // Alt+0
-            _ => {}
-        }
-    }
-
-    base_scan_code
-}
+use crossterm::event::KeyCode;
+use oxide86_core::scan_code::SCAN_CODE_F12;
 
 /// Map crossterm KeyCode to 8086 scan code
-fn key_code_to_scan_code(code: &KeyCode) -> u8 {
+pub fn key_code_to_scan_code(code: &KeyCode) -> u8 {
     match code {
         KeyCode::Esc => 0x01,
         KeyCode::Backspace => 0x0E,
@@ -172,7 +21,7 @@ fn key_code_to_scan_code(code: &KeyCode) -> u8 {
         KeyCode::F(8) => 0x42,
         KeyCode::F(9) => 0x43,
         KeyCode::F(10) => 0x44,
-        KeyCode::F(11) => 0x85,
+        KeyCode::F(11) => 0x57,
         KeyCode::F(12) => SCAN_CODE_F12,
 
         // Arrow keys
@@ -193,6 +42,36 @@ fn key_code_to_scan_code(code: &KeyCode) -> u8 {
 
         _ => 0x00,
     }
+}
+
+/// Returns true if typing this character requires the Shift key on a US layout.
+/// Some terminals don't report KeyModifiers::SHIFT for symbol characters, so
+/// we infer it from the character itself.
+pub fn char_requires_shift(c: char) -> bool {
+    matches!(
+        c,
+        '~' | '!'
+            | '@'
+            | '#'
+            | '$'
+            | '%'
+            | '^'
+            | '&'
+            | '*'
+            | '('
+            | ')'
+            | '_'
+            | '+'
+            | '{'
+            | '}'
+            | '|'
+            | ':'
+            | '"'
+            | '<'
+            | '>'
+            | '?'
+            | 'A'..='Z'
+    )
 }
 
 /// Map a character to its physical keyboard scan code

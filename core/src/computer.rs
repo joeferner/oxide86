@@ -1,5 +1,7 @@
+use std::collections::VecDeque;
+
 use crate::{
-    Device, KeyPress,
+    Device,
     bus::Bus,
     cpu::Cpu,
     disk::{DriveNumber, disk_read_sectors},
@@ -11,6 +13,7 @@ use anyhow::{Result, anyhow};
 pub struct Computer {
     cpu: Cpu,
     bus: Bus,
+    key_presses: VecDeque<u8>,
 }
 
 impl Computer {
@@ -18,6 +21,7 @@ impl Computer {
         let mut computer = Self {
             cpu,
             bus: Bus::new(memory),
+            key_presses: VecDeque::new(),
         };
         computer.reset();
         computer
@@ -42,6 +46,7 @@ impl Computer {
     }
 
     pub fn step(&mut self) {
+        self.process_key_presses();
         self.cpu.step(&mut self.bus);
     }
 
@@ -147,9 +152,20 @@ impl Computer {
         Ok(())
     }
 
-    pub fn push_keyboard_key(&mut self, key: KeyPress) {
-        self.bus.keyboard_controller_mut().push_key_press(key);
-        self.cpu.key_press(&mut self.bus);
+    pub fn push_key_press(&mut self, scan_code: u8) {
+        self.key_presses.push_back(scan_code);
+        self.process_key_presses();
+    }
+
+    fn process_key_presses(&mut self) {
+        let pending_key = self.bus.keyboard_controller().pending_key();
+        if !pending_key && let Some(scan_code) = self.key_presses.pop_front() {
+            {
+                let mut keyboard_controller = self.bus.keyboard_controller_mut();
+                keyboard_controller.key_press(scan_code);
+            }
+            self.cpu.key_press(&mut self.bus);
+        }
     }
 
     pub fn get_exit_code(&self) -> Option<u8> {

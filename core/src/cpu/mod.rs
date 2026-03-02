@@ -596,6 +596,7 @@ impl Cpu {
     /// Signal that a key has been pressed, if we were waiting handle it
     pub fn key_press(&mut self, bus: &mut Bus) {
         if self.wait_for_key_press {
+            self.int16_read_char(bus);
             self.wait_for_key_press = false;
             if self.wait_for_key_press_patch_flags {
                 self.patch_flags_and_iret(bus);

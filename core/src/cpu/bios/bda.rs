@@ -72,6 +72,10 @@ const EQUIPMENT_SERIAL_COUNT_MASK: u16 = 0x0E00; // Bits 9-11: number of serial 
 #[allow(dead_code)]
 const EQUIPMENT_PRINTER_COUNT_MASK: u16 = 0xC000; // Bits 14-15: number of printers
 
+// BDA KEYBOARD_FLAGS1 (0x40:0017) bit masks
+pub const BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT: u8 = 0x01; // Right Shift key pressed
+pub const BDA_KEYBOARD_FLAGS1_LEFT_SHIFT: u8 = 0x02; // Left Shift key pressed
+
 pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // COM port addresses (0x0040:0000 - 4 words)
     // Standard COM port I/O addresses
@@ -273,6 +277,14 @@ pub fn bda_get_active_page(bus: &Bus) -> u8 {
 
 pub fn bda_set_active_page(bus: &mut Bus, page: u8) {
     bus.memory_write_u8(BDA_START + BDA_ACTIVE_PAGE, page);
+}
+
+pub fn bda_get_keyboard_flags1(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_KEYBOARD_FLAGS1)
+}
+
+pub fn bda_set_keyboard_flags1(bus: &mut Bus, flags: u8) {
+    bus.memory_write_u8(BDA_START + BDA_KEYBOARD_FLAGS1, flags);
 }
 
 pub fn bda_get_crt_controller_port_address(bus: &Bus) -> u16 {
