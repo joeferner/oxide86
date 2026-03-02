@@ -9,7 +9,7 @@ use anyhow::Result;
 use crate::{
     Device, DeviceRef,
     cpu::bios::bios_reset,
-    devices::{keyboard_controller::KeyboardController, pic::PIC},
+    devices::{keyboard_controller::KeyboardController, pic::PIC, pit::PIT},
     disk::{DiskController, DriveNumber},
     memory::Memory,
     video::VideoCard,
@@ -23,6 +23,7 @@ pub struct Bus {
     devices: Vec<DeviceRef>,
     disk_controllers: Vec<Rc<RefCell<DiskController>>>,
     pic: Rc<RefCell<PIC>>,
+    pit: Rc<RefCell<PIT>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     video_card: Option<Rc<RefCell<VideoCard>>>,
 }
@@ -31,11 +32,13 @@ impl Bus {
     pub fn new(memory: Memory) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
         let pic = Rc::new(RefCell::new(PIC::new(keyboard_controller.clone())));
+        let pit = Rc::new(RefCell::new(PIT::new()));
         Self {
             memory,
-            devices: vec![pic.clone(), keyboard_controller.clone()],
+            devices: vec![pic.clone(), pit.clone(), keyboard_controller.clone()],
             disk_controllers: vec![],
             pic,
+            pit,
             keyboard_controller,
             video_card: None,
         }
@@ -47,6 +50,14 @@ impl Bus {
 
     pub fn pic_mut(&self) -> RefMut<'_, PIC> {
         self.pic.borrow_mut()
+    }
+
+    pub fn pit(&self) -> Ref<'_, PIT> {
+        self.pit.borrow()
+    }
+
+    pub fn pit_mut(&self) -> RefMut<'_, PIT> {
+        self.pit.borrow_mut()
     }
 
     pub fn keyboard_controller(&self) -> Ref<'_, KeyboardController> {

@@ -6,7 +6,6 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, RwLock};
 
-    use crate::KeyPress;
     use crate::cpu::CpuType;
     use crate::video::video_buffer::RenderResult;
     use crate::{

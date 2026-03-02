@@ -8,7 +8,10 @@ use crate::{
             bda_get_keyboard_flags1, bda_set_keyboard_flags1,
         },
     },
-    devices::keyboard_controller::KEYBOARD_IO_PORT_DATA,
+    devices::{
+        keyboard_controller::KEYBOARD_IO_PORT_DATA,
+        pic::{PIC_COMMAND_EOI, PIC_IO_PORT_COMMAND},
+    },
     scan_code::{
         SCAN_CODE_LEFT_SHIFT, SCAN_CODE_LEFT_SHIFT_RELEASE, SCAN_CODE_RIGHT_SHIFT,
         SCAN_CODE_RIGHT_SHIFT_RELEASE,
@@ -22,6 +25,9 @@ impl Cpu {
     /// Programs with custom INT 09h handlers will replace this via the IVT and handle
     /// keyboard input directly by reading port 0x60.
     pub(in crate::cpu) fn handle_int09_keyboard_hardware_interrupt(&mut self, bus: &mut Bus) {
+        // Acknowledge interrupt to PIC so it can fire again
+        bus.io_write_u8(PIC_IO_PORT_COMMAND, PIC_COMMAND_EOI);
+
         let scan_code = bus.io_read_u8(KEYBOARD_IO_PORT_DATA);
 
         // Handle shift key press/release - update BDA flags but don't buffer
