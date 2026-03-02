@@ -506,6 +506,9 @@ impl Cpu {
             // JMP short relative (EB)
             0xEB => self.jmp_short(bus),
 
+            // IN AL, DX (EC)
+            0xEC => self.in_al_dx(bus),
+
             // LOCK prefix (F0)
             // Asserts LOCK# signal for atomic memory operations; no-op in single-processor emulator
             0xF0 => {

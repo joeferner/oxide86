@@ -146,7 +146,7 @@ impl Bus {
             }
         }
 
-        log::warn!("No device responded to io write port: 0x{port:04X}");
+        log::warn!("No device responded to io read port: 0x{port:04X}");
         0xff
     }
 

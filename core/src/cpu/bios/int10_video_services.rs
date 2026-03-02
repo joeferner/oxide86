@@ -34,6 +34,7 @@ impl Cpu {
             0x03 => self.int10_get_cursor_position(bus),
             0x05 => self.int10_select_active_page(bus),
             0x06 => self.int10_scroll_up(bus),
+            0x08 => self.int10_read_char_attr(bus),
             0x09 => self.int10_write_char_attr(bus),
             0x0A => self.int10_write_char(bus),
             0x0E => self.int10_teletype_output(bus),
@@ -284,6 +285,24 @@ impl Cpu {
         } else {
             todo!("video mode scroll");
         }
+    }
+
+    /// INT 10h, AH=08h - Read Character and Attribute at Cursor Position
+    /// Input:
+    ///   BH = page number (0 for text mode)
+    /// Output:
+    ///   AH = attribute byte
+    ///   AL = character
+    fn int10_read_char_attr(&mut self, bus: &mut Bus) {
+        let page = bda_get_active_page(bus);
+        let cursor = bda_get_cursor_pos(bus, page);
+        let cols = bda_get_columns(bus);
+        let offset = (cursor.row as usize * cols as usize + cursor.col as usize) * 2;
+
+        let ch = bus.memory_read_u8(CGA_MEMORY_START + offset);
+        let attr = bus.memory_read_u8(CGA_MEMORY_START + offset + 1);
+
+        self.ax = ((attr as u16) << 8) | (ch as u16);
     }
 
     /// INT 10h, AH=09h - Write Character and Attribute at Cursor
