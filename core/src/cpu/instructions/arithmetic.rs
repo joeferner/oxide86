@@ -101,7 +101,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing based on operation and operand type
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // Immediate to register: 4 cycles (all operations)
             4
         } else {
@@ -204,7 +204,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing (same as other arith_imm functions)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             4 // Immediate to register: 4 cycles (all operations)
         } else {
             let base = if operation == 7 { 10 } else { 17 };
@@ -299,7 +299,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing (same as arith_imm8_rm8)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             4 // Immediate to register: 4 cycles (all operations)
         } else {
             let base = if operation == 7 { 10 } else { 17 };
@@ -366,7 +366,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // INC/DEC register: 2 cycles
             timing::cycles::INC_REG // Same timing for INC and DEC
         } else {
@@ -378,7 +378,7 @@ impl Cpu {
 
     /// INC 16-bit register (opcodes 40-47)
     /// Increment register by 1 (does not affect carry flag)
-    pub(in crate::cpu) fn inc_reg16(&mut self, opcode: u8) {
+    pub(in crate::cpu) fn inc_reg16(&mut self, opcode: u8, bus: &mut Bus) {
         let reg = opcode & 0x07;
         let value = self.get_reg16(reg);
         let result = value.wrapping_add(1);
@@ -392,12 +392,12 @@ impl Cpu {
         self.set_flag(cpu_flag::AUXILIARY, aux_carry);
 
         // INC register: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::INC_REG)
+        bus.increment_cycle_count(timing::cycles::INC_REG)
     }
 
     /// DEC 16-bit register (opcodes 48-4F)
     /// Decrement register by 1 (does not affect carry flag)
-    pub(in crate::cpu) fn dec_reg16(&mut self, opcode: u8) {
+    pub(in crate::cpu) fn dec_reg16(&mut self, opcode: u8, bus: &mut Bus) {
         let reg = opcode & 0x07;
         let value = self.get_reg16(reg);
         let result = value.wrapping_sub(1);
@@ -411,7 +411,7 @@ impl Cpu {
         self.set_flag(cpu_flag::AUXILIARY, aux_carry);
 
         // DEC register: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::DEC_REG)
+        bus.increment_cycle_count(timing::cycles::DEC_REG)
     }
 
     /// ADD r/m and register (opcodes 00-03)
@@ -481,7 +481,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing based on operands
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // ADD reg, reg: 3 cycles
             timing::cycles::ADD_REG_REG
         } else if dir {
@@ -568,7 +568,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing (same pattern as ADD)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             timing::cycles::ADC_REG_REG // 3 cycles
         } else if dir {
             timing::cycles::ADC_MEM_REG +  // 9 + EA cycles
@@ -646,7 +646,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing (same pattern as ADD)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             timing::cycles::SUB_REG_REG // 3 cycles
         } else if dir {
             timing::cycles::SUB_MEM_REG +  // 9 + EA cycles
@@ -730,7 +730,7 @@ impl Cpu {
         }
 
         // SBB r/m, reg: 3 cycles (reg), 16+EA (mem to reg), 9+EA (reg to mem)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             timing::cycles::SBB_REG_REG
         } else if dir {
             timing::cycles::SBB_MEM_REG
@@ -744,7 +744,7 @@ impl Cpu {
     /// ADD immediate to accumulator (opcodes 04-05)
     /// 04: ADD AL, imm8
     /// 05: ADD AX, imm16
-    pub(in crate::cpu) fn add_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn add_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
@@ -773,7 +773,7 @@ impl Cpu {
         }
 
         // ADD immediate to accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::ADD_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::ADD_IMM_ACC)
     }
 
     /// NEG - Two's Complement Negation (F6/F7 Group 3, operation 3)
@@ -781,7 +781,7 @@ impl Cpu {
     /// Handled in unary_group3 in logical.rs, but the logic belongs here conceptually
     /// DAA - Decimal Adjust After Addition (opcode 0x27)
     /// Adjusts AL after BCD addition
-    pub(in crate::cpu) fn daa(&mut self) {
+    pub(in crate::cpu) fn daa(&mut self, bus: &mut Bus) {
         let mut al = (self.ax & 0xFF) as u8;
         let old_al = al;
         let old_cf = self.get_flag(cpu_flag::CARRY);
@@ -804,13 +804,13 @@ impl Cpu {
         self.set_flags_8(al);
 
         // DAA: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::DAA)
+        bus.increment_cycle_count(timing::cycles::DAA)
     }
 
     /// SUB immediate to accumulator (opcodes 2C-2D)
     /// 2C: SUB AL, imm8
     /// 2D: SUB AX, imm16
-    pub(in crate::cpu) fn sub_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn sub_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
@@ -839,12 +839,12 @@ impl Cpu {
         }
 
         // SUB immediate to accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::SUB_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::SUB_IMM_ACC)
     }
 
     /// DAS - Decimal Adjust After Subtraction (opcode 0x2F)
     /// Adjusts AL after BCD subtraction
-    pub(in crate::cpu) fn das(&mut self) {
+    pub(in crate::cpu) fn das(&mut self, bus: &mut Bus) {
         let mut al = (self.ax & 0xFF) as u8;
         let old_al = al;
         let old_cf = self.get_flag(cpu_flag::CARRY);
@@ -867,12 +867,12 @@ impl Cpu {
         self.set_flags_8(al);
 
         // DAS: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::DAS)
+        bus.increment_cycle_count(timing::cycles::DAS)
     }
 
     /// AAA - ASCII Adjust After Addition (opcode 0x37)
     /// Adjusts AL and AH after unpacked BCD addition
-    pub(in crate::cpu) fn aaa(&mut self) {
+    pub(in crate::cpu) fn aaa(&mut self, bus: &mut Bus) {
         let al = (self.ax & 0xFF) as u8;
         if (al & 0x0F) > 9 || self.get_flag(cpu_flag::AUXILIARY) {
             self.ax = self.ax.wrapping_add(0x106);
@@ -885,12 +885,12 @@ impl Cpu {
         self.ax &= 0xFF0F; // Clear high nibble of AL
 
         // AAA: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AAA)
+        bus.increment_cycle_count(timing::cycles::AAA)
     }
 
     /// AAS - ASCII Adjust After Subtraction (opcode 0x3F)
     /// Adjusts AL and AH after unpacked BCD subtraction
-    pub(in crate::cpu) fn aas(&mut self) {
+    pub(in crate::cpu) fn aas(&mut self, bus: &mut Bus) {
         let al = (self.ax & 0xFF) as u8;
         if (al & 0x0F) > 9 || self.get_flag(cpu_flag::AUXILIARY) {
             self.ax = self.ax.wrapping_sub(6);
@@ -905,12 +905,12 @@ impl Cpu {
         self.ax &= 0xFF0F; // Clear high nibble of AL
 
         // AAS: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AAS)
+        bus.increment_cycle_count(timing::cycles::AAS)
     }
 
     /// AAM - ASCII Adjust After Multiplication (opcode 0xD4)
     /// Converts binary product in AL to unpacked BCD in AX
-    pub(in crate::cpu) fn aam(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn aam(&mut self, bus: &mut Bus) {
         let base = self.fetch_byte(bus); // Usually 0x0A (10), but can be customized
         let al = (self.ax & 0xFF) as u8;
         if base == 0 {
@@ -923,12 +923,12 @@ impl Cpu {
         self.set_flag(cpu_flag::PARITY, self.ax.count_ones().is_multiple_of(2));
 
         // AAM: 83 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AAM)
+        bus.increment_cycle_count(timing::cycles::AAM)
     }
 
     /// AAD - ASCII Adjust Before Division (opcode 0xD5)
     /// Converts unpacked BCD in AX to binary in AL
-    pub(in crate::cpu) fn aad(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn aad(&mut self, bus: &mut Bus) {
         let base = self.fetch_byte(bus); // Usually 0x0A (10), but can be customized
         let al = (self.ax & 0xFF) as u8;
         let ah = ((self.ax >> 8) & 0xFF) as u8;
@@ -939,13 +939,13 @@ impl Cpu {
         self.set_flags_8(result);
 
         // AAD: 60 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AAD)
+        bus.increment_cycle_count(timing::cycles::AAD)
     }
 
     /// ADC immediate to accumulator (opcodes 14-15)
     /// 14: ADC AL, imm8
     /// 15: ADC AX, imm16
-    pub(in crate::cpu) fn adc_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn adc_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let carry_in = if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 };
 
@@ -979,13 +979,13 @@ impl Cpu {
         }
 
         // ADC immediate to accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::ADC_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::ADC_IMM_ACC)
     }
 
     /// SBB immediate to accumulator (opcodes 1C-1D)
     /// 1C: SBB AL, imm8
     /// 1D: SBB AX, imm16
-    pub(in crate::cpu) fn sbb_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn sbb_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
         let borrow_in = if self.get_flag(cpu_flag::CARRY) { 1 } else { 0 };
 
@@ -1019,6 +1019,6 @@ impl Cpu {
         }
 
         // SBB immediate to accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::SBB_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::SBB_IMM_ACC)
     }
 }

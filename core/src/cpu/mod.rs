@@ -71,9 +71,6 @@ pub struct Cpu {
     /// If INT 21h, AH=4Ch - Exit Program is called without a place to return it will set this value
     exit_code: Option<u8>,
 
-    /// Cycle count to accurately track CPU cycles
-    cycle_count: u64,
-
     /// Segment override prefix (for next instruction only)
     segment_override: Option<u16>,
 
@@ -120,7 +117,6 @@ impl Cpu {
             current_psp: 0x100,
             halted: false,
             exit_code: None,
-            cycle_count: 0,
             segment_override: None,
             repeat_prefix: None,
             pending_exception: None,
@@ -274,7 +270,7 @@ impl Cpu {
             }
 
             // DAA - Decimal Adjust After Addition (27)
-            0x27 => self.daa(),
+            0x27 => self.daa(bus),
 
             // SUB r/m to register
             0x28..=0x2B => self.sub_rm_reg(opcode, bus),
@@ -290,7 +286,7 @@ impl Cpu {
             }
 
             // DAS - Decimal Adjust After Subtraction (2F)
-            0x2F => self.das(),
+            0x2F => self.das(bus),
 
             // XOR r/m to register
             0x30..=0x33 => self.xor_rm_reg(opcode, bus),
@@ -306,7 +302,7 @@ impl Cpu {
             }
 
             // AAA - ASCII Adjust After Addition (37)
-            0x37 => self.aaa(),
+            0x37 => self.aaa(bus),
 
             // CMP r/m to register
             0x38..=0x3B => self.cmp_rm_reg(opcode, bus),
@@ -322,13 +318,13 @@ impl Cpu {
             }
 
             // AAS - ASCII Adjust After Subtraction (3F)
-            0x3F => self.aas(),
+            0x3F => self.aas(bus),
 
             // INC 16-bit register (40-47)
-            0x40..=0x47 => self.inc_reg16(opcode),
+            0x40..=0x47 => self.inc_reg16(opcode, bus),
 
             // DEC 16-bit register (48-4F)
-            0x48..=0x4F => self.dec_reg16(opcode),
+            0x48..=0x4F => self.dec_reg16(opcode, bus),
 
             // PUSH 16-bit register (50-57)
             0x50..=0x57 => self.push_reg16(opcode, bus),
@@ -382,13 +378,13 @@ impl Cpu {
             0x8F => self.pop_rm16(bus),
 
             // NOP / XCHG AX, reg (90-97)
-            0x90..=0x97 => self.xchg_ax_reg(opcode),
+            0x90..=0x97 => self.xchg_ax_reg(opcode, bus),
 
             // CBW - Convert Byte to Word (98)
-            0x98 => self.cbw(),
+            0x98 => self.cbw(bus),
 
             // CWD - Convert Word to Double word (99)
-            0x99 => self.cwd(),
+            0x99 => self.cwd(bus),
 
             // PUSHF - Push Flags (9C)
             0x9C => self.pushf(bus),
@@ -397,10 +393,10 @@ impl Cpu {
             0x9D => self.popf(bus),
 
             // SAHF - Store AH into Flags (9E)
-            0x9E => self.sahf(),
+            0x9E => self.sahf(bus),
 
             // LAHF - Load AH from Flags (9F)
-            0x9F => self.lahf(),
+            0x9F => self.lahf(bus),
 
             // MOV accumulator (AL/AX) to/from direct memory offset (A0-A3)
             0xA0..=0xA3 => self.mov_acc_moffs(opcode, bus),
@@ -529,31 +525,31 @@ impl Cpu {
             }
 
             // HLT - Halt (F4)
-            0xF4 => self.hlt(),
+            0xF4 => self.hlt(bus),
 
             // CMC - Complement Carry Flag (F5)
-            0xF5 => self.cmc(),
+            0xF5 => self.cmc(bus),
 
             // NOT/NEG/MUL/DIV Group 3 (F6: 8-bit, F7: 16-bit)
             0xF6..=0xF7 => self.unary_group3(opcode, bus),
 
             // CLC - Clear Carry Flag (F8)
-            0xF8 => self.clc(),
+            0xF8 => self.clc(bus),
 
             // STC - Set Carry Flag (F9)
-            0xF9 => self.stc(),
+            0xF9 => self.stc(bus),
 
             // CLI - Clear Interrupt Flag (FA)
-            0xFA => self.cli(),
+            0xFA => self.cli(bus),
 
             // STI - Set Interrupt Flag (FB)
-            0xFB => self.sti(),
+            0xFB => self.sti(bus),
 
             // CLD - Clear Direction Flag (FC)
-            0xFC => self.cld(),
+            0xFC => self.cld(bus),
 
             // STD - Set Direction Flag (FD)
-            0xFD => self.std_flag(),
+            0xFD => self.std_flag(bus),
 
             // INC/DEC/CALL/JMP Group 4/5 (FE: 8-bit, FF: 16-bit)
             0xFE => self.inc_dec_rm(opcode, bus),
@@ -645,7 +641,6 @@ impl Cpu {
         self.flags = 0x0002; // Reserved bit always set
         self.halted = false;
         self.exit_code = None;
-        self.cycle_count = 0;
         self.segment_override = None;
         self.repeat_prefix = None;
         self.pending_exception = None;

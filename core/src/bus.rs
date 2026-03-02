@@ -26,6 +26,9 @@ pub struct Bus {
     pit: Rc<RefCell<PIT>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     video_card: Option<Rc<RefCell<VideoCard>>>,
+
+    /// Cycle count to accurately track CPU cycles
+    cycle_count: u32,
 }
 
 impl Bus {
@@ -41,7 +44,16 @@ impl Bus {
             pit,
             keyboard_controller,
             video_card: None,
+            cycle_count: 0,
         }
+    }
+
+    pub fn increment_cycle_count(&mut self, cycles: u32) {
+        self.cycle_count = self.cycle_count.wrapping_add(cycles);
+    }
+
+    pub fn cycle_count(&self) -> u32 {
+        self.cycle_count
     }
 
     pub fn pic(&self) -> Ref<'_, PIC> {
@@ -181,6 +193,7 @@ impl Bus {
     }
 
     pub fn reset(&mut self) {
+        self.cycle_count = 0;
         bios_reset(self);
         for device in &self.devices {
             device.borrow_mut().reset();

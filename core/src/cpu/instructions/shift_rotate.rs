@@ -55,7 +55,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing based on shift type and count
-        self.cycle_count = self.cycle_count.wrapping_add(match opcode {
+        bus.increment_cycle_count(match opcode {
             0xD0 | 0xD1 => {
                 // Shift by 1
                 if mode == 0b11 {
@@ -69,10 +69,10 @@ impl Cpu {
                 // Shift by CL
                 if mode == 0b11 {
                     timing::cycles::SHIFT_REG_CL_BASE
-                        + (timing::cycles::SHIFT_REG_CL_PER_COUNT * count as u64)
+                        + (timing::cycles::SHIFT_REG_CL_PER_COUNT * count as u32)
                 } else {
                     timing::cycles::SHIFT_MEM_CL_BASE
-                        + (timing::cycles::SHIFT_MEM_CL_PER_COUNT * count as u64)
+                        + (timing::cycles::SHIFT_MEM_CL_PER_COUNT * count as u32)
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
                 }
             }
@@ -80,10 +80,10 @@ impl Cpu {
                 // Shift by immediate (80186+)
                 if mode == 0b11 {
                     timing::cycles::SHIFT_REG_IMM_BASE
-                        + (timing::cycles::SHIFT_REG_IMM_PER_COUNT * count as u64)
+                        + (timing::cycles::SHIFT_REG_IMM_PER_COUNT * count as u32)
                 } else {
                     timing::cycles::SHIFT_MEM_IMM_BASE
-                        + (timing::cycles::SHIFT_MEM_IMM_PER_COUNT * count as u64)
+                        + (timing::cycles::SHIFT_MEM_IMM_PER_COUNT * count as u32)
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
                 }
             }

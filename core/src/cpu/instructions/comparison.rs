@@ -7,7 +7,7 @@ impl Cpu {
     /// CMP immediate to accumulator (opcodes 3C-3D)
     /// 3C: CMP AL, imm8
     /// 3D: CMP AX, imm16
-    pub(in crate::cpu) fn cmp_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn cmp_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
@@ -34,7 +34,7 @@ impl Cpu {
         }
 
         // CMP immediate with accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::CMP_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::CMP_IMM_ACC)
     }
 
     /// CMP r/m and register (opcodes 38-3B)
@@ -92,7 +92,7 @@ impl Cpu {
         }
 
         // Set cycle count
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // CMP reg, reg: 3 cycles
             timing::cycles::CMP_REG_REG
         } else if dir {

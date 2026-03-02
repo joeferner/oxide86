@@ -32,7 +32,7 @@ impl Cpu {
         }
 
         // TEST r/m, reg: 3 cycles (reg), 9+EA (mem)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             timing::cycles::TEST_REG_REG
         } else {
             timing::cycles::TEST_REG_MEM
@@ -79,7 +79,7 @@ impl Cpu {
                     self.set_flag(cpu_flag::OVERFLOW, false);
                 }
                 // TEST r/m, imm: 5 cycles (reg), 11+EA (mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+                bus.increment_cycle_count(if mode == 0b11 {
                     timing::cycles::TEST_IMM_REG
                 } else {
                     timing::cycles::TEST_IMM_MEM
@@ -97,7 +97,7 @@ impl Cpu {
                 }
                 // NOT doesn't affect flags
                 // NOT: 3 cycles (reg), 16+EA (mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+                bus.increment_cycle_count(if mode == 0b11 {
                     timing::cycles::NOT_REG
                 } else {
                     timing::cycles::NOT_MEM
@@ -126,7 +126,7 @@ impl Cpu {
                     self.set_flag(cpu_flag::AUXILIARY, (value & 0x0F) != 0);
                 }
                 // NEG: 3 cycles (reg), 16+EA (mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+                bus.increment_cycle_count(if mode == 0b11 {
                     timing::cycles::NEG_REG
                 } else {
                     timing::cycles::NEG_MEM
@@ -156,7 +156,7 @@ impl Cpu {
                     self.set_flag(cpu_flag::OVERFLOW, upper_non_zero);
                 }
                 // MUL: 70-77 cycles (8-bit reg), 76-83+EA (8-bit mem), 118-133 (16-bit reg), 124-139+EA (16-bit mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if is_word {
+                bus.increment_cycle_count(if is_word {
                     if mode == 0b11 {
                         timing::cycles::MUL_REG16
                     } else {
@@ -195,7 +195,7 @@ impl Cpu {
                     self.set_flag(cpu_flag::OVERFLOW, overflow);
                 }
                 // IMUL: 80-98 cycles (8-bit reg), 86-104+EA (8-bit mem), 128-154 (16-bit reg), 134-160+EA (16-bit mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if is_word {
+                bus.increment_cycle_count(if is_word {
                     if mode == 0b11 {
                         timing::cycles::IMUL_REG16
                     } else {
@@ -248,7 +248,7 @@ impl Cpu {
                     // Flags are undefined after DIV
                 }
                 // DIV: 80-90 cycles (8-bit reg), 86-96+EA (8-bit mem), 144-162 (16-bit reg), 150-168+EA (16-bit mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if is_word {
+                bus.increment_cycle_count(if is_word {
                     if mode == 0b11 {
                         timing::cycles::DIV_REG16
                     } else {
@@ -307,7 +307,7 @@ impl Cpu {
                     // Flags are undefined after IDIV
                 }
                 // IDIV: 101-112 cycles (8-bit reg), 107-118+EA (8-bit mem), 165-184 (16-bit reg), 171-190+EA (16-bit mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if is_word {
+                bus.increment_cycle_count(if is_word {
                     if mode == 0b11 {
                         timing::cycles::IDIV_REG16
                     } else {
@@ -328,7 +328,7 @@ impl Cpu {
     /// AND immediate to accumulator (opcodes 24-25)
     /// 24: AND AL, imm8
     /// 25: AND AX, imm16
-    pub(in crate::cpu) fn and_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn and_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
@@ -348,13 +348,13 @@ impl Cpu {
         }
 
         // AND immediate to accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::AND_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::AND_IMM_ACC)
     }
 
     /// OR immediate to accumulator (opcodes 0C-0D)
     /// 0C: OR AL, imm8
     /// 0D: OR AX, imm16
-    pub(in crate::cpu) fn or_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn or_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
@@ -374,13 +374,13 @@ impl Cpu {
         }
 
         // OR immediate to accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::OR_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::OR_IMM_ACC)
     }
 
     /// TEST immediate to accumulator (opcodes A8-A9)
     /// A8: TEST AL, imm8
     /// A9: TEST AX, imm16
-    pub(in crate::cpu) fn test_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn test_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
@@ -399,48 +399,48 @@ impl Cpu {
         }
 
         // TEST immediate to accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::TEST_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::TEST_IMM_ACC)
     }
 
     /// CMC - Complement Carry Flag (opcode 0xF5)
-    pub(in crate::cpu) fn cmc(&mut self) {
+    pub(in crate::cpu) fn cmc(&mut self, bus: &mut Bus) {
         let carry = self.get_flag(cpu_flag::CARRY);
         self.set_flag(cpu_flag::CARRY, !carry);
 
         // CMC: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
+        bus.increment_cycle_count(timing::cycles::FLAG_OPS)
     }
 
     /// CLI - Clear Interrupt Flag (opcode 0xFA)
-    pub(in crate::cpu) fn cli(&mut self) {
+    pub(in crate::cpu) fn cli(&mut self, bus: &mut Bus) {
         self.set_flag(cpu_flag::INTERRUPT, false);
 
         // CLI: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
+        bus.increment_cycle_count(timing::cycles::FLAG_OPS)
     }
 
     /// STI - Set Interrupt Flag (opcode 0xFB)
-    pub(in crate::cpu) fn sti(&mut self) {
+    pub(in crate::cpu) fn sti(&mut self, bus: &mut Bus) {
         self.set_flag(cpu_flag::INTERRUPT, true);
 
         // STI: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
+        bus.increment_cycle_count(timing::cycles::FLAG_OPS)
     }
 
     /// CLC - Clear Carry Flag (opcode 0xF8)
-    pub(in crate::cpu) fn clc(&mut self) {
+    pub(in crate::cpu) fn clc(&mut self, bus: &mut Bus) {
         self.set_flag(cpu_flag::CARRY, false);
 
         // CLC: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
+        bus.increment_cycle_count(timing::cycles::FLAG_OPS)
     }
 
     /// STC - Set Carry Flag (opcode 0xF9)
-    pub(in crate::cpu) fn stc(&mut self) {
+    pub(in crate::cpu) fn stc(&mut self, bus: &mut Bus) {
         self.set_flag(cpu_flag::CARRY, true);
 
         // STC: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
+        bus.increment_cycle_count(timing::cycles::FLAG_OPS)
     }
 
     /// OR r/m and register (opcodes 08-0B)
@@ -502,7 +502,7 @@ impl Cpu {
         }
 
         // OR r/m, reg: 3 cycles (reg), 16+EA (mem to reg), 9+EA (reg to mem)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             timing::cycles::OR_REG_REG
         } else if dir {
             timing::cycles::OR_MEM_REG
@@ -572,7 +572,7 @@ impl Cpu {
         }
 
         // XOR r/m, reg: 3 cycles (reg), 16+EA (mem to reg), 9+EA (reg to mem)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             timing::cycles::XOR_REG_REG
         } else if dir {
             timing::cycles::XOR_MEM_REG
@@ -642,7 +642,7 @@ impl Cpu {
         }
 
         // AND r/m, reg: 3 cycles (reg), 16+EA (mem to reg), 9+EA (reg to mem)
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             timing::cycles::AND_REG_REG
         } else if dir {
             timing::cycles::AND_MEM_REG
@@ -656,7 +656,7 @@ impl Cpu {
     /// XOR immediate to accumulator (opcodes 34-35)
     /// 34: XOR AL, imm8
     /// 35: XOR AX, imm16
-    pub(in crate::cpu) fn xor_imm_acc(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn xor_imm_acc(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         if is_word {
@@ -676,6 +676,6 @@ impl Cpu {
         }
 
         // XOR immediate to accumulator: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::XOR_IMM_ACC)
+        bus.increment_cycle_count(timing::cycles::XOR_IMM_ACC)
     }
 }

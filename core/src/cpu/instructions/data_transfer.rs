@@ -8,7 +8,7 @@ impl Cpu {
     /// MOV immediate to register (opcodes B0-BF)
     /// B0-B7: MOV reg8, imm8
     /// B8-BF: MOV reg16, imm16
-    pub(in crate::cpu) fn mov_imm_to_reg(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn mov_imm_to_reg(&mut self, opcode: u8, bus: &mut Bus) {
         let reg = opcode & 0x07;
         let is_word = opcode & 0x08 != 0;
 
@@ -23,7 +23,7 @@ impl Cpu {
         }
 
         // MOV immediate to register: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::MOV_IMM_REG)
+        bus.increment_cycle_count(timing::cycles::MOV_IMM_REG)
     }
 
     /// MOV accumulator to/from direct bus offset (opcodes A0-A3)
@@ -60,7 +60,7 @@ impl Cpu {
         }
 
         // MOV acc, [addr] or [addr], acc: 10 cycles (direct addressing)
-        self.cycle_count = self.cycle_count.wrapping_add(if to_acc {
+        bus.increment_cycle_count(if to_acc {
             timing::cycles::MOV_MEM_ACC
         } else {
             timing::cycles::MOV_ACC_MEM
@@ -80,7 +80,7 @@ impl Cpu {
         self.set_segreg(seg_reg, value);
 
         // Calculate cycle timing
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // MOV segreg, reg: 2 cycles
             timing::cycles::MOV_RM_SEGREG_REG
         } else {
@@ -98,7 +98,7 @@ impl Cpu {
         self.set_reg16(reg, value);
 
         // POP register: 8 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::POP_REG)
+        bus.increment_cycle_count(timing::cycles::POP_REG)
     }
 
     /// PUSH 16-bit register (opcodes 50-57)
@@ -119,7 +119,7 @@ impl Cpu {
         }
 
         // PUSH register: 11 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSH_REG)
+        bus.increment_cycle_count(timing::cycles::PUSH_REG)
     }
 
     /// PUSH r/m16 (opcode FF /6) - Group 5
@@ -141,7 +141,7 @@ impl Cpu {
         self.push(value, bus);
 
         // Calculate cycle timing
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // PUSH reg: 11 cycles
             timing::cycles::PUSH_REG
         } else {
@@ -188,7 +188,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing based on operands
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // MOV reg, reg: 2 cycles
             timing::cycles::MOV_REG_REG
         } else if dir {
@@ -224,7 +224,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // MOV reg, imm: 4 cycles
             timing::cycles::MOV_IMM_REG
         } else {
@@ -251,12 +251,12 @@ impl Cpu {
         self.push(value, bus);
 
         // PUSH segment register: 10 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSH_SEGREG)
+        bus.increment_cycle_count(timing::cycles::PUSH_SEGREG)
     }
 
     /// LDS - Load Pointer using DS (opcode 0xC5)
     /// Loads far pointer from bus into register and DS
-    pub(in crate::cpu) fn lds(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn lds(&mut self, bus: &mut Bus) {
         let modrm = self.fetch_byte(bus);
         let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
@@ -274,7 +274,7 @@ impl Cpu {
 
         // LDS: 16 + EA cycles
         let rm = modrm & 0x07;
-        self.cycle_count = self.cycle_count.wrapping_add(
+        bus.increment_cycle_count(
             timing::cycles::LDS
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some()),
         );
@@ -292,7 +292,7 @@ impl Cpu {
         self.write_rm16(mode, rm, addr, value, bus);
 
         // Calculate cycle timing
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // MOV reg, segreg: 2 cycles
             timing::cycles::MOV_SEGREG_RM_REG
         } else {
@@ -319,12 +319,12 @@ impl Cpu {
         self.set_segreg(seg, value);
 
         // POP segment register: 8 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::POP_SEGREG)
+        bus.increment_cycle_count(timing::cycles::POP_SEGREG)
     }
 
     /// LES - Load Pointer using ES (opcode 0xC4)
     /// Loads far pointer from bus into register and ES
-    pub(in crate::cpu) fn les(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn les(&mut self, bus: &mut Bus) {
         let modrm = self.fetch_byte(bus);
         let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
@@ -342,7 +342,7 @@ impl Cpu {
 
         // LES: 16 + EA cycles
         let rm = modrm & 0x07;
-        self.cycle_count = self.cycle_count.wrapping_add(
+        bus.increment_cycle_count(
             timing::cycles::LES
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some()),
         );
@@ -351,11 +351,11 @@ impl Cpu {
     /// XCHG register with accumulator (opcodes 90-97)
     /// 90: NOP (XCHG AX, AX) - special case
     /// 91-97: XCHG AX, reg16
-    pub(in crate::cpu) fn xchg_ax_reg(&mut self, opcode: u8) {
+    pub(in crate::cpu) fn xchg_ax_reg(&mut self, opcode: u8, bus: &mut Bus) {
         let reg = opcode & 0x07;
         if reg == 0 {
             // NOP - XCHG AX, AX does nothing
-            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::NOP);
+            bus.increment_cycle_count(timing::cycles::NOP);
             return;
         }
         let temp = self.ax;
@@ -363,7 +363,7 @@ impl Cpu {
         self.set_reg16(reg, temp);
 
         // XCHG AX, reg: 3 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::XCHG_REG_ACC)
+        bus.increment_cycle_count(timing::cycles::XCHG_REG_ACC)
     }
 
     /// XCHG register/bus with register (opcodes 86-87)
@@ -389,7 +389,7 @@ impl Cpu {
         }
 
         // Calculate cycle timing
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // XCHG reg, reg: 4 cycles
             timing::cycles::XCHG_REG_REG
         } else {
@@ -401,7 +401,7 @@ impl Cpu {
 
     /// LEA - Load Effective Address (opcode 0x8D)
     /// Loads the offset of the source operand into destination register
-    pub(in crate::cpu) fn lea(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn lea(&mut self, bus: &mut Bus) {
         let modrm = self.fetch_byte(bus);
         let mode = modrm >> 6;
         let reg = (modrm >> 3) & 0x07;
@@ -451,7 +451,7 @@ impl Cpu {
         self.set_reg16(reg, effective_offset);
 
         // LEA: 2 + EA cycles (EA calculation is done even though bus isn't accessed)
-        self.cycle_count = self.cycle_count.wrapping_add(
+        bus.increment_cycle_count(
             timing::cycles::LEA
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some()),
         );
@@ -459,30 +459,30 @@ impl Cpu {
 
     /// LAHF - Load AH from Flags (opcode 0x9F)
     /// Loads SF, ZF, AF, PF, CF into AH
-    pub(in crate::cpu) fn lahf(&mut self) {
+    pub(in crate::cpu) fn lahf(&mut self, bus: &mut Bus) {
         let ah = (self.flags & 0xFF) as u8;
         self.ax = (self.ax & 0x00FF) | ((ah as u16) << 8);
 
         // LAHF: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::LAHF)
+        bus.increment_cycle_count(timing::cycles::LAHF)
     }
 
     /// SAHF - Store AH into Flags (opcode 0x9E)
     /// Stores AH into SF, ZF, AF, PF, CF
-    pub(in crate::cpu) fn sahf(&mut self) {
+    pub(in crate::cpu) fn sahf(&mut self, bus: &mut Bus) {
         let ah = ((self.ax >> 8) & 0xFF) as u8;
         // Only update lower 8 bits of flags (SF, ZF, 0, AF, 0, PF, 1, CF)
         // Preserve upper 8 bits
         self.flags = (self.flags & 0xFF00) | (ah as u16);
 
         // SAHF: 4 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::SAHF)
+        bus.increment_cycle_count(timing::cycles::SAHF)
     }
 
     /// XLAT - Table Look-up Translation (opcode 0xD7)
     /// Translates AL using lookup table at DS:BX
     /// AL = [DS:BX + AL]
-    pub(in crate::cpu) fn xlat(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn xlat(&mut self, bus: &mut Bus) {
         let al = (self.ax & 0xFF) as u8;
         let offset = self.bx.wrapping_add(al as u16);
         // Use segment override if present, otherwise use DS
@@ -492,7 +492,7 @@ impl Cpu {
         self.ax = (self.ax & 0xFF00) | (value as u16);
 
         // XLAT: 11 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::XLAT)
+        bus.increment_cycle_count(timing::cycles::XLAT)
     }
 
     /// PUSHF - Push Flags Register (opcode 9C)
@@ -501,7 +501,7 @@ impl Cpu {
         self.push(self.flags, bus);
 
         // PUSHF: 10 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSHF)
+        bus.increment_cycle_count(timing::cycles::PUSHF)
     }
 
     /// POPF - Pop Flags Register (opcode 9D)
@@ -513,7 +513,7 @@ impl Cpu {
         self.flags = (value & 0x0FFF) | 0x0002;
 
         // POPF: 8 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::POPF)
+        bus.increment_cycle_count(timing::cycles::POPF)
     }
 
     /// PUSHA - Push All General Registers (opcode 0x60)
@@ -531,7 +531,7 @@ impl Cpu {
         self.push(self.di, bus);
 
         // PUSHA: 36 cycles (80186+)
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSHA)
+        bus.increment_cycle_count(timing::cycles::PUSHA)
     }
 
     /// PUSH immediate (opcode 68: 16-bit, 6A: sign-extended 8-bit)
@@ -551,7 +551,7 @@ impl Cpu {
         self.push(value, bus);
 
         // PUSH immediate: 10 cycles (80186+)
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::PUSH_IMM)
+        bus.increment_cycle_count(timing::cycles::PUSH_IMM)
     }
 
     /// POP r/m16 (opcode 8F) - Group 1A
@@ -573,7 +573,7 @@ impl Cpu {
         self.write_rm16(mode, rm, addr, value, bus);
 
         // Calculate cycle timing
-        self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+        bus.increment_cycle_count(if mode == 0b11 {
             // POP reg: 8 cycles
             timing::cycles::POP_REG
         } else {
@@ -603,10 +603,10 @@ mod tests {
         // Place the immediate value in memory at the current IP
         bus.memory_write_u8(physical_address(0, cpu.ip), imm_val_8);
 
-        cpu.mov_imm_to_reg(opcode_al, &bus);
+        cpu.mov_imm_to_reg(opcode_al, &mut bus);
 
         assert_eq!(cpu.get_reg8(0), imm_val_8, "AL should contain 0x42");
-        assert_eq!(cpu.cycle_count, 4, "Should take 4 cycles");
+        assert_eq!(bus.cycle_count(), 4, "Should take 4 cycles");
         assert_eq!(cpu.ip, 1, "IP should have advanced by 1 bytes");
     }
 
@@ -623,7 +623,7 @@ mod tests {
         // Place the word in memory (handling little-endian if applicable)
         bus.memory_write_u16(physical_address(0, cpu.ip), imm_val_16);
 
-        cpu.mov_imm_to_reg(opcode_ax, &bus);
+        cpu.mov_imm_to_reg(opcode_ax, &mut bus);
 
         assert_eq!(cpu.get_reg16(0), imm_val_16, "AX should contain 0x1234");
         assert_eq!(cpu.ip, 2, "IP should have advanced by 2 bytes");

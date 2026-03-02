@@ -11,7 +11,7 @@ impl Cpu {
     ///
     /// Loads data from DS:SI into AL/AX, then increments/decrements SI based on DF.
     /// Note: Segment override can apply to DS:SI
-    pub(in crate::cpu) fn lods(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn lods(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         // Handle repeat prefix
@@ -22,13 +22,13 @@ impl Cpu {
                 self.cx = self.cx.wrapping_sub(1);
             }
             // REP LODS: 9 + 13*CX cycles
-            self.cycle_count = self.cycle_count.wrapping_add(
-                timing::cycles::REP_LODS_BASE + (timing::cycles::REP_LODS_PER_ITER * count as u64),
+            bus.increment_cycle_count(
+                timing::cycles::REP_LODS_BASE + (timing::cycles::REP_LODS_PER_ITER * count as u32),
             );
         } else {
             self.lods_once(is_word, bus);
             // LODS (no REP): 12 cycles
-            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::LODS)
+            bus.increment_cycle_count(timing::cycles::LODS)
         }
     }
 
@@ -63,11 +63,11 @@ impl Cpu {
 
     /// CLD - Clear Direction Flag (opcode FC)
     /// Sets DF to 0, causing string operations to increment SI/DI (forward direction)
-    pub(in crate::cpu) fn cld(&mut self) {
+    pub(in crate::cpu) fn cld(&mut self, bus: &mut Bus) {
         self.set_flag(cpu_flag::DIRECTION, false);
 
         // CLD: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
+        bus.increment_cycle_count(timing::cycles::FLAG_OPS)
     }
 
     /// STOS - Store String (opcodes AA-AB)
@@ -86,13 +86,13 @@ impl Cpu {
                 self.cx = self.cx.wrapping_sub(1);
             }
             // REP STOS: 9 + 10*CX cycles
-            self.cycle_count = self.cycle_count.wrapping_add(
-                timing::cycles::REP_STOS_BASE + (timing::cycles::REP_STOS_PER_ITER * count as u64),
+            bus.increment_cycle_count(
+                timing::cycles::REP_STOS_BASE + (timing::cycles::REP_STOS_PER_ITER * count as u32),
             );
         } else {
             self.stos_once(is_word, bus);
             // STOS (no REP): 11 cycles
-            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::STOS)
+            bus.increment_cycle_count(timing::cycles::STOS)
         }
     }
 
@@ -142,13 +142,13 @@ impl Cpu {
                 self.cx = self.cx.wrapping_sub(1);
             }
             // REP MOVS: 9 + 17*CX cycles
-            self.cycle_count = self.cycle_count.wrapping_add(
-                timing::cycles::REP_MOVS_BASE + (timing::cycles::REP_MOVS_PER_ITER * count as u64),
+            bus.increment_cycle_count(
+                timing::cycles::REP_MOVS_BASE + (timing::cycles::REP_MOVS_PER_ITER * count as u32),
             );
         } else {
             self.movs_once(is_word, bus);
             // MOVS (no REP): 18 cycles
-            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::MOVS)
+            bus.increment_cycle_count(timing::cycles::MOVS)
         }
     }
 
@@ -200,7 +200,7 @@ impl Cpu {
     /// then increments/decrements SI and DI based on DF.
     /// Does not store the result, only affects flags.
     /// Note: Segment override can apply to source (DS:SI) but not destination (ES:DI is hardcoded)
-    pub(in crate::cpu) fn cmps(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn cmps(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         // Handle repeat prefix
@@ -218,9 +218,9 @@ impl Cpu {
                 // Calculate actual iterations performed
                 let iterations = start_cx - self.cx;
                 // REP CMPS: 9 + 22*count cycles
-                self.cycle_count = self.cycle_count.wrapping_add(
+                bus.increment_cycle_count(
                     timing::cycles::REP_CMPS_BASE
-                        + (timing::cycles::REP_CMPS_PER_ITER * iterations as u64),
+                        + (timing::cycles::REP_CMPS_PER_ITER * iterations as u32),
                 );
             }
             Some(RepeatPrefix::Repne) => {
@@ -236,17 +236,15 @@ impl Cpu {
                 // Calculate actual iterations performed
                 let iterations = start_cx - self.cx;
                 // REP CMPS: 9 + 22*count cycles
-                self.cycle_count = self.cycle_count.wrapping_add(
+                bus.increment_cycle_count(
                     timing::cycles::REP_CMPS_BASE
-                        + (timing::cycles::REP_CMPS_PER_ITER * iterations as u64),
+                        + (timing::cycles::REP_CMPS_PER_ITER * iterations as u32),
                 );
             }
             None => {
                 self.cmps_once(is_word, bus);
                 // CMPS (no REP): 22 cycles
-                self.cycle_count = self
-                    .cycle_count
-                    .wrapping_add(self.cycle_count.wrapping_add(timing::cycles::CMPS))
+                bus.increment_cycle_count(timing::cycles::CMPS);
             }
         }
     }
@@ -301,7 +299,7 @@ impl Cpu {
     ///
     /// Compares AL/AX with ES:DI (subtracts ES:DI from AL/AX), sets flags,
     /// then increments/decrements DI based on DF.
-    pub(in crate::cpu) fn scas(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn scas(&mut self, opcode: u8, bus: &mut Bus) {
         let is_word = opcode & 0x01 != 0;
 
         // Handle repeat prefix
@@ -319,9 +317,9 @@ impl Cpu {
                 // Calculate actual iterations performed
                 let iterations = start_cx - self.cx;
                 // REP SCAS: 9 + 15*count cycles
-                self.cycle_count = self.cycle_count.wrapping_add(
+                bus.increment_cycle_count(
                     timing::cycles::REP_SCAS_BASE
-                        + (timing::cycles::REP_SCAS_PER_ITER * iterations as u64),
+                        + (timing::cycles::REP_SCAS_PER_ITER * iterations as u32),
                 );
             }
             Some(RepeatPrefix::Repne) => {
@@ -337,15 +335,15 @@ impl Cpu {
                 // Calculate actual iterations performed
                 let iterations = start_cx - self.cx;
                 // REP SCAS: 9 + 15*count cycles
-                self.cycle_count = self.cycle_count.wrapping_add(
+                bus.increment_cycle_count(
                     timing::cycles::REP_SCAS_BASE
-                        + (timing::cycles::REP_SCAS_PER_ITER * iterations as u64),
+                        + (timing::cycles::REP_SCAS_PER_ITER * iterations as u32),
                 );
             }
             None => {
                 self.scas_once(is_word, bus);
                 // SCAS (no REP): 15 cycles
-                self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::SCAS)
+                bus.increment_cycle_count(timing::cycles::SCAS)
             }
         }
     }
@@ -436,11 +434,11 @@ impl Cpu {
 
     /// STD - Set Direction Flag (opcode FD)
     /// Sets DF to 1, causing string operations to decrement SI/DI (backward direction)
-    pub(in crate::cpu) fn std_flag(&mut self) {
+    pub(in crate::cpu) fn std_flag(&mut self, bus: &mut Bus) {
         self.set_flag(cpu_flag::DIRECTION, true);
 
         // STD: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::FLAG_OPS)
+        bus.increment_cycle_count(timing::cycles::FLAG_OPS)
     }
 
     /// INS - Input String from Port (opcodes 6C-6D)

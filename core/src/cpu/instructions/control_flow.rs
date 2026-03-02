@@ -7,11 +7,11 @@ use crate::{
 impl Cpu {
     /// HLT - Halt (opcode F4)
     /// Stops instruction execution until a hardware interrupt occurs
-    pub(in crate::cpu) fn hlt(&mut self) {
+    pub(in crate::cpu) fn hlt(&mut self, bus: &mut Bus) {
         self.halted = true;
 
         // HLT: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::HLT)
+        bus.increment_cycle_count(timing::cycles::HLT)
     }
 
     /// INT - Software Interrupt (opcode CD)
@@ -35,7 +35,7 @@ impl Cpu {
         self.cs = segment;
 
         // INT: 51 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::INT)
+        bus.increment_cycle_count(timing::cycles::INT)
     }
 
     /// IRET - Interrupt Return (opcode CF)
@@ -52,7 +52,7 @@ impl Cpu {
         self.flags = (new_flags & 0x0FFF) | 0x0002;
 
         // IRET: 24 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::IRET)
+        bus.increment_cycle_count(timing::cycles::IRET)
     }
 
     /// CALL near relative (opcode E8)
@@ -65,9 +65,7 @@ impl Cpu {
         self.ip = self.ip.wrapping_add(offset as u16);
 
         // CALL near direct: 19 cycles
-        self.cycle_count = self
-            .cycle_count
-            .wrapping_add(timing::cycles::CALL_NEAR_DIRECT)
+        bus.increment_cycle_count(timing::cycles::CALL_NEAR_DIRECT);
     }
 
     /// CALL indirect (opcode FF)
@@ -85,7 +83,7 @@ impl Cpu {
                 self.ip = offset;
 
                 // CALL near indirect: 16 cycles (reg), 21+EA (mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+                bus.increment_cycle_count(if mode == 0b11 {
                     timing::cycles::CALL_NEAR_INDIRECT_REG
                 } else {
                     timing::cycles::CALL_NEAR_INDIRECT_MEM
@@ -105,7 +103,7 @@ impl Cpu {
                 self.cs = segment;
 
                 // CALL far indirect: 37+EA cycles
-                self.cycle_count = self.cycle_count.wrapping_add(
+                bus.increment_cycle_count(
                     timing::cycles::CALL_FAR_INDIRECT_MEM
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some()),
                 );
@@ -131,7 +129,7 @@ impl Cpu {
         self.sp = self.sp.wrapping_add(bytes_to_pop);
 
         // RET near: 8 cycles (C3), 12 cycles (C2 with pop)
-        self.cycle_count = self.cycle_count.wrapping_add(if opcode == 0xC2 {
+        bus.increment_cycle_count(if opcode == 0xC2 {
             timing::cycles::RET_NEAR_POP
         } else {
             timing::cycles::RET_NEAR
@@ -140,18 +138,18 @@ impl Cpu {
 
     /// JMP short relative (opcode EB)
     /// Jump to IP + signed 8-bit displacement
-    pub(in crate::cpu) fn jmp_short(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn jmp_short(&mut self, bus: &mut Bus) {
         let offset = self.fetch_byte(bus) as i8;
         self.ip = self.ip.wrapping_add(offset as i16 as u16);
 
         // JMP short: 15 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::JMP_SHORT)
+        bus.increment_cycle_count(timing::cycles::JMP_SHORT)
     }
 
     /// JMP indirect (opcode FF)
     /// FF /4: JMP r/m16 (near indirect)
     /// FF /5: JMP m16:16 (far indirect)
-    pub(in crate::cpu) fn jmp_indirect(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn jmp_indirect(&mut self, bus: &mut Bus) {
         let modrm = self.fetch_byte(bus);
         let (mode, operation, rm, addr, _seg) = self.decode_modrm(modrm, bus);
 
@@ -162,7 +160,7 @@ impl Cpu {
                 self.ip = offset;
 
                 // JMP near indirect: 11 cycles (reg), 18+EA (mem)
-                self.cycle_count = self.cycle_count.wrapping_add(if mode == 0b11 {
+                bus.increment_cycle_count(if mode == 0b11 {
                     timing::cycles::JMP_NEAR_INDIRECT_REG
                 } else {
                     timing::cycles::JMP_NEAR_INDIRECT_MEM
@@ -180,7 +178,7 @@ impl Cpu {
                 self.cs = segment;
 
                 // JMP far indirect: 24+EA cycles
-                self.cycle_count = self.cycle_count.wrapping_add(
+                bus.increment_cycle_count(
                     timing::cycles::JMP_FAR_INDIRECT_MEM
                         + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some()),
                 );
@@ -191,7 +189,7 @@ impl Cpu {
 
     /// Conditional jumps - short relative (opcodes 70-7F)
     /// Jump to IP + signed 8-bit displacement if condition is met
-    pub(in crate::cpu) fn jmp_conditional(&mut self, opcode: u8, bus: &Bus) {
+    pub(in crate::cpu) fn jmp_conditional(&mut self, opcode: u8, bus: &mut Bus) {
         let offset = self.fetch_byte(bus) as i8;
 
         let condition = match opcode {
@@ -223,20 +221,16 @@ impl Cpu {
         if condition {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
             // Conditional jump taken: 16 cycles
-            self.cycle_count = self
-                .cycle_count
-                .wrapping_add(timing::cycles::CONDITIONAL_JUMP_TAKEN)
+            bus.increment_cycle_count(timing::cycles::CONDITIONAL_JUMP_TAKEN)
         } else {
             // Conditional jump not taken: 4 cycles
-            self.cycle_count = self
-                .cycle_count
-                .wrapping_add(timing::cycles::CONDITIONAL_JUMP_NOT_TAKEN)
+            bus.increment_cycle_count(timing::cycles::CONDITIONAL_JUMP_NOT_TAKEN)
         }
     }
 
     /// CWD - Convert Word to Double word (opcode 99)
     /// Sign-extends AX into DX:AX
-    pub(in crate::cpu) fn cwd(&mut self) {
+    pub(in crate::cpu) fn cwd(&mut self, bus: &mut Bus) {
         if (self.ax & 0x8000) != 0 {
             // Negative - extend with 1s
             self.dx = 0xFFFF;
@@ -246,97 +240,89 @@ impl Cpu {
         }
 
         // CWD: 5 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::CWD)
+        bus.increment_cycle_count(timing::cycles::CWD)
     }
 
     /// LOOPE/LOOPZ - Loop while CX != 0 and ZF = 1 (opcode E1)
     /// Decrements CX and jumps if CX != 0 and ZF = 1
-    pub(in crate::cpu) fn loope(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn loope(&mut self, bus: &mut Bus) {
         let offset = self.fetch_byte(bus) as i8;
         self.cx = self.cx.wrapping_sub(1);
         if self.cx != 0 && self.get_flag(cpu_flag::ZERO) {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
             // LOOPE taken: 18 cycles
-            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::LOOPE_TAKEN)
+            bus.increment_cycle_count(timing::cycles::LOOPE_TAKEN)
         } else {
             // LOOPE not taken: 6 cycles
-            self.cycle_count = self
-                .cycle_count
-                .wrapping_add(timing::cycles::LOOPE_NOT_TAKEN)
+            bus.increment_cycle_count(timing::cycles::LOOPE_NOT_TAKEN)
         }
     }
 
     /// LOOPNE/LOOPNZ - Loop while CX != 0 and ZF = 0 (opcode E0)
     /// Decrements CX and jumps if CX != 0 and ZF = 0
-    pub(in crate::cpu) fn loopne(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn loopne(&mut self, bus: &mut Bus) {
         let offset = self.fetch_byte(bus) as i8;
         self.cx = self.cx.wrapping_sub(1);
         if self.cx != 0 && !self.get_flag(cpu_flag::ZERO) {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
             // LOOPNE taken: 19 cycles
-            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::LOOPNE_TAKEN)
+            bus.increment_cycle_count(timing::cycles::LOOPNE_TAKEN)
         } else {
             // LOOPNE not taken: 5 cycles
-            self.cycle_count = self
-                .cycle_count
-                .wrapping_add(timing::cycles::LOOPNE_NOT_TAKEN)
+            bus.increment_cycle_count(timing::cycles::LOOPNE_NOT_TAKEN)
         }
     }
 
     /// CBW - Convert Byte to Word (opcode 98)
     /// Sign-extends AL into AX
-    pub(in crate::cpu) fn cbw(&mut self) {
+    pub(in crate::cpu) fn cbw(&mut self, bus: &mut Bus) {
         let al = (self.ax & 0xFF) as i8;
         self.ax = al as i16 as u16;
 
         // CBW: 2 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::CBW)
+        bus.increment_cycle_count(timing::cycles::CBW)
     }
 
     /// LOOP - Loop while CX != 0 (opcode E2)
     /// Decrements CX and jumps if CX != 0
-    pub(in crate::cpu) fn loop_inst(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn loop_inst(&mut self, bus: &mut Bus) {
         let offset = self.fetch_byte(bus) as i8;
         self.cx = self.cx.wrapping_sub(1);
         if self.cx != 0 {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
             // LOOP taken: 17 cycles
-            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::LOOP_TAKEN)
+            bus.increment_cycle_count(timing::cycles::LOOP_TAKEN)
         } else {
             // LOOP not taken: 5 cycles
-            self.cycle_count = self
-                .cycle_count
-                .wrapping_add(timing::cycles::LOOP_NOT_TAKEN)
+            bus.increment_cycle_count(timing::cycles::LOOP_NOT_TAKEN)
         }
     }
 
     /// JCXZ - Jump if CX is Zero (opcode E3)
     /// Jumps if CX = 0
-    pub(in crate::cpu) fn jcxz(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn jcxz(&mut self, bus: &mut Bus) {
         let offset = self.fetch_byte(bus) as i8;
         if self.cx == 0 {
             self.ip = self.ip.wrapping_add(offset as i16 as u16);
             // JCXZ taken: 18 cycles
-            self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::JCXZ_TAKEN)
+            bus.increment_cycle_count(timing::cycles::JCXZ_TAKEN)
         } else {
             // JCXZ not taken: 6 cycles
-            self.cycle_count = self
-                .cycle_count
-                .wrapping_add(timing::cycles::JCXZ_NOT_TAKEN)
+            bus.increment_cycle_count(timing::cycles::JCXZ_NOT_TAKEN)
         }
     }
 
     /// ESC - Escape to coprocessor (opcodes D8-DF)
     /// Passes instruction to 8087 FPU. Without a coprocessor, this is a NOP
     /// that reads the ModR/M byte and any displacement to maintain bus timing.
-    pub(in crate::cpu) fn esc(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn esc(&mut self, bus: &mut Bus) {
         let modrm = self.fetch_byte(bus);
         // Decode ModR/M to consume any displacement bytes
         let _ = self.decode_modrm(modrm, bus);
         // No operation - 8087 coprocessor not emulated
 
         // ESC: 2 cycles (no coprocessor)
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::ESC)
+        bus.increment_cycle_count(timing::cycles::ESC)
     }
 
     /// ENTER - Make Stack Frame (opcode C8, 80186+)
@@ -369,10 +355,10 @@ impl Cpu {
         self.bp = frame_temp;
         self.sp = self.sp.wrapping_sub(size);
 
-        self.cycle_count = self.cycle_count.wrapping_add(if level == 0 {
+        bus.increment_cycle_count(if level == 0 {
             timing::cycles::ENTER_LEVEL0
         } else {
-            timing::cycles::ENTER_LEVEL_BASE + timing::cycles::ENTER_LEVEL_PER * level as u64
+            timing::cycles::ENTER_LEVEL_BASE + timing::cycles::ENTER_LEVEL_PER * level as u32
         });
     }
 
@@ -392,33 +378,29 @@ impl Cpu {
         self.cs = segment;
 
         // INT 3: 52 cycles
-        self.cycle_count = self.cycle_count.wrapping_add(timing::cycles::INT3)
+        bus.increment_cycle_count(timing::cycles::INT3)
     }
 
     /// JMP near relative (opcode E9)
     /// Jump to IP + signed 16-bit displacement
-    pub(in crate::cpu) fn jmp_near(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn jmp_near(&mut self, bus: &mut Bus) {
         let offset = self.fetch_word(bus) as i16;
         self.ip = self.ip.wrapping_add(offset as u16);
 
         // JMP near direct: 15 cycles
-        self.cycle_count = self
-            .cycle_count
-            .wrapping_add(timing::cycles::JMP_NEAR_DIRECT)
+        bus.increment_cycle_count(timing::cycles::JMP_NEAR_DIRECT)
     }
 
     /// JMP far direct (opcode EA)
     /// Jump to far address (segment:offset)
-    pub(in crate::cpu) fn jmp_far(&mut self, bus: &Bus) {
+    pub(in crate::cpu) fn jmp_far(&mut self, bus: &mut Bus) {
         let offset = self.fetch_word(bus);
         let segment = self.fetch_word(bus);
         self.ip = offset;
         self.cs = segment;
 
         // JMP far direct: 15 cycles
-        self.cycle_count = self
-            .cycle_count
-            .wrapping_add(timing::cycles::JMP_FAR_DIRECT)
+        bus.increment_cycle_count(timing::cycles::JMP_FAR_DIRECT)
     }
 
     /// RET far (opcodes CA, CB)
@@ -441,7 +423,7 @@ impl Cpu {
         self.sp = self.sp.wrapping_add(bytes_to_pop);
 
         // RET far: 18 cycles (CB), 17 cycles (CA with pop)
-        self.cycle_count = self.cycle_count.wrapping_add(if opcode == 0xCA {
+        bus.increment_cycle_count(if opcode == 0xCA {
             timing::cycles::RET_FAR_POP
         } else {
             timing::cycles::RET_FAR
