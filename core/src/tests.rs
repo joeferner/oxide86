@@ -6,28 +6,31 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, RwLock};
 
-    use crate::computer::ComputerConfig;
-    use crate::cpu::CpuType;
-    use crate::devices::rtc::tests::MockClock;
     use crate::video::video_buffer::RenderResult;
-    use crate::{
-        computer::Computer,
-        video::{VideoBuffer, VideoCard},
-    };
+    use crate::{computer::Computer, video::VideoBuffer};
 
     const TEST_SEGMENT: u16 = 0x1000;
     const TEST_OFFSET: u16 = 0x0100;
 
+    macro_rules! make_computer {
+        ($($key:ident: $val:expr),* $(,)?) => {{
+            #[allow(unused_mut)]
+            let mut config = $crate::computer::ComputerConfig {
+                clock: Box::new($crate::devices::rtc::tests::MockClock::new()),
+                clock_speed: 8_000_000,
+                cpu_type: $crate::cpu::CpuType::I8086,
+                memory_size: 2048 * 1024,
+            };
+            $(config.$key = $val;)*
+            let video_buffer = std::sync::Arc::new(std::sync::RwLock::new($crate::video::VideoBuffer::new()));
+            let mut computer = $crate::computer::Computer::new(config);
+            computer.add_device($crate::video::VideoCard::new(video_buffer.clone()));
+            (computer, video_buffer)
+        }};
+    }
+
     fn create_computer() -> (Computer, Arc<RwLock<VideoBuffer>>) {
-        let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
-        let mut computer = Computer::new(ComputerConfig {
-            clock: Box::new(MockClock::new()),
-            clock_speed: 8_000_000,
-            cpu_type: CpuType::I80286,
-            memory_size: 2048 * 1024,
-        });
-        computer.add_device(VideoCard::new(video_buffer.clone()));
-        (computer, video_buffer)
+        make_computer!()
     }
 
     fn load_data(name: &str) -> (Vec<u8>, Option<RenderResult>) {
@@ -80,19 +83,24 @@ mod tests {
         }
     }
 
-    fn run_test_with_interaction(name: &str, f: fn(&mut Computer)) {
+    fn run_test_configured(
+        name: &str,
+        (mut computer, video_buffer): (Computer, Arc<RwLock<VideoBuffer>>),
+        f: fn(&mut Computer),
+    ) {
         let (program_data, expected_screen) = load_data(name);
-
-        let (mut computer, video_buffer) = create_computer();
         computer
             .load_program(&program_data, TEST_SEGMENT, TEST_OFFSET)
             .unwrap();
         f(&mut computer);
-
         if let Some(expected_screen) = expected_screen {
             assert_screen(name, expected_screen, video_buffer);
         }
         assert_eq!(Some(0), computer.get_exit_code());
+    }
+
+    fn run_test_with_interaction(name: &str, f: fn(&mut Computer)) {
+        run_test_configured(name, create_computer(), f);
     }
 
     fn run_test(name: &str) {
@@ -126,26 +134,43 @@ mod tests {
 
         mod bios {
             mod int1a {
-                use crate::tests::tests::run_test;
+                use crate::cpu::CpuType;
+                use crate::tests::tests::run_test_configured;
 
                 #[test_log::test]
                 pub fn rtc_date() {
-                    run_test("cpu/bios/int1a/rtc_date");
+                    run_test_configured(
+                        "cpu/bios/int1a/rtc_date",
+                        make_computer!(cpu_type: CpuType::I80286),
+                        |c| c.run(),
+                    );
                 }
 
                 #[test_log::test]
                 pub fn rtc_time() {
-                    run_test("cpu/bios/int1a/rtc_time");
+                    run_test_configured(
+                        "cpu/bios/int1a/rtc_time",
+                        make_computer!(cpu_type: CpuType::I80286),
+                        |c| c.run(),
+                    );
                 }
 
                 #[test_log::test]
                 pub fn rtc_set() {
-                    run_test("cpu/bios/int1a/rtc_set");
+                    run_test_configured(
+                        "cpu/bios/int1a/rtc_set",
+                        make_computer!(cpu_type: CpuType::I80286),
+                        |c| c.run(),
+                    );
                 }
 
                 #[test_log::test]
                 pub fn tick_count() {
-                    run_test("cpu/bios/int1a/tick_count");
+                    run_test_configured(
+                        "cpu/bios/int1a/tick_count",
+                        make_computer!(cpu_type: CpuType::I80286),
+                        |c| c.run(),
+                    );
                 }
             }
         }
