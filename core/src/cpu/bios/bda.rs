@@ -80,6 +80,12 @@ pub const BDA_KEYBOARD_FLAGS1_LEFT_SHIFT: u8 = 0x02; // Left Shift key pressed
 /// Timer ticks per 24-hour day at 18.2065 Hz (1,193,182 Hz ÷ 65,536)
 const TICKS_PER_DAY: u32 = 0x0018_00B0; // 1,573,040
 
+pub struct SystemTime {
+    pub low_word: u16,
+    pub high_word: u16,
+    pub midnight_flag: u8,
+}
+
 pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // COM port addresses (0x0040:0000 - 4 words)
     // Standard COM port I/O addresses
@@ -310,10 +316,17 @@ pub fn bda_get_equipment_list(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_EQUIPMENT_LIST)
 }
 
-pub struct SystemTime {
-    pub low_word: u16,
-    pub high_word: u16,
-    pub midnight_flag: u8,
+pub fn bda_set_timer_counter(bus: &mut Bus, low_word: u16, high_word: u16) {
+    // Write timer counter to BDA (4 bytes, little-endian)
+    let counter_addr = BDA_START + BDA_TIMER_COUNTER;
+    bus.memory_write_u16(counter_addr, low_word); // Low word
+    bus.memory_write_u16(counter_addr + 2, high_word); // High word
+}
+
+pub fn bda_clear_midnight_overflow(bus: &mut Bus) {
+    // Clear midnight overflow flag when setting time
+    let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
+    bus.memory_write_u8(overflow_addr, 0);
 }
 
 pub fn bda_get_system_time(bus: &Bus) -> SystemTime {
@@ -330,14 +343,6 @@ pub fn bda_get_system_time(bus: &Bus) -> SystemTime {
         high_word,
         midnight_flag,
     }
-}
-
-pub fn bda_get_com_port_address(bus: &Bus, port: u8) -> u16 {
-    bus.memory_read_u16(BDA_START + BDA_COM_PORTS + port as usize * 2)
-}
-
-pub fn bda_clear_timer_overflow(bus: &mut Bus) {
-    bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0);
 }
 
 /// Increment the BDA timer counter by one tick.
@@ -359,6 +364,14 @@ pub fn bda_increment_timer_counter(bus: &mut Bus) {
 
     bus.memory_write_u16(counter_addr, (new_counter & 0xFFFF) as u16);
     bus.memory_write_u16(counter_addr + 2, ((new_counter >> 16) & 0xFFFF) as u16);
+}
+
+pub fn bda_get_com_port_address(bus: &Bus, port: u8) -> u16 {
+    bus.memory_read_u16(BDA_START + BDA_COM_PORTS + port as usize * 2)
+}
+
+pub fn bda_clear_timer_overflow(bus: &mut Bus) {
+    bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0);
 }
 
 pub fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {

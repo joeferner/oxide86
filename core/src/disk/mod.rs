@@ -12,7 +12,7 @@ pub use disk_error::DiskError;
 pub use disk_geometry::DiskGeometry;
 pub use drive_number::DriveNumber;
 
-use crate::{bus::Bus, cpu::bios::int13_disk_services::DriveParams};
+use crate::bus::Bus;
 
 /// Backend trait for disk storage operations.
 /// Implemented by platform-specific code (native uses File, WASM uses callbacks).
@@ -57,37 +57,4 @@ pub fn disk_read_sectors(
     } else {
         Err(DiskError::DriveNotReady)
     }
-}
-
-pub fn disk_get_params(bus: &Bus, drive: DriveNumber) -> Result<DriveParams, DiskError> {
-    let disk_controller = bus
-        .find_disk_controller(drive)
-        .ok_or(DiskError::DriveNotReady)?;
-
-    let geometry = disk_controller.borrow().disk_geometry();
-
-    // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
-    // TODO verify how CD-ROM should be handled
-    let drive_count = if drive.is_floppy() {
-        disk_floppy_drives_with_disk_count(bus)
-    } else {
-        disk_hard_drive_count(bus)
-    };
-
-    Ok(DriveParams {
-        max_cylinder: (geometry.cylinders - 1).min(255) as u8,
-        max_head: (geometry.heads - 1).min(255) as u8,
-        max_sector: geometry.sectors_per_track.min(255) as u8,
-        drive_count,
-    })
-}
-
-pub fn disk_floppy_drives_with_disk_count(_bus: &Bus) -> u8 {
-    // TODO write me
-    1
-}
-
-pub fn disk_hard_drive_count(_bus: &Bus) -> u8 {
-    // TODO write me
-    0
 }

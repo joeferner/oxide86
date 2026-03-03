@@ -9,7 +9,13 @@ use anyhow::Result;
 use crate::{
     Device, DeviceRef,
     cpu::bios::bios_reset,
-    devices::{keyboard_controller::KeyboardController, pic::PIC, pit::PIT, uart::UART},
+    devices::{
+        keyboard_controller::KeyboardController,
+        pic::PIC,
+        pit::PIT,
+        rtc::{Clock, RTC},
+        uart::UART,
+    },
     disk::{DiskController, DriveNumber},
     memory::Memory,
     video::VideoCard,
@@ -33,8 +39,10 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(memory: Memory, cpu_clock_speed: u32) -> Self {
+    pub fn new(memory: Memory, cpu_clock_speed: u32, clock: Box<dyn Clock>) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
+        // TODO don't add RTC if 8086 since 8086 didn't have an RTC
+        let rtc = Rc::new(RefCell::new(RTC::new(clock)));
         let pit = Rc::new(RefCell::new(PIT::new(cpu_clock_speed)));
         let uart = Rc::new(RefCell::new(UART::new()));
         let pic = Rc::new(RefCell::new(PIC::new(
@@ -48,6 +56,7 @@ impl Bus {
                 pit.clone(),
                 keyboard_controller.clone(),
                 uart.clone(),
+                rtc,
             ],
             disk_controllers: vec![],
             pic,

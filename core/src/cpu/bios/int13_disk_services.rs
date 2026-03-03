@@ -1,22 +1,9 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, cpu_flag},
-    disk::{DiskError, DriveNumber, disk_get_params, disk_read_sectors},
+    disk::{DiskError, DriveNumber, disk_read_sectors},
     physical_address,
 };
-
-/// Drive parameters returned by INT 13h, AH=08h
-#[derive(Debug, Clone, Copy)]
-pub struct DriveParams {
-    /// Maximum cylinder number (0-based)
-    pub max_cylinder: u8,
-    /// Maximum head number (0-based)
-    pub max_head: u8,
-    /// Maximum sector number (1-based)
-    pub max_sector: u8,
-    /// Number of drives
-    pub drive_count: u8,
-}
 
 impl Cpu {
     /// INT 0x13 - BIOS Disk Services
@@ -34,8 +21,10 @@ impl Cpu {
 
         match function {
             0x00 => self.int13_reset_disk(bus),
+            0x01 => self.int13_get_status(),
             0x02 => self.int13_read_sectors(bus),
             0x08 => self.int13_get_drive_params(bus),
+            0x15 => self.int13_get_disk_type(bus),
             _ => {
                 log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -114,6 +103,24 @@ impl Cpu {
         }
     }
 
+    /// INT 13h, AH=01h - Get Status of Last Disk Operation
+    /// Input:
+    ///   AH = 0x01
+    ///   DL = drive number (optional, some implementations ignore it)
+    /// Output:
+    ///   AH = status code of last disk operation (0x00 = success, or error code)
+    ///   CF = cleared (always - the status retrieval itself succeeds)
+    fn int13_get_status(&mut self) {
+        // Return the last disk status
+        let status = self.last_disk_status;
+
+        // Set AH to the last status
+        self.ax = (self.ax & 0x00FF) | ((status as u16) << 8);
+
+        // Always clear carry flag - the status retrieval itself succeeds
+        self.set_flag(cpu_flag::CARRY, false);
+    }
+
     /// INT 13h, AH=02h - Read Sectors into Memory
     /// Input:
     ///   AL = number of sectors to read (1-128)
@@ -182,26 +189,90 @@ impl Cpu {
     fn int13_get_drive_params(&mut self, bus: &Bus) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
-        match disk_get_params(bus, drive) {
-            Ok(params) => {
+        match bus.find_disk_controller(drive) {
+            Some(disk_controller) => {
+                let geometry = disk_controller.borrow().disk_geometry();
+
+                // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
+                // TODO verify how CD-ROM should be handled
+                let drive_count = if drive.is_floppy() { 1 } else { 0 };
+                let max_cylinder = (geometry.cylinders - 1).min(255) as u8;
+                let max_head = (geometry.heads - 1).min(255) as u8;
+                let max_sector = geometry.sectors_per_track.min(255) as u8;
+
                 // Pack cylinder into CH and CL
-                let cylinder = params.max_cylinder as u16;
+                let cylinder = max_cylinder as u16;
                 let cylinder_low = (cylinder & 0xFF) as u8;
                 let cylinder_high = ((cylinder >> 8) & 0x03) as u8;
 
                 // Pack sector and cylinder high bits into CL
-                let cl = (params.max_sector & 0x3F) | (cylinder_high << 6);
+                let cl = (max_sector & 0x3F) | (cylinder_high << 6);
 
                 self.cx = ((cylinder_low as u16) << 8) | (cl as u16); // CH:CL
-                self.dx = ((params.max_head as u16) << 8) | (params.drive_count as u16); // DH:DL
+                self.dx = ((max_head as u16) << 8) | (drive_count as u16); // DH:DL
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
                 self.last_disk_status = DiskError::Success as u8;
             }
-            Err(error_code) => {
-                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
+            None => {
+                self.ax = (self.ax & 0x00FF) | ((DiskError::DriveNotReady as u16) << 8); // AH = error code
                 self.set_flag(cpu_flag::CARRY, true);
-                self.last_disk_status = error_code as u8;
+                self.last_disk_status = DiskError::DriveNotReady as u8;
+            }
+        }
+    }
+
+    /// INT 13h, AH=15h - Get Disk Type
+    /// Input:
+    ///   DL = drive number (0x00-0x7F for floppies, 0x80-0xFF for hard disks)
+    /// Output:
+    ///   AH = drive type:
+    ///     0x00 = drive not present
+    ///     0x01 = floppy disk drive without change-line support
+    ///     0x02 = floppy disk drive with change-line support
+    ///     0x03 = fixed disk (hard disk)
+    ///   CF = clear if drive exists, set if drive does not exist
+    ///   For type 0x03 (fixed disk):
+    ///     CX:DX = number of 512-byte sectors (32-bit value, CX=high word, DX=low word)
+    fn int13_get_disk_type(&mut self, bus: &Bus) {
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
+
+        // Drive type:
+        // 0x00 = not present
+        // 0x01 = floppy without change-line support
+        // 0x02 = floppy with change-line support
+        // 0x03 = fixed disk (hard drive)
+        let drive_type = if drive.is_floppy() {
+            0x02 // Floppy with change-line support
+        } else {
+            0x03 // Fixed disk
+        };
+
+        match bus.find_disk_controller(drive) {
+            Some(disk_controller) => {
+                let geometry = disk_controller.borrow().disk_geometry();
+                let sector_count = geometry.total_sectors() as u32;
+
+                // Set AH = drive type
+                self.ax = (self.ax & 0x00FF) | ((drive_type as u16) << 8);
+
+                // If it's a fixed disk (type 0x03), set CX:DX to sector count
+                if drive_type == 0x03 {
+                    let high_word = ((sector_count >> 16) & 0xFFFF) as u16;
+                    let low_word = (sector_count & 0xFFFF) as u16;
+                    self.cx = high_word;
+                    self.dx = low_word;
+                }
+
+                // Clear carry flag (drive exists)
+                self.set_flag(cpu_flag::CARRY, false);
+                self.last_disk_status = DiskError::Success as u8;
+            }
+            None => {
+                // Drive not present
+                self.ax &= 0x00FF; // AH = 0x00 (drive not present)
+                self.set_flag(cpu_flag::CARRY, true);
+                self.last_disk_status = DiskError::InvalidCommand as u8;
             }
         }
     }

@@ -2,7 +2,8 @@
 - [X] Get a working hello world using int21 - write string
 - [X] Get a working cpu/op8086.asm
 - [X] Get MS-DOS 2.12 Working
-- [ ] Update cpu/op8086.asm to log to COM4 as well, update unit tests to verify COM4
+- [X] Get MS-DOS 3.31 Working
+- [ ] Improve CLI render speed by not set FG/BG if they haven't changed
 - [ ] Add unit tests for current batch of instructions
 - [ ] Check code coverage of instructions
 - [ ] Add Keyboard/PIC support
