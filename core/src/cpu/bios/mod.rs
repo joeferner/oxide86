@@ -739,25 +739,6 @@ impl Bios {
         ports_with_interrupts
     }
 
-    // Serial port INT 14h services
-    pub fn serial_init(&mut self, port: u8, params: SerialParams) -> SerialStatus {
-        if port > 1 {
-            return SerialStatus {
-                line_status: crate::serial_port::line_status::TIMEOUT,
-                modem_status: 0,
-            };
-        }
-
-        self.serial_ports[port as usize].on_init(params);
-
-        SerialStatus {
-            line_status: crate::serial_port::line_status::TRANSMIT_HOLDING_EMPTY
-                | crate::serial_port::line_status::TRANSMIT_SHIFT_EMPTY,
-            modem_status: crate::serial_port::modem_status::DATA_SET_READY
-                | crate::serial_port::modem_status::CLEAR_TO_SEND,
-        }
-    }
-
     pub fn serial_write(&mut self, port: u8, ch: u8) -> u8 {
         if port > 1 {
             return crate::serial_port::line_status::TIMEOUT;
@@ -892,8 +873,6 @@ impl Cpu {
             0x11 => self.handle_int11(bus),
             0x12 => self.handle_int12(bus),
             0x13 => self.handle_int13(bus, io),
-            0x14 => self.handle_int14(io),
-            0x15 => self.handle_int15(bus, cpu_type),
             0x16 => self.handle_int16(bus, io),
             0x17 => self.handle_int17(io),
             0x1A => self.handle_int1a(bus, io),

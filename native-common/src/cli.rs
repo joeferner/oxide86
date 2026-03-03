@@ -27,10 +27,6 @@ pub struct CommonCli {
     #[arg(long = "int-log")]
     pub int_log: bool,
 
-    /// CPU clock speed in MHz (default: 8 for a standard 286)
-    #[arg(long, default_value = "8")]
-    pub speed: f64,
-
     /// Memory size in KB (default: 1024; conventional memory capped at 640 KB,
     /// extended memory = memory - 1024 KB on 286+ CPUs)
     #[arg(long, default_value = "1024", value_name = "KB")]

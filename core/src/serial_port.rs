@@ -41,37 +41,6 @@ pub mod line_control {
     pub const DLAB: u8 = 0x80; // Bit 7: Divisor Latch Access Bit
 }
 
-/// Serial port parameters (from INT 14h AH=00h)
-#[derive(Debug, Clone, Copy)]
-pub struct SerialParams {
-    pub baud_rate: u8, // Bits 7-5: 000=110, 001=150, 010=300, 011=600, 100=1200, 101=2400, 110=4800, 111=9600
-    pub parity: u8,    // Bits 4-3: 00=none, 01=odd, 10=none, 11=even
-    pub stop_bits: u8, // Bit 2: 0=1 stop bit, 1=2 stop bits
-    pub word_length: u8, // Bits 1-0: 10=7 bits, 11=8 bits
-}
-
-impl SerialParams {
-    pub fn from_int14_al(al: u8) -> Self {
-        Self {
-            baud_rate: (al >> 5) & 0x07,
-            parity: (al >> 3) & 0x03,
-            stop_bits: (al >> 2) & 0x01,
-            word_length: al & 0x03,
-        }
-    }
-}
-
-impl Default for SerialParams {
-    fn default() -> Self {
-        Self {
-            baud_rate: 0x06,   // 4800 baud
-            parity: 0x00,      // No parity
-            stop_bits: 0x00,   // 1 stop bit
-            word_length: 0x03, // 8 bits
-        }
-    }
-}
-
 /// Serial port status (returned by INT 14h)
 #[derive(Debug, Clone, Copy)]
 pub struct SerialStatus {

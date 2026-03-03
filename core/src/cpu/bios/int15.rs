@@ -5,7 +5,7 @@ use crate::{
 
 impl Cpu {
     pub(super) fn handle_int15(&mut self, bus: &mut Bus, cpu_type: CpuType) {
-        let function = (self.ax >> 8) as u8; // Get AH
+        
         match function {
             0x24 => self.int15_a20_gate(bus),
             0x10 => self.int15_top_view_multi_dos(),
@@ -19,16 +19,12 @@ impl Cpu {
                 let extended_kb = cpu_max.min(installed);
                 self.int15_get_extended_memory(cpu_type, extended_kb);
             }
-            0xC0 => self.int15_get_system_config(bus),
+           
             0xC1 => self.int15_get_ebda_segment(),
             0x4F => self.int15_keyboard_intercept(),
             0x53 => self.int15_apm_not_present(),
             0xD8 => self.int15_eisa_not_supported(),
-            _ => {
-                log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
-                // Set carry flag to indicate function not supported
-                self.set_flag(cpu_flag::CARRY, true);
-            }
+         
         }
     }
 
@@ -177,52 +173,7 @@ impl Cpu {
         );
     }
 
-    /// INT 15h AH=C0h - Get System Configuration Parameters
-    ///
-    /// Output:
-    ///   ES:BX = pointer to system descriptor table
-    ///   CF = 0 if successful, 1 if not supported
-    ///
-    /// System Descriptor Table format:
-    ///   Offset 0-1: Table length in bytes (not including these 2 bytes)
-    ///   Offset 2: Model byte (0xFF for PC, 0xFE for XT, 0xFC for AT)
-    ///   Offset 3: Submodel byte
-    ///   Offset 4: BIOS revision level
-    ///   Offset 5: Feature information byte 1
-    ///   Offset 6: Feature information byte 2
-    ///   Offset 7: Feature information byte 3
-    ///   Offset 8: Feature information byte 4
-    ///   Offset 9: Feature information byte 5
-    fn int15_get_system_config(&mut self, bus: &mut Bus) {
-        // System descriptor table location: we'll use a fixed location
-        // Place it at 0xF000:0xE000 (in ROM BIOS area)
-        let table_segment = 0xF000;
-        let table_offset = 0xE000;
 
-        // Build system descriptor table
-        let table: [u8; 10] = [
-            0x08, 0x00, // Length: 8 bytes (not including length field)
-            0xFF, // Model byte: 0xFF = PC
-            0x00, // Submodel: 0 = PC
-            0x01, // BIOS revision: 1
-            0x00, // Feature byte 1: no special features
-            0x00, // Feature byte 2
-            0x00, // Feature byte 3
-            0x00, // Feature byte 4
-            0x00, // Feature byte 5
-        ];
-
-        // Write table to memory
-        let physical_addr = ((table_segment as usize) << 4) + table_offset as usize;
-        for (i, &byte) in table.iter().enumerate() {
-            bus.write_u8(physical_addr + i, byte);
-        }
-
-        // Return pointer in ES:BX
-        self.es = table_segment;
-        self.bx = table_offset;
-        self.set_flag(cpu_flag::CARRY, false);
-    }
 
     /// INT 15h AH=D8h - EISA System Functions (not supported)
     ///

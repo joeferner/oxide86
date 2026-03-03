@@ -360,9 +360,6 @@ impl Cpu {
             // OUTS - Output String to Port (6E-6F)
             0x6E..=0x6F => self.outs(opcode, bus, bios, io_device),
 
-            // CALL far (9A)
-            0x9A => self.call_far(bus),
-
             // LEAVE - High Level Procedure Exit (C9, 80186+)
             0xC9 => self.leave(bus),
 
