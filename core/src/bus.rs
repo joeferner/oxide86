@@ -32,12 +32,11 @@ pub struct Bus {
     pit: Rc<RefCell<PIT>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     uart: Rc<RefCell<UART>>,
+    rtc: Option<Rc<RefCell<RTC>>>,
     video_card: Option<Rc<RefCell<VideoCard>>>,
 
     /// Cycle count to accurately track CPU cycles
     cycle_count: u32,
-
-    has_rtc: bool,
 }
 
 impl Bus {
@@ -55,10 +54,13 @@ impl Bus {
             keyboard_controller.clone(),
             uart.clone(),
         ];
-        let has_rtc = clock.is_some();
-        if let Some(clock) = clock {
-            devices.push(Rc::new(RefCell::new(RTC::new(clock))));
-        }
+        let rtc = if let Some(clock) = clock {
+            let rtc = Rc::new(RefCell::new(RTC::new(clock)));
+            devices.push(rtc.clone());
+            Some(rtc)
+        } else {
+            None
+        };
         Self {
             memory,
             devices,
@@ -69,12 +71,20 @@ impl Bus {
             uart,
             video_card: None,
             cycle_count: 0,
-            has_rtc,
+            rtc,
         }
     }
 
     pub fn has_rtc(&self) -> bool {
-        self.has_rtc
+        self.rtc.is_some()
+    }
+
+    pub fn rtc(&self) -> Option<Ref<'_, RTC>> {
+        if let Some(rtc) = &self.rtc {
+            Some(rtc.borrow())
+        } else {
+            None
+        }
     }
 
     pub fn increment_cycle_count(&mut self, cycles: u32) {

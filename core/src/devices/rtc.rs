@@ -1,11 +1,12 @@
 use std::any::Any;
 
-use crate::Device;
+use crate::{Device, devices::pit::{PIT_DIVISOR, PIT_FREQUENCY_HZ}};
 
 pub const RTC_IO_PORT_REGISTER_SELECT: u16 = 0x0070;
 pub const RTC_IO_PORT_DATA: u16 = 0x0071;
 
 /// Local time components with sub-second precision.
+#[derive(Clone)]
 pub struct LocalTime {
     pub hours: u8,
     pub minutes: u8,
@@ -14,6 +15,7 @@ pub struct LocalTime {
 }
 
 /// Local date components.
+#[derive(Clone)]
 pub struct LocalDate {
     pub century: u8,
     pub year: u8,
@@ -42,6 +44,19 @@ impl RTC {
             clock,
             selected_register: 0,
         }
+    }
+
+    /// Returns the BDA timer counter value (ticks since midnight at ~18.2 Hz).
+    ///
+    /// Computed as: total_milliseconds_since_midnight * PIT_FREQUENCY_HZ / (PIT_DIVISOR * MS_PER_SECOND)
+    pub fn timer_counter(&self) -> u32 {
+        const MS_PER_SECOND: u64 = 1_000;
+
+        let time = self.clock.get_local_time();
+        let total_ms = (time.hours as u64 * 3_600 + time.minutes as u64 * 60 + time.seconds as u64)
+            * MS_PER_SECOND
+            + time.milliseconds as u64;
+        ((total_ms * PIT_FREQUENCY_HZ) / (PIT_DIVISOR * MS_PER_SECOND)) as u32
     }
 }
 
@@ -112,21 +127,37 @@ impl Device for RTC {
 pub mod tests {
     use crate::devices::rtc::{Clock, LocalDate, LocalTime};
 
-    pub struct MockClock {}
+    pub struct MockClock {
+        local_time: LocalTime,
+        local_date: LocalDate,
+    }
 
     impl MockClock {
         pub fn new() -> Self {
-            Self {}
+            Self {
+                local_time: LocalTime {
+                    hours: 11,
+                    minutes: 5,
+                    seconds: 23,
+                    milliseconds: 745,
+                },
+                local_date: LocalDate {
+                    century: 20,
+                    year: 26,
+                    month: 3,
+                    day: 2,
+                },
+            }
         }
     }
 
     impl Clock for MockClock {
         fn get_local_time(&self) -> LocalTime {
-            todo!()
+            self.local_time.clone()
         }
 
         fn get_local_date(&self) -> LocalDate {
-            todo!()
+            self.local_date.clone()
         }
     }
 }

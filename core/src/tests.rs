@@ -23,7 +23,7 @@ mod tests {
         let mut computer = Computer::new(ComputerConfig {
             clock: Box::new(MockClock::new()),
             clock_speed: 8_000_000,
-            cpu_type: CpuType::I8086,
+            cpu_type: CpuType::I80286,
             memory_size: 2048 * 1024,
         });
         computer.add_device(VideoCard::new(video_buffer.clone()));
@@ -122,6 +122,32 @@ mod tests {
         #[test_log::test]
         pub fn irq_chain() {
             run_test("cpu/irq_chain");
+        }
+
+        mod bios {
+            mod int1a {
+                use crate::tests::tests::run_test;
+
+                #[test_log::test]
+                pub fn rtc_date() {
+                    run_test("cpu/bios/int1a/rtc_date");
+                }
+
+                #[test_log::test]
+                pub fn rtc_time() {
+                    run_test("cpu/bios/int1a/rtc_time");
+                }
+
+                #[test_log::test]
+                pub fn rtc_set() {
+                    run_test("cpu/bios/int1a/rtc_set");
+                }
+
+                #[test_log::test]
+                pub fn tick_count() {
+                    run_test("cpu/bios/int1a/tick_count");
+                }
+            }
         }
     }
 

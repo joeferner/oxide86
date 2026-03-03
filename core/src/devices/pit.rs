@@ -2,6 +2,11 @@ use std::any::Any;
 
 use crate::Device;
 
+/// PIT oscillator frequency in Hz.
+pub const PIT_FREQUENCY_HZ: u64 = 1_193_182;
+/// PIT counter reload value (2^16), giving ~18.2 Hz tick rate.
+pub const PIT_DIVISOR: u64 = 65_536;
+
 pub const PIT_CHANNEL_0: u16 = 0x0040;
 pub const PIT_CHANNEL_1: u16 = 0x0041;
 pub const PIT_CHANNEL_2: u16 = 0x0042;

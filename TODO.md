@@ -3,12 +3,13 @@
 - [X] Get a working cpu/op8086.asm
 - [X] Get MS-DOS 2.12 Working
 - [X] Get MS-DOS 3.31 Working
+- [X] Add Keyboard/PIC support
 - [X] Real time clock (RTC)
   - [X] Implement native clock
+- [ ] update tests to allow changing computer options without setting them all. macro?
 - [ ] remove native-common/src/clock.rs from no-vibe-transition branch
 - [ ] remove functions from bus to get internal devices unless really needed
 - [ ] Improve CLI render speed by not set FG/BG if they haven't changed
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions
-- [ ] Add Keyboard/PIC support
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
