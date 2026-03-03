@@ -1,9 +1,13 @@
-use std::collections::VecDeque;
+use std::{
+    collections::VecDeque,
+    sync::{Arc, RwLock},
+};
 
 use crate::{
     Device,
     bus::Bus,
     cpu::Cpu,
+    devices::uart::ComPortDevice,
     disk::{DriveNumber, disk_read_sectors},
     memory::Memory,
     physical_address,
@@ -175,5 +179,13 @@ impl Computer {
 
     pub fn wait_for_key_press(&self) -> bool {
         self.cpu.wait_for_key_press()
+    }
+
+    pub fn set_com_port_device(
+        &mut self,
+        port: u8,
+        device: Option<Arc<RwLock<dyn ComPortDevice>>>,
+    ) {
+        self.bus.uart_mut().set_com_port_device(port, device)
     }
 }

@@ -1,4 +1,7 @@
-use std::any::Any;
+use std::{
+    any::Any,
+    sync::{Arc, RwLock},
+};
 
 use crate::Device;
 
@@ -34,6 +37,20 @@ struct Port {
     lsr: u8, // Line Status        (offset 5)
     msr: u8, // Modem Status       (offset 6)
     rbr: u8, // Receive Buffer     (offset 0, DLAB=0, read)
+    device: Option<Arc<RwLock<dyn ComPortDevice>>>,
+}
+
+impl Port {
+    pub fn reset(&mut self) {
+        self.dll = 0x18; // divisor low  for 4800 baud (24 = 0x0018)
+        self.dlm = 0x00; // divisor high for 4800 baud
+        self.ier = 0x00; // all interrupts disabled
+        self.lcr = 0x03; // 8-N-1, DLAB=0
+        self.mcr = 0x00;
+        self.lsr = 0x60; // THRE + TEMT set: transmitter ready
+        self.msr = 0x00;
+        self.rbr = 0x00;
+    }
 }
 
 impl Default for Port {
@@ -47,9 +64,12 @@ impl Default for Port {
             lsr: 0x60, // THRE + TEMT set: transmitter ready
             msr: 0x00,
             rbr: 0x00,
+            device: None,
         }
     }
 }
+
+pub trait ComPortDevice {}
 
 pub struct UART {
     ports: [Port; 4],
@@ -61,6 +81,17 @@ impl UART {
             ports: Default::default(),
         }
     }
+
+    pub fn set_com_port_device(
+        &mut self,
+        port: u8,
+        device: Option<Arc<RwLock<dyn ComPortDevice>>>,
+    ) {
+        if !(1..=4).contains(&port) {
+            panic!("port out of range must be 1-4");
+        }
+        self.ports[(port - 1) as usize].device = device;
+    }
 }
 
 impl Device for UART {
@@ -68,7 +99,11 @@ impl Device for UART {
         self
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        for port in &mut self.ports {
+            port.reset();
+        }
+    }
 
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
         None

@@ -142,4 +142,24 @@ mod tests {
             run_test("pit/check_timer_tick");
         }
     }
+
+    mod uart {
+        use crate::devices::uart::ComPortDevice;
+
+        use super::*;
+
+        #[test_log::test]
+        pub fn uart_hello_world() {
+            run_test_with_interaction("uart/uart_hello_world", |computer| {
+                struct TestComDevice {}
+
+                impl ComPortDevice for TestComDevice {}
+
+                let test_device = Arc::new(RwLock::new(TestComDevice {}));
+
+                computer.set_com_port_device(1, Some(test_device));
+                computer.run();
+            });
+        }
+    }
 }

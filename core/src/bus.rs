@@ -25,6 +25,7 @@ pub struct Bus {
     pic: Rc<RefCell<PIC>>,
     pit: Rc<RefCell<PIT>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
+    uart: Rc<RefCell<UART>>,
     video_card: Option<Rc<RefCell<VideoCard>>>,
 
     /// Cycle count to accurately track CPU cycles
@@ -42,11 +43,17 @@ impl Bus {
         )));
         Self {
             memory,
-            devices: vec![pic.clone(), pit.clone(), keyboard_controller.clone(), uart],
+            devices: vec![
+                pic.clone(),
+                pit.clone(),
+                keyboard_controller.clone(),
+                uart.clone(),
+            ],
             disk_controllers: vec![],
             pic,
             pit,
             keyboard_controller,
+            uart,
             video_card: None,
             cycle_count: 0,
         }
@@ -74,6 +81,14 @@ impl Bus {
 
     pub fn pit_mut(&self) -> RefMut<'_, PIT> {
         self.pit.borrow_mut()
+    }
+
+    pub fn uart(&self) -> Ref<'_, UART> {
+        self.uart.borrow()
+    }
+
+    pub fn uart_mut(&self) -> RefMut<'_, UART> {
+        self.uart.borrow_mut()
     }
 
     pub fn keyboard_controller(&self) -> Ref<'_, KeyboardController> {
