@@ -3,8 +3,12 @@
 - [X] Get a working cpu/op8086.asm
 - [X] Get MS-DOS 2.12 Working
 - [X] Get MS-DOS 3.31 Working
+- [X] Real time clock (RTC)
+  - [X] Implement native clock
+- [ ] if RTC isn't there how should int be handled?
+- [ ] remove functions from bus to get internal devices unless really needed
 - [ ] Improve CLI render speed by not set FG/BG if they haven't changed
-- [ ] Add unit tests for current batch of instructions
+- [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions
 - [ ] Add Keyboard/PIC support
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc

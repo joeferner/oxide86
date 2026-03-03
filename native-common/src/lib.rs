@@ -2,17 +2,17 @@ use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
-    computer::Computer,
-    cpu::{Cpu, CpuType},
+    computer::{Computer, ComputerConfig},
+    cpu::CpuType,
     disk::{BackedDisk, DiskController, DriveNumber},
-    memory::Memory,
     parse_hex_or_dec,
     video::{VideoBuffer, VideoCard},
 };
 
-use crate::{cli::CommonCli, disk::FileDiskBackend};
+use crate::{cli::CommonCli, clock::NativeClock, disk::FileDiskBackend};
 
 pub mod cli;
+pub mod clock;
 pub mod disk;
 pub mod logging;
 
@@ -23,17 +23,15 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         return Err(anyhow!("Could not parse CPU type: {}", cli.cpu_type));
     };
 
-    let cpu = {
-        let mut cpu = Cpu::new(cpu_type, (cli.speed * 1_000_000.0) as u32);
-        if cli.exec_log {
-            cpu.exec_logging_enabled = true;
-        }
-        cpu
-    };
-
-    let memory = Memory::new(2048 * 1024); // TODO fill from cli args
-
-    let mut computer = Computer::new(cpu, memory);
+    let mut computer = Computer::new(ComputerConfig {
+        cpu_type,
+        clock_speed: (cli.speed * 1_000_000.0) as u32,
+        memory_size: 2048 * 1024, // TODO fill from cli args
+        clock: Box::new(NativeClock::new()),
+    });
+    if cli.exec_log {
+        computer.set_exec_logging_enabled(true);
+    }
 
     computer.add_device(VideoCard::new(buffer));
 

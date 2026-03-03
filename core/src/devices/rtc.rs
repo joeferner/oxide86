@@ -107,3 +107,26 @@ impl Device for RTC {
         }
     }
 }
+
+#[cfg(test)]
+pub mod tests {
+    use crate::devices::rtc::{Clock, LocalDate, LocalTime};
+
+    pub struct MockClock {}
+
+    impl MockClock {
+        pub fn new() -> Self {
+            Self {}
+        }
+    }
+
+    impl Clock for MockClock {
+        fn get_local_time(&self) -> LocalTime {
+            todo!()
+        }
+
+        fn get_local_date(&self) -> LocalDate {
+            todo!()
+        }
+    }
+}

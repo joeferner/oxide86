@@ -6,12 +6,12 @@ mod tests {
     use std::path::Path;
     use std::sync::{Arc, RwLock};
 
+    use crate::computer::ComputerConfig;
     use crate::cpu::CpuType;
+    use crate::devices::rtc::tests::MockClock;
     use crate::video::video_buffer::RenderResult;
     use crate::{
         computer::Computer,
-        cpu::Cpu,
-        memory::Memory,
         video::{VideoBuffer, VideoCard},
     };
 
@@ -19,10 +19,13 @@ mod tests {
     const TEST_OFFSET: u16 = 0x0100;
 
     fn create_computer() -> (Computer, Arc<RwLock<VideoBuffer>>) {
-        let cpu_clock_speed = 8_000_000;
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
-        let cpu = Cpu::new(CpuType::I8086, cpu_clock_speed);
-        let mut computer = Computer::new(cpu, Memory::new(2048 * 1024));
+        let mut computer = Computer::new(ComputerConfig {
+            clock: Box::new(MockClock::new()),
+            clock_speed: 8_000_000,
+            cpu_type: CpuType::I8086,
+            memory_size: 2048 * 1024,
+        });
         computer.add_device(VideoCard::new(video_buffer.clone()));
         (computer, video_buffer)
     }

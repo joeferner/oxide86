@@ -7,13 +7,20 @@ use crate::{
     Device,
     bus::Bus,
     byte_to_printable_char,
-    cpu::{Cpu, bios::int09_keyboard_hardware_interrupt::scan_code_to_ascii},
-    devices::uart::ComPortDevice,
+    cpu::{Cpu, CpuType, bios::int09_keyboard_hardware_interrupt::scan_code_to_ascii},
+    devices::{rtc::Clock, uart::ComPortDevice},
     disk::{DriveNumber, disk_read_sectors},
     memory::Memory,
     physical_address,
 };
 use anyhow::{Result, anyhow};
+
+pub struct ComputerConfig {
+    pub cpu_type: CpuType,
+    pub clock_speed: u32,
+    pub memory_size: usize,
+    pub clock: Box<dyn Clock>,
+}
 
 pub struct Computer {
     cpu: Cpu,
@@ -22,11 +29,13 @@ pub struct Computer {
 }
 
 impl Computer {
-    pub fn new(cpu: Cpu, memory: Memory) -> Self {
+    pub fn new(config: ComputerConfig) -> Self {
+        let cpu = Cpu::new(config.cpu_type, config.clock_speed);
+        let memory = Memory::new(config.memory_size);
         let clock_speed = cpu.clock_speed();
         let mut computer = Self {
             cpu,
-            bus: Bus::new(memory, clock_speed),
+            bus: Bus::new(memory, clock_speed, config.clock),
             key_presses: VecDeque::new(),
         };
         computer.reset();
@@ -198,5 +207,9 @@ impl Computer {
         device: Option<Arc<RwLock<dyn ComPortDevice>>>,
     ) {
         self.bus.uart_mut().set_com_port_device(port, device)
+    }
+
+    pub fn set_exec_logging_enabled(&mut self, enabled: bool) {
+        self.cpu.exec_logging_enabled = enabled;
     }
 }
