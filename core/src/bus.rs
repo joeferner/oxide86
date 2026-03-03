@@ -36,6 +36,8 @@ pub struct Bus {
 
     /// Cycle count to accurately track CPU cycles
     cycle_count: u32,
+
+    has_rtc: bool,
 }
 
 impl Bus {
@@ -53,6 +55,7 @@ impl Bus {
             keyboard_controller.clone(),
             uart.clone(),
         ];
+        let has_rtc = clock.is_some();
         if let Some(clock) = clock {
             devices.push(Rc::new(RefCell::new(RTC::new(clock))));
         }
@@ -66,7 +69,12 @@ impl Bus {
             uart,
             video_card: None,
             cycle_count: 0,
+            has_rtc,
         }
+    }
+
+    pub fn has_rtc(&self) -> bool {
+        self.has_rtc
     }
 
     pub fn increment_cycle_count(&mut self, cycles: u32) {

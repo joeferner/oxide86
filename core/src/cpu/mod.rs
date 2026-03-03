@@ -739,7 +739,7 @@ mod tests {
         let mut bus = Bus::new(
             Memory::new(1024),
             cpu_clock_speed,
-            Box::new(MockClock::new()),
+            Some(Box::new(MockClock::new())),
         );
         bus.add_device(VideoCard::new(video_buffer));
 

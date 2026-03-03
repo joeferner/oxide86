@@ -75,6 +75,11 @@ impl Cpu {
     ///   DH = seconds (BCD format, 0-59)
     ///   DL = daylight saving time flag (0 = standard time, 1 = daylight time)
     fn int1a_read_rtc_time(&mut self, bus: &mut Bus) {
+        if !bus.has_rtc() {
+            self.set_flag(cpu_flag::CARRY, true);
+            return;
+        }
+
         // RTC register indices (CMOS)
         const RTC_REG_SECONDS: u8 = 0x00;
         const RTC_REG_MINUTES: u8 = 0x02;
@@ -108,6 +113,11 @@ impl Cpu {
     ///   DH = month (BCD format, 1-12)
     ///   DL = day (BCD format, 1-31)
     fn int1a_read_rtc_date(&mut self, bus: &mut Bus) {
+        if !bus.has_rtc() {
+            self.set_flag(cpu_flag::CARRY, true);
+            return;
+        }
+
         // RTC register indices (CMOS)
         const RTC_REG_DAY: u8 = 0x07;
         const RTC_REG_MONTH: u8 = 0x08;
