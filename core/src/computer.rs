@@ -161,8 +161,14 @@ impl Computer {
     }
 
     fn process_key_presses(&mut self) {
-        let pending_key = self.bus.keyboard_controller().pending_key();
-        if !pending_key && let Some(scan_code) = self.key_presses.pop_front() {
+        // Gate on output_buffer_full (obf) rather than pending_key.
+        // pending_key is cleared by the PIC as soon as it dispatches the IRQ,
+        // but the BIOS INT 09h handler hasn't read port 0x60 yet at that point.
+        // If we load the next scan code then, we overwrite the previous one
+        // before INT 09h can read it, so it never reaches the BDA buffer.
+        // obf stays true until port 0x60 is actually read, which is the right gate.
+        let obf = self.bus.keyboard_controller().output_buffer_full();
+        if !obf && let Some(scan_code) = self.key_presses.pop_front() {
             {
                 let mut keyboard_controller = self.bus.keyboard_controller_mut();
                 keyboard_controller.key_press(scan_code);

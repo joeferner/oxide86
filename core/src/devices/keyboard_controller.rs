@@ -42,6 +42,13 @@ impl KeyboardController {
     pub fn pending_key(&self) -> bool {
         self.pending_key
     }
+
+    /// Returns true if a scan code is waiting to be read from port 0x60.
+    /// Stays true until the guest reads port 0x60, unlike `pending_key` which
+    /// is cleared as soon as the PIC dispatches the IRQ.
+    pub fn output_buffer_full(&self) -> bool {
+        self.obf.get()
+    }
 }
 
 impl Device for KeyboardController {
