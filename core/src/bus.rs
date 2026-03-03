@@ -39,25 +39,26 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(memory: Memory, cpu_clock_speed: u32, clock: Box<dyn Clock>) -> Self {
+    pub fn new(memory: Memory, cpu_clock_speed: u32, clock: Option<Box<dyn Clock>>) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
-        // TODO don't add RTC if 8086 since 8086 didn't have an RTC
-        let rtc = Rc::new(RefCell::new(RTC::new(clock)));
         let pit = Rc::new(RefCell::new(PIT::new(cpu_clock_speed)));
         let uart = Rc::new(RefCell::new(UART::new()));
         let pic = Rc::new(RefCell::new(PIC::new(
             pit.clone(),
             keyboard_controller.clone(),
         )));
+        let mut devices: Vec<DeviceRef> = vec![
+            pic.clone(),
+            pit.clone(),
+            keyboard_controller.clone(),
+            uart.clone(),
+        ];
+        if let Some(clock) = clock {
+            devices.push(Rc::new(RefCell::new(RTC::new(clock))));
+        }
         Self {
             memory,
-            devices: vec![
-                pic.clone(),
-                pit.clone(),
-                keyboard_controller.clone(),
-                uart.clone(),
-                rtc,
-            ],
+            devices,
             disk_controllers: vec![],
             pic,
             pit,

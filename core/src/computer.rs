@@ -33,9 +33,14 @@ impl Computer {
         let cpu = Cpu::new(config.cpu_type, config.clock_speed);
         let memory = Memory::new(config.memory_size);
         let clock_speed = cpu.clock_speed();
+        let clock = if config.cpu_type == CpuType::I8086 {
+            None
+        } else {
+            Some(config.clock)
+        };
         let mut computer = Self {
             cpu,
-            bus: Bus::new(memory, clock_speed, config.clock),
+            bus: Bus::new(memory, clock_speed, clock),
             key_presses: VecDeque::new(),
         };
         computer.reset();
