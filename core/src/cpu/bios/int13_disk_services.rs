@@ -1,7 +1,7 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, cpu_flag},
-    disk::{DiskError, DriveNumber, disk_read_sectors},
+    disk::{DiskError, DriveNumber, FDC_DIR, FDC_DIR_DISK_CHANGE, disk_read_sectors},
     physical_address,
 };
 
@@ -25,6 +25,7 @@ impl Cpu {
             0x02 => self.int13_read_sectors(bus),
             0x08 => self.int13_get_drive_params(bus),
             0x15 => self.int13_get_disk_type(bus),
+            0x16 => self.int13_detect_disk_change(bus),
             _ => {
                 log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -189,10 +190,14 @@ impl Cpu {
     fn int13_get_drive_params(&mut self, bus: &Bus) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
-        match bus.find_disk_controller(drive) {
-            Some(disk_controller) => {
-                let geometry = disk_controller.borrow().disk_geometry();
+        let geometry = if drive.is_floppy() {
+            bus.floppy_controller().disk_geometry(drive)
+        } else {
+            None // TODO Hard drives not yet implemented
+        };
 
+        match geometry {
+            Some(geometry) => {
                 // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
                 // TODO verify how CD-ROM should be handled
                 let drive_count = if drive.is_floppy() { 1 } else { 0 };
@@ -248,9 +253,14 @@ impl Cpu {
             0x03 // Fixed disk
         };
 
-        match bus.find_disk_controller(drive) {
-            Some(disk_controller) => {
-                let geometry = disk_controller.borrow().disk_geometry();
+        let geometry = if drive.is_floppy() {
+            bus.floppy_controller().disk_geometry(drive)
+        } else {
+            None // TODO Hard drives not yet implemented
+        };
+
+        match geometry {
+            Some(geometry) => {
                 let sector_count = geometry.total_sectors() as u32;
 
                 // Set AH = drive type
@@ -274,6 +284,41 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, true);
                 self.last_disk_status = DiskError::InvalidCommand as u8;
             }
+        }
+    }
+
+    /// INT 13h, AH=16h - Detect Disk Change
+    /// Input:
+    ///   DL = drive number (0x00-0x7F for floppies)
+    /// Output:
+    ///   AH = status:
+    ///     0x00 = disk not changed (changeline inactive)
+    ///     0x01 = invalid drive number
+    ///     0x06 = disk changed (changeline active)
+    ///     0x80 = drive not ready (timeout)
+    ///   CF = clear if disk not changed, set if changed or error
+    fn int13_detect_disk_change(&mut self, bus: &Bus) {
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
+
+        // This function is only valid for floppy drives
+        if !drive.is_floppy() {
+            self.ax = (self.ax & 0x00FF) | ((DiskError::InvalidCommand as u16) << 8);
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::InvalidCommand as u8;
+            return;
+        }
+
+        // Read the FDC Digital Input Register (DIR) at port 0x3F7.
+        // Bit 7 is the changeline: 1 = disk has been changed, 0 = not changed.
+        let dir = bus.io_read_u8(FDC_DIR);
+        if dir & FDC_DIR_DISK_CHANGE != 0 {
+            self.ax = (self.ax & 0x00FF) | ((DiskError::DiskChanged as u16) << 8);
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::DiskChanged as u8;
+        } else {
+            self.ax &= 0x00FF; // AH = 0 (not changed)
+            self.set_flag(cpu_flag::CARRY, false);
+            self.last_disk_status = DiskError::Success as u8;
         }
     }
 }

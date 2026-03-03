@@ -9,7 +9,7 @@ use crate::{
     byte_to_printable_char,
     cpu::{Cpu, CpuType, bios::int09_keyboard_hardware_interrupt::scan_code_to_ascii},
     devices::{rtc::Clock, uart::ComPortDevice},
-    disk::{DriveNumber, disk_read_sectors},
+    disk::{Disk, DriveNumber, disk_read_sectors},
     memory::Memory,
     physical_address,
 };
@@ -49,6 +49,10 @@ impl Computer {
 
     pub fn add_device<T: Device + 'static>(&mut self, device: T) {
         self.bus.add_device(device);
+    }
+
+    pub fn set_floppy_disk(&mut self, drive: DriveNumber, disk: Box<dyn Disk>) {
+        self.bus.floppy_controller_mut().set_drive_disk(drive, disk);
     }
 
     /// Load a program at the specified segment:offset and set CPU to start there

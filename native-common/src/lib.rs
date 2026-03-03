@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
-    disk::{BackedDisk, DiskController, DriveNumber},
+    disk::{BackedDisk, DriveNumber},
     parse_hex_or_dec,
     video::{VideoBuffer, VideoCard},
 };
@@ -40,9 +40,17 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        let controller = DiskController::new(DriveNumber::floppy_a(), Box::new(disk));
-        computer.add_device(controller);
+        computer.set_floppy_disk(DriveNumber::floppy_a(), Box::new(disk));
         log::info!("Opened floppy A: from {}", path);
+    }
+
+    // Load floppy B:
+    if let Some(path) = &cli.floppy_b {
+        let backend = FileDiskBackend::open(path, false)?;
+        let disk = BackedDisk::new(backend)
+            .with_context(|| format!("Failed to create disk from: {}", path))?;
+        computer.set_floppy_disk(DriveNumber::floppy_b(), Box::new(disk));
+        log::info!("Opened floppy B: from {}", path);
     }
 
     if let Some(program_path) = &cli.program {
@@ -65,8 +73,8 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         );
     } else {
         // Validate that drives are specified if booting
-        if cli.floppy_a.is_none()
-        /* TODO && cli.floppy_b.is_none() && cli.hard_disks.is_empty() && cli.boot */
+        if cli.floppy_a.is_none() && cli.floppy_b.is_none()
+        /* TODO  && cli.hard_disks.is_empty() && cli.boot */
         {
             return Err(anyhow::anyhow!(
                 "No disk images specified. Use --floppy-a, --floppy-b, or --hdd to specify disk images."

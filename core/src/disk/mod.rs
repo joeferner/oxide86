@@ -1,16 +1,16 @@
 use anyhow::Result;
 
 mod backed_disk;
-mod disk_controller;
 mod disk_error;
 mod disk_geometry;
 mod drive_number;
+mod floppy_disk_controller;
 
 pub use backed_disk::BackedDisk;
-pub use disk_controller::DiskController;
 pub use disk_error::DiskError;
 pub use disk_geometry::DiskGeometry;
 pub use drive_number::DriveNumber;
+pub use floppy_disk_controller::{FDC_DIR, FDC_DIR_DISK_CHANGE, FloppyDiskController};
 
 use crate::bus::Bus;
 
@@ -50,11 +50,11 @@ pub fn disk_read_sectors(
     sector: u8,
     count: u8,
 ) -> Result<Vec<u8>, DiskError> {
-    if let Some(disk_controller) = bus.find_disk_controller(drive) {
-        disk_controller
-            .borrow()
-            .read_sectors(cylinder, head, sector, count)
+    if drive.is_floppy() {
+        bus.floppy_controller()
+            .read_sectors(drive, cylinder, head, sector, count)
     } else {
+        log::warn!("disk_read_sectors: hard drive support not yet implemented");
         Err(DiskError::DriveNotReady)
     }
 }

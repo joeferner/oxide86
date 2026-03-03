@@ -16,7 +16,7 @@ use crate::{
         rtc::{Clock, RTC},
         uart::UART,
     },
-    disk::{DiskController, DriveNumber},
+    disk::FloppyDiskController,
     memory::Memory,
     video::VideoCard,
 };
@@ -27,7 +27,7 @@ const MEMORY_MAPPED_IO_END: usize = 0xF0000;
 pub struct Bus {
     memory: Memory,
     devices: Vec<DeviceRef>,
-    disk_controllers: Vec<Rc<RefCell<DiskController>>>,
+    floppy_controller: Rc<RefCell<FloppyDiskController>>,
     pic: Rc<RefCell<PIC>>,
     pit: Rc<RefCell<PIT>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
@@ -48,11 +48,13 @@ impl Bus {
             pit.clone(),
             keyboard_controller.clone(),
         )));
+        let floppy_controller = Rc::new(RefCell::new(FloppyDiskController::new()));
         let mut devices: Vec<DeviceRef> = vec![
             pic.clone(),
             pit.clone(),
             keyboard_controller.clone(),
             uart.clone(),
+            floppy_controller.clone(),
         ];
         let rtc = if let Some(clock) = clock {
             let rtc = Rc::new(RefCell::new(RTC::new(clock)));
@@ -64,7 +66,7 @@ impl Bus {
         Self {
             memory,
             devices,
-            disk_controllers: vec![],
+            floppy_controller,
             pic,
             pit,
             keyboard_controller,
@@ -129,13 +131,16 @@ impl Bus {
             .map(|video_card| video_card.borrow_mut())
     }
 
+    pub fn floppy_controller(&self) -> Ref<'_, FloppyDiskController> {
+        self.floppy_controller.borrow()
+    }
+
+    pub fn floppy_controller_mut(&self) -> RefMut<'_, FloppyDiskController> {
+        self.floppy_controller.borrow_mut()
+    }
+
     pub fn add_device<T: Device + 'static>(&mut self, device: T) {
         let rc = Rc::new(RefCell::new(device));
-
-        let rc_any: Rc<dyn Any> = rc.clone();
-        if let Ok(dc) = Rc::downcast::<RefCell<DiskController>>(rc_any) {
-            self.disk_controllers.push(dc);
-        }
 
         let rc_any: Rc<dyn Any> = rc.clone();
         if let Ok(dc) = Rc::downcast::<RefCell<VideoCard>>(rc_any) {
@@ -146,13 +151,6 @@ impl Bus {
         }
 
         self.devices.push(rc);
-    }
-
-    pub fn find_disk_controller(&self, drive: DriveNumber) -> Option<Rc<RefCell<DiskController>>> {
-        self.disk_controllers
-            .iter()
-            .find(|c| c.borrow().drive_number() == drive)
-            .cloned()
     }
 
     pub fn memory_read_u8(&self, addr: usize) -> u8 {

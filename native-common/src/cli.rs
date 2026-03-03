@@ -33,4 +33,8 @@ pub struct CommonCli {
     /// Path to disk image file for floppy A:
     #[arg(long = "floppy-a")]
     pub floppy_a: Option<String>,
+
+    /// Path to disk image file for floppy A:
+    #[arg(long = "floppy-b")]
+    pub floppy_b: Option<String>,
 }

@@ -6,7 +6,6 @@
 - [X] Add Keyboard/PIC support
 - [X] Real time clock (RTC)
   - [X] Implement native clock
-- [ ] remove native-common/src/clock.rs from no-vibe-transition branch
 - [ ] remove functions from bus to get internal devices unless really needed
 - [ ] Improve CLI render speed by not set FG/BG if they haven't changed
 - [ ] Add unit tests for current batch of instructions and interrupts
