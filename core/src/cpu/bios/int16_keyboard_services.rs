@@ -40,6 +40,11 @@ impl Cpu {
     ///   AL = ASCII character
     pub(crate) fn int16_read_char(&mut self, bus: &mut Bus) {
         if let Some(key) = bda_read_key(bus) {
+            log::debug!(
+                "int16 read char scan code: {:02X} '{}'",
+                key.scan_code,
+                byte_to_printable_char(key.ascii_code)
+            );
             self.ax = ((key.scan_code as u16) << 8) | (key.ascii_code as u16);
         } else {
             self.wait_for_key_press_patch_flags = false;

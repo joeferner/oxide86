@@ -4,13 +4,7 @@ use std::{
 };
 
 use crate::{
-    Device,
-    bus::Bus,
-    cpu::Cpu,
-    devices::uart::ComPortDevice,
-    disk::{DriveNumber, disk_read_sectors},
-    memory::Memory,
-    physical_address,
+    Device, bus::Bus, byte_to_printable_char, cpu::{Cpu, bios::int09_keyboard_hardware_interrupt::scan_code_to_ascii}, devices::uart::ComPortDevice, disk::{DriveNumber, disk_read_sectors}, memory::Memory, physical_address
 };
 use anyhow::{Result, anyhow};
 
@@ -158,6 +152,10 @@ impl Computer {
     }
 
     pub fn push_key_press(&mut self, scan_code: u8) {
+        log::debug!(
+            "pushing key 0x{scan_code:02X} '{}'",
+            byte_to_printable_char(scan_code_to_ascii(scan_code, false))
+        );
         self.key_presses.push_back(scan_code);
         self.process_key_presses();
     }
