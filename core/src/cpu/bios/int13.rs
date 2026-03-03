@@ -16,37 +16,13 @@ impl Cpu {
 
 
         match function {
-            0x01 => self.int13_get_status(io),
             0x03 => self.int13_write_sectors(bus, io),
             0x04 => self.int13_verify_sectors(io),
             0x05 => self.int13_format_track(io),
-            0x15 => self.int13_get_disk_type(io),
-            0x16 => self.int13_detect_disk_change(io),
+            
             0x18 => self.int13_set_dasd_type(bus, io),
             0x41 => self.int13_check_extensions_present(io),
         }
-    }
-
-    /// INT 13h, AH=01h - Get Status of Last Disk Operation
-    /// Input:
-    ///   AH = 0x01
-    ///   DL = drive number (optional, some implementations ignore it)
-    /// Output:
-    ///   AH = status code of last disk operation (0x00 = success, or error code)
-    ///   CF = cleared (always - the status retrieval itself succeeds)
-    fn int13_get_status(&mut self, io: &super::Bios) {
-        // Return the last disk status
-        let status = io.shared.last_disk_status;
-
-        if self.log_interrupts_enabled {
-            log::info!("INT 13h AH=01h: Get Status - returning 0x{:02X}", status);
-        }
-
-        // Set AH to the last status
-        self.ax = (self.ax & 0x00FF) | ((status as u16) << 8);
-
-        // Always clear carry flag - the status retrieval itself succeeds
-        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// INT 13h, AH=03h - Write Sectors from Memory
@@ -175,81 +151,9 @@ impl Cpu {
         }
     }
 
-    /// INT 13h, AH=15h - Get Disk Type
-    /// Input:
-    ///   DL = drive number (0x00-0x7F for floppies, 0x80-0xFF for hard disks)
-    /// Output:
-    ///   AH = drive type:
-    ///     0x00 = drive not present
-    ///     0x01 = floppy disk drive without change-line support
-    ///     0x02 = floppy disk drive with change-line support
-    ///     0x03 = fixed disk (hard disk)
-    ///   CF = clear if drive exists, set if drive does not exist
-    ///   For type 0x03 (fixed disk):
-    ///     CX:DX = number of 512-byte sectors (32-bit value, CX=high word, DX=low word)
-    fn int13_get_disk_type(&mut self, io: &mut super::Bios) {
-        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
+    
 
-        match io.disk_get_type(drive) {
-            Ok((drive_type, sector_count)) => {
-                // Set AH = drive type
-                self.ax = (self.ax & 0x00FF) | ((drive_type as u16) << 8);
-
-                // If it's a fixed disk (type 0x03), set CX:DX to sector count
-                if drive_type == 0x03 {
-                    let high_word = ((sector_count >> 16) & 0xFFFF) as u16;
-                    let low_word = (sector_count & 0xFFFF) as u16;
-                    self.cx = high_word;
-                    self.dx = low_word;
-                }
-
-                // Clear carry flag (drive exists)
-                self.set_flag(cpu_flag::CARRY, false);
-                io.set_last_disk_status(DiskError::Success as u8);
-            }
-            Err(_) => {
-                // Drive not present
-                self.ax &= 0x00FF; // AH = 0x00 (drive not present)
-                self.set_flag(cpu_flag::CARRY, true);
-                io.set_last_disk_status(DiskError::InvalidCommand as u8);
-            }
-        }
-    }
-
-    /// INT 13h, AH=16h - Detect Disk Change
-    /// Input:
-    ///   DL = drive number (0x00-0x7F for floppies)
-    /// Output:
-    ///   AH = status:
-    ///     0x00 = disk not changed (changeline inactive)
-    ///     0x01 = invalid drive number
-    ///     0x06 = disk changed (changeline active)
-    ///     0x80 = drive not ready (timeout)
-    ///   CF = clear if disk not changed, set if changed or error
-    fn int13_detect_disk_change(&mut self, io: &mut super::Bios) {
-        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
-
-        match io.disk_detect_change(drive) {
-            Ok(changed) => {
-                if changed {
-                    // Disk was changed
-                    self.ax = (self.ax & 0x00FF) | ((DiskError::DiskChanged as u16) << 8);
-                    self.set_flag(cpu_flag::CARRY, true);
-                    io.set_last_disk_status(DiskError::DiskChanged as u8);
-                } else {
-                    // Disk not changed
-                    self.ax &= 0x00FF; // AH = 0 (not changed)
-                    self.set_flag(cpu_flag::CARRY, false);
-                    io.set_last_disk_status(DiskError::Success as u8);
-                }
-            }
-            Err(error_code) => {
-                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8);
-                self.set_flag(cpu_flag::CARRY, true);
-                io.set_last_disk_status(error_code as u8);
-            }
-        }
-    }
+   
 
     /// INT 13h, AH=18h - Set DASD Type for Format (PS/2)
     /// Input:

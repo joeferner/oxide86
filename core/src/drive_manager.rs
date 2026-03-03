@@ -1642,48 +1642,6 @@ impl DriveManager {
         // MIGRATED
     }
 
-    pub fn disk_get_type(&self, drive: DriveNumber) -> Result<(u8, u32), DiskError> {
-        // CD-ROM: report type 5 with nominal sector count
-        if let Some(cdrom_slot) = self.get_cdrom_slot_for_drive(drive) {
-            match &self.cdrom_drives[cdrom_slot as usize] {
-                Some(image) => {
-                    // Type 5 = CD-ROM; size expressed as 512-byte sub-sectors
-                    let size_in_512 = (image.size() / 512) as u32;
-                    return Ok((5u8, size_in_512));
-                }
-                None => return Err(DiskError::DriveNotReady),
-            }
-        }
-
-        let drive_state = self.get_drive(drive).ok_or(DiskError::DriveNotReady)?;
-
-        // Use raw_adapter for INT 13h if available (partitioned hard drives)
-        let adapter = if let Some(ref raw) = drive_state.raw_adapter {
-            raw
-        } else {
-            drive_state
-                .adapter
-                .as_ref()
-                .ok_or(DiskError::DriveNotReady)?
-        };
-
-        let geometry = adapter.disk().geometry();
-        let sectors = geometry.total_sectors() as u32;
-
-        // Drive type:
-        // 0x00 = not present
-        // 0x01 = floppy without change-line support
-        // 0x02 = floppy with change-line support
-        // 0x03 = fixed disk (hard drive)
-        let drive_type = if drive.is_floppy() {
-            0x02 // Floppy with change-line support
-        } else {
-            0x03 // Fixed disk
-        };
-
-        Ok((drive_type, sectors))
-    }
-
     pub fn disk_detect_change(&mut self, drive: DriveNumber) -> Result<bool, DiskError> {
         let drive_state = self.get_drive_mut(drive).ok_or(DiskError::DriveNotReady)?;
 

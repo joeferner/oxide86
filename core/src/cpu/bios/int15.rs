@@ -9,7 +9,6 @@ impl Cpu {
         match function {
             0x24 => self.int15_a20_gate(bus),
             0x10 => self.int15_top_view_multi_dos(),
-            0x41 => self.int15_wait_external_event(),
             0x86 => self.int15_wait(),
             0x87 => self.int15_move_extended_memory(bus),
             0x88 => {
@@ -97,22 +96,6 @@ impl Cpu {
     fn int15_top_view_multi_dos(&mut self) {
         // This is a vendor-specific function (TopView/MultiDOS Plus)
         // not available on standard 8086 BIOS
-        // Return function not supported
-        self.set_flag(cpu_flag::CARRY, true);
-    }
-
-    /// INT 15h AH=41h - Wait for External Event (PS/2)
-    ///
-    /// Input:
-    ///   AL = event type to wait for
-    ///
-    /// Output:
-    ///   CF = 1 (function not supported on 8086)
-    ///
-    /// Note: This is a PS/2-specific function that is not available on 8086 systems.
-    /// The 8086 predates PS/2, so this function returns "not supported".
-    fn int15_wait_external_event(&mut self) {
-        // This is a PS/2 function not available on 8086 systems
         // Return function not supported
         self.set_flag(cpu_flag::CARRY, true);
     }
