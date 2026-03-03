@@ -144,21 +144,58 @@ mod tests {
     }
 
     mod uart {
+        use std::collections::VecDeque;
+
         use crate::devices::uart::ComPortDevice;
 
         use super::*;
 
+        struct HelloWorldTestComDevice {
+            async_count: u32,
+            from_computer: String,
+            to_computer: VecDeque<u8>,
+        }
+
+        impl ComPortDevice for HelloWorldTestComDevice {
+            fn read(&mut self) -> Option<u8> {
+                if self.async_count > 3
+                    && self.from_computer == "hello"
+                    && let Some(out) = self.to_computer.pop_front()
+                {
+                    self.async_count = 0;
+                    Some(out)
+                } else {
+                    self.async_count += 1;
+                    None
+                }
+            }
+
+            fn write(&mut self, value: u8) -> bool {
+                if self.async_count > 3 {
+                    self.async_count = 0;
+                    self.from_computer.push(value as char);
+                    true
+                } else {
+                    self.async_count += 1;
+                    false
+                }
+            }
+        }
+
         #[test_log::test]
         pub fn uart_hello_world() {
             run_test_with_interaction("uart/uart_hello_world", |computer| {
-                struct TestComDevice {}
+                let test_device = Arc::new(RwLock::new(HelloWorldTestComDevice {
+                    async_count: 0,
+                    from_computer: "".to_owned(),
+                    to_computer: VecDeque::from(['o' as u8, 'k' as u8]),
+                }));
 
-                impl ComPortDevice for TestComDevice {}
-
-                let test_device = Arc::new(RwLock::new(TestComDevice {}));
-
-                computer.set_com_port_device(1, Some(test_device));
+                computer.set_com_port_device(1, Some(test_device.clone()));
                 computer.run();
+
+                let found = &test_device.read().unwrap().from_computer;
+                assert_eq!("hello", found);
             });
         }
     }

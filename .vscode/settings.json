@@ -93,5 +93,7 @@
     "XCHG",
     "XLAT"
   ],
-  "rust-analyzer.files.excludeDirs": ["target"]
+  "files.watcherExclude": {
+    "**/_claude_vscode_fs_*": true
+  }
 }

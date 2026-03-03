@@ -1,7 +1,9 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, bios::bda::bda_get_com_port_address},
-    devices::uart::{DIVISOR_TABLE, DLL, DLM, LCR, LSR, MCR, MSR, encode_parity},
+    devices::uart::{
+        DIVISOR_TABLE, DLL, DLM, LCR, LSR, LSR_DR, LSR_THRE, LSR_TIMEOUT, MCR, MSR, encode_parity,
+    },
 };
 
 impl Cpu {
@@ -14,6 +16,9 @@ impl Cpu {
 
         match function {
             0x00 => self.int14_initialize_port(port, bus),
+            0x01 => self.int14_write_char(port, bus),
+            0x02 => self.int14_read_char(port, bus),
+            0x03 => self.int14_get_status(port, bus),
             _ => {
                 log::warn!("Unhandled INT 0x14 function: AH=0x{:02X}", function);
             }
@@ -73,6 +78,92 @@ impl Cpu {
         let al = bus.io_read_u8(base_addr + MSR); // Modem Status Register -> AL
 
         // Set return values
+        self.ax = ((ah as u16) << 8) | (al as u16);
+    }
+
+    /// INT 14h, AH=01h - Write Character to Serial Port
+    /// Input:
+    ///   AL = character to transmit
+    ///   DX = port number
+    /// Output:
+    ///   AH = line status (bit 7 set if timeout)
+    fn int14_write_char(&mut self, port: u8, bus: &mut Bus) {
+        let base_addr = bda_get_com_port_address(bus, port);
+        if base_addr == 0 {
+            return;
+        }
+
+        let ch = (self.ax & 0xFF) as u8; // Get AL
+
+        // Poll LSR until Transmitter Holding Register Empty (bit 5 = THRE)
+        let mut timeout = 0xFFFFu16;
+        loop {
+            let lsr = bus.io_read_u8(base_addr + LSR);
+            if lsr & LSR_THRE != 0 {
+                bus.io_write_u8(base_addr, ch); // write to THR (offset 0, DLAB=0)
+                let status = bus.io_read_u8(base_addr + LSR);
+                self.ax = (self.ax & 0x00FF) | ((status as u16) << 8);
+                return;
+            }
+            timeout = timeout.wrapping_sub(1);
+            if timeout == 0 {
+                break;
+            }
+        }
+
+        // Timeout: set bit 7 in AH
+        let lsr = bus.io_read_u8(base_addr + LSR);
+        self.ax = (self.ax & 0x00FF) | (((lsr | LSR_TIMEOUT) as u16) << 8);
+    }
+
+    /// INT 14h, AH=02h - Read Character from Serial Port
+    /// Input:
+    ///   DX = port number
+    /// Output:
+    ///   AH = line status
+    ///   AL = received character (if AH bit 7 = 0)
+    fn int14_read_char(&mut self, port: u8, bus: &mut Bus) {
+        let base_addr = bda_get_com_port_address(bus, port);
+        if base_addr == 0 {
+            return;
+        }
+
+        // Poll LSR until Data Ready (bit 0 = DR)
+        let mut timeout = 0xFFFFu16;
+        loop {
+            let lsr = bus.io_read_u8(base_addr + LSR);
+            if lsr & LSR_DR != 0 {
+                let ch = bus.io_read_u8(base_addr); // read from RBR (offset 0, DLAB=0)
+                let status = bus.io_read_u8(base_addr + LSR);
+                self.ax = ((status as u16) << 8) | (ch as u16);
+                return;
+            }
+            timeout = timeout.wrapping_sub(1);
+            if timeout == 0 {
+                break;
+            }
+        }
+
+        // Timeout: AH = LSR with bit 7 set, AL = 0
+        let lsr = bus.io_read_u8(base_addr + LSR);
+        self.ax = ((lsr | LSR_TIMEOUT) as u16) << 8;
+    }
+
+    /// INT 14h, AH=03h - Get Serial Port Status
+    /// Input:
+    ///   DX = port number
+    /// Output:
+    ///   AH = line status
+    ///   AL = modem status
+    fn int14_get_status(&mut self, port: u8, bus: &mut Bus) {
+        let base_addr = bda_get_com_port_address(bus, port);
+        if base_addr == 0 {
+            return;
+        }
+
+        let ah = bus.io_read_u8(base_addr + LSR);
+        let al = bus.io_read_u8(base_addr + MSR);
+
         self.ax = ((ah as u16) << 8) | (al as u16);
     }
 }
