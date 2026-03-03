@@ -2,6 +2,7 @@ use crate::{
     KeyPress,
     bus::Bus,
     byte_to_printable_char,
+    devices::uart::{COM1_ADDR, COM2_ADDR, COM3_ADDR, COM4_ADDR},
     video::{
         DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_SIZE,
         VIDEO_MODE_03H_COLOR_TEXT_80_X_25, video_buffer::CursorPosition,
@@ -82,10 +83,10 @@ const TICKS_PER_DAY: u32 = 0x0018_00B0; // 1,573,040
 pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // COM port addresses (0x0040:0000 - 4 words)
     // Standard COM port I/O addresses
-    bus.memory_write_u16(BDA_START + BDA_COM_PORTS, 0x03F8); // COM1
-    bus.memory_write_u16(BDA_START + BDA_COM_PORTS + 2, 0x02F8); // COM2
-    bus.memory_write_u16(BDA_START + BDA_COM_PORTS + 4, 0x03E8); // COM3
-    bus.memory_write_u16(BDA_START + BDA_COM_PORTS + 6, 0x02E8); // COM4
+    bus.memory_write_u16(BDA_START + BDA_COM_PORTS, COM1_ADDR); // COM1
+    bus.memory_write_u16(BDA_START + BDA_COM_PORTS + 2, COM2_ADDR); // COM2
+    bus.memory_write_u16(BDA_START + BDA_COM_PORTS + 4, COM3_ADDR); // COM3
+    bus.memory_write_u16(BDA_START + BDA_COM_PORTS + 6, COM4_ADDR); // COM4
 
     // LPT port addresses (0x0040:0008 - 4 words)
     // Standard LPT (parallel) port I/O addresses
@@ -329,6 +330,10 @@ pub fn bda_get_system_time(bus: &Bus) -> SystemTime {
         high_word,
         midnight_flag,
     }
+}
+
+pub fn bda_get_com_port_address(bus: &Bus, port: u8) -> u16 {
+    bus.memory_read_u16(BDA_START + BDA_COM_PORTS + port as usize * 2)
 }
 
 pub fn bda_clear_timer_overflow(bus: &mut Bus) {

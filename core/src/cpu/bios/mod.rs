@@ -10,6 +10,7 @@ pub mod int10_video_services;
 pub mod int11_get_equipment_list;
 pub mod int12_get_memory_size;
 pub mod int13_disk_services;
+pub mod int14_serial_port_services;
 pub mod int15_miscellaneous;
 pub mod int16_keyboard_services;
 pub mod int17_printer_services;

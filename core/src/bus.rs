@@ -9,7 +9,7 @@ use anyhow::Result;
 use crate::{
     Device, DeviceRef,
     cpu::bios::bios_reset,
-    devices::{keyboard_controller::KeyboardController, pic::PIC, pit::PIT},
+    devices::{keyboard_controller::KeyboardController, pic::PIC, pit::PIT, uart::UART},
     disk::{DiskController, DriveNumber},
     memory::Memory,
     video::VideoCard,
@@ -35,13 +35,14 @@ impl Bus {
     pub fn new(memory: Memory, cpu_clock_speed: u32) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
         let pit = Rc::new(RefCell::new(PIT::new(cpu_clock_speed)));
+        let uart = Rc::new(RefCell::new(UART::new()));
         let pic = Rc::new(RefCell::new(PIC::new(
             pit.clone(),
             keyboard_controller.clone(),
         )));
         Self {
             memory,
-            devices: vec![pic.clone(), pit.clone(), keyboard_controller.clone()],
+            devices: vec![pic.clone(), pit.clone(), keyboard_controller.clone(), uart],
             disk_controllers: vec![],
             pic,
             pit,
