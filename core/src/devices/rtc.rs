@@ -1,9 +1,21 @@
 use std::any::Any;
 
-use crate::{Device, devices::pit::{PIT_DIVISOR, PIT_FREQUENCY_HZ}};
+use crate::{
+    Device,
+    devices::pit::{PIT_DIVISOR, PIT_FREQUENCY_HZ},
+};
 
 pub const RTC_IO_PORT_REGISTER_SELECT: u16 = 0x0070;
 pub const RTC_IO_PORT_DATA: u16 = 0x0071;
+
+// RTC register indices (CMOS)
+pub const RTC_REG_SECONDS: u8 = 0x00;
+pub const RTC_REG_MINUTES: u8 = 0x02;
+pub const RTC_REG_HOURS: u8 = 0x04;
+pub const RTC_REG_DAY: u8 = 0x07;
+pub const RTC_REG_MONTH: u8 = 0x08;
+pub const RTC_REG_YEAR: u8 = 0x09;
+pub const RTC_REG_CENTURY: u8 = 0x32;
 
 /// Local time components with sub-second precision.
 #[derive(Clone)]
@@ -138,7 +150,7 @@ pub mod tests {
                 local_time: LocalTime {
                     hours: 11,
                     minutes: 5,
-                    seconds: 23,
+                    seconds: 30,
                     milliseconds: 745,
                 },
                 local_date: LocalDate {

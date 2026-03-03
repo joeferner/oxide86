@@ -171,8 +171,14 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // Timer counter (0x0040:006C) - 4 bytes
     // Initialize from RTC if available, otherwise 0 ticks since midnight
     let timer_counter = bus.rtc().map(|rtc| rtc.timer_counter()).unwrap_or(0);
-    bus.memory_write_u16(BDA_START + BDA_TIMER_COUNTER, (timer_counter & 0xFFFF) as u16);
-    bus.memory_write_u16(BDA_START + BDA_TIMER_COUNTER + 2, (timer_counter >> 16) as u16);
+    bus.memory_write_u16(
+        BDA_START + BDA_TIMER_COUNTER,
+        (timer_counter & 0xFFFF) as u16,
+    );
+    bus.memory_write_u16(
+        BDA_START + BDA_TIMER_COUNTER + 2,
+        (timer_counter >> 16) as u16,
+    );
 
     // Timer overflow flag (0x0040:0070)
     bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0); // No midnight rollover yet

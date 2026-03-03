@@ -80,11 +80,7 @@ impl Bus {
     }
 
     pub fn rtc(&self) -> Option<Ref<'_, RTC>> {
-        if let Some(rtc) = &self.rtc {
-            Some(rtc.borrow())
-        } else {
-            None
-        }
+        self.rtc.as_ref().map(|rtc| rtc.borrow())
     }
 
     pub fn increment_cycle_count(&mut self, cycles: u32) {

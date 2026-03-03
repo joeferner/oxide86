@@ -1,8 +1,9 @@
 ; INT 1Ah Function 00h - Get Tick Count, and Function 01h - Set Tick Count
 ; Expected time: 3/2/2026 11:05 AM
-; At 11:05:00 AM: ticks from midnight = (11*3600 + 5*60 + 0) * 18.2065 ≈ 724,490
-; At 11:05:59 AM: ≈ 725,563
-; We use a loose window: 724,000 (0x000B_0B98) to 726,000 (0x000B_12F0)
+; Tick rate: 1,193,182 Hz / 65,536 ≈ 18.2065 Hz
+; At 11:05:00 AM: ticks = (11*3600 + 5*60 + 0) * 1,193,182 / 65,536 ≈ 726,439 (0x000B_15A7)
+; At 11:05:59 AM: ≈ 727,532 (0x000B_19EC)
+; We use a loose window: 726,000 (0x000B_13F0) to 728,000 (0x000B_1BC0)
 ; Tick count is returned/set as CX:DX (CX=high word, DX=low word)
 
 [CPU 8086]
@@ -21,10 +22,10 @@ start:
     cmp cx, 0x000B
     jne fail
 
-    ; Check DX (low word) is in range [0x0B98, 0x12F0]
-    cmp dx, 0x0B98
+    ; Check DX (low word) is in range [0x13F0, 0x1BC0]
+    cmp dx, 0x13F0
     jb  fail
-    cmp dx, 0x12F0
+    cmp dx, 0x1BC0
     ja  fail
 
     ; --- Part 2: Set a known tick count (Function 01h) ---
