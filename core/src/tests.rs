@@ -136,7 +136,7 @@ mod tests {
         mod bios {
             mod int13 {
                 use crate::cpu::CpuType;
-                use crate::disk::{BackedDisk, DiskGeometry, DriveNumber, MemBackend};
+                use crate::disk::{BackedDisk, Disk, DiskGeometry, DriveNumber, MemBackend};
                 use crate::tests::tests::run_test_configured;
 
                 #[test_log::test]
@@ -167,6 +167,45 @@ mod tests {
                             let data = disk.read_sectors(0, 0, 1, 1).expect("read sector failed");
                             assert_eq!(data.len(), 512);
                             assert!(data.iter().all(|&b| b == 0xA5), "sector data mismatch");
+                        },
+                    );
+                }
+
+                #[test_log::test]
+                pub fn hard_disk_read() {
+                    run_test_configured(
+                        "cpu/bios/int13/hard_disk_read",
+                        make_computer!(
+                            cpu_type: CpuType::I80286,
+                            hard_disks: {
+                                let backend = MemBackend::zeroed(10 * 1024 * 1024);
+                                let disk = BackedDisk::new(backend).unwrap();
+                                vec![Box::new(disk) as Box<dyn Disk>]
+                            }
+                        ),
+                        |c| c.run(),
+                    );
+                }
+
+                #[test_log::test]
+                pub fn hard_disk_write() {
+                    run_test_configured(
+                        "cpu/bios/int13/hard_disk_write",
+                        make_computer!(
+                            cpu_type: CpuType::I80286,
+                            hard_disks: {
+                                let backend = MemBackend::zeroed(10 * 1024 * 1024);
+                                let disk = BackedDisk::new(backend).unwrap();
+                                vec![Box::new(disk) as Box<dyn Disk>]
+                            }
+                        ),
+                        |c| {
+                            c.run();
+                            let sector = c
+                                .read_hard_disk_sectors(DriveNumber::hard_drive_c(), 0, 0, 1, 1)
+                                .expect("read sector failed");
+                            assert_eq!(sector.len(), 512);
+                            assert!(sector.iter().all(|&b| b == 0xA5), "sector data mismatch");
                         },
                     );
                 }

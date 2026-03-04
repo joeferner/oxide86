@@ -12,7 +12,7 @@ use crate::{
         rtc::{CMOS_REG_FLOPPY_TYPES, Clock, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
         uart::ComPortDevice,
     },
-    disk::{Disk, DriveNumber, disk_read_sectors},
+    disk::{Disk, DiskError, DriveNumber, disk_read_sectors},
     memory::Memory,
     physical_address,
 };
@@ -236,6 +236,36 @@ impl Computer {
             }
             self.cpu.key_press(&mut self.bus);
         }
+    }
+
+    pub fn read_hard_disk_sectors(
+        &self,
+        drive: DriveNumber,
+        cylinder: u8,
+        head: u8,
+        sector: u8,
+        count: u8,
+    ) -> Result<Vec<u8>, DiskError> {
+        self.bus
+            .hard_disk_controller()
+            .get_disk(drive)
+            .ok_or(DiskError::DriveNotReady)?
+            .read_sectors(cylinder, head, sector, count)
+    }
+
+    pub fn write_hard_disk_sectors(
+        &self,
+        drive: DriveNumber,
+        cylinder: u8,
+        head: u8,
+        sector: u8,
+        data: &[u8],
+    ) -> Result<(), DiskError> {
+        self.bus
+            .hard_disk_controller()
+            .get_disk(drive)
+            .ok_or(DiskError::DriveNotReady)?
+            .write_sectors(cylinder, head, sector, data)
     }
 
     pub fn get_exit_code(&self) -> Option<u8> {
