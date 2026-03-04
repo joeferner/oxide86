@@ -23,6 +23,7 @@ pub struct ComputerConfig {
     pub clock_speed: u32,
     pub memory_size: usize,
     pub clock: Box<dyn Clock>,
+    pub hard_disks: Vec<Box<dyn Disk>>,
 }
 
 pub struct Computer {
@@ -43,7 +44,7 @@ impl Computer {
         };
         let mut computer = Self {
             cpu,
-            bus: Bus::new(memory, clock_speed, clock),
+            bus: Bus::new(memory, clock_speed, clock, config.hard_disks),
             key_presses: VecDeque::new(),
         };
         computer.reset();

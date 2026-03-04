@@ -8,6 +8,7 @@
   - [X] Implement native clock
 - [X] Improve CLI render speed by not set FG/BG if they haven't changed
 - [ ] Add hard drive support
+- [ ] Update CLI boot_drive parameter to also take drive letter C or C:
 - [ ] remove functions from bus to get internal devices unless really needed
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions

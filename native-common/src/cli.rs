@@ -37,4 +37,8 @@ pub struct CommonCli {
     /// Path to disk image file for floppy A:
     #[arg(long = "floppy-b")]
     pub floppy_b: Option<String>,
+
+    /// Path to hard disk image file(s) - can be specified multiple times for C:, D:, etc.
+    #[arg(long = "hdd", action = clap::ArgAction::Append)]
+    pub hard_disks: Vec<String>,
 }

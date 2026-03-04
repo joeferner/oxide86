@@ -11,12 +11,14 @@ use crate::{
     cpu::bios::bios_reset,
     devices::{
         floppy_disk_controller::FloppyDiskController,
+        hard_disk_controller::HardDiskController,
         keyboard_controller::KeyboardController,
         pic::PIC,
         pit::PIT,
         rtc::{Clock, RTC},
         uart::UART,
     },
+    disk::Disk,
     memory::Memory,
     video::VideoCard,
 };
@@ -28,6 +30,7 @@ pub struct Bus {
     memory: Memory,
     devices: Vec<DeviceRef>,
     floppy_controller: Rc<RefCell<FloppyDiskController>>,
+    hard_disk_controller: Rc<RefCell<HardDiskController>>,
     pic: Rc<RefCell<PIC>>,
     pit: Rc<RefCell<PIT>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
@@ -40,7 +43,12 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(memory: Memory, cpu_clock_speed: u32, clock: Option<Box<dyn Clock>>) -> Self {
+    pub fn new(
+        memory: Memory,
+        cpu_clock_speed: u32,
+        clock: Option<Box<dyn Clock>>,
+        hard_disks: Vec<Box<dyn Disk>>,
+    ) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
         let pit = Rc::new(RefCell::new(PIT::new(cpu_clock_speed)));
         let uart = Rc::new(RefCell::new(UART::new()));
@@ -49,12 +57,14 @@ impl Bus {
             keyboard_controller.clone(),
         )));
         let floppy_controller = Rc::new(RefCell::new(FloppyDiskController::new()));
+        let hard_disk_controller = Rc::new(RefCell::new(HardDiskController::new(hard_disks)));
         let mut devices: Vec<DeviceRef> = vec![
             pic.clone(),
             pit.clone(),
             keyboard_controller.clone(),
             uart.clone(),
             floppy_controller.clone(),
+            hard_disk_controller.clone(),
         ];
         let rtc = if let Some(clock) = clock {
             let rtc = Rc::new(RefCell::new(RTC::new(clock)));
@@ -67,6 +77,7 @@ impl Bus {
             memory,
             devices,
             floppy_controller,
+            hard_disk_controller,
             pic,
             pit,
             keyboard_controller,
@@ -129,6 +140,10 @@ impl Bus {
         self.video_card
             .as_ref()
             .map(|video_card| video_card.borrow_mut())
+    }
+
+    pub fn hard_disk_controller(&self) -> Ref<'_, HardDiskController> {
+        self.hard_disk_controller.borrow()
     }
 
     pub fn floppy_controller(&self) -> Ref<'_, FloppyDiskController> {

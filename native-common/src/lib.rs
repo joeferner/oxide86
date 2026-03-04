@@ -4,7 +4,7 @@ use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
-    disk::{BackedDisk, DriveNumber},
+    disk::{BackedDisk, Disk, DriveNumber},
     parse_hex_or_dec,
     video::{VideoBuffer, VideoCard},
 };
@@ -23,11 +23,14 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         return Err(anyhow!("Could not parse CPU type: {}", cli.cpu_type));
     };
 
+    let hard_disks = load_hard_disks(&cli.hard_disks);
+
     let mut computer = Computer::new(ComputerConfig {
         cpu_type,
         clock_speed: (cli.speed * 1_000_000.0) as u32,
         memory_size: 2048 * 1024, // TODO fill from cli args
         clock: Box::new(NativeClock::new()),
+        hard_disks,
     });
     if cli.exec_log {
         computer.set_exec_logging_enabled(true);
@@ -73,9 +76,7 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         );
     } else {
         // Validate that drives are specified if booting
-        if cli.floppy_a.is_none() && cli.floppy_b.is_none()
-        /* TODO  && cli.hard_disks.is_empty() && cli.boot */
-        {
+        if cli.floppy_a.is_none() && cli.floppy_b.is_none() && cli.hard_disks.is_empty() {
             return Err(anyhow::anyhow!(
                 "No disk images specified. Use --floppy-a, --floppy-b, or --hdd to specify disk images."
             ));
@@ -100,4 +101,22 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
     }
 
     Ok(computer)
+}
+
+fn load_hard_disks(hard_disks: &Vec<String>) -> Vec<Box<dyn Disk>> {
+    hard_disks
+        .iter()
+        .enumerate()
+        .filter_map(|(i, path)| {
+            let backend = FileDiskBackend::open(path, false)
+                .map_err(|e| log::error!("Failed to open hard drive {}: {}", path, e))
+                .ok()?;
+            let disk = BackedDisk::new(backend)
+                .map_err(|e| log::error!("Failed to create disk from {}: {}", path, e))
+                .ok()?;
+            let letter = DriveNumber::from_hard_drive_index(i).to_letter();
+            log::info!("Opened hard drive {}: from {}", letter, path);
+            Some(Box::new(disk) as Box<dyn Disk>)
+        })
+        .collect()
 }
