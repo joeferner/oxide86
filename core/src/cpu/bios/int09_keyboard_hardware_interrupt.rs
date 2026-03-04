@@ -4,8 +4,9 @@ use crate::{
     cpu::{
         Cpu,
         bios::bda::{
-            BDA_KEYBOARD_FLAGS1_LEFT_SHIFT, BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT, bda_add_key_to_buffer,
-            bda_get_keyboard_flags1, bda_set_keyboard_flags1,
+            BDA_KEYBOARD_FLAGS1_ALT, BDA_KEYBOARD_FLAGS1_CTRL, BDA_KEYBOARD_FLAGS1_LEFT_SHIFT,
+            BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT, bda_add_key_to_buffer, bda_get_keyboard_flags1,
+            bda_set_keyboard_flags1,
         },
     },
     devices::{
@@ -13,8 +14,9 @@ use crate::{
         pic::{PIC_COMMAND_EOI, PIC_IO_PORT_COMMAND},
     },
     scan_code::{
-        SCAN_CODE_LEFT_SHIFT, SCAN_CODE_LEFT_SHIFT_RELEASE, SCAN_CODE_RIGHT_SHIFT,
-        SCAN_CODE_RIGHT_SHIFT_RELEASE,
+        SCAN_CODE_LEFT_ALT, SCAN_CODE_LEFT_ALT_RELEASE, SCAN_CODE_LEFT_CTRL,
+        SCAN_CODE_LEFT_CTRL_RELEASE, SCAN_CODE_LEFT_SHIFT, SCAN_CODE_LEFT_SHIFT_RELEASE,
+        SCAN_CODE_RIGHT_SHIFT, SCAN_CODE_RIGHT_SHIFT_RELEASE,
     },
 };
 
@@ -30,7 +32,7 @@ impl Cpu {
 
         let scan_code = bus.io_read_u8(KEYBOARD_IO_PORT_DATA);
 
-        // Handle shift key press/release - update BDA flags but don't buffer
+        // Handle modifier key press/release - update BDA flags but don't buffer
         match scan_code {
             SCAN_CODE_LEFT_SHIFT => {
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_LEFT_SHIFT;
@@ -59,6 +61,30 @@ impl Cpu {
                 );
                 return;
             }
+            SCAN_CODE_LEFT_CTRL => {
+                let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_CTRL;
+                bda_set_keyboard_flags1(bus, flags);
+                log::debug!("INT 09h (BIOS): Left Ctrl pressed, flags=0x{:02X}", flags);
+                return;
+            }
+            SCAN_CODE_LEFT_CTRL_RELEASE => {
+                let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_CTRL;
+                bda_set_keyboard_flags1(bus, flags);
+                log::debug!("INT 09h (BIOS): Left Ctrl released, flags=0x{:02X}", flags);
+                return;
+            }
+            SCAN_CODE_LEFT_ALT => {
+                let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_ALT;
+                bda_set_keyboard_flags1(bus, flags);
+                log::debug!("INT 09h (BIOS): Left Alt pressed, flags=0x{:02X}", flags);
+                return;
+            }
+            SCAN_CODE_LEFT_ALT_RELEASE => {
+                let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_ALT;
+                bda_set_keyboard_flags1(bus, flags);
+                log::debug!("INT 09h (BIOS): Left Alt released, flags=0x{:02X}", flags);
+                return;
+            }
             _ => {}
         }
 
@@ -75,7 +101,9 @@ impl Cpu {
         let flags = bda_get_keyboard_flags1(bus);
         let shifted =
             flags & (BDA_KEYBOARD_FLAGS1_LEFT_SHIFT | BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT) != 0;
-        let ascii_code = scan_code_to_ascii(scan_code, shifted);
+        let ctrl = flags & BDA_KEYBOARD_FLAGS1_CTRL != 0;
+        let alt = flags & BDA_KEYBOARD_FLAGS1_ALT != 0;
+        let ascii_code = scan_code_to_ascii(scan_code, shifted, ctrl, alt);
         bda_add_key_to_buffer(
             bus,
             KeyPress {
@@ -91,7 +119,52 @@ impl Cpu {
 /// Returns 0x00 for keys with no direct ASCII representation (modifiers, function keys,
 /// navigation keys). The caller should treat 0x00 as an extended keycode where INT 16h
 /// will return AH=scan_code, AL=0x00.
-pub fn scan_code_to_ascii(scan_code: u8, shifted: bool) -> u8 {
+pub fn scan_code_to_ascii(scan_code: u8, shifted: bool, ctrl: bool, alt: bool) -> u8 {
+    // Alt combinations: ascii=0x00, caller uses scan_code as extended key identifier
+    if alt {
+        return 0x00;
+    }
+
+    // Ctrl combinations: generate ASCII control codes (0x00-0x1F)
+    if ctrl {
+        return match scan_code {
+            0x03 => 0x00, // Ctrl+2 / Ctrl+@ = NUL
+            0x07 => 0x1E, // Ctrl+6 (^) = RS
+            0x0C => 0x1F, // Ctrl+- = US
+            0x10 => 0x11, // Ctrl+Q = DC1
+            0x11 => 0x17, // Ctrl+W = ETB
+            0x12 => 0x05, // Ctrl+E = ENQ
+            0x13 => 0x12, // Ctrl+R = DC2
+            0x14 => 0x14, // Ctrl+T = DC4
+            0x15 => 0x19, // Ctrl+Y = EM
+            0x16 => 0x15, // Ctrl+U = NAK
+            0x17 => 0x09, // Ctrl+I = HT (tab)
+            0x18 => 0x0F, // Ctrl+O = SI
+            0x19 => 0x10, // Ctrl+P = DLE
+            0x1A => 0x1B, // Ctrl+[ = ESC
+            0x1B => 0x1D, // Ctrl+] = GS
+            0x1E => 0x01, // Ctrl+A = SOH
+            0x1F => 0x13, // Ctrl+S = DC3
+            0x20 => 0x04, // Ctrl+D = EOT
+            0x21 => 0x06, // Ctrl+F = ACK
+            0x22 => 0x07, // Ctrl+G = BEL
+            0x23 => 0x08, // Ctrl+H = BS
+            0x24 => 0x0A, // Ctrl+J = LF
+            0x25 => 0x0B, // Ctrl+K = VT
+            0x26 => 0x0C, // Ctrl+L = FF
+            0x2B => 0x1C, // Ctrl+\ = FS
+            0x2C => 0x1A, // Ctrl+Z = SUB
+            0x2D => 0x18, // Ctrl+X = CAN
+            0x2E => 0x03, // Ctrl+C = ETX
+            0x2F => 0x16, // Ctrl+V = SYN
+            0x30 => 0x02, // Ctrl+B = STX
+            0x31 => 0x0E, // Ctrl+N = SO
+            0x32 => 0x0D, // Ctrl+M = CR
+            0x39 => 0x00, // Ctrl+Space = NUL
+            _ => 0x00,
+        };
+    }
+
     if shifted {
         match scan_code {
             0x01 => 0x1B, // Escape (unchanged)

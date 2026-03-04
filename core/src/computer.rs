@@ -56,7 +56,11 @@ impl Computer {
 
     /// Insert or eject the floppy disk for the given drive. Returns the previous disk if any.
     /// Pass `None` to eject; the CMOS drive-type register is only updated on insert.
-    pub fn set_floppy_disk(&mut self, drive: DriveNumber, disk: Option<Box<dyn Disk>>) -> Option<Box<dyn Disk>> {
+    pub fn set_floppy_disk(
+        &mut self,
+        drive: DriveNumber,
+        disk: Option<Box<dyn Disk>>,
+    ) -> Option<Box<dyn Disk>> {
         if let Some(ref d) = disk {
             // Derive CMOS type code from geometry.
             // Values: 0=none, 1=360KB 5.25", 2=1.2MB 5.25", 3=720KB 3.5", 4=1.44MB 3.5", 5=2.88MB 3.5"
@@ -210,7 +214,7 @@ impl Computer {
     pub fn push_key_press(&mut self, scan_code: u8) {
         log::debug!(
             "pushing key 0x{scan_code:02X} '{}'",
-            byte_to_printable_char(scan_code_to_ascii(scan_code, false))
+            byte_to_printable_char(scan_code_to_ascii(scan_code, false, false, false))
         );
         self.key_presses.push_back(scan_code);
         self.process_key_presses();

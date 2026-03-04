@@ -76,6 +76,8 @@ const EQUIPMENT_PRINTER_COUNT_MASK: u16 = 0xC000; // Bits 14-15: number of print
 // BDA KEYBOARD_FLAGS1 (0x40:0017) bit masks
 pub const BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT: u8 = 0x01; // Right Shift key pressed
 pub const BDA_KEYBOARD_FLAGS1_LEFT_SHIFT: u8 = 0x02; // Left Shift key pressed
+pub const BDA_KEYBOARD_FLAGS1_CTRL: u8 = 0x04; // Either Ctrl key pressed
+pub const BDA_KEYBOARD_FLAGS1_ALT: u8 = 0x08; // Either Alt key pressed
 
 /// Timer ticks per 24-hour day at 18.2065 Hz (1,193,182 Hz ÷ 65,536)
 const TICKS_PER_DAY: u32 = 0x0018_00B0; // 1,573,040

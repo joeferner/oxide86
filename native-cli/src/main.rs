@@ -15,7 +15,10 @@ use crossterm::{
     terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode},
 };
 use oxide86_core::{
-    scan_code::{SCAN_CODE_F12, SCAN_CODE_LEFT_SHIFT, SCAN_CODE_RELEASE},
+    scan_code::{
+        SCAN_CODE_F12, SCAN_CODE_LEFT_ALT, SCAN_CODE_LEFT_CTRL, SCAN_CODE_LEFT_SHIFT,
+        SCAN_CODE_RELEASE,
+    },
     video::VideoBuffer,
 };
 use oxide86_native_common::{cli::CommonCli, create_computer, logging::setup_logging};
@@ -104,8 +107,25 @@ fn main() -> Result<()> {
                         };
                         let shift_active =
                             key_event.modifiers.contains(KeyModifiers::SHIFT) || char_needs_shift;
-                        let last_shift = last_modifiers.contains(KeyModifiers::SHIFT);
+                        let ctrl_active = key_event.modifiers.contains(KeyModifiers::CONTROL);
+                        let alt_active = key_event.modifiers.contains(KeyModifiers::ALT);
 
+                        let last_shift = last_modifiers.contains(KeyModifiers::SHIFT);
+                        let last_ctrl = last_modifiers.contains(KeyModifiers::CONTROL);
+                        let last_alt = last_modifiers.contains(KeyModifiers::ALT);
+
+                        if !ctrl_active && last_ctrl {
+                            computer.push_key_press(SCAN_CODE_RELEASE | SCAN_CODE_LEFT_CTRL);
+                        }
+                        if ctrl_active && !last_ctrl {
+                            computer.push_key_press(SCAN_CODE_LEFT_CTRL);
+                        }
+                        if !alt_active && last_alt {
+                            computer.push_key_press(SCAN_CODE_RELEASE | SCAN_CODE_LEFT_ALT);
+                        }
+                        if alt_active && !last_alt {
+                            computer.push_key_press(SCAN_CODE_LEFT_ALT);
+                        }
                         if !shift_active && last_shift {
                             computer.push_key_press(SCAN_CODE_RELEASE | SCAN_CODE_LEFT_SHIFT);
                         }
@@ -114,7 +134,7 @@ fn main() -> Result<()> {
                         }
                         computer.push_key_press(scan_code);
                         computer.push_key_press(SCAN_CODE_RELEASE | scan_code);
-                        // Store effective modifiers so shift-release is tracked correctly
+                        // Store effective modifiers so modifier-release is tracked correctly
                         // even when the terminal omitted SHIFT from the event.
                         last_modifiers = if shift_active {
                             key_event.modifiers | KeyModifiers::SHIFT

@@ -113,7 +113,11 @@ impl FloppyDiskController {
 
     /// Insert or eject the disk for the given drive (A: or B:). Returns the previous disk if any.
     /// Pass `None` to eject the current disk.
-    pub fn set_drive_disk(&mut self, drive: DriveNumber, disk: Option<Box<dyn Disk>>) -> Option<Box<dyn Disk>> {
+    pub fn set_drive_disk(
+        &mut self,
+        drive: DriveNumber,
+        disk: Option<Box<dyn Disk>>,
+    ) -> Option<Box<dyn Disk>> {
         assert!(
             drive.is_floppy(),
             "FloppyDiskController only supports floppy drives"
