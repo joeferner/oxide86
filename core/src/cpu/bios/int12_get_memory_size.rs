@@ -12,6 +12,6 @@ impl Cpu {
         // Read memory size from BDA at offset 0x13 (2 bytes)
         let mem_size = bda_get_memory_size(bus);
         self.ax = mem_size;
-        log::info!("INT 12h: Returning memory size = {} KB", mem_size);
+        log::info!("INT 0x12: Returning memory size = {} KB", mem_size);
     }
 }

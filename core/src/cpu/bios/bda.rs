@@ -2,7 +2,12 @@ use crate::{
     KeyPress,
     bus::Bus,
     byte_to_printable_char,
-    devices::uart::{COM1_ADDR, COM2_ADDR, COM3_ADDR, COM4_ADDR},
+    devices::{
+        hard_disk_controller::{
+            HDC_COMMAND, HDC_DATA, HDC_DRIVE_HEAD, HDC_STATUS_BSY, HDC_STATUS_DRQ, HDC_STATUS_ERR,
+        },
+        uart::{COM1_ADDR, COM2_ADDR, COM3_ADDR, COM4_ADDR},
+    },
     video::{
         DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_SIZE,
         VIDEO_MODE_03H_COLOR_TEXT_80_X_25, video_buffer::CursorPosition,
@@ -40,7 +45,6 @@ const BDA_CRT_MODE_CONTROL: usize = 0x65; // CRT mode control register
 const BDA_CRT_PALETTE: usize = 0x66; // CRT palette register
 const BDA_TIMER_COUNTER: usize = 0x6C; // Timer counter (dword) - ticks since midnight
 const BDA_TIMER_OVERFLOW: usize = 0x70; // Timer midnight rollover flag (byte)
-#[allow(dead_code)]
 const BDA_NUM_HARD_DRIVES: usize = 0x75; // Number of hard drives installed (byte)
 const BDA_KEYBOARD_BUFFER_START: usize = 0x80; // Keyboard buffer start pointer (word, normally 0x001E)
 const BDA_KEYBOARD_BUFFER_END: usize = 0x82; // Keyboard buffer end pointer (word, normally 0x003E)
@@ -184,6 +188,12 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
 
     // Timer overflow flag (0x0040:0070)
     bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0); // No midnight rollover yet
+
+    // Number of installed hard drives (0x0040:0075)
+    // Populated during POST by probing each drive via ATA IDENTIFY (IO ports).
+    // DOS reads this to enumerate fixed disks (C:, D:, ...)
+    let hard_drive_count = post_probe_hard_drives(bus);
+    bus.memory_write_u8(BDA_START + BDA_NUM_HARD_DRIVES, hard_drive_count);
 
     // Keyboard buffer range (0x0040:0080-0083)
     // These are the start and end pointers of the circular keyboard buffer in BDA
@@ -375,6 +385,36 @@ pub fn bda_increment_timer_counter(bus: &mut Bus) {
     bus.memory_write_u16(counter_addr + 2, ((new_counter >> 16) & 0xFFFF) as u16);
 }
 
+/// Probe ATA drives via IDENTIFY DEVICE (POST-style detection).
+/// Returns the number of drives that responded with DRQ and no error.
+fn post_probe_hard_drives(bus: &mut Bus) -> u8 {
+    const HDC_CMD_IDENTIFY: u8 = 0xEC;
+    const MAX_DRIVES: u8 = 2;
+
+    let mut count = 0u8;
+    for drive_idx in 0..MAX_DRIVES {
+        bus.io_write_u8(HDC_DRIVE_HEAD, 0xA0 | (drive_idx << 4));
+        bus.io_write_u8(HDC_COMMAND, HDC_CMD_IDENTIFY);
+
+        while bus.io_read_u8(HDC_COMMAND) & HDC_STATUS_BSY != 0 {}
+
+        let status = bus.io_read_u8(HDC_COMMAND);
+        if status & HDC_STATUS_ERR == 0 && status & HDC_STATUS_DRQ != 0 {
+            // Drain the 512-byte IDENTIFY response so the controller returns to idle
+            for _ in 0..512 {
+                let _ = bus.io_read_u8(HDC_DATA);
+            }
+            count += 1;
+        }
+    }
+    log::info!("found {count} hard drives");
+    count
+}
+
+pub fn bda_get_num_hard_drives(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_NUM_HARD_DRIVES)
+}
+
 pub fn bda_get_com_port_address(bus: &Bus, port: u8) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_COM_PORTS + port as usize * 2)
 }
@@ -413,7 +453,7 @@ pub fn bda_read_key(bus: &mut Bus) -> Option<KeyPress> {
         let ascii_code = bus.memory_read_u8(char_addr + 1);
 
         log::debug!(
-            "INT 16h AH=00h: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+            "INT 0x16 AH=0x00: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
             scan_code,
             ascii_code,
             byte_to_printable_char(ascii_code)
@@ -455,7 +495,7 @@ pub fn bda_add_key_to_buffer(bus: &mut Bus, key: KeyPress) {
     if new_tail == head {
         // Buffer full - discard key (beep would be appropriate here)
         log::warn!(
-            "INT 09h (BIOS): Keyboard buffer full! Discarding scan=0x{:02X}, ascii=0x{:02X}",
+            "INT 0x09 (BIOS): Keyboard buffer full! Discarding scan=0x{:02X}, ascii=0x{:02X}",
             key.scan_code,
             key.ascii_code
         );
@@ -469,7 +509,7 @@ pub fn bda_add_key_to_buffer(bus: &mut Bus, key: KeyPress) {
     bus.memory_write_u16(tail_addr, new_tail);
 
     log::debug!(
-        "INT 09h (BIOS): Added to buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+        "INT 0x09 (BIOS): Added to buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
         key.scan_code,
         key.ascii_code,
         if (0x20..0x7F).contains(&key.ascii_code) {

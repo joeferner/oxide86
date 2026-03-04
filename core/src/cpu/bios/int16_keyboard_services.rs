@@ -41,7 +41,7 @@ impl Cpu {
     pub(crate) fn int16_read_char(&mut self, bus: &mut Bus) {
         if let Some(key) = bda_read_key(bus) {
             log::debug!(
-                "int16 read char scan code: {:02X} '{}'",
+                "int16 read char scan code: 0x{:02X} '{}'",
                 key.scan_code,
                 byte_to_printable_char(key.ascii_code)
             );
@@ -64,7 +64,7 @@ impl Cpu {
     fn int16_check_keystroke(&mut self, bus: &mut Bus) {
         if let Some(key) = bda_peek_key(bus) {
             log::debug!(
-                "INT 16h AH=01h: Key available in buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+                "INT 0x16 AH=0x01: Key available in buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
                 key.scan_code,
                 key.ascii_code,
                 byte_to_printable_char(key.ascii_code)

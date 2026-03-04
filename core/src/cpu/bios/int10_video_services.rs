@@ -90,7 +90,7 @@ impl Cpu {
         set_cursor_pos(bus, 0, 0, 0);
 
         log::info!(
-            "INT 10h AH=00h: Updated BDA for mode 0x{:02X} - cols={}, rows={}, page_size={}",
+            "INT 0x10 AH=0x00: Updated BDA for mode 0x{:02X} - cols={}, rows={}, page_size={}",
             mode,
             mode_info.cols,
             mode_info.rows,
@@ -123,7 +123,7 @@ impl Cpu {
         bus.io_write_u8(VIDEO_CARD_DATA_ADDR, end_line);
 
         log::debug!(
-            "INT 10h/AH=01h: cursor shape CH={:02X}h CL={:02X}h visible={}",
+            "INT 0x10/AH=0x01: cursor shape CH=0x{:02X} CL=0x{:02X} visible={}",
             start_line,
             end_line,
             visible
@@ -142,7 +142,7 @@ impl Cpu {
         let page = (self.bx >> 8) as u8; // BH
 
         log::debug!(
-            "INT 10h AH=02h: Set cursor to row={}, col={}, page={}",
+            "INT 0x10 AH=0x02: Set cursor to row={}, col={}, page={}",
             row,
             col,
             page
@@ -186,7 +186,7 @@ impl Cpu {
 
         // Validate page number (0-7 for standard text modes)
         if page > 7 {
-            log::warn!("INT 10h/AH=05h: Invalid page number: {}", page);
+            log::warn!("INT 0x10/AH=0x05: Invalid page number: {}", page);
             return;
         }
 
@@ -220,7 +220,7 @@ impl Cpu {
         bda_set_cursor_pos(bus, page, old_cursor.row, old_cursor.col);
 
         log::debug!(
-            "INT 10h/AH=05h: Selected active page {} (offset 0x{:04X})",
+            "INT 0x10/AH=0x05: Selected active page {} (offset 0x{:04X})",
             page,
             start_offset
         );
@@ -245,7 +245,7 @@ impl Cpu {
 
         if lines == 0 {
             log::debug!(
-                "INT 10h AH=06h: CLEARING window with attr=0x{:02X}, ({},{}) to ({},{})",
+                "INT 0x10 AH=0x06: CLEARING window with attr=0x{:02X}, ({},{}) to ({},{})",
                 attr,
                 top,
                 left,
@@ -254,7 +254,7 @@ impl Cpu {
             );
         } else {
             log::debug!(
-                "INT 10h AH=06h: Scroll up lines={}, attr=0x{:02X}, window=({},{}) to ({},{})",
+                "INT 0x10 AH=0x06: Scroll up lines={}, attr=0x{:02X}, window=({},{}) to ({},{})",
                 lines,
                 attr,
                 top,
@@ -345,7 +345,7 @@ impl Cpu {
             // let invert_glyph = (ch & 0x80) != 0 && xor_mode; // Invert if both bits set
 
             // log::debug!(
-            //     "INT 10h AH=09h: char=0x{:02X} attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
+            //     "INT 0x10 AH=0x09: char=0x{:02X} attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
             //     ch,
             //     attr,
             //     xor_mode,

@@ -58,7 +58,7 @@ impl Cpu {
         let terminate_cs = bus.memory_read_u16(terminate_offset_addr + 2);
 
         log::info!(
-            "INT 21h AH=4Ch: Terminating from PSP {:04X}, jumping to {:04X}:{:04X}",
+            "INT 0x21 AH=0x4C: Terminating from PSP {:04X}, jumping to {:04X}:{:04X}",
             psp_segment,
             terminate_cs,
             terminate_ip

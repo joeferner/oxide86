@@ -97,7 +97,7 @@ impl VideoCard {
         // Check if the requested mode is supported by the video card type
         // if !bus.video().supports_mode(mode) {
         //     log::warn!(
-        //         "INT 10h AH=00h: Video mode 0x{:02X} not supported by {} card - ignoring",
+        //         "INT 0x10 AH=0x00: Video mode 0x{:02X} not supported by {} card - ignoring",
         //         mode,
         //         bus.video().card_type()
         //     );

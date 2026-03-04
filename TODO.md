@@ -7,8 +7,11 @@
 - [X] Real time clock (RTC)
   - [X] Implement native clock
 - [X] Improve CLI render speed by not set FG/BG if they haven't changed
+- [ ] Add command mode to CLI to turn on/off exec logging and quit
 - [ ] Add hard drive support
 - [ ] Add read only floppy support "--floppy-a test.img:r"
+- [ ] Add memory CLI flag, support KB, MB suffixes default to KB
+- [ ] Get MS-DOS 4.01 Working
 - [ ] remove functions from bus to get internal devices unless really needed
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions

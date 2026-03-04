@@ -37,26 +37,26 @@ impl Cpu {
             SCAN_CODE_LEFT_SHIFT => {
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_LEFT_SHIFT;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 09h (BIOS): Left Shift pressed, flags=0x{:02X}", flags);
+                log::debug!("INT 0x09 (BIOS): Left Shift pressed, flags=0x{:02X}", flags);
                 return;
             }
             SCAN_CODE_RIGHT_SHIFT => {
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 09h (BIOS): Right Shift pressed, flags=0x{:02X}", flags);
+                log::debug!("INT 0x09 (BIOS): Right Shift pressed, flags=0x{:02X}", flags);
                 return;
             }
             SCAN_CODE_LEFT_SHIFT_RELEASE => {
                 let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_LEFT_SHIFT;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 09h (BIOS): Left Shift released, flags=0x{:02X}", flags);
+                log::debug!("INT 0x09 (BIOS): Left Shift released, flags=0x{:02X}", flags);
                 return;
             }
             SCAN_CODE_RIGHT_SHIFT_RELEASE => {
                 let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT;
                 bda_set_keyboard_flags1(bus, flags);
                 log::debug!(
-                    "INT 09h (BIOS): Right Shift released, flags=0x{:02X}",
+                    "INT 0x09 (BIOS): Right Shift released, flags=0x{:02X}",
                     flags
                 );
                 return;
@@ -64,25 +64,25 @@ impl Cpu {
             SCAN_CODE_LEFT_CTRL => {
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_CTRL;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 09h (BIOS): Left Ctrl pressed, flags=0x{:02X}", flags);
+                log::debug!("INT 0x09 (BIOS): Left Ctrl pressed, flags=0x{:02X}", flags);
                 return;
             }
             SCAN_CODE_LEFT_CTRL_RELEASE => {
                 let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_CTRL;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 09h (BIOS): Left Ctrl released, flags=0x{:02X}", flags);
+                log::debug!("INT 0x09 (BIOS): Left Ctrl released, flags=0x{:02X}", flags);
                 return;
             }
             SCAN_CODE_LEFT_ALT => {
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_ALT;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 09h (BIOS): Left Alt pressed, flags=0x{:02X}", flags);
+                log::debug!("INT 0x09 (BIOS): Left Alt pressed, flags=0x{:02X}", flags);
                 return;
             }
             SCAN_CODE_LEFT_ALT_RELEASE => {
                 let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_ALT;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 09h (BIOS): Left Alt released, flags=0x{:02X}", flags);
+                log::debug!("INT 0x09 (BIOS): Left Alt released, flags=0x{:02X}", flags);
                 return;
             }
             _ => {}
@@ -92,7 +92,7 @@ impl Cpu {
         // Key releases should NOT be added to the BIOS buffer - they're only for custom handlers
         if scan_code & 0x80 != 0 {
             log::debug!(
-                "INT 09h (BIOS): Key release detected (scan=0x{:02X}), not buffering",
+                "INT 0x09 (BIOS): Key release detected (scan=0x{:02X}), not buffering",
                 scan_code
             );
             return;

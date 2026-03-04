@@ -252,6 +252,9 @@ impl Cpu {
             // PUSH SS (16)
             0x16 => self.push_segreg(opcode, bus),
 
+            // POP SS (17)
+            0x17 => self.pop_segreg(opcode, bus),
+
             // SBB r/m to register (18-1B)
             0x18..=0x1B => self.sbb_rm_reg(opcode, bus),
 

@@ -72,7 +72,6 @@ fn main() -> Result<()> {
         terminal::Clear(ClearType::All)
     )?;
 
-    // TODO
     let mut quit_from_command_mode = false;
     while computer.get_exit_code().is_none() && !quit_from_command_mode {
         if !computer.wait_for_key_press() {
