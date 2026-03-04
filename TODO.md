@@ -7,6 +7,7 @@
 - [X] Real time clock (RTC)
   - [X] Implement native clock
 - [X] Improve CLI render speed by not set FG/BG if they haven't changed
+- [ ] Running "format c:" doesn't update screen properly
 - [ ] Add command mode to CLI to turn on/off exec logging and quit
 - [ ] Add hard drive support
 - [ ] Add read only floppy support "--floppy-a test.img:r"
