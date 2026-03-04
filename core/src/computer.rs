@@ -54,32 +54,36 @@ impl Computer {
         self.bus.add_device(device);
     }
 
-    pub fn set_floppy_disk(&mut self, drive: DriveNumber, disk: Box<dyn Disk>) {
-        // Derive CMOS type code from geometry before the disk is consumed.
-        // Values: 0=none, 1=360KB 5.25", 2=1.2MB 5.25", 3=720KB 3.5", 4=1.44MB 3.5", 5=2.88MB 3.5"
-        let cmos_type: u8 = match disk.disk_geometry().total_size {
-            1_474_560 => 0x04,
-            737_280 => 0x03,
-            368_640 | 163_840 => 0x01,
-            _ => 0x00,
-        };
+    /// Insert or eject the floppy disk for the given drive. Returns the previous disk if any.
+    /// Pass `None` to eject; the CMOS drive-type register is only updated on insert.
+    pub fn set_floppy_disk(&mut self, drive: DriveNumber, disk: Option<Box<dyn Disk>>) -> Option<Box<dyn Disk>> {
+        if let Some(ref d) = disk {
+            // Derive CMOS type code from geometry.
+            // Values: 0=none, 1=360KB 5.25", 2=1.2MB 5.25", 3=720KB 3.5", 4=1.44MB 3.5", 5=2.88MB 3.5"
+            let cmos_type: u8 = match d.disk_geometry().total_size {
+                1_474_560 => 0x04,
+                737_280 => 0x03,
+                368_640 | 163_840 => 0x01,
+                _ => 0x00,
+            };
 
-        self.bus.floppy_controller_mut().set_drive_disk(drive, disk);
+            // Update CMOS register 0x10 (floppy drive types).
+            // Read current value first to preserve the other drive's nibble.
+            self.bus
+                .io_write_u8(RTC_IO_PORT_REGISTER_SELECT, CMOS_REG_FLOPPY_TYPES);
+            let current = self.bus.io_read_u8(RTC_IO_PORT_DATA);
+            let current = if current == 0xFF { 0x00 } else { current };
+            let floppy_types = if drive.to_floppy_index() == 0 {
+                (cmos_type << 4) | (current & 0x0F) // drive A in bits 7:4
+            } else {
+                (current & 0xF0) | (cmos_type & 0x0F) // drive B in bits 3:0
+            };
+            self.bus
+                .io_write_u8(RTC_IO_PORT_REGISTER_SELECT, CMOS_REG_FLOPPY_TYPES);
+            self.bus.io_write_u8(RTC_IO_PORT_DATA, floppy_types);
+        }
 
-        // Update CMOS register 0x10 (floppy drive types).
-        // Read current value first to preserve the other drive's nibble.
-        self.bus
-            .io_write_u8(RTC_IO_PORT_REGISTER_SELECT, CMOS_REG_FLOPPY_TYPES);
-        let current = self.bus.io_read_u8(RTC_IO_PORT_DATA);
-        let current = if current == 0xFF { 0x00 } else { current };
-        let floppy_types = if drive.to_floppy_index() == 0 {
-            (cmos_type << 4) | (current & 0x0F) // drive A in bits 7:4
-        } else {
-            (current & 0xF0) | (cmos_type & 0x0F) // drive B in bits 3:0
-        };
-        self.bus
-            .io_write_u8(RTC_IO_PORT_REGISTER_SELECT, CMOS_REG_FLOPPY_TYPES);
-        self.bus.io_write_u8(RTC_IO_PORT_DATA, floppy_types);
+        self.bus.floppy_controller_mut().set_drive_disk(drive, disk)
     }
 
     /// Load a program at the specified segment:offset and set CPU to start there

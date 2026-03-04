@@ -61,6 +61,13 @@ impl<B: DiskBackend> BackedDisk<B> {
         self.read_sector_lba(lba)
     }
 
+    fn write_sector_chs(&self, cylinder: u16, head: u16, sector: u16, data: &[u8]) -> Result<()> {
+        let lba = self.geometry.chs_to_lba(cylinder, head, sector)?;
+        let offset = (lba * SECTOR_SIZE) as u64;
+        self.backend.borrow_mut().write_at(offset, data)?;
+        Ok(())
+    }
+
     fn read_sector_lba(&self, lba: usize) -> Result<[u8; SECTOR_SIZE]> {
         if lba >= self.geometry.total_sectors() {
             return Err(anyhow!(
@@ -114,6 +121,39 @@ impl<B: DiskBackend> Disk for BackedDisk<B> {
         }
 
         Ok(result)
+    }
+
+    fn write_sectors(
+        &self,
+        cylinder: u8,
+        head: u8,
+        sector: u8,
+        data: &[u8],
+    ) -> Result<(), super::DiskError> {
+        let sectors_per_track = self.geometry.sectors_per_track;
+        let heads = self.geometry.heads;
+
+        let mut current_cylinder = cylinder as u16;
+        let mut current_head = head as u16;
+        let mut current_sector = sector as u16;
+
+        let count = data.len() / SECTOR_SIZE;
+        for i in 0..count {
+            let sector_data = &data[i * SECTOR_SIZE..(i + 1) * SECTOR_SIZE];
+            self.write_sector_chs(current_cylinder, current_head, current_sector, sector_data)
+                .map_err(|_| DiskError::SectorNotFound)?;
+
+            current_sector += 1;
+            if current_sector > sectors_per_track {
+                current_sector = 1;
+                current_head += 1;
+                if current_head >= heads {
+                    current_head = 0;
+                    current_cylinder += 1;
+                }
+            }
+        }
+        Ok(())
     }
 
     fn disk_geometry(&self) -> DiskGeometry {

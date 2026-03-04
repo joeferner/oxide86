@@ -146,8 +146,26 @@ mod tests {
                         |c| {
                             let backend = MemBackend::zeroed(DiskGeometry::FLOPPY_1440K.total_size);
                             let disk = BackedDisk::new(backend).unwrap();
-                            c.set_floppy_disk(DriveNumber::floppy_a(), Box::new(disk));
+                            c.set_floppy_disk(DriveNumber::floppy_a(), Some(Box::new(disk)));
                             c.run()
+                        },
+                    );
+                }
+
+                #[test_log::test]
+                pub fn basic_write() {
+                    run_test_configured(
+                        "cpu/bios/int13/basic_write",
+                        make_computer!(cpu_type: CpuType::I80286),
+                        |c| {
+                            let backend = MemBackend::zeroed(DiskGeometry::FLOPPY_1440K.total_size);
+                            let disk = BackedDisk::new(backend).unwrap();
+                            c.set_floppy_disk(DriveNumber::floppy_a(), Some(Box::new(disk)));
+                            c.run();
+                            let disk = c.set_floppy_disk(DriveNumber::floppy_a(), None).unwrap();
+                            let data = disk.read_sectors(0, 0, 1, 1).expect("read sector failed");
+                            assert_eq!(data.len(), 512);
+                            assert!(data.iter().all(|&b| b == 0xA5), "sector data mismatch");
                         },
                     );
                 }

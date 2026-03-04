@@ -40,7 +40,7 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        computer.set_floppy_disk(DriveNumber::floppy_a(), Box::new(disk));
+        computer.set_floppy_disk(DriveNumber::floppy_a(), Some(Box::new(disk)));
         log::info!("Opened floppy A: from {}", path);
     }
 
@@ -49,7 +49,7 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         let backend = FileDiskBackend::open(path, false)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
-        computer.set_floppy_disk(DriveNumber::floppy_b(), Box::new(disk));
+        computer.set_floppy_disk(DriveNumber::floppy_b(), Some(Box::new(disk)));
         log::info!("Opened floppy B: from {}", path);
     }
 

@@ -27,6 +27,7 @@ impl Cpu {
             0x00 => self.int13_reset_disk(bus),
             0x01 => self.int13_get_status(),
             0x02 => self.int13_read_sectors(bus),
+            0x03 => self.int13_write_sectors(bus),
             0x08 => self.int13_get_drive_params(bus),
             0x15 => self.int13_get_disk_type(bus),
             0x16 => self.int13_detect_disk_change(bus),
@@ -202,6 +203,92 @@ impl Cpu {
             };
             log::warn!(
                 "INT 13h AH=02h: FDC read failed for drive {}, ST0=0x{:02X}",
+                drive,
+                st0
+            );
+            self.ax = (self.ax & 0x00FF) | ((error as u16) << 8); // AH = error
+            self.ax &= 0xFF00; // AL = 0
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = error as u8;
+        }
+    }
+
+    /// INT 13h, AH=03h - Write Sectors from Memory
+    /// Input:
+    ///   AL = number of sectors to write (1-128)
+    ///   CH = cylinder number (0-1023, low 8 bits)
+    ///   CL = sector number (1-63, bits 0-5) + high 2 bits of cylinder (bits 6-7)
+    ///   DH = head number (0-255)
+    ///   DL = drive number
+    ///   ES:BX = buffer address (source data)
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   AL = number of sectors written
+    ///   CF = clear if success, set if error
+    fn int13_write_sectors(&mut self, bus: &mut Bus) {
+        let count = (self.ax & 0xFF) as u8; // AL
+        let cylinder = (self.cx >> 8) as u8; // CH (8-bit cylinder for 8086 compatibility)
+        let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
+        let head = (self.dx >> 8) as u8; // DH
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
+
+        if !drive.is_floppy() {
+            log::warn!("INT 13h AH=03h: hard drive not yet implemented");
+            self.ax = (self.ax & 0x00FF) | ((DiskError::DriveNotReady as u16) << 8);
+            self.ax &= 0xFF00;
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::DriveNotReady as u8;
+            return;
+        }
+
+        let drive_index = drive.to_floppy_index() as u8;
+        let buffer_addr = physical_address(self.es, self.bx);
+        let eot = sector + count - 1;
+
+        // Select drive and enable motor: nRESET=1, DMA enable=1, motor on, drive select
+        bus.io_write_u8(FDC_DOR, 0x1C | drive_index);
+
+        // Send WRITE DATA command (9 bytes: 1 command byte + 8 parameter bytes)
+        bus.io_write_u8(FDC_DATA, 0x45); // WRITE DATA: MFM=1, MT=0, SK=0
+        bus.io_write_u8(FDC_DATA, (head << 2) | drive_index); // HD, US1, US0
+        bus.io_write_u8(FDC_DATA, cylinder); // C
+        bus.io_write_u8(FDC_DATA, head); // H
+        bus.io_write_u8(FDC_DATA, sector); // R (starting sector, 1-based)
+        bus.io_write_u8(FDC_DATA, 0x02); // N (512 bytes/sector)
+        bus.io_write_u8(FDC_DATA, eot); // EOT (last sector number)
+        bus.io_write_u8(FDC_DATA, 0x1B); // GPL (gap length)
+        bus.io_write_u8(FDC_DATA, 0xFF); // DTL
+
+        // NDM bit set in MSR means PIO data transfer (execution) phase is active
+        let msr = bus.io_read_u8(FDC_MSR);
+        if msr & FDC_MSR_NDM != 0 {
+            let total_bytes = (count as usize) * 512;
+            for i in 0..total_bytes {
+                let byte = bus.memory_read_u8(buffer_addr + i);
+                bus.io_write_u8(FDC_DATA, byte);
+            }
+        }
+
+        // Read 7 result bytes; ST0 is first
+        let st0 = bus.io_read_u8(FDC_DATA);
+        for _ in 1..7 {
+            let _ = bus.io_read_u8(FDC_DATA);
+        }
+
+        // ST0 bits 7:6 = interrupt code: 0x00 = normal termination
+        if st0 & 0xC0 == 0 {
+            self.ax = (self.ax & 0xFF00) | (count as u16); // AL = sectors written
+            self.ax &= 0x00FF; // AH = 0 (success)
+            self.set_flag(cpu_flag::CARRY, false);
+            self.last_disk_status = DiskError::Success as u8;
+        } else {
+            let error = if st0 & 0x08 != 0 {
+                DiskError::DriveNotReady
+            } else {
+                DiskError::SectorNotFound
+            };
+            log::warn!(
+                "INT 13h AH=03h: FDC write failed for drive {}, ST0=0x{:02X}",
                 drive,
                 st0
             );

@@ -6,8 +6,9 @@
 - [X] Add Keyboard/PIC support
 - [X] Real time clock (RTC)
   - [X] Implement native clock
+- [X] Improve CLI render speed by not set FG/BG if they haven't changed
+- [ ] Add hard drive support
 - [ ] remove functions from bus to get internal devices unless really needed
-- [ ] Improve CLI render speed by not set FG/BG if they haven't changed
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc

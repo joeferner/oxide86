@@ -31,6 +31,11 @@ const FDC_CMD_READ_DATA: u8 = 0x06;
 /// Number of parameter bytes following the READ DATA command byte
 const FDC_CMD_READ_DATA_PARAMS: usize = 8;
 
+/// WRITE DATA command code (bits 4:0)
+const FDC_CMD_WRITE_DATA: u8 = 0x05;
+/// Number of parameter bytes following the WRITE DATA command byte
+const FDC_CMD_WRITE_DATA_PARAMS: usize = 8;
+
 /// RECALIBRATE command code: move head to track 0
 const FDC_CMD_RECALIBRATE: u8 = 0x07;
 /// RECALIBRATE takes 1 parameter byte (drive select DS1:DS0)
@@ -54,6 +59,12 @@ enum FdcPhase {
         data: Vec<u8>,
         index: usize,
         result: [u8; 7],
+    },
+    /// PIO write transfer: receiving sector data bytes from the CPU
+    WriteExecution {
+        params: [u8; 8],
+        data: Vec<u8>,
+        expected: usize,
     },
     /// Result phase: returning status bytes to the CPU.
     /// `len` is the number of valid bytes (7 for READ DATA, 2 for SENSE INTERRUPT STATUS).
@@ -100,16 +111,19 @@ impl FloppyDiskController {
         }
     }
 
-    /// Set the disk image for the given drive (A: or B:). Replaces any existing disk.
-    pub fn set_drive_disk(&mut self, drive: DriveNumber, disk: Box<dyn Disk>) {
+    /// Insert or eject the disk for the given drive (A: or B:). Returns the previous disk if any.
+    /// Pass `None` to eject the current disk.
+    pub fn set_drive_disk(&mut self, drive: DriveNumber, disk: Option<Box<dyn Disk>>) -> Option<Box<dyn Disk>> {
         assert!(
             drive.is_floppy(),
             "FloppyDiskController only supports floppy drives"
         );
         let idx = drive.to_floppy_index();
         assert!(idx < 2, "floppy drive index out of range");
-        self.drives[idx] = Some(disk);
+        let prev = self.drives[idx].take();
+        self.drives[idx] = disk;
         self.changeline[idx].set(true);
+        prev
     }
 
     pub fn disk_geometry(&self, drive: DriveNumber) -> Option<DiskGeometry> {
@@ -147,6 +161,7 @@ impl FloppyDiskController {
             FdcPhase::Idle => FDC_MSR_RQM,
             FdcPhase::Command { .. } => FDC_MSR_RQM | FDC_MSR_CB,
             FdcPhase::Execution { .. } => FDC_MSR_RQM | FDC_MSR_DIO | FDC_MSR_NDM | FDC_MSR_CB,
+            FdcPhase::WriteExecution { .. } => FDC_MSR_RQM | FDC_MSR_NDM | FDC_MSR_CB,
             FdcPhase::Result { .. } => FDC_MSR_RQM | FDC_MSR_DIO | FDC_MSR_CB,
         }
     }
@@ -185,6 +200,66 @@ impl FloppyDiskController {
                         eot.wrapping_add(1), // R (next sector after last)
                         0x02,                // N (512 bytes/sector)
                     ],
+                },
+                Err(_) => FdcPhase::Result {
+                    bytes: [
+                        0x40 | (drive_head & 0x07), // ST0: abnormal termination
+                        0x04,                       // ST1: No Data
+                        0x00,                       // ST2
+                        cylinder,
+                        head,
+                        sector,
+                        0x02,
+                    ],
+                    index: 0,
+                    len: 7,
+                },
+            },
+            None => FdcPhase::Result {
+                bytes: [
+                    0x48 | (drive_head & 0x07), // ST0: abnormal + not ready
+                    0x00,                       // ST1
+                    0x00,                       // ST2
+                    cylinder,
+                    head,
+                    sector,
+                    0x02,
+                ],
+                index: 0,
+                len: 7,
+            },
+        }
+    }
+    /// Execute a WRITE DATA command given the 8 parameter bytes and the sector data.
+    /// Returns the Result phase with 7 status bytes.
+    fn execute_write_data(&self, params: &[u8; 8], data: &[u8]) -> FdcPhase {
+        let drive_head = params[0]; // HD<<2 | US1:US0
+        let cylinder = params[1];
+        let head = params[2];
+        let sector = params[3];
+        let eot = params[5]; // last sector number (end-of-track)
+
+        let drive_index = drive_head & 0x03;
+        let drive = DriveNumber::from_standard(drive_index);
+
+        match self
+            .drives
+            .get(drive.to_floppy_index())
+            .and_then(|d| d.as_ref())
+        {
+            Some(disk) => match disk.write_sectors(cylinder, head, sector, data) {
+                Ok(()) => FdcPhase::Result {
+                    bytes: [
+                        0x00,                // ST0: normal termination
+                        0x00,                // ST1
+                        0x00,                // ST2
+                        cylinder,            // C
+                        head,                // H
+                        eot.wrapping_add(1), // R (next sector after last)
+                        0x02,                // N (512 bytes/sector)
+                    ],
+                    index: 0,
+                    len: 7,
                 },
                 Err(_) => FdcPhase::Result {
                     bytes: [
@@ -342,6 +417,12 @@ impl Device for FloppyDiskController {
                                 received: 0,
                                 total: FDC_CMD_READ_DATA_PARAMS,
                             },
+                            FDC_CMD_WRITE_DATA => FdcPhase::Command {
+                                cmd: val,
+                                params: [0u8; 8],
+                                received: 0,
+                                total: FDC_CMD_WRITE_DATA_PARAMS,
+                            },
                             FDC_CMD_RECALIBRATE => FdcPhase::Command {
                                 cmd: val,
                                 params: [0u8; 8],
@@ -383,6 +464,16 @@ impl Device for FloppyDiskController {
                             let cmd_code = cmd & 0x1F;
                             match cmd_code {
                                 FDC_CMD_READ_DATA => self.execute_read_data(&params),
+                                FDC_CMD_WRITE_DATA => {
+                                    // Transition to write execution: wait for sector data from CPU
+                                    let count = params[5].saturating_sub(params[3]) + 1;
+                                    let expected = (count as usize) * 512;
+                                    FdcPhase::WriteExecution {
+                                        params,
+                                        data: Vec::with_capacity(expected),
+                                        expected,
+                                    }
+                                }
                                 FDC_CMD_RECALIBRATE => {
                                     // Move head to cylinder 0; generate interrupt with SE set
                                     // ST0: IC=00b (normal), SE=1, drive number in bits 1:0
@@ -394,7 +485,23 @@ impl Device for FloppyDiskController {
                             }
                         }
                     }
-                    // Ignore writes during execution or result phases
+                    FdcPhase::WriteExecution {
+                        params,
+                        mut data,
+                        expected,
+                    } => {
+                        data.push(val);
+                        if data.len() >= expected {
+                            self.execute_write_data(&params, &data)
+                        } else {
+                            FdcPhase::WriteExecution {
+                                params,
+                                data,
+                                expected,
+                            }
+                        }
+                    }
+                    // Ignore writes during read execution or result phases
                     other => other,
                 };
                 *self.phase.borrow_mut() = next;

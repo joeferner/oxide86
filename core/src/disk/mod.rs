@@ -44,6 +44,14 @@ pub trait Disk {
         count: u8,
     ) -> Result<Vec<u8>, DiskError>;
 
+    fn write_sectors(
+        &self,
+        cylinder: u8,
+        head: u8,
+        sector: u8,
+        data: &[u8],
+    ) -> Result<(), DiskError>;
+
     fn disk_geometry(&self) -> DiskGeometry;
 }
 
