@@ -1,7 +1,10 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, cpu_flag},
-    disk::{DiskError, DriveNumber, FDC_DIR, FDC_DIR_DISK_CHANGE, disk_read_sectors},
+    disk::{
+        DiskError, DriveNumber, FDC_DATA, FDC_DIR, FDC_DIR_DISK_CHANGE, FDC_DOR, FDC_MSR,
+        FDC_MSR_NDM,
+    },
     physical_address,
 };
 
@@ -136,43 +139,76 @@ impl Cpu {
     ///   CF = clear if success, set if error
     fn int13_read_sectors(&mut self, bus: &mut Bus) {
         let count = (self.ax & 0xFF) as u8; // AL
-        let cylinder_low = (self.cx >> 8) as u8; // CH
-        let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
+        let cylinder = (self.cx >> 8) as u8; // CH (8-bit cylinder for 8086 compatibility)
+        let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
         let head = (self.dx >> 8) as u8; // DH
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
 
-        // Extract cylinder and sector from CL
-        let sector = sector_and_cyl_high & 0x3F; // Bits 0-5
-        // For 8086, we only support 8-bit cylinders (compatibility mode)
-        let cylinder_8bit = cylinder_low;
+        if !drive.is_floppy() {
+            log::warn!("INT 13h AH=02h: hard drive not yet implemented");
+            self.ax = (self.ax & 0x00FF) | ((DiskError::DriveNotReady as u16) << 8);
+            self.ax &= 0xFF00;
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::DriveNotReady as u8;
+            return;
+        }
 
-        match disk_read_sectors(bus, drive, cylinder_8bit, head, sector, count) {
-            Ok(data) => {
-                // Write data to ES:BX
-                let buffer_addr = physical_address(self.es, self.bx);
-                for (i, &byte) in data.iter().enumerate() {
-                    bus.memory_write_u8(buffer_addr + i, byte);
-                }
+        let drive_index = drive.to_floppy_index() as u8;
+        let buffer_addr = physical_address(self.es, self.bx);
+        let eot = sector + count - 1;
 
-                // Calculate actual sectors read
-                let sectors_read = (data.len() / 512).min(count as usize) as u8;
+        // Select drive and enable motor: nRESET=1, DMA enable=1, motor on, drive select
+        bus.io_write_u8(FDC_DOR, 0x1C | drive_index);
 
-                self.ax = (self.ax & 0xFF00) | (sectors_read as u16); // AL = sectors read
-                self.ax &= 0x00FF; // AH = 0 (success)
-                self.set_flag(cpu_flag::CARRY, false);
-                self.last_disk_status = DiskError::Success as u8;
+        // Send READ DATA command (9 bytes: 1 command byte + 8 parameter bytes)
+        bus.io_write_u8(FDC_DATA, 0x46); // READ DATA: MFM=1, MT=0, SK=0
+        bus.io_write_u8(FDC_DATA, (head << 2) | drive_index); // HD, US1, US0
+        bus.io_write_u8(FDC_DATA, cylinder); // C
+        bus.io_write_u8(FDC_DATA, head); // H
+        bus.io_write_u8(FDC_DATA, sector); // R (starting sector, 1-based)
+        bus.io_write_u8(FDC_DATA, 0x02); // N (512 bytes/sector)
+        bus.io_write_u8(FDC_DATA, eot); // EOT (last sector number)
+        bus.io_write_u8(FDC_DATA, 0x1B); // GPL (gap length)
+        bus.io_write_u8(FDC_DATA, 0xFF); // DTL
+
+        // NDM bit set in MSR means PIO data transfer (execution) phase is active
+        let msr = bus.io_read_u8(FDC_MSR);
+        if msr & FDC_MSR_NDM != 0 {
+            let total_bytes = (count as usize) * 512;
+            for i in 0..total_bytes {
+                let byte = bus.io_read_u8(FDC_DATA);
+                bus.memory_write_u8(buffer_addr + i, byte);
             }
-            Err(error_code) => {
-                log::warn!(
-                    "INT 13h AH=02h: Read failed for drive {}, error {}",
-                    drive,
-                    error_code
-                );
-                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
-                self.ax &= 0xFF00; // AL = 0 (no sectors read)
-                self.set_flag(cpu_flag::CARRY, true);
-                self.last_disk_status = error_code as u8;
-            }
+        }
+
+        // Read 7 result bytes; ST0 is first
+        let st0 = bus.io_read_u8(FDC_DATA);
+        for _ in 1..7 {
+            let _ = bus.io_read_u8(FDC_DATA);
+        }
+
+        // ST0 bits 7:6 = interrupt code: 0x00 = normal termination
+        if st0 & 0xC0 == 0 {
+            self.ax = (self.ax & 0xFF00) | (count as u16); // AL = sectors read
+            self.ax &= 0x00FF; // AH = 0 (success)
+            self.set_flag(cpu_flag::CARRY, false);
+            self.last_disk_status = DiskError::Success as u8;
+        } else {
+            // ST0 bit 3 = NR (not ready)
+            let error = if st0 & 0x08 != 0 {
+                DiskError::DriveNotReady
+            } else {
+                DiskError::SectorNotFound
+            };
+            log::warn!(
+                "INT 13h AH=02h: FDC read failed for drive {}, ST0=0x{:02X}",
+                drive,
+                st0
+            );
+            self.ax = (self.ax & 0x00FF) | ((error as u16) << 8); // AH = error
+            self.ax &= 0xFF00; // AL = 0
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = error as u8;
         }
     }
 

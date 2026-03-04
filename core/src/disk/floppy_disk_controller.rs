@@ -1,4 +1,7 @@
-use std::{any::Any, cell::Cell};
+use std::{
+    any::Any,
+    cell::{Cell, RefCell},
+};
 
 use crate::{
     Device,
@@ -8,13 +11,48 @@ use crate::{
 /// FDC I/O port addresses (primary controller, base 0x3F0)
 pub const FDC_DOR: u16 = 0x3F2; // Digital Output Register (drive select + motor control)
 pub const FDC_MSR: u16 = 0x3F4; // Main Status Register
+pub const FDC_DATA: u16 = 0x3F5; // Data Register (command / data / result)
 pub const FDC_DIR: u16 = 0x3F7; // Digital Input Register (disk change line)
 
 /// Bit 7 of DIR: disk change line (1 = disk has been changed, 0 = not changed)
 pub const FDC_DIR_DISK_CHANGE: u8 = 0x80;
 
-/// MSR bit 7: data register ready for transfer
-const FDC_MSR_RQM: u8 = 0x80;
+/// MSR bit 7: data register ready for transfer (Request for Master)
+pub const FDC_MSR_RQM: u8 = 0x80;
+/// MSR bit 6: data direction (1 = FDC→CPU, 0 = CPU→FDC)
+pub const FDC_MSR_DIO: u8 = 0x40;
+/// MSR bit 5: non-DMA mode — set during PIO data transfer
+pub const FDC_MSR_NDM: u8 = 0x20;
+/// MSR bit 4: controller busy
+const FDC_MSR_CB: u8 = 0x10;
+
+/// READ DATA command code (bits 4:0)
+const FDC_CMD_READ_DATA: u8 = 0x06;
+/// Number of parameter bytes following the READ DATA command byte
+const FDC_CMD_READ_DATA_PARAMS: usize = 8;
+
+/// NEC 765 / Intel 8272A command state machine phases.
+enum FdcPhase {
+    Idle,
+    /// Receiving command parameter bytes (command byte already stored in `cmd`)
+    Command {
+        cmd: u8,
+        params: [u8; 8],
+        received: usize,
+        total: usize,
+    },
+    /// PIO data transfer: serving sector data bytes to the CPU, then result bytes
+    Execution {
+        data: Vec<u8>,
+        index: usize,
+        result: [u8; 7],
+    },
+    /// Result phase: returning 7 status bytes to the CPU
+    Result {
+        bytes: [u8; 7],
+        index: usize,
+    },
+}
 
 /// Floppy Disk Controller (Intel 8272A / NEC μPD765 compatible).
 ///
@@ -31,6 +69,8 @@ pub struct FloppyDiskController {
     /// Per-drive disk change line (mirrors DIR bit 7). Set to true when a disk is inserted or
     /// swapped; automatically cleared when the OS reads DIR via port 0x3F7.
     changeline: [Cell<bool>; 2],
+    /// NEC 765 command state machine
+    phase: RefCell<FdcPhase>,
 }
 
 impl FloppyDiskController {
@@ -39,6 +79,7 @@ impl FloppyDiskController {
             drives: [None, None],
             selected_drive: 0,
             changeline: [Cell::new(false), Cell::new(false)],
+            phase: RefCell::new(FdcPhase::Idle),
         }
     }
 
@@ -78,6 +119,79 @@ impl FloppyDiskController {
             None => Err(DiskError::DriveNotReady),
         }
     }
+
+    /// Build the MSR value reflecting the current command phase.
+    fn msr(&self) -> u8 {
+        match &*self.phase.borrow() {
+            FdcPhase::Idle => FDC_MSR_RQM,
+            FdcPhase::Command { .. } => FDC_MSR_RQM | FDC_MSR_CB,
+            FdcPhase::Execution { .. } => FDC_MSR_RQM | FDC_MSR_DIO | FDC_MSR_NDM | FDC_MSR_CB,
+            FdcPhase::Result { .. } => FDC_MSR_RQM | FDC_MSR_DIO | FDC_MSR_CB,
+        }
+    }
+
+    /// Execute a READ DATA command given the 8 parameter bytes.
+    /// Returns the next FdcPhase (Execution on success, Result on error).
+    fn execute_read_data(&self, params: &[u8; 8]) -> FdcPhase {
+        let drive_head = params[0]; // HD<<2 | US1:US0
+        let cylinder = params[1];
+        let head = params[2];
+        let sector = params[3];
+        // params[4] = N (bytes-per-sector code; we always use 512)
+        let eot = params[5]; // last sector number (end-of-track)
+        // params[6] = GPL, params[7] = DTL — ignored in emulation
+
+        let drive_index = drive_head & 0x03;
+        let count = eot.saturating_sub(sector) + 1;
+
+        let drive = DriveNumber::from_standard(drive_index);
+
+        match self
+            .drives
+            .get(drive.to_floppy_index())
+            .and_then(|d| d.as_ref())
+        {
+            Some(disk) => match disk.read_sectors(cylinder, head, sector, count) {
+                Ok(data) => FdcPhase::Execution {
+                    data,
+                    index: 0,
+                    result: [
+                        0x00,                // ST0: normal termination
+                        0x00,                // ST1
+                        0x00,                // ST2
+                        cylinder,            // C
+                        head,                // H
+                        eot.wrapping_add(1), // R (next sector after last)
+                        0x02,                // N (512 bytes/sector)
+                    ],
+                },
+                Err(_) => FdcPhase::Result {
+                    bytes: [
+                        0x40 | (drive_head & 0x07), // ST0: abnormal termination
+                        0x04,                       // ST1: No Data
+                        0x00,                       // ST2
+                        cylinder,
+                        head,
+                        sector,
+                        0x02,
+                    ],
+                    index: 0,
+                },
+            },
+            None => FdcPhase::Result {
+                bytes: [
+                    0x48 | (drive_head & 0x07), // ST0: abnormal + not ready
+                    0x00,                       // ST1
+                    0x00,                       // ST2
+                    cylinder,
+                    head,
+                    sector,
+                    0x02,
+                ],
+                index: 0,
+            },
+        }
+    }
 }
 
 impl Device for FloppyDiskController {
@@ -85,7 +199,9 @@ impl Device for FloppyDiskController {
         self
     }
 
-    fn reset(&mut self) {}
+    fn reset(&mut self) {
+        *self.phase.borrow_mut() = FdcPhase::Idle;
+    }
 
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
         None
@@ -97,7 +213,67 @@ impl Device for FloppyDiskController {
 
     fn io_read_u8(&self, port: u16) -> Option<u8> {
         match port {
-            FDC_MSR => Some(FDC_MSR_RQM),
+            FDC_MSR => Some(self.msr()),
+            FDC_DATA => {
+                let current = std::mem::replace(&mut *self.phase.borrow_mut(), FdcPhase::Idle);
+                let (byte, next) = match current {
+                    FdcPhase::Execution {
+                        data,
+                        index,
+                        result,
+                    } => {
+                        if index < data.len() {
+                            let b = data[index];
+                            let next_idx = index + 1;
+                            if next_idx >= data.len() {
+                                (
+                                    b,
+                                    FdcPhase::Result {
+                                        bytes: result,
+                                        index: 0,
+                                    },
+                                )
+                            } else {
+                                (
+                                    b,
+                                    FdcPhase::Execution {
+                                        data,
+                                        index: next_idx,
+                                        result,
+                                    },
+                                )
+                            }
+                        } else {
+                            // Empty data buffer — go straight to result
+                            (
+                                0xFF,
+                                FdcPhase::Result {
+                                    bytes: result,
+                                    index: 0,
+                                },
+                            )
+                        }
+                    }
+                    FdcPhase::Result { bytes, index } => {
+                        let b = bytes[index];
+                        let next_idx = index + 1;
+                        if next_idx >= 7 {
+                            (b, FdcPhase::Idle)
+                        } else {
+                            (
+                                b,
+                                FdcPhase::Result {
+                                    bytes,
+                                    index: next_idx,
+                                },
+                            )
+                        }
+                    }
+                    other => (0xFF, other),
+                };
+                *self.phase.borrow_mut() = next;
+                Some(byte)
+            }
             FDC_DIR => {
                 let cell = self.changeline.get(self.selected_drive as usize)?;
                 let changed = cell.get();
@@ -109,12 +285,56 @@ impl Device for FloppyDiskController {
     }
 
     fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
-        if port == FDC_DOR {
-            // Bits 0-1 select the drive (0 = A:, 1 = B:)
-            self.selected_drive = val & 0x01;
-            true
-        } else {
-            false
+        match port {
+            FDC_DOR => {
+                // Bits 0-1 select the drive (0 = A:, 1 = B:)
+                self.selected_drive = val & 0x01;
+                true
+            }
+            FDC_DATA => {
+                let current = std::mem::replace(&mut *self.phase.borrow_mut(), FdcPhase::Idle);
+                let next = match current {
+                    FdcPhase::Idle => {
+                        let cmd_code = val & 0x1F;
+                        if cmd_code == FDC_CMD_READ_DATA {
+                            FdcPhase::Command {
+                                cmd: val,
+                                params: [0u8; 8],
+                                received: 0,
+                                total: FDC_CMD_READ_DATA_PARAMS,
+                            }
+                        } else {
+                            log::warn!("FDC: unknown command 0x{:02X}", val);
+                            FdcPhase::Idle
+                        }
+                    }
+                    FdcPhase::Command {
+                        cmd,
+                        mut params,
+                        received,
+                        total,
+                    } => {
+                        params[received] = val;
+                        let received = received + 1;
+                        if received < total {
+                            FdcPhase::Command {
+                                cmd,
+                                params,
+                                received,
+                                total,
+                            }
+                        } else {
+                            // All parameter bytes received; execute the command
+                            self.execute_read_data(&params)
+                        }
+                    }
+                    // Ignore writes during execution or result phases
+                    other => other,
+                };
+                *self.phase.borrow_mut() = next;
+                true
+            }
+            _ => false,
         }
     }
 }

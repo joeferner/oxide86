@@ -10,7 +10,10 @@ pub use backed_disk::BackedDisk;
 pub use disk_error::DiskError;
 pub use disk_geometry::DiskGeometry;
 pub use drive_number::DriveNumber;
-pub use floppy_disk_controller::{FDC_DIR, FDC_DIR_DISK_CHANGE, FloppyDiskController};
+pub use floppy_disk_controller::{
+    FDC_DATA, FDC_DIR, FDC_DIR_DISK_CHANGE, FDC_DOR, FDC_MSR, FDC_MSR_NDM, FDC_MSR_RQM,
+    FloppyDiskController,
+};
 
 use crate::bus::Bus;
 
