@@ -1,6 +1,7 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, cpu_flag},
+    cpu::{Cpu, CpuType, cpu_flag},
+    devices::rtc::{CMOS_REG_FLOPPY_TYPES, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
     disk::{
         DiskError, DriveNumber, FDC_DATA, FDC_DIR, FDC_DIR_DISK_CHANGE, FDC_DOR, FDC_MSR,
         FDC_MSR_NDM,
@@ -223,40 +224,68 @@ impl Cpu {
     ///     CL = maximum sector number (bits 0-5) + high 2 bits of max cylinder (bits 6-7)
     ///     DH = maximum head number
     ///     DL = number of drives
-    fn int13_get_drive_params(&mut self, bus: &Bus) {
+    ///
+    /// Drive geometry is obtained via CMOS register 0x10 (standard PC AT approach):
+    ///   1. Write 0x10 to port 0x70 (CMOS register select)
+    ///   2. Read port 0x71 (CMOS data) → bits 7:4 = drive A type, bits 3:0 = drive B type
+    ///   3. Map type code to geometry using the standard PC drive parameter table
+    fn int13_get_drive_params(&mut self, bus: &mut Bus) {
+        // INT 13h AH=08h was introduced with the PC AT (80286). 8086/8088 BIOSes did not
+        // implement this function; return InvalidCommand to signal the call is unsupported.
+        if self.cpu_type == CpuType::I8086 {
+            log::warn!("INT 13h AH=08h: not supported on 8086");
+            self.ax = (self.ax & 0x00FF) | ((DiskError::InvalidCommand as u16) << 8);
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::InvalidCommand as u8;
+            return;
+        }
+
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
-        let geometry = if drive.is_floppy() {
-            bus.floppy_controller().disk_geometry(drive)
+        if !drive.is_floppy() {
+            // TODO: hard drives not yet implemented
+            self.ax = (self.ax & 0x00FF) | ((DiskError::DriveNotReady as u16) << 8);
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::DriveNotReady as u8;
+            return;
+        }
+
+        let drive_index = drive.to_floppy_index() as u8;
+
+        // Read floppy drive types from CMOS register 0x10 (PC AT standard).
+        // Bits 7:4 = drive A type, bits 3:0 = drive B type.
+        // Codes: 0=none, 1=360KB 5.25", 2=1.2MB 5.25", 3=720KB 3.5", 4=1.44MB 3.5", 5=2.88MB 3.5"
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, CMOS_REG_FLOPPY_TYPES);
+        let floppy_types = bus.io_read_u8(RTC_IO_PORT_DATA);
+        let drive_type = if drive_index == 0 {
+            (floppy_types >> 4) & 0x0F // drive A: bits 7:4
         } else {
-            None // TODO Hard drives not yet implemented
+            floppy_types & 0x0F // drive B: bits 3:0
         };
 
-        match geometry {
-            Some(geometry) => {
-                // Count drives of this type (CD-ROM placeholders excluded from hard drive count)
-                // TODO verify how CD-ROM should be handled
-                let drive_count = if drive.is_floppy() { 1 } else { 0 };
-                let max_cylinder = (geometry.cylinders - 1).min(255) as u8;
-                let max_head = (geometry.heads - 1).min(255) as u8;
-                let max_sector = geometry.sectors_per_track.min(255) as u8;
+        // Standard PC AT drive parameter table: (max_cylinder, max_head, max_sector)
+        let params: Option<(u8, u8, u8)> = match drive_type {
+            0x01 => Some((39, 1, 9)),  // 360 KB 5.25": 40 cyl, 2 heads, 9 spt
+            0x02 => Some((79, 1, 15)), // 1.2 MB 5.25": 80 cyl, 2 heads, 15 spt
+            0x03 => Some((79, 1, 9)),  // 720 KB 3.5":  80 cyl, 2 heads, 9 spt
+            0x04 => Some((79, 1, 18)), // 1.44 MB 3.5": 80 cyl, 2 heads, 18 spt
+            0x05 => Some((79, 1, 36)), // 2.88 MB 3.5": 80 cyl, 2 heads, 36 spt
+            _ => None,
+        };
 
-                // Pack cylinder into CH and CL
-                let cylinder = max_cylinder as u16;
-                let cylinder_low = (cylinder & 0xFF) as u8;
-                let cylinder_high = ((cylinder >> 8) & 0x03) as u8;
-
-                // Pack sector and cylinder high bits into CL
-                let cl = (max_sector & 0x3F) | (cylinder_high << 6);
-
-                self.cx = ((cylinder_low as u16) << 8) | (cl as u16); // CH:CL
-                self.dx = ((max_head as u16) << 8) | (drive_count as u16); // DH:DL
+        match params {
+            Some((max_cylinder, max_head, max_sector)) => {
+                // CH = max cylinder (bits 7:0); CL = max sector (bits 5:0) | cyl high (bits 7:6)
+                // For 8-bit cylinders (max 255) the high 2 bits of CL are always 0
+                let cl = max_sector & 0x3F;
+                self.cx = ((max_cylinder as u16) << 8) | (cl as u16);
+                self.dx = ((max_head as u16) << 8) | 1u16; // DH = max head, DL = drive count
                 self.ax &= 0x00FF; // AH = 0 (success)
                 self.set_flag(cpu_flag::CARRY, false);
                 self.last_disk_status = DiskError::Success as u8;
             }
             None => {
-                self.ax = (self.ax & 0x00FF) | ((DiskError::DriveNotReady as u16) << 8); // AH = error code
+                self.ax = (self.ax & 0x00FF) | ((DiskError::DriveNotReady as u16) << 8);
                 self.set_flag(cpu_flag::CARRY, true);
                 self.last_disk_status = DiskError::DriveNotReady as u8;
             }
@@ -275,51 +304,43 @@ impl Cpu {
     ///   CF = clear if drive exists, set if drive does not exist
     ///   For type 0x03 (fixed disk):
     ///     CX:DX = number of 512-byte sectors (32-bit value, CX=high word, DX=low word)
-    fn int13_get_disk_type(&mut self, bus: &Bus) {
+    fn int13_get_disk_type(&mut self, bus: &mut Bus) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
-        // Drive type:
-        // 0x00 = not present
-        // 0x01 = floppy without change-line support
-        // 0x02 = floppy with change-line support
-        // 0x03 = fixed disk (hard drive)
-        let drive_type = if drive.is_floppy() {
-            0x02 // Floppy with change-line support
-        } else {
-            0x03 // Fixed disk
-        };
+        if drive.is_floppy() {
+            let drive_index = drive.to_floppy_index() as u8;
 
-        let geometry = if drive.is_floppy() {
-            bus.floppy_controller().disk_geometry(drive)
-        } else {
-            None // TODO Hard drives not yet implemented
-        };
+            // Read floppy drive types from CMOS register 0x10 (PC AT standard).
+            // Bits 7:4 = drive A type, bits 3:0 = drive B type.
+            // Codes: 0=none, 1=360KB 5.25", 2=1.2MB 5.25", 3=720KB 3.5", 4=1.44MB 3.5", 5=2.88MB 3.5"
+            bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, CMOS_REG_FLOPPY_TYPES);
+            let floppy_types = bus.io_read_u8(RTC_IO_PORT_DATA);
+            let drive_type = if drive_index == 0 {
+                (floppy_types >> 4) & 0x0F // drive A: bits 7:4
+            } else {
+                floppy_types & 0x0F // drive B: bits 3:0
+            };
 
-        match geometry {
-            Some(geometry) => {
-                let sector_count = geometry.total_sectors() as u32;
-
-                // Set AH = drive type
-                self.ax = (self.ax & 0x00FF) | ((drive_type as u16) << 8);
-
-                // If it's a fixed disk (type 0x03), set CX:DX to sector count
-                if drive_type == 0x03 {
-                    let high_word = ((sector_count >> 16) & 0xFFFF) as u16;
-                    let low_word = (sector_count & 0xFFFF) as u16;
-                    self.cx = high_word;
-                    self.dx = low_word;
-                }
-
-                // Clear carry flag (drive exists)
+            if drive_type == 0 {
+                // Drive not present
+                self.ax &= 0x00FF; // AH = 0x00 (not present)
+                self.set_flag(cpu_flag::CARRY, true);
+                self.last_disk_status = DiskError::InvalidCommand as u8;
+            } else {
+                // 360KB 5.25" (type 1) has no change-line support; all others do
+                let ah: u8 = if drive_type == 0x01 { 0x01 } else { 0x02 };
+                self.ax = (self.ax & 0x00FF) | ((ah as u16) << 8);
                 self.set_flag(cpu_flag::CARRY, false);
                 self.last_disk_status = DiskError::Success as u8;
             }
-            None => {
-                // Drive not present
-                self.ax &= 0x00FF; // AH = 0x00 (drive not present)
-                self.set_flag(cpu_flag::CARRY, true);
-                self.last_disk_status = DiskError::InvalidCommand as u8;
-            }
+        } else {
+            log::warn!(
+                "INT 13h AH=15h: hard drive not yet implemented (DL=0x{:02X})",
+                (self.dx & 0xFF) as u8
+            );
+            self.ax &= 0x00FF; // AH = 0x00 (not present)
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::InvalidCommand as u8;
         }
     }
 

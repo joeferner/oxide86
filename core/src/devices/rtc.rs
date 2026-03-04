@@ -8,7 +8,7 @@ use crate::{
 pub const RTC_IO_PORT_REGISTER_SELECT: u16 = 0x0070;
 pub const RTC_IO_PORT_DATA: u16 = 0x0071;
 
-// RTC register indices (CMOS)
+// RTC / CMOS register indices
 pub const RTC_REG_SECONDS: u8 = 0x00;
 pub const RTC_REG_MINUTES: u8 = 0x02;
 pub const RTC_REG_HOURS: u8 = 0x04;
@@ -16,6 +16,10 @@ pub const RTC_REG_DAY: u8 = 0x07;
 pub const RTC_REG_MONTH: u8 = 0x08;
 pub const RTC_REG_YEAR: u8 = 0x09;
 pub const RTC_REG_CENTURY: u8 = 0x32;
+/// CMOS floppy drive type register.
+/// Bits 7:4 = drive A type, bits 3:0 = drive B type.
+/// Values: 0=none, 1=360KB 5.25", 2=1.2MB 5.25", 3=720KB 3.5", 4=1.44MB 3.5", 5=2.88MB 3.5"
+pub const CMOS_REG_FLOPPY_TYPES: u8 = 0x10;
 
 /// Local time components with sub-second precision.
 #[derive(Clone)]
@@ -48,6 +52,8 @@ pub struct RTC {
     clock: Box<dyn Clock>,
     /// Currently selected CMOS register index (written via port 0x70)
     selected_register: u8,
+    /// CMOS register 0x10: floppy drive types (bits 7:4 = A, bits 3:0 = B)
+    floppy_types: u8,
 }
 
 impl RTC {
@@ -55,6 +61,7 @@ impl RTC {
         Self {
             clock,
             selected_register: 0,
+            floppy_types: 0,
         }
     }
 
@@ -83,6 +90,7 @@ impl Device for RTC {
 
     fn reset(&mut self) {
         self.selected_register = 0;
+        // floppy_types is battery-backed CMOS RAM — preserved across resets
     }
 
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
@@ -109,6 +117,7 @@ impl Device for RTC {
             0x0A => 0x00,
             // Status Register B: bit 1 = 24h mode, BCD format (not binary)
             0x0B => 0x02,
+            CMOS_REG_FLOPPY_TYPES => self.floppy_types,
             0x32 => to_bcd(self.clock.get_local_date().century),
             reg => {
                 log::warn!("RTC: read from unimplemented CMOS register 0x{reg:02X}");
@@ -127,7 +136,10 @@ impl Device for RTC {
                 true
             }
             RTC_IO_PORT_DATA => {
-                // Writes to CMOS data are ignored; we use the real system clock
+                if self.selected_register == CMOS_REG_FLOPPY_TYPES {
+                    self.floppy_types = val;
+                }
+                // All other CMOS data writes are ignored; we use the real system clock
                 true
             }
             _ => false,
