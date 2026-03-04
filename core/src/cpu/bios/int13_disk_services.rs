@@ -4,7 +4,7 @@ use crate::{
     devices::rtc::{CMOS_REG_FLOPPY_TYPES, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
     disk::{
         DiskError, DriveNumber, FDC_DATA, FDC_DIR, FDC_DIR_DISK_CHANGE, FDC_DOR, FDC_MSR,
-        FDC_MSR_NDM,
+        FDC_MSR_CB, FDC_MSR_NDM, FDC_MSR_RQM,
     },
     physical_address,
 };
@@ -46,54 +46,53 @@ impl Cpu {
     /// Output:
     ///   AH = status (0 = success)
     ///   CF = clear if success, set if error
-    fn int13_reset_disk(&mut self, _bus: &mut Bus) {
+    ///
+    /// Floppy procedure (NEC 765 / Intel 8272A, matches original AT BIOS):
+    ///   1. Assert FDC reset via DOR (bit 2 = nRESET = 0)
+    ///   2. De-assert reset, re-enable DMA (DOR = 0x0C | drive)
+    ///   3. Poll MSR until RQM (bit 7) — controller ready for command
+    ///   4. Send RECALIBRATE (0x07) command + drive parameter
+    ///   5. Poll MSR until CB (bit 4) clears — command complete
+    ///   6. Send SENSE INTERRUPT STATUS (0x08) to acknowledge interrupt
+    ///   7. Read ST0 + PCN; success if ST0 bits 7:6 = 0b00
+    fn int13_reset_disk(&mut self, bus: &mut Bus) {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         let success = if drive.is_floppy() {
-            // TODO
+            let drive_index = drive.to_floppy_index() as u8;
 
-            // // Reset the Digital Output Register (DOR)
-            // Write_IO_Port(FDC_DOR, 0x00)
-            // Wait_Microseconds(50)
-            // Write_IO_Port(FDC_DOR, 0x0C) // Re-enable controller and DMA
+            // 1. Assert FDC reset: pull nRESET low (DOR bit 2 = 0), motors off
+            bus.io_write_u8(FDC_DOR, 0x00);
 
-            // // Force recalibration: Move head to Track 0
-            // Command_FDC(RECALIBRATE_COMMAND, Drive)
+            // 2. De-assert reset: nRESET=1, DMA enable=1 (bits 3:2 = 0b11), select drive
+            bus.io_write_u8(FDC_DOR, 0x0C | drive_index);
 
-            // // Check if the controller is ready
-            // IF FDC_Timeout_Or_Error() THEN
-            //     Return 0x05 // Reset Failed
+            // 3. Poll MSR until RQM — FDC ready to accept a command
+            while bus.io_read_u8(FDC_MSR) & FDC_MSR_RQM == 0 {}
 
-            // // Reset Diskette Drive Data (BDA 0040h:003Eh)
-            // Update_BDA_Disk_Status(Drive, RESET_FLAG)
+            // 4a. Send RECALIBRATE command byte
+            bus.io_write_u8(FDC_DATA, 0x07);
 
-            true
+            // 4b. Poll MSR until RQM — FDC ready for the drive parameter
+            while bus.io_read_u8(FDC_MSR) & FDC_MSR_RQM == 0 {}
+
+            // 4c. Send drive number (DS1:DS0)
+            bus.io_write_u8(FDC_DATA, drive_index);
+
+            // 5. Poll MSR until CB clears — head-seek to track 0 complete
+            while bus.io_read_u8(FDC_MSR) & FDC_MSR_CB != 0 {}
+
+            // 6. Send SENSE INTERRUPT STATUS to acknowledge the recalibrate interrupt
+            bus.io_write_u8(FDC_DATA, 0x08);
+
+            // 7. Read result: ST0 then PCN (present cylinder number, should be 0)
+            let st0 = bus.io_read_u8(FDC_DATA);
+            let _pcn = bus.io_read_u8(FDC_DATA);
+
+            // ST0 bits 7:6 = 0b00 (normal termination) means success
+            st0 & 0xC0 == 0x00
         } else {
-            // TODO
-
-            // // 2. Send the "Reset" signal to the Fixed Disk Controller
-            // // This often involves toggling a bit in the Control Register
-            // Write_IO_Port(FixedDisk_Control_Reg, 0x04) // Set Soft Reset bit
-            // Wait_Microseconds(10)                      // Hold the reset
-            // Write_IO_Port(FixedDisk_Control_Reg, 0x00) // Clear Reset bit
-
-            // // 3. Wait for the Controller to clear the BUSY bit
-            // // We set a timeout because a dead drive shouldn't hang the BIOS
-            // StartTime = Get_System_Ticks()
-            // WHILE (Read_IO_Port(FixedDisk_Status_Reg) & STATUS_BUSY):
-            //     IF (Get_System_Ticks() - StartTime > TIMEOUT_VAL) THEN
-            //         Return 0x80 // Controller Timeout
-            //     END IF
-            // END WHILE
-
-            // // 4. Send "Recalibrate" (Execute Drive Diagnostics)
-            // // This tells the drive to verify internal parameters
-            // Command_HDD(DriveNumber, DRIVE_DIAGNOSTIC_CMD)
-
-            // // 5. Update BIOS Data Area (BDA)
-            // // 0040h:0074h stores the status of the last hard disk operation
-            // Update_BDA_HardDisk_Status(0x00)
-
+            log::warn!("INT 13h AH=00h: hard drive reset not yet implemented");
             true
         };
 

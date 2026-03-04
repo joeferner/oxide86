@@ -24,12 +24,20 @@ pub const FDC_MSR_DIO: u8 = 0x40;
 /// MSR bit 5: non-DMA mode — set during PIO data transfer
 pub const FDC_MSR_NDM: u8 = 0x20;
 /// MSR bit 4: controller busy
-const FDC_MSR_CB: u8 = 0x10;
+pub const FDC_MSR_CB: u8 = 0x10;
 
 /// READ DATA command code (bits 4:0)
 const FDC_CMD_READ_DATA: u8 = 0x06;
 /// Number of parameter bytes following the READ DATA command byte
 const FDC_CMD_READ_DATA_PARAMS: usize = 8;
+
+/// RECALIBRATE command code: move head to track 0
+const FDC_CMD_RECALIBRATE: u8 = 0x07;
+/// RECALIBRATE takes 1 parameter byte (drive select DS1:DS0)
+const FDC_CMD_RECALIBRATE_PARAMS: usize = 1;
+
+/// SENSE INTERRUPT STATUS command code: acknowledge interrupt and return ST0/PCN
+const FDC_CMD_SENSE_INTERRUPT: u8 = 0x08;
 
 /// NEC 765 / Intel 8272A command state machine phases.
 enum FdcPhase {
@@ -47,10 +55,12 @@ enum FdcPhase {
         index: usize,
         result: [u8; 7],
     },
-    /// Result phase: returning 7 status bytes to the CPU
+    /// Result phase: returning status bytes to the CPU.
+    /// `len` is the number of valid bytes (7 for READ DATA, 2 for SENSE INTERRUPT STATUS).
     Result {
         bytes: [u8; 7],
         index: usize,
+        len: usize,
     },
 }
 
@@ -71,6 +81,11 @@ pub struct FloppyDiskController {
     changeline: [Cell<bool>; 2],
     /// NEC 765 command state machine
     phase: RefCell<FdcPhase>,
+    /// True while the nRESET bit (DOR bit 2) is asserted low (controller held in reset)
+    in_reset: bool,
+    /// Pending interrupt result from RECALIBRATE or reset recovery: (ST0, PCN).
+    /// Consumed by SENSE INTERRUPT STATUS.
+    pending_interrupt: Option<(u8, u8)>,
 }
 
 impl FloppyDiskController {
@@ -80,6 +95,8 @@ impl FloppyDiskController {
             selected_drive: 0,
             changeline: [Cell::new(false), Cell::new(false)],
             phase: RefCell::new(FdcPhase::Idle),
+            in_reset: false,
+            pending_interrupt: None,
         }
     }
 
@@ -122,6 +139,10 @@ impl FloppyDiskController {
 
     /// Build the MSR value reflecting the current command phase.
     fn msr(&self) -> u8 {
+        // While nRESET is asserted the controller is not ready
+        if self.in_reset {
+            return 0x00;
+        }
         match &*self.phase.borrow() {
             FdcPhase::Idle => FDC_MSR_RQM,
             FdcPhase::Command { .. } => FDC_MSR_RQM | FDC_MSR_CB,
@@ -176,6 +197,7 @@ impl FloppyDiskController {
                         0x02,
                     ],
                     index: 0,
+                    len: 7,
                 },
             },
             None => FdcPhase::Result {
@@ -189,6 +211,7 @@ impl FloppyDiskController {
                     0x02,
                 ],
                 index: 0,
+                len: 7,
             },
         }
     }
@@ -201,6 +224,8 @@ impl Device for FloppyDiskController {
 
     fn reset(&mut self) {
         *self.phase.borrow_mut() = FdcPhase::Idle;
+        self.in_reset = false;
+        self.pending_interrupt = None;
     }
 
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
@@ -231,6 +256,7 @@ impl Device for FloppyDiskController {
                                     FdcPhase::Result {
                                         bytes: result,
                                         index: 0,
+                                        len: 7,
                                     },
                                 )
                             } else {
@@ -250,14 +276,15 @@ impl Device for FloppyDiskController {
                                 FdcPhase::Result {
                                     bytes: result,
                                     index: 0,
+                                    len: 7,
                                 },
                             )
                         }
                     }
-                    FdcPhase::Result { bytes, index } => {
+                    FdcPhase::Result { bytes, index, len } => {
                         let b = bytes[index];
                         let next_idx = index + 1;
-                        if next_idx >= 7 {
+                        if next_idx >= len {
                             (b, FdcPhase::Idle)
                         } else {
                             (
@@ -265,6 +292,7 @@ impl Device for FloppyDiskController {
                                 FdcPhase::Result {
                                     bytes,
                                     index: next_idx,
+                                    len,
                                 },
                             )
                         }
@@ -287,6 +315,17 @@ impl Device for FloppyDiskController {
     fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
         match port {
             FDC_DOR => {
+                // Bit 2: nRESET (active-low). 0 = controller held in reset, 1 = normal operation.
+                let reset_released = val & 0x04 != 0;
+                if !reset_released {
+                    // Asserting reset: freeze controller, discard any in-progress state
+                    self.in_reset = true;
+                    *self.phase.borrow_mut() = FdcPhase::Idle;
+                    self.pending_interrupt = None;
+                } else if self.in_reset {
+                    // De-asserting reset: controller comes out of reset ready for commands
+                    self.in_reset = false;
+                }
                 // Bits 0-1 select the drive (0 = A:, 1 = B:)
                 self.selected_drive = val & 0x01;
                 true
@@ -296,16 +335,32 @@ impl Device for FloppyDiskController {
                 let next = match current {
                     FdcPhase::Idle => {
                         let cmd_code = val & 0x1F;
-                        if cmd_code == FDC_CMD_READ_DATA {
-                            FdcPhase::Command {
+                        match cmd_code {
+                            FDC_CMD_READ_DATA => FdcPhase::Command {
                                 cmd: val,
                                 params: [0u8; 8],
                                 received: 0,
                                 total: FDC_CMD_READ_DATA_PARAMS,
+                            },
+                            FDC_CMD_RECALIBRATE => FdcPhase::Command {
+                                cmd: val,
+                                params: [0u8; 8],
+                                received: 0,
+                                total: FDC_CMD_RECALIBRATE_PARAMS,
+                            },
+                            FDC_CMD_SENSE_INTERRUPT => {
+                                // No parameter bytes; immediately return ST0 + PCN (2 bytes only)
+                                let (st0, pcn) = self.pending_interrupt.take().unwrap_or((0x80, 0));
+                                FdcPhase::Result {
+                                    bytes: [st0, pcn, 0, 0, 0, 0, 0],
+                                    index: 0,
+                                    len: 2,
+                                }
                             }
-                        } else {
-                            log::warn!("FDC: unknown command 0x{:02X}", val);
-                            FdcPhase::Idle
+                            _ => {
+                                log::warn!("FDC: unknown command 0x{:02X}", val);
+                                FdcPhase::Idle
+                            }
                         }
                     }
                     FdcPhase::Command {
@@ -325,7 +380,18 @@ impl Device for FloppyDiskController {
                             }
                         } else {
                             // All parameter bytes received; execute the command
-                            self.execute_read_data(&params)
+                            let cmd_code = cmd & 0x1F;
+                            match cmd_code {
+                                FDC_CMD_READ_DATA => self.execute_read_data(&params),
+                                FDC_CMD_RECALIBRATE => {
+                                    // Move head to cylinder 0; generate interrupt with SE set
+                                    // ST0: IC=00b (normal), SE=1, drive number in bits 1:0
+                                    let drive = params[0] & 0x03;
+                                    self.pending_interrupt = Some((0x20 | drive, 0));
+                                    FdcPhase::Idle
+                                }
+                                _ => FdcPhase::Idle,
+                            }
                         }
                     }
                     // Ignore writes during execution or result phases
