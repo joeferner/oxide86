@@ -10,13 +10,13 @@ use crate::{
     Device, DeviceRef,
     cpu::bios::bios_reset,
     devices::{
+        floppy_disk_controller::FloppyDiskController,
         keyboard_controller::KeyboardController,
         pic::PIC,
         pit::PIT,
         rtc::{Clock, RTC},
         uart::UART,
     },
-    disk::FloppyDiskController,
     memory::Memory,
     video::VideoCard,
 };

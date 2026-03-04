@@ -1,11 +1,14 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, CpuType, cpu_flag},
-    devices::rtc::{CMOS_REG_FLOPPY_TYPES, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
-    disk::{
-        DiskError, DriveNumber, FDC_DATA, FDC_DIR, FDC_DIR_DISK_CHANGE, FDC_DOR, FDC_MSR,
-        FDC_MSR_CB, FDC_MSR_NDM, FDC_MSR_RQM,
+    devices::{
+        floppy_disk_controller::{
+            FDC_DATA, FDC_DIR, FDC_DIR_DISK_CHANGE, FDC_DOR, FDC_MSR, FDC_MSR_CB, FDC_MSR_NDM,
+            FDC_MSR_RQM,
+        },
+        rtc::{CMOS_REG_FLOPPY_TYPES, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
     },
+    disk::{DiskError, DriveNumber},
     physical_address,
 };
 
