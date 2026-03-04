@@ -27,8 +27,6 @@ impl Cpu {
 
         let function = (self.ax >> 8) as u8; // Get AH
 
-        log::debug!("INT 0x1A 0x{function:02X}");
-
         match function {
             0x00 => self.int1a_get_system_time(bus),
             0x01 => self.int1a_set_system_time(bus),
@@ -56,13 +54,6 @@ impl Cpu {
         self.cx = system_time.high_word; // CX = high word of tick count
         self.dx = system_time.low_word; // DX = low word of tick count
         self.ax = (self.ax & 0xFF00) | (system_time.midnight_flag as u16); // AL = midnight flag
-
-        log::debug!(
-            "INT 0x1A 0x00 get system time 0x{:04X}{:04X} flag:0x{:02X}",
-            self.cx,
-            self.dx,
-            self.ax & 0xff
-        );
     }
 
     /// INT 1Ah, AH=01h - Set System Time

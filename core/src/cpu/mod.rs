@@ -201,12 +201,12 @@ impl Cpu {
                 .collect::<Vec<_>>()
                 .join(" ");
             log::info!(
-                "OP {:04X}:{:04X} {:<18} {:30} {}",
-                self.cs,
-                self.ip,
-                bytes_hex,
-                decoded.text,
-                values,
+                "{}",
+                format!(
+                    "OP {:04X}:{:04X} {:<18} {:30} {}",
+                    self.cs, self.ip, bytes_hex, decoded.text, values,
+                )
+                .trim()
             );
         }
 

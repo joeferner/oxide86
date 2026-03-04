@@ -43,13 +43,19 @@ impl Cpu {
             SCAN_CODE_RIGHT_SHIFT => {
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 0x09 (BIOS): Right Shift pressed, flags=0x{:02X}", flags);
+                log::debug!(
+                    "INT 0x09 (BIOS): Right Shift pressed, flags=0x{:02X}",
+                    flags
+                );
                 return;
             }
             SCAN_CODE_LEFT_SHIFT_RELEASE => {
                 let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_LEFT_SHIFT;
                 bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 0x09 (BIOS): Left Shift released, flags=0x{:02X}", flags);
+                log::debug!(
+                    "INT 0x09 (BIOS): Left Shift released, flags=0x{:02X}",
+                    flags
+                );
                 return;
             }
             SCAN_CODE_RIGHT_SHIFT_RELEASE => {

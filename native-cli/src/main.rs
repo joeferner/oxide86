@@ -24,10 +24,12 @@ use oxide86_core::{
 use oxide86_native_common::{cli::CommonCli, create_computer, logging::setup_logging};
 
 use crate::{
+    command_mode::run_command_mode,
     keyboard::{char_requires_shift, key_code_to_scan_code},
     video::{VideoCachedValue, draw_frame},
 };
 
+mod command_mode;
 mod keyboard;
 mod video;
 
@@ -94,7 +96,11 @@ fn main() -> Result<()> {
 
                     // Check if it's F12 (command mode) - intercept for emulator, don't send to program
                     if scan_code == SCAN_CODE_F12 {
-                        quit_from_command_mode = true;
+                        quit_from_command_mode = run_command_mode(&mut computer, &mut stdout)?;
+                        if !quit_from_command_mode {
+                            video_cache.clear();
+                            draw_frame(&mut video_cache, &video_buffer, &mut stdout)?;
+                        }
                     } else {
                         // Some terminals omit KeyModifiers::SHIFT for symbol characters
                         // (e.g. Shift+' produces '"' with no modifier reported), so also

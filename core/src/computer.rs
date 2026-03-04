@@ -287,4 +287,8 @@ impl Computer {
     pub fn set_exec_logging_enabled(&mut self, enabled: bool) {
         self.cpu.exec_logging_enabled = enabled;
     }
+
+    pub fn exec_logging_enabled(&self) -> bool {
+        self.cpu.exec_logging_enabled
+    }
 }

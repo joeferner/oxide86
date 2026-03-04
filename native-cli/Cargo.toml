@@ -9,7 +9,8 @@ oxide86-core = { path = "../core" }
 clap = { workspace = true }
 anyhow = { workspace = true }
 log = { workspace = true }
-crossterm = "0.29"
+crossterm = "0.28.1"
+string_cmd = { version = "0.1.2", features = ["crossterm"] }
 
 [lints]
 workspace = true

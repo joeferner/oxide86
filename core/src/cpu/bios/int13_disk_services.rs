@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, CpuType, cpu_flag, bios::bda::bda_get_num_hard_drives},
+    cpu::{Cpu, CpuType, bios::bda::bda_get_num_hard_drives, cpu_flag},
     devices::{
         floppy_disk_controller::{
             FDC_DATA, FDC_DIR, FDC_DIR_DISK_CHANGE, FDC_DOR, FDC_MSR, FDC_MSR_CB, FDC_MSR_NDM,
