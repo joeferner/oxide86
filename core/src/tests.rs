@@ -133,6 +133,26 @@ mod tests {
         }
 
         mod bios {
+            mod int13 {
+                use crate::cpu::CpuType;
+                use crate::disk::{BackedDisk, DiskGeometry, DriveNumber, MemBackend};
+                use crate::tests::tests::run_test_configured;
+
+                #[test_log::test]
+                pub fn basic_read() {
+                    run_test_configured(
+                        "cpu/bios/int13/basic_read",
+                        make_computer!(cpu_type: CpuType::I80286),
+                        |c| {
+                            let backend = MemBackend::zeroed(DiskGeometry::FLOPPY_1440K.total_size);
+                            let disk = BackedDisk::new(backend).unwrap();
+                            c.set_floppy_disk(DriveNumber::floppy_a(), Box::new(disk));
+                            c.run()
+                        },
+                    );
+                }
+            }
+
             mod int1a {
                 use crate::cpu::CpuType;
                 use crate::tests::tests::run_test_configured;
