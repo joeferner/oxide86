@@ -103,7 +103,7 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
     Ok(computer)
 }
 
-fn load_hard_disks(hard_disks: &Vec<String>) -> Vec<Box<dyn Disk>> {
+fn load_hard_disks(hard_disks: &[String]) -> Vec<Box<dyn Disk>> {
     hard_disks
         .iter()
         .enumerate()

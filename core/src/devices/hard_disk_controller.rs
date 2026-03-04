@@ -15,7 +15,9 @@ impl HardDiskController {
     }
 
     pub fn get_disk(&self, drive: DriveNumber) -> Option<&dyn Disk> {
-        self.disks.get(drive.to_hard_drive_index()).map(|d| d.as_ref())
+        self.disks
+            .get(drive.to_hard_drive_index())
+            .map(|d| d.as_ref())
     }
 }
 

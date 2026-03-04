@@ -20,6 +20,7 @@ mod tests {
                 clock_speed: 8_000_000,
                 cpu_type: $crate::cpu::CpuType::I8086,
                 memory_size: 2048 * 1024,
+                hard_disks: vec![],
             };
             $(config.$key = $val;)*
             let video_buffer = std::sync::Arc::new(std::sync::RwLock::new($crate::video::VideoBuffer::new()));
@@ -139,9 +140,9 @@ mod tests {
                 use crate::tests::tests::run_test_configured;
 
                 #[test_log::test]
-                pub fn basic_read() {
+                pub fn floppy_read() {
                     run_test_configured(
-                        "cpu/bios/int13/basic_read",
+                        "cpu/bios/int13/floppy_read",
                         make_computer!(cpu_type: CpuType::I80286),
                         |c| {
                             let backend = MemBackend::zeroed(DiskGeometry::FLOPPY_1440K.total_size);
@@ -153,9 +154,9 @@ mod tests {
                 }
 
                 #[test_log::test]
-                pub fn basic_write() {
+                pub fn floppy_write() {
                     run_test_configured(
-                        "cpu/bios/int13/basic_write",
+                        "cpu/bios/int13/floppy_write",
                         make_computer!(cpu_type: CpuType::I80286),
                         |c| {
                             let backend = MemBackend::zeroed(DiskGeometry::FLOPPY_1440K.total_size);

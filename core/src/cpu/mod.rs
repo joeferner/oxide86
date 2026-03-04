@@ -740,6 +740,7 @@ mod tests {
             Memory::new(1024),
             cpu_clock_speed,
             Some(Box::new(MockClock::new())),
+            vec![],
         );
         bus.add_device(VideoCard::new(video_buffer));
 
