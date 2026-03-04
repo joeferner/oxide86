@@ -7,6 +7,7 @@ use anyhow::Result;
 use crossterm::{
     QueueableCommand, cursor,
     style::{Color, SetBackgroundColor, SetForegroundColor},
+    terminal,
 };
 use oxide86_core::video::{
     VideoBuffer,
@@ -35,7 +36,24 @@ pub fn draw_frame(
     // TODO use start address for scrolling
 
     if let VideoMode::Text { cols, rows } = buffer.mode() {
+        let (term_cols, term_rows) = terminal::size()?;
+        if (term_cols as usize) < cols || (term_rows as usize) < rows {
+            video_cache.clear();
+            stdout.queue(cursor::MoveTo(0, 0))?;
+            stdout.queue(crossterm::style::ResetColor)?;
+            stdout.queue(crossterm::style::Print(format!(
+                "Terminal too small: need {}x{}, got {}x{}",
+                cols, rows, term_cols, term_rows
+            )))?;
+            stdout.flush()?;
+            return Ok(());
+        }
+
         let mut addr = 0;
+        let mut current_fg: Option<Color> = None;
+        let mut current_bg: Option<Color> = None;
+        let mut cursor_col: Option<usize> = None;
+        let mut cursor_row: Option<usize> = None;
         for row in 0..rows {
             for col in 0..cols {
                 let cache_location = addr;
@@ -50,15 +68,25 @@ pub fn draw_frame(
                 let new_cached_value = VideoCachedValue { character, fg, bg };
 
                 if cached_value.is_none() || cached_value.unwrap() != &new_cached_value {
-                    // Position cursor (crossterm uses 0-indexed coordinates)
-                    stdout.queue(cursor::MoveTo(col as u16, row as u16))?;
+                    // Only move cursor if it's not already at the right position
+                    if cursor_col != Some(col) || cursor_row != Some(row) {
+                        stdout.queue(cursor::MoveTo(col as u16, row as u16))?;
+                    }
 
-                    // Set colors
-                    stdout.queue(SetForegroundColor(fg))?;
-                    stdout.queue(SetBackgroundColor(bg))?;
+                    // Only set colors if they changed
+                    if current_fg != Some(fg) {
+                        stdout.queue(SetForegroundColor(fg))?;
+                        current_fg = Some(fg);
+                    }
+                    if current_bg != Some(bg) {
+                        stdout.queue(SetBackgroundColor(bg))?;
+                        current_bg = Some(bg);
+                    }
 
                     // Print character (convert CP437 to Unicode)
                     stdout.queue(crossterm::style::Print(cp437_to_unicode(character)))?;
+                    cursor_col = Some(col + 1);
+                    cursor_row = Some(row);
 
                     if video_cache.len() <= cache_location {
                         video_cache.resize_with(cache_location + 1, || VideoCachedValue {
@@ -68,6 +96,9 @@ pub fn draw_frame(
                         });
                     }
                     video_cache[cache_location] = new_cached_value;
+                } else {
+                    // Cursor position is no longer tracked after skipping a cell
+                    cursor_col = None;
                 }
             }
         }
