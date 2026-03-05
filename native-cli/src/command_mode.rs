@@ -151,7 +151,7 @@ enum Command {
 }
 
 impl Command {
-    pub fn parse(text: &str) -> Self {
+    pub(crate) fn parse(text: &str) -> Self {
         let text = text.trim().to_lowercase();
         if text == "quit" || text == "q" {
             Self::Quit

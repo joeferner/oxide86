@@ -10,7 +10,7 @@ pub fn dac_to_8bit(val: u8) -> u8 {
     (v << 2) | (v >> 4)
 }
 
-pub struct RenderTextArgs<'a> {
+pub(crate) struct RenderTextArgs<'a> {
     pub font: &'a Cp437Font,
     pub row: usize,
     pub col: usize,

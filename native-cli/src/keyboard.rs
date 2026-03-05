@@ -2,7 +2,7 @@ use crossterm::event::KeyCode;
 use oxide86_core::scan_code::SCAN_CODE_F12;
 
 /// Map crossterm KeyCode to 8086 scan code
-pub fn key_code_to_scan_code(code: &KeyCode) -> u8 {
+pub(crate) fn key_code_to_scan_code(code: &KeyCode) -> u8 {
     match code {
         KeyCode::Esc => 0x01,
         KeyCode::Backspace => 0x0E,
@@ -47,7 +47,7 @@ pub fn key_code_to_scan_code(code: &KeyCode) -> u8 {
 /// Returns true if typing this character requires the Shift key on a US layout.
 /// Some terminals don't report KeyModifiers::SHIFT for symbol characters, so
 /// we infer it from the character itself.
-pub fn char_requires_shift(c: char) -> bool {
+pub(crate) fn char_requires_shift(c: char) -> bool {
     matches!(
         c,
         '~' | '!'

@@ -21,7 +21,7 @@ pub const VIDEO_CARD_START_ADDRESS_LOW_REGISTER: u8 = 0x0d;
 pub const VIDEO_CARD_REG_CURSOR_LOC_HIGH: u8 = 0x0e;
 pub const VIDEO_CARD_REG_CURSOR_LOC_LOW: u8 = 0x0f;
 
-pub struct ModeInfo {
+pub(crate) struct ModeInfo {
     pub rows: u8,
     pub cols: u8,
 }

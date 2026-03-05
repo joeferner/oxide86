@@ -30,7 +30,7 @@ mod cpu_flag {
     pub const OVERFLOW: u16 = 1 << 11;
 }
 
-pub struct Cpu {
+pub(crate) struct Cpu {
     cpu_type: CpuType,
 
     // General purpose registers

@@ -55,7 +55,7 @@ impl Channel {
     }
 }
 
-pub struct PIT {
+pub(crate) struct Pit {
     cpu_clock_speed: u32,
     cycles_per_irq: u32,
     last_irq_0_cycle_count: u32,
@@ -65,7 +65,7 @@ pub struct PIT {
     port_b: u8,
 }
 
-impl PIT {
+impl Pit {
     pub(crate) fn new(cpu_clock_speed: u32) -> Self {
         Self {
             cpu_clock_speed,
@@ -105,7 +105,7 @@ impl PIT {
     }
 }
 
-impl Device for PIT {
+impl Device for Pit {
     fn as_any(&self) -> &dyn Any {
         self
     }

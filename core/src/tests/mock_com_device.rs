@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, VecDeque};
 
 use crate::devices::uart::ComPortDevice;
 
-pub struct MockComDevice {
+pub(crate) struct MockComDevice {
     /// Simulates hardware delay/asynchronicity
     async_count: u32,
     async_threshold: u32,

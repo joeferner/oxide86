@@ -13,10 +13,10 @@ use crate::{
         floppy_disk_controller::FloppyDiskController,
         hard_disk_controller::HardDiskController,
         keyboard_controller::KeyboardController,
-        pic::PIC,
-        pit::PIT,
-        rtc::{Clock, RTC},
-        uart::UART,
+        pic::Pic,
+        pit::Pit,
+        rtc::{Clock, Rtc},
+        uart::Uart,
     },
     disk::Disk,
     memory::Memory,
@@ -26,17 +26,17 @@ use crate::{
 const MEMORY_MAPPED_IO_START: usize = 0xA0000;
 const MEMORY_MAPPED_IO_END: usize = 0xF0000;
 
-pub struct Bus {
+pub(crate) struct Bus {
     memory: Memory,
     devices: Vec<DeviceRef>,
     floppy_controller: Rc<RefCell<FloppyDiskController>>,
     #[cfg(test)]
     hard_disk_controller: Rc<RefCell<HardDiskController>>,
-    pic: Rc<RefCell<PIC>>,
+    pic: Rc<RefCell<Pic>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     #[cfg(test)]
-    uart: Rc<RefCell<UART>>,
-    rtc: Option<Rc<RefCell<RTC>>>,
+    uart: Rc<RefCell<Uart>>,
+    rtc: Option<Rc<RefCell<Rtc>>>,
     video_card: Option<Rc<RefCell<VideoCard>>>,
 
     /// Cycle count to accurately track CPU cycles
@@ -51,9 +51,9 @@ impl Bus {
         hard_disks: Vec<Box<dyn Disk>>,
     ) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
-        let pit = Rc::new(RefCell::new(PIT::new(cpu_clock_speed)));
-        let uart = Rc::new(RefCell::new(UART::new()));
-        let pic = Rc::new(RefCell::new(PIC::new(
+        let pit = Rc::new(RefCell::new(Pit::new(cpu_clock_speed)));
+        let uart = Rc::new(RefCell::new(Uart::new()));
+        let pic = Rc::new(RefCell::new(Pic::new(
             pit.clone(),
             keyboard_controller.clone(),
         )));
@@ -68,7 +68,7 @@ impl Bus {
             hard_disk_controller.clone(),
         ];
         let rtc = if let Some(clock) = clock {
-            let rtc = Rc::new(RefCell::new(RTC::new(clock)));
+            let rtc = Rc::new(RefCell::new(Rtc::new(clock)));
             devices.push(rtc.clone());
             Some(rtc)
         } else {
@@ -94,7 +94,7 @@ impl Bus {
         self.rtc.is_some()
     }
 
-    pub(crate) fn rtc(&self) -> Option<Ref<'_, RTC>> {
+    pub(crate) fn rtc(&self) -> Option<Ref<'_, Rtc>> {
         self.rtc.as_ref().map(|rtc| rtc.borrow())
     }
 
@@ -106,12 +106,12 @@ impl Bus {
         self.cycle_count
     }
 
-    pub(crate) fn pic_mut(&self) -> RefMut<'_, PIC> {
+    pub(crate) fn pic_mut(&self) -> RefMut<'_, Pic> {
         self.pic.borrow_mut()
     }
 
     #[cfg(test)]
-    pub(crate) fn uart_mut(&self) -> RefMut<'_, UART> {
+    pub(crate) fn uart_mut(&self) -> RefMut<'_, Uart> {
         self.uart.borrow_mut()
     }
 

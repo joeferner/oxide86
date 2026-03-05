@@ -86,7 +86,7 @@ pub const BDA_KEYBOARD_FLAGS1_ALT: u8 = 0x08; // Either Alt key pressed
 /// Timer ticks per 24-hour day at 18.2065 Hz (1,193,182 Hz ÷ 65,536)
 const TICKS_PER_DAY: u32 = 0x0018_00B0; // 1,573,040
 
-pub struct SystemTime {
+pub(crate) struct SystemTime {
     pub low_word: u16,
     pub high_word: u16,
     pub midnight_flag: u8,

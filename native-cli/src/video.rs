@@ -17,13 +17,13 @@ use oxide86_core::video::{
 };
 
 #[derive(Debug, PartialEq)]
-pub struct VideoCachedValue {
+pub(crate) struct VideoCachedValue {
     character: u8,
     fg: Color,
     bg: Color,
 }
 
-pub fn draw_frame(
+pub(crate) fn draw_frame(
     video_cache: &mut Vec<VideoCachedValue>,
     buffer: &Arc<RwLock<VideoBuffer>>,
     stdout: &mut Stdout,

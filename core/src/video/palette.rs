@@ -1,4 +1,4 @@
-pub struct TextModePalette {}
+pub(crate) struct TextModePalette {}
 
 impl TextModePalette {
     // TODO

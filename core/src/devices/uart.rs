@@ -127,11 +127,11 @@ pub trait ComPortDevice {
     fn write(&mut self, value: u8) -> bool;
 }
 
-pub struct UART {
+pub(crate) struct Uart {
     ports: [Port; 4],
 }
 
-impl UART {
+impl Uart {
     pub(crate) fn new() -> Self {
         Self {
             ports: Default::default(),
@@ -151,7 +151,7 @@ impl UART {
     }
 }
 
-impl Device for UART {
+impl Device for Uart {
     fn as_any(&self) -> &dyn Any {
         self
     }

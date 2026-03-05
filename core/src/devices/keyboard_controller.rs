@@ -10,7 +10,7 @@ const STATUS_OBF: u8 = 0x01;
 /// Status register bit 2: System flag — set after POST to indicate normal operation
 const STATUS_SYSTEM: u8 = 0x04;
 
-pub struct KeyboardController {
+pub(crate) struct KeyboardController {
     scan_code: u8,
     /// used by the PIC to check if a key has been pressed
     pending_key: bool,

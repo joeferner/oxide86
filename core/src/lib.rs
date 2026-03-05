@@ -16,7 +16,7 @@ pub mod tests;
 
 /// Key press data
 #[derive(Debug, Clone, Copy)]
-pub struct KeyPress {
+pub(crate) struct KeyPress {
     /// BIOS scan code
     pub scan_code: u8,
     /// ASCII character code

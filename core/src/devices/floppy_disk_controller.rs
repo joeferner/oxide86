@@ -87,7 +87,7 @@ enum FdcPhase {
 /// Register (DIR, port 0x3F7) reflects the changeline of the currently
 /// selected drive. Both drive slots always exist; a drive with no disk
 /// inserted returns `DriveNotReady` on access.
-pub struct FloppyDiskController {
+pub(crate) struct FloppyDiskController {
     /// Disk image per drive: index 0 = A:, index 1 = B:. None = no disk inserted.
     drives: [Option<Box<dyn Disk>>; 2],
     /// Currently selected drive index (0 = A:, 1 = B:), set by DOR writes

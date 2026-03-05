@@ -50,7 +50,7 @@ enum HdcPhase {
     },
 }
 
-pub struct HardDiskController {
+pub(crate) struct HardDiskController {
     disks: Vec<Box<dyn Disk>>,
 
     // Writable ATA registers (set before issuing a command)

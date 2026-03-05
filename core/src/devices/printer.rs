@@ -12,7 +12,7 @@ pub mod printer_status {
 
 /// Printer status returned by operations
 #[derive(Debug, Clone, Copy)]
-pub struct PrinterStatus {
+pub(crate) struct PrinterStatus {
     /// Status byte (returned in AH)
     pub status: u8,
 }

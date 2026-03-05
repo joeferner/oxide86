@@ -3,7 +3,7 @@ use crate::cpu::Cpu;
 use crate::physical_address;
 
 /// Information about a decoded instruction
-pub struct DecodedInstruction {
+pub(crate) struct DecodedInstruction {
     /// Human-readable assembly string
     pub text: String,
     /// Raw bytes that make up this instruction

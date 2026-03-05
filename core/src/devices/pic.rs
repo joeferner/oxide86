@@ -2,7 +2,7 @@ use std::{any::Any, cell::RefCell, rc::Rc};
 
 use crate::{
     Device,
-    devices::{keyboard_controller::KeyboardController, pit::PIT},
+    devices::{keyboard_controller::KeyboardController, pit::Pit},
 };
 
 pub const PIC_IO_PORT_COMMAND: u16 = 0x0020;
@@ -21,17 +21,17 @@ const PIT_IRQ_LINE: u8 = 0;
 /// IRQ line for the keyboard (IRQ1 → INT 9)
 const KEYBOARD_IRQ_LINE: u8 = 1;
 
-pub struct PIC {
-    pit: Rc<RefCell<PIT>>,
+pub(crate) struct Pic {
+    pit: Rc<RefCell<Pit>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     mask: u8,
     /// Bitmask of IRQ lines currently being serviced (awaiting EOI)
     in_service: u8,
 }
 
-impl PIC {
+impl Pic {
     pub(crate) fn new(
-        pit: Rc<RefCell<PIT>>,
+        pit: Rc<RefCell<Pit>>,
         keyboard_controller: Rc<RefCell<KeyboardController>>,
     ) -> Self {
         Self {
@@ -71,7 +71,7 @@ impl PIC {
     }
 }
 
-impl Device for PIC {
+impl Device for Pic {
     fn as_any(&self) -> &dyn Any {
         self
     }

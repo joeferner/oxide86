@@ -48,7 +48,7 @@ pub trait Clock: Send {
     fn get_local_date(&self) -> LocalDate;
 }
 
-pub struct RTC {
+pub(crate) struct Rtc {
     clock: Box<dyn Clock>,
     /// Currently selected CMOS register index (written via port 0x70)
     selected_register: u8,
@@ -56,7 +56,7 @@ pub struct RTC {
     floppy_types: u8,
 }
 
-impl RTC {
+impl Rtc {
     pub(crate) fn new(clock: Box<dyn Clock>) -> Self {
         Self {
             clock,
@@ -83,7 +83,7 @@ fn to_bcd(val: u8) -> u8 {
     ((val / 10) << 4) | (val % 10)
 }
 
-impl Device for RTC {
+impl Device for Rtc {
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -151,7 +151,7 @@ impl Device for RTC {
 pub mod tests {
     use crate::devices::rtc::{Clock, LocalDate, LocalTime};
 
-    pub struct MockClock {
+    pub(crate) struct MockClock {
         local_time: LocalTime,
         local_date: LocalDate,
     }
