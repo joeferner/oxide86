@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, RepeatPrefix, cpu_flag, timing},
+    cpu::{Cpu, cpu_flag, instructions::RepeatPrefix, timing},
     physical_address,
 };
 

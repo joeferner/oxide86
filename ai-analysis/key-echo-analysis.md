@@ -55,40 +55,7 @@ The IRET at `028E:156C` returns to `0DBB:1242` (not `0DBB:1249`), causing the ap
 
 ---
 
-## Issue 1: Double Log Entries for Segment-Prefixed Instructions
-
-Every instruction with a segment override prefix (CS:, SS:, DS:, ES:) appears **twice** in the log:
-
-```
-028E:4E4C 36 8B 3E 27 03  ss: mov di, ss:[0x0327]  [0x0327]=0179 @028E:0327  ← correct
-028E:4E4D 8B 3E 27 03    mov di, [0x0327]           [0x0327]=2020 @0070:0327  ← wrong!
-```
-
-**Root cause:** In `mod.rs`, the segment prefix handler calls `self.step(bus)` recursively:
-
-```rust
-0x36 => {
-    self.segment_override = Some(self.ss);
-    self.step(bus);          // ← inner step logs instruction using fresh Decoder
-    self.segment_override = None;
-}
-```
-
-The outer `step()` decodes the full instruction (including prefix) and shows correct segment values. The inner `step()` creates a **new `Decoder`** that does not inherit `cpu.segment_override`, so it displays DS-based memory addresses for its log output.
-
-**Actual execution is correct** — `cpu.segment_override` IS set when the inner step executes the instruction. The data shown in the second log line is misleading but harmless. However, the second log line can be confusing when diagnosing memory access issues.
-
-### Examples of misleading inner-step log entries
-
-| Outer (correct) | Inner (misleading) |
-|---|---|
-| `ss:[028E:0327] = 0x0179` | `[0070:0327] = 0x2020` |
-| `ss:[028E:035E] = 0x0400` | `[028E:035E] = 0x0100` |
-| `ss: call far ss:[028E:0320] = 0x060C` | `call far [0070:0320] = 0x5300` |
-
----
-
-## Issue 2: Teletype Output Missing Attribute Byte
+## Issue: Teletype Output Missing Attribute Byte
 
 The echo of 'y' fires via **INT 10h AH=0Eh** (teletype output). This routes to `BIOS_CODE_SEGMENT` (`0xF000`) and is handled by the Rust function `int10_teletype_output`. Because it goes through the BIOS code segment, **no x86 instructions are logged** for it — this explains the gap between `028E:4E76 ret` and `028E:2424 pop dx`.
 
