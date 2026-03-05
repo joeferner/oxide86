@@ -75,6 +75,9 @@ impl Cpu {
 
             // Clear ZF to indicate keystroke available
             self.set_flag(cpu_flag::ZERO, false);
+        } else {
+            // Set ZF to indicate no keystroke available
+            self.set_flag(cpu_flag::ZERO, true);
         }
     }
 }

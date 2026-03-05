@@ -453,7 +453,7 @@ pub fn bda_read_key(bus: &mut Bus) -> Option<KeyPress> {
         let ascii_code = bus.memory_read_u8(char_addr + 1);
 
         log::debug!(
-            "INT 0x16 AH=0x00: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
+            "BDA: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
             scan_code,
             ascii_code,
             byte_to_printable_char(ascii_code)
