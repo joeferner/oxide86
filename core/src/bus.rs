@@ -32,7 +32,6 @@ pub struct Bus {
     floppy_controller: Rc<RefCell<FloppyDiskController>>,
     hard_disk_controller: Rc<RefCell<HardDiskController>>,
     pic: Rc<RefCell<PIC>>,
-    pit: Rc<RefCell<PIT>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     uart: Rc<RefCell<UART>>,
     rtc: Option<Rc<RefCell<RTC>>>,
@@ -60,7 +59,7 @@ impl Bus {
         let hard_disk_controller = Rc::new(RefCell::new(HardDiskController::new(hard_disks)));
         let mut devices: Vec<DeviceRef> = vec![
             pic.clone(),
-            pit.clone(),
+            pit,
             keyboard_controller.clone(),
             uart.clone(),
             floppy_controller.clone(),
@@ -79,7 +78,6 @@ impl Bus {
             floppy_controller,
             hard_disk_controller,
             pic,
-            pit,
             keyboard_controller,
             uart,
             video_card: None,
@@ -104,24 +102,8 @@ impl Bus {
         self.cycle_count
     }
 
-    pub fn pic(&self) -> Ref<'_, PIC> {
-        self.pic.borrow()
-    }
-
     pub fn pic_mut(&self) -> RefMut<'_, PIC> {
         self.pic.borrow_mut()
-    }
-
-    pub fn pit(&self) -> Ref<'_, PIT> {
-        self.pit.borrow()
-    }
-
-    pub fn pit_mut(&self) -> RefMut<'_, PIT> {
-        self.pit.borrow_mut()
-    }
-
-    pub fn uart(&self) -> Ref<'_, UART> {
-        self.uart.borrow()
     }
 
     pub fn uart_mut(&self) -> RefMut<'_, UART> {
