@@ -22,6 +22,11 @@ pub struct CommonCli {
     #[arg(long, default_value = "8")]
     pub speed: f64,
 
+    /// Memory size in KB (default: 1024; conventional memory capped at 640 KB,
+    /// extended memory = memory - 1024 KB on 286+ CPUs)
+    #[arg(long, default_value = "2048", value_name = "KB")]
+    pub memory: String,
+
     /// Enable execution logging (logs each instruction to oxide86.log)
     #[arg(long = "exec-log")]
     pub exec_log: bool,

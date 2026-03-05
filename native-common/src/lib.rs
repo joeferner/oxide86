@@ -28,7 +28,7 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
     let mut computer = Computer::new(ComputerConfig {
         cpu_type,
         clock_speed: (cli.speed * 1_000_000.0) as u32,
-        memory_size: 2048 * 1024, // TODO fill from cli args
+        memory_size: parse_memory(&cli.memory)?,
         clock: Box::new(NativeClock::new()),
         hard_disks,
     });
@@ -101,6 +101,23 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
     }
 
     Ok(computer)
+}
+
+fn parse_memory(memory: &str) -> Result<usize> {
+    let mem = memory.trim().to_lowercase();
+    if mem.ends_with("mb") || mem.ends_with("m") {
+        let mem = mem.trim_end_matches("mb").trim_end_matches("m");
+        let mb = mem
+            .parse::<usize>()
+            .map_err(|_| anyhow!("Could not parse memory: {memory}"))?;
+        Ok(mb * 1024 * 1024)
+    } else {
+        let mem = mem.trim_end_matches("kb").trim_end_matches("k");
+        let mb = mem
+            .parse::<usize>()
+            .map_err(|_| anyhow!("Could not parse memory: {memory}"))?;
+        Ok(mb * 1024)
+    }
 }
 
 fn load_hard_disks(hard_disks: &[String]) -> Vec<Box<dyn Disk>> {

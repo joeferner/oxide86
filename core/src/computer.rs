@@ -36,6 +36,7 @@ pub struct Computer {
 impl Computer {
     pub fn new(config: ComputerConfig) -> Self {
         let cpu = Cpu::new(config.cpu_type, config.clock_speed);
+        log::info!("Memory {}kb", config.memory_size / 1024);
         let memory = Memory::new(config.memory_size);
         let clock_speed = cpu.clock_speed();
         let clock = if config.cpu_type == CpuType::I8086 {

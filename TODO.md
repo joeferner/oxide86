@@ -12,8 +12,8 @@
 - [X] Add hard drive support
   - [X] fdisk
   - [X] format
+- [X] Add memory CLI flag, support KB, MB suffixes default to KB
 - [ ] Add read only floppy support "--floppy-a test.img:r"
-- [ ] Add memory CLI flag, support KB, MB suffixes default to KB
 - [ ] Get MS-DOS 4.01 Working
 - [ ] PC Speaker
 - [ ] remove functions from bus to get internal devices unless really needed
