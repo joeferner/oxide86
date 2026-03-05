@@ -123,7 +123,7 @@ fn parse_memory(memory: &str) -> Result<usize> {
 }
 
 /// Parse a disk spec like "path/to/disk.img" or "path/to/disk.img:r" (read-only).
-fn parse_disk_spec(spec: &str) -> (&str, bool) {
+pub fn parse_disk_spec(spec: &str) -> (&str, bool) {
     if let Some(path) = spec.strip_suffix(":r") {
         (path, true)
     } else {
