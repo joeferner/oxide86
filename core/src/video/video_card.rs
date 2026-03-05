@@ -167,6 +167,14 @@ impl Device for VideoCard {
                 VIDEO_CARD_REG_CURSOR_END_LINE => {
                     buffer.set_cursor_end_line(val);
                 }
+                VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
+                    let new_start = (buffer.start_address() & 0x00ff) | ((val as u16) << 8);
+                    buffer.set_start_address(new_start);
+                }
+                VIDEO_CARD_START_ADDRESS_LOW_REGISTER => {
+                    let new_start = (buffer.start_address() & 0xff00) | val as u16;
+                    buffer.set_start_address(new_start);
+                }
                 VIDEO_CARD_REG_CURSOR_LOC_HIGH => {
                     let new_cursor_loc = (buffer.cursor_loc() & 0x00ff) | ((val as u16) << 8);
                     buffer.set_cursor_loc(new_cursor_loc);
@@ -175,7 +183,11 @@ impl Device for VideoCard {
                     let new_cursor_loc = (buffer.cursor_loc() & 0xff00) | val as u16;
                     buffer.set_cursor_loc(new_cursor_loc);
                 }
-                _ => log::warn!("invalid IO Register: 0x{:04X}", self.io_register),
+                _ => log::warn!(
+                    "invalid IO Register: 0x{:04X} (val: 0x{:02X})",
+                    self.io_register,
+                    val
+                ),
             }
             true
         } else {

@@ -1,5 +1,6 @@
 use crate::{
     bus::Bus,
+    byte_to_printable_char,
     cpu::{
         Cpu,
         bios::bda::{
@@ -434,6 +435,11 @@ impl Cpu {
         let cursor = bda_get_cursor_pos(bus, page);
         let columns = bda_get_columns(bus) as u8;
         let rows = bda_get_rows(bus);
+
+        log::debug!(
+            "INT 0x10 0x0E Teletype Output: ch:'{}', page:{page}, cursor:{cursor}",
+            byte_to_printable_char(ch)
+        );
 
         match ch {
             b'\r' => {

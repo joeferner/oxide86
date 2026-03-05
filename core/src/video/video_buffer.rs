@@ -1,3 +1,5 @@
+use std::fmt;
+
 use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
 use crate::video::palette::TextModePalette;
 use crate::video::renderer::{RenderTextArgs, render_text};
@@ -37,6 +39,12 @@ pub struct CursorPosition {
     pub col: u8,
 }
 
+impl fmt::Display for CursorPosition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{},{}", self.col, self.row)
+    }
+}
+
 pub struct VideoBuffer {
     mode: VideoMode,
     text_columns: u8,
@@ -69,6 +77,9 @@ pub struct VideoBuffer {
     /// written by CRT controller register 0x0B (bits 4:0). A value equal to
     /// `CHAR_HEIGHT - 1` produces an underline cursor at the bottom of the cell.
     cursor_end_line: u8,
+    /// Display start address written by CRT controller registers 0x0C (high) and 0x0D (low).
+    /// Controls which VRAM offset is shown at the top-left of the screen (used for hardware scrolling).
+    start_address: u16,
     /// If any value changes in the struct which could result in different output this will be set to true
     dirty: bool,
 }
@@ -88,6 +99,7 @@ impl VideoBuffer {
             cursor_loc: 0,
             cursor_start_line: DEFAULT_CURSOR_START_LINE,
             cursor_end_line: DEFAULT_CURSOR_END_LINE,
+            start_address: 0,
             dirty: false,
         };
         me.reset();
@@ -106,6 +118,7 @@ impl VideoBuffer {
         self.cursor_loc = 0;
         self.cursor_start_line = DEFAULT_CURSOR_START_LINE;
         self.cursor_end_line = DEFAULT_CURSOR_END_LINE;
+        self.start_address = 0;
         self.dirty = false;
         for i in (0..TEXT_MODE_SIZE).step_by(2) {
             self.vram[i] = 0x20; // space
@@ -155,6 +168,15 @@ impl VideoBuffer {
         self.dirty = true;
     }
 
+    pub fn start_address(&self) -> u16 {
+        self.start_address
+    }
+
+    pub fn set_start_address(&mut self, addr: u16) {
+        self.start_address = addr;
+        self.dirty = true;
+    }
+
     pub fn get_cursor_position(&self) -> CursorPosition {
         CursorPosition {
             row: (self.cursor_loc / self.text_columns as u16) as u8,
@@ -180,10 +202,8 @@ impl VideoBuffer {
         let height = CHAR_HEIGHT * TEXT_MODE_ROWS;
         let mut data = vec![0; width * height * bytes_per_pixel];
 
-        // TODO use start address for scrolling
-
         // Render all cells
-        let mut i = 0;
+        let mut i = (self.start_address as usize) * 2;
         for row in 0..TEXT_MODE_ROWS {
             for col in 0..TEXT_MODE_COLS {
                 let character = self.vram[i];

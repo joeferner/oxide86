@@ -332,6 +332,10 @@ impl Cpu {
     pub fn get_exit_code(&self) -> Option<u8> {
         self.exit_code
     }
+
+    pub fn at_reset_vector(&self) -> bool {
+        self.cs == 0xFFFF && self.ip == 0x0000
+    }
 }
 
 #[cfg(test)]

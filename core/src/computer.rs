@@ -30,6 +30,7 @@ pub struct Computer {
     cpu: Cpu,
     bus: Bus,
     key_presses: VecDeque<u8>,
+    boot_drive: Option<DriveNumber>,
 }
 
 impl Computer {
@@ -46,6 +47,7 @@ impl Computer {
             cpu,
             bus: Bus::new(memory, clock_speed, clock, config.hard_disks),
             key_presses: VecDeque::new(),
+            boot_drive: None,
         };
         computer.reset();
         computer
@@ -108,6 +110,17 @@ impl Computer {
     pub fn step(&mut self) {
         self.process_key_presses();
         self.cpu.step(&mut self.bus);
+        if self.cpu.at_reset_vector() {
+            if let Some(drive) = self.boot_drive {
+                log::info!("Rebooting from drive {}", drive.to_letter());
+                if let Err(e) = self.boot(drive) {
+                    log::error!("Reboot failed: {e}");
+                }
+            } else {
+                log::warn!("Reset vector reached but no boot drive set; resetting CPU");
+                self.reset();
+            }
+        }
     }
 
     pub fn is_halted(&self) -> bool {
@@ -145,6 +158,10 @@ impl Computer {
     }
 
     fn boot_from(&mut self, drive: DriveNumber) -> Result<()> {
+        // Reset bus state (IVT, BDA, devices) before booting so that any modifications
+        // made by a previous session (e.g. DOS replacing INT 13h at 0x0070) don't persist.
+        self.bus.reset();
+
         // Read boot sector using BIOS disk services
         // Boot sector is at cylinder 0, head 0, sector 1
         let boot_sector = disk_read_sectors(&self.bus, drive, 0, 0, 1, 1)
@@ -173,6 +190,7 @@ impl Computer {
         let boot_addr = physical_address(BOOT_SEGMENT, BOOT_OFFSET);
         self.bus.load_at(boot_addr, &boot_sector)?;
         self.cpu.reset(BOOT_SEGMENT, BOOT_OFFSET, Some(drive));
+        self.boot_drive = Some(drive);
 
         // TODO
         // // Set current drive to match boot drive
