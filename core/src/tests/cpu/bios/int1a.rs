@@ -2,7 +2,7 @@ use crate::cpu::CpuType;
 use crate::tests::run_test_configured;
 
 #[test_log::test]
-pub fn rtc_date() {
+pub(crate) fn rtc_date() {
     run_test_configured(
         "cpu/bios/int1a/rtc_date",
         make_computer!(cpu_type: CpuType::I80286),
@@ -11,7 +11,7 @@ pub fn rtc_date() {
 }
 
 #[test_log::test]
-pub fn rtc_time() {
+pub(crate) fn rtc_time() {
     run_test_configured(
         "cpu/bios/int1a/rtc_time",
         make_computer!(cpu_type: CpuType::I80286),
@@ -20,7 +20,7 @@ pub fn rtc_time() {
 }
 
 #[test_log::test]
-pub fn rtc_set() {
+pub(crate) fn rtc_set() {
     run_test_configured(
         "cpu/bios/int1a/rtc_set",
         make_computer!(cpu_type: CpuType::I80286),
@@ -29,7 +29,7 @@ pub fn rtc_set() {
 }
 
 #[test_log::test]
-pub fn tick_count() {
+pub(crate) fn tick_count() {
     run_test_configured(
         "cpu/bios/int1a/tick_count",
         make_computer!(cpu_type: CpuType::I80286),

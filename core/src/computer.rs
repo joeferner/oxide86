@@ -1,21 +1,19 @@
-use std::{
-    collections::VecDeque,
-    sync::{Arc, RwLock},
-};
+use std::collections::VecDeque;
+#[cfg(test)]
+use std::sync::{Arc, RwLock};
 
 use crate::{
     Device,
     bus::Bus,
     byte_to_printable_char,
     cpu::{Cpu, CpuType, bios::int09_keyboard_hardware_interrupt::scan_code_to_ascii},
-    devices::{
-        rtc::{CMOS_REG_FLOPPY_TYPES, Clock, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
-        uart::ComPortDevice,
-    },
-    disk::{Disk, DiskError, DriveNumber, disk_read_sectors},
+    devices::rtc::{CMOS_REG_FLOPPY_TYPES, Clock, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
+    disk::{Disk, DriveNumber, disk_read_sectors},
     memory::Memory,
     physical_address,
 };
+#[cfg(test)]
+use crate::{devices::uart::ComPortDevice, disk::DiskError};
 use anyhow::{Result, anyhow};
 
 pub struct ComputerConfig {
@@ -81,7 +79,7 @@ impl Computer {
                 .io_write_u8(RTC_IO_PORT_REGISTER_SELECT, CMOS_REG_FLOPPY_TYPES);
             let current = self.bus.io_read_u8(RTC_IO_PORT_DATA);
             let current = if current == 0xFF { 0x00 } else { current };
-            let floppy_types = if drive.to_floppy_index() == 0 {
+            let floppy_types = if drive.as_floppy_index() == 0 {
                 (cmos_type << 4) | (current & 0x0F) // drive A in bits 7:4
             } else {
                 (current & 0xF0) | (cmos_type & 0x0F) // drive B in bits 3:0
@@ -102,7 +100,8 @@ impl Computer {
         Ok(())
     }
 
-    pub fn run(&mut self) {
+    #[cfg(test)]
+    pub(crate) fn run(&mut self) {
         while self.get_exit_code().is_none() && !self.cpu.wait_for_key_press() {
             self.step();
         }
@@ -122,10 +121,6 @@ impl Computer {
                 self.reset();
             }
         }
-    }
-
-    pub fn is_halted(&self) -> bool {
-        self.cpu.is_halted()
     }
 
     fn reset(&mut self) {
@@ -257,7 +252,8 @@ impl Computer {
         }
     }
 
-    pub fn read_hard_disk_sectors(
+    #[cfg(test)]
+    pub(crate) fn read_hard_disk_sectors(
         &self,
         drive: DriveNumber,
         cylinder: u8,
@@ -272,21 +268,6 @@ impl Computer {
             .read_sectors(cylinder, head, sector, count)
     }
 
-    pub fn write_hard_disk_sectors(
-        &self,
-        drive: DriveNumber,
-        cylinder: u8,
-        head: u8,
-        sector: u8,
-        data: &[u8],
-    ) -> Result<(), DiskError> {
-        self.bus
-            .hard_disk_controller()
-            .get_disk(drive)
-            .ok_or(DiskError::DriveNotReady)?
-            .write_sectors(cylinder, head, sector, data)
-    }
-
     pub fn get_exit_code(&self) -> Option<u8> {
         self.cpu.get_exit_code()
     }
@@ -295,6 +276,7 @@ impl Computer {
         self.cpu.wait_for_key_press()
     }
 
+    #[cfg(test)]
     pub fn set_com_port_device(
         &mut self,
         port: u8,

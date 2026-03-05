@@ -8,12 +8,9 @@ pub struct MemBackend {
 }
 
 impl MemBackend {
-    pub fn new(data: Vec<u8>) -> Self {
-        Self { data }
-    }
-
     /// Create a zeroed buffer of the given size.
-    pub fn zeroed(size: usize) -> Self {
+    #[cfg(test)]
+    pub(crate) fn zeroed(size: usize) -> Self {
         Self {
             data: vec![0u8; size],
         }

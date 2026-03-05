@@ -125,7 +125,7 @@ impl Cpu {
 /// Returns 0x00 for keys with no direct ASCII representation (modifiers, function keys,
 /// navigation keys). The caller should treat 0x00 as an extended keycode where INT 16h
 /// will return AH=scan_code, AL=0x00.
-pub fn scan_code_to_ascii(scan_code: u8, shifted: bool, ctrl: bool, alt: bool) -> u8 {
+pub(crate) fn scan_code_to_ascii(scan_code: u8, shifted: bool, ctrl: bool, alt: bool) -> u8 {
     // Alt combinations: ascii=0x00, caller uses scan_code as extended key identifier
     if alt {
         return 0x00;

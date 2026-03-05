@@ -1,9 +1,8 @@
 use std::{any::Any, cell::RefCell};
 
-use crate::{
-    Device,
-    disk::{Disk, DriveNumber},
-};
+#[cfg(test)]
+use crate::disk::DriveNumber;
+use crate::{Device, disk::Disk};
 
 /// ATA Primary controller I/O ports (base 0x1F0)
 pub const HDC_DATA: u16 = 0x1F0; // Data register (read/write)
@@ -70,7 +69,7 @@ pub struct HardDiskController {
 }
 
 impl HardDiskController {
-    pub fn new(disks: Vec<Box<dyn Disk>>) -> Self {
+    pub(crate) fn new(disks: Vec<Box<dyn Disk>>) -> Self {
         Self {
             disks,
             sector_count: 0,
@@ -84,14 +83,11 @@ impl HardDiskController {
         }
     }
 
-    pub fn get_disk(&self, drive: DriveNumber) -> Option<&dyn Disk> {
+    #[cfg(test)]
+    pub(crate) fn get_disk(&self, drive: DriveNumber) -> Option<&dyn Disk> {
         self.disks
-            .get(drive.to_hard_drive_index())
+            .get(drive.as_hard_drive_index())
             .map(|d| d.as_ref())
-    }
-
-    pub fn drive_count(&self) -> usize {
-        self.disks.len()
     }
 
     /// Compute the ATA status register value from current state.

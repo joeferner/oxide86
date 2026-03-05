@@ -62,7 +62,7 @@ impl VideoCard {
         }
     }
 
-    pub fn set_mode(&mut self, mode: u8, _clear_screen: bool) -> Option<ModeInfo> {
+    pub(crate) fn set_mode(&mut self, mode: u8, _clear_screen: bool) -> Option<ModeInfo> {
         if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
             return Some(ModeInfo {
                 rows: TEXT_MODE_ROWS as u8,

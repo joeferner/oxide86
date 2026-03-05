@@ -66,7 +66,7 @@ pub struct PIT {
 }
 
 impl PIT {
-    pub fn new(cpu_clock_speed: u32) -> Self {
+    pub(crate) fn new(cpu_clock_speed: u32) -> Self {
         Self {
             cpu_clock_speed,
             cycles_per_irq: ((cpu_clock_speed as u64 * PIT_DIVISOR) / PIT_FREQUENCY_HZ) as u32,
@@ -78,7 +78,7 @@ impl PIT {
     }
 
     /// Returns `true` if a timer IRQ (IRQ 0) is pending and should be raised.
-    pub fn take_pending_timer_irq(&mut self, cycle_count: u32) -> bool {
+    pub(crate) fn take_pending_timer_irq(&mut self, cycle_count: u32) -> bool {
         let elapsed = cycle_count.wrapping_sub(self.last_irq_0_cycle_count);
         if elapsed >= self.cycles_per_irq {
             self.last_irq_0_cycle_count = cycle_count;

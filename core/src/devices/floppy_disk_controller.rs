@@ -5,7 +5,7 @@ use std::{
 
 use crate::{
     Device,
-    disk::{Disk, DiskError, DiskGeometry, DriveNumber},
+    disk::{Disk, DiskError, DriveNumber},
 };
 
 /// FDC I/O port addresses (primary controller, base 0x3F0)
@@ -105,7 +105,7 @@ pub struct FloppyDiskController {
 }
 
 impl FloppyDiskController {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             drives: [None, None],
             selected_drive: 0,
@@ -118,7 +118,7 @@ impl FloppyDiskController {
 
     /// Insert or eject the disk for the given drive (A: or B:). Returns the previous disk if any.
     /// Pass `None` to eject the current disk.
-    pub fn set_drive_disk(
+    pub(crate) fn set_drive_disk(
         &mut self,
         drive: DriveNumber,
         disk: Option<Box<dyn Disk>>,
@@ -127,7 +127,7 @@ impl FloppyDiskController {
             drive.is_floppy(),
             "FloppyDiskController only supports floppy drives"
         );
-        let idx = drive.to_floppy_index();
+        let idx = drive.as_floppy_index();
         assert!(idx < 2, "floppy drive index out of range");
         let prev = self.drives[idx].take();
         self.drives[idx] = disk;
@@ -135,14 +135,7 @@ impl FloppyDiskController {
         prev
     }
 
-    pub fn disk_geometry(&self, drive: DriveNumber) -> Option<DiskGeometry> {
-        self.drives
-            .get(drive.to_floppy_index())?
-            .as_ref()
-            .map(|d| d.disk_geometry())
-    }
-
-    pub fn read_sectors(
+    pub(crate) fn read_sectors(
         &self,
         drive: DriveNumber,
         cylinder: u8,
@@ -152,7 +145,7 @@ impl FloppyDiskController {
     ) -> Result<Vec<u8>, DiskError> {
         match self
             .drives
-            .get(drive.to_floppy_index())
+            .get(drive.as_floppy_index())
             .and_then(|d| d.as_ref())
         {
             Some(disk) => disk.read_sectors(cylinder, head, sector, count),
@@ -193,7 +186,7 @@ impl FloppyDiskController {
 
         match self
             .drives
-            .get(drive.to_floppy_index())
+            .get(drive.as_floppy_index())
             .and_then(|d| d.as_ref())
         {
             Some(disk) => match disk.read_sectors(cylinder, head, sector, count) {
@@ -255,7 +248,7 @@ impl FloppyDiskController {
 
         match self
             .drives
-            .get(drive.to_floppy_index())
+            .get(drive.as_floppy_index())
             .and_then(|d| d.as_ref())
         {
             Some(disk) => match disk.read_sectors(cylinder, head, sector, count) {
@@ -316,7 +309,7 @@ impl FloppyDiskController {
 
         match self
             .drives
-            .get(drive.to_floppy_index())
+            .get(drive.as_floppy_index())
             .and_then(|d| d.as_ref())
         {
             Some(disk) => match disk.write_sectors(cylinder, head, sector, data) {

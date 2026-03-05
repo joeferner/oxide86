@@ -50,7 +50,7 @@ pub trait Disk {
     fn disk_geometry(&self) -> DiskGeometry;
 }
 
-pub fn disk_read_sectors(
+pub(crate) fn disk_read_sectors(
     bus: &Bus,
     drive: DriveNumber,
     cylinder: u8,

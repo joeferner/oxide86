@@ -106,7 +106,7 @@ impl VideoBuffer {
         me
     }
 
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.mode = VideoMode::Text {
             cols: TEXT_MODE_COLS,
             rows: TEXT_MODE_ROWS,
@@ -144,35 +144,35 @@ impl VideoBuffer {
         self.vram[addr]
     }
 
-    pub fn write_vram(&mut self, addr: usize, val: u8) {
+    pub(crate) fn write_vram(&mut self, addr: usize, val: u8) {
         self.vram[addr] = val;
         self.dirty = true;
     }
 
-    pub fn cursor_loc(&self) -> u16 {
+    pub(crate) fn cursor_loc(&self) -> u16 {
         self.cursor_loc
     }
 
-    pub fn set_cursor_loc(&mut self, loc: u16) {
+    pub(crate) fn set_cursor_loc(&mut self, loc: u16) {
         self.cursor_loc = loc;
         self.dirty = true;
     }
 
-    pub fn set_cursor_start_line(&mut self, start_line: u8) {
+    pub(crate) fn set_cursor_start_line(&mut self, start_line: u8) {
         self.cursor_start_line = start_line;
         self.dirty = true;
     }
 
-    pub fn set_cursor_end_line(&mut self, end_line: u8) {
+    pub(crate) fn set_cursor_end_line(&mut self, end_line: u8) {
         self.cursor_end_line = end_line;
         self.dirty = true;
     }
 
-    pub fn start_address(&self) -> u16 {
+    pub(crate) fn start_address(&self) -> u16 {
         self.start_address
     }
 
-    pub fn set_start_address(&mut self, addr: u16) {
+    pub(crate) fn set_start_address(&mut self, addr: u16) {
         self.start_address = addr;
         self.dirty = true;
     }

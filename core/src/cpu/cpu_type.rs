@@ -25,7 +25,7 @@ impl CpuType {
     }
 
     /// Get the display name for this CPU type
-    pub fn name(&self) -> &'static str {
+    pub(crate) fn name(&self) -> &'static str {
         match self {
             Self::I8086 => "8086",
             Self::I80286 => "80286",
@@ -37,7 +37,7 @@ impl CpuType {
     /// Get the max extended memory size in KB for this CPU type
     /// Extended memory is memory above 1 MB (0x100000)
     /// Only available on 286+ CPUs
-    pub fn max_extended_memory_kb(&self) -> u16 {
+    pub(crate) fn max_extended_memory_kb(&self) -> u16 {
         match self {
             Self::I8086 => 0,      // 8086 has no extended memory
             Self::I80286 => 15360, // 286: 16 MB total - 1 MB = 15 MB = 15360 KB
@@ -46,15 +46,17 @@ impl CpuType {
         }
     }
 
-    /// Check if this CPU supports 32-bit instructions
-    pub fn supports_32bit(&self) -> bool {
-        matches!(self, Self::I80386 | Self::I80486)
-    }
+    // TODO
+    // Check if this CPU supports 32-bit instructions
+    // pub(crate) fn supports_32bit(&self) -> bool {
+    //     matches!(self, Self::I80386 | Self::I80486)
+    // }
 
-    /// Check if this CPU supports protected mode
-    pub fn supports_protected_mode(&self) -> bool {
-        !matches!(self, Self::I8086)
-    }
+    // TODO
+    // Check if this CPU supports protected mode
+    // pub(crate) fn supports_protected_mode(&self) -> bool {
+    //     !matches!(self, Self::I8086)
+    // }
 }
 
 impl std::fmt::Display for CpuType {

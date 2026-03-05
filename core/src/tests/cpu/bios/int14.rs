@@ -5,7 +5,7 @@ use crate::tests::mock_com_device::MockComDevice;
 use crate::tests::run_test_configured;
 
 #[test_log::test]
-pub fn com1_read_write() {
+pub(crate) fn com1_read_write() {
     run_test_configured(
         "cpu/bios/int14/com1_read_write",
         make_computer!(cpu_type: CpuType::I8086),

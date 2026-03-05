@@ -52,7 +52,7 @@ impl DiskGeometry {
     /// Create a hard drive geometry from total sector count
     /// Uses standard CHS parameters: 63 sectors/track, 16 heads
     /// Maximum 1024 cylinders (CHS addressing limit)
-    pub fn hard_drive(total_sectors: usize) -> Self {
+    pub(crate) fn hard_drive(total_sectors: usize) -> Self {
         let sectors_per_track = 63u16;
         let heads = 16u16;
         let cylinders =
@@ -68,7 +68,7 @@ impl DiskGeometry {
 
     /// Detect geometry based on disk image size
     /// Returns known floppy geometries for exact matches, or hard drive geometry for larger disks
-    pub fn from_size(size: usize) -> Option<Self> {
+    pub(crate) fn from_size(size: usize) -> Option<Self> {
         match size {
             1_474_560 => Some(Self::FLOPPY_1440K),
             737_280 => Some(Self::FLOPPY_720K),
@@ -83,19 +83,14 @@ impl DiskGeometry {
         }
     }
 
-    /// Check if this geometry represents a floppy disk
-    pub fn is_floppy(&self) -> bool {
-        matches!(self.total_size, 1_474_560 | 737_280 | 368_640 | 163_840)
-    }
-
     /// Calculate total number of sectors
-    pub fn total_sectors(&self) -> usize {
+    pub(crate) fn total_sectors(&self) -> usize {
         self.cylinders as usize * self.heads as usize * self.sectors_per_track as usize
     }
 
     /// Convert CHS (Cylinder/Head/Sector) to LBA (Logical Block Address)
     /// Note: Sectors are 1-indexed in CHS addressing
-    pub fn chs_to_lba(&self, cylinder: u16, head: u16, sector: u16) -> Result<usize> {
+    pub(crate) fn chs_to_lba(&self, cylinder: u16, head: u16, sector: u16) -> Result<usize> {
         if cylinder >= self.cylinders {
             return Err(anyhow!(
                 "Invalid cylinder: {} (max: {})",
@@ -121,24 +116,5 @@ impl DiskGeometry {
             + (sector as usize - 1);
 
         Ok(lba)
-    }
-
-    /// Convert LBA (Logical Block Address) to CHS (Cylinder/Head/Sector)
-    /// Note: Returns sector as 1-indexed
-    pub fn lba_to_chs(&self, lba: usize) -> Result<(u16, u16, u16)> {
-        if lba >= self.total_sectors() {
-            return Err(anyhow!(
-                "Invalid LBA: {} (max: {})",
-                lba,
-                self.total_sectors() - 1
-            ));
-        }
-
-        let cylinder = lba / (self.heads as usize * self.sectors_per_track as usize);
-        let temp = lba % (self.heads as usize * self.sectors_per_track as usize);
-        let head = temp / self.sectors_per_track as usize;
-        let sector = (temp % self.sectors_per_track as usize) + 1; // 1-indexed
-
-        Ok((cylinder as u16, head as u16, sector as u16))
     }
 }

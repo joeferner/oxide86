@@ -55,15 +55,16 @@ impl TextAttribute {
         }
     }
 
-    /// Convert to VGA attribute byte (always uses blink-mode encoding)
-    pub fn to_byte(&self) -> u8 {
-        let mut byte = self.foreground & 0x0F;
-        byte |= (self.background & 0x07) << 4;
-        if self.blink {
-            byte |= 0x80;
-        }
-        byte
-    }
+    // Convert to VGA attribute byte (always uses blink-mode encoding)
+    // TODO
+    // pub(crate) fn to_byte(&self) -> u8 {
+    //     let mut byte = self.foreground & 0x0F;
+    //     byte |= (self.background & 0x07) << 4;
+    //     if self.blink {
+    //         byte |= 0x80;
+    //     }
+    //     byte
+    // }
 }
 
 impl Default for TextAttribute {

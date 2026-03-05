@@ -24,7 +24,7 @@ pub const BIOS_CODE_SEGMENT: u16 = 0xF000;
 pub const INT15_SYSTEM_CONFIG_SEGMENT: u16 = 0xF000;
 pub const INT15_SYSTEM_CONFIG_OFFSET: u16 = 0xE000;
 
-pub fn bios_reset(bus: &mut Bus) {
+pub(crate) fn bios_reset(bus: &mut Bus) {
     bios_interrupt_handlers_reset(bus);
     bda_reset(bus);
     bios_int15_system_config_reset(bus);
@@ -32,7 +32,7 @@ pub fn bios_reset(bus: &mut Bus) {
 
 /// Writes the INT 15h AH=C0h system descriptor table into the BIOS ROM area at F000:E000.
 /// This mirrors real BIOS behavior where the table is static data in ROM, not built on demand.
-pub fn bios_int15_system_config_reset(bus: &mut Bus) {
+pub(crate) fn bios_int15_system_config_reset(bus: &mut Bus) {
     let table: [u8; 10] = [
         0x08, 0x00, // Length: 8 bytes (not including length field)
         0xFF, // Model byte: 0xFF = PC

@@ -17,7 +17,7 @@ pub struct MockComDevice {
 }
 
 impl MockComDevice {
-    pub fn new(threshold: u32) -> Self {
+    pub(crate) fn new(threshold: u32) -> Self {
         Self {
             async_count: 0,
             async_threshold: threshold,
@@ -29,13 +29,13 @@ impl MockComDevice {
     }
 
     /// Register a conversation pair
-    pub fn add_response(&mut self, trigger: &str, response: &str) {
+    pub(crate) fn add_response(&mut self, trigger: &str, response: &str) {
         self.responses
             .insert(trigger.to_string(), response.to_string());
     }
 
     /// Helper to check if a specific command was received
-    pub fn was_received(&self, trigger: &str) -> bool {
+    pub(crate) fn was_received(&self, trigger: &str) -> bool {
         self.matched_history.iter().any(|h| h == trigger)
     }
 }

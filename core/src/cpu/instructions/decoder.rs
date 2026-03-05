@@ -560,7 +560,7 @@ impl<'a> InstructionDecoder<'a> {
         }
     }
 
-    pub fn decode(&mut self) -> String {
+    pub(crate) fn decode(&mut self) -> String {
         let opcode = self.fetch_byte();
 
         match opcode {

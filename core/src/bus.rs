@@ -30,9 +30,11 @@ pub struct Bus {
     memory: Memory,
     devices: Vec<DeviceRef>,
     floppy_controller: Rc<RefCell<FloppyDiskController>>,
+    #[cfg(test)]
     hard_disk_controller: Rc<RefCell<HardDiskController>>,
     pic: Rc<RefCell<PIC>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
+    #[cfg(test)]
     uart: Rc<RefCell<UART>>,
     rtc: Option<Rc<RefCell<RTC>>>,
     video_card: Option<Rc<RefCell<VideoCard>>>,
@@ -42,7 +44,7 @@ pub struct Bus {
 }
 
 impl Bus {
-    pub fn new(
+    pub(crate) fn new(
         memory: Memory,
         cpu_clock_speed: u32,
         clock: Option<Box<dyn Clock>>,
@@ -76,9 +78,11 @@ impl Bus {
             memory,
             devices,
             floppy_controller,
+            #[cfg(test)]
             hard_disk_controller,
             pic,
             keyboard_controller,
+            #[cfg(test)]
             uart,
             video_card: None,
             cycle_count: 0,
@@ -86,57 +90,59 @@ impl Bus {
         }
     }
 
-    pub fn has_rtc(&self) -> bool {
+    pub(crate) fn has_rtc(&self) -> bool {
         self.rtc.is_some()
     }
 
-    pub fn rtc(&self) -> Option<Ref<'_, RTC>> {
+    pub(crate) fn rtc(&self) -> Option<Ref<'_, RTC>> {
         self.rtc.as_ref().map(|rtc| rtc.borrow())
     }
 
-    pub fn increment_cycle_count(&mut self, cycles: u32) {
+    pub(crate) fn increment_cycle_count(&mut self, cycles: u32) {
         self.cycle_count = self.cycle_count.wrapping_add(cycles);
     }
 
-    pub fn cycle_count(&self) -> u32 {
+    pub(crate) fn cycle_count(&self) -> u32 {
         self.cycle_count
     }
 
-    pub fn pic_mut(&self) -> RefMut<'_, PIC> {
+    pub(crate) fn pic_mut(&self) -> RefMut<'_, PIC> {
         self.pic.borrow_mut()
     }
 
-    pub fn uart_mut(&self) -> RefMut<'_, UART> {
+    #[cfg(test)]
+    pub(crate) fn uart_mut(&self) -> RefMut<'_, UART> {
         self.uart.borrow_mut()
     }
 
-    pub fn keyboard_controller(&self) -> Ref<'_, KeyboardController> {
+    pub(crate) fn keyboard_controller(&self) -> Ref<'_, KeyboardController> {
         self.keyboard_controller.borrow()
     }
 
-    pub fn keyboard_controller_mut(&self) -> RefMut<'_, KeyboardController> {
+    pub(crate) fn keyboard_controller_mut(&self) -> RefMut<'_, KeyboardController> {
         self.keyboard_controller.borrow_mut()
     }
 
-    pub fn video_card_mut(&self) -> Option<RefMut<'_, VideoCard>> {
+    pub(crate) fn video_card_mut(&self) -> Option<RefMut<'_, VideoCard>> {
         self.video_card
             .as_ref()
             .map(|video_card| video_card.borrow_mut())
     }
 
-    pub fn hard_disk_controller(&self) -> Ref<'_, HardDiskController> {
+    #[cfg(test)]
+    pub(crate) fn hard_disk_controller(&self) -> Ref<'_, HardDiskController> {
         self.hard_disk_controller.borrow()
     }
 
-    pub fn floppy_controller(&self) -> Ref<'_, FloppyDiskController> {
+    pub(crate) fn floppy_controller(&self) -> Ref<'_, FloppyDiskController> {
         self.floppy_controller.borrow()
     }
 
-    pub fn floppy_controller_mut(&self) -> RefMut<'_, FloppyDiskController> {
+    pub(crate) fn floppy_controller_mut(&self) -> RefMut<'_, FloppyDiskController> {
         self.floppy_controller.borrow_mut()
     }
 
-    pub fn add_device<T: Device + 'static>(&mut self, device: T) {
+    pub(crate) fn add_device<T: Device + 'static>(&mut self, device: T) {
         let rc = Rc::new(RefCell::new(device));
 
         let rc_any: Rc<dyn Any> = rc.clone();
@@ -150,7 +156,7 @@ impl Bus {
         self.devices.push(rc);
     }
 
-    pub fn memory_read_u8(&self, addr: usize) -> u8 {
+    pub(crate) fn memory_read_u8(&self, addr: usize) -> u8 {
         if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
             for device in &self.devices {
                 if let Some(val) = device.borrow().memory_read_u8(addr) {
@@ -162,7 +168,7 @@ impl Bus {
         self.memory.read_u8(addr)
     }
 
-    pub fn memory_write_u8(&mut self, addr: usize, val: u8) {
+    pub(crate) fn memory_write_u8(&mut self, addr: usize, val: u8) {
         if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
             for device in &self.devices {
                 if device.borrow_mut().memory_write_u8(addr, val) {
@@ -175,32 +181,25 @@ impl Bus {
     }
 
     /// Read a 16-bit word (little-endian)
-    pub fn memory_read_u16(&self, address: usize) -> u16 {
+    pub(crate) fn memory_read_u16(&self, address: usize) -> u16 {
         let low = self.memory_read_u8(address) as u16;
         let high = self.memory_read_u8(address + 1) as u16;
         (high << 8) | low
     }
 
     /// Write a 16-bit word (little-endian)
-    pub fn memory_write_u16(&mut self, addr: usize, val: u16) {
+    pub(crate) fn memory_write_u16(&mut self, addr: usize, val: u16) {
         self.memory_write_u8(addr, (val & 0xFF) as u8);
         self.memory_write_u8(addr + 1, (val >> 8) as u8);
     }
 
-    /// Read 32-bit dword from memory or memory-mapped device
-    pub fn memory_read_u32(&self, address: usize) -> u32 {
-        let w1 = self.memory_read_u16(address) as u32;
-        let w2 = self.memory_read_u16(address + 2) as u32;
-        (w2 << 16) | w1
-    }
-
     /// Write 32-bit dword to memory or memory-mapped device
-    pub fn memory_write_u32(&mut self, address: usize, value: u32) {
+    pub(crate) fn memory_write_u32(&mut self, address: usize, value: u32) {
         self.memory_write_u16(address, (value & 0xFFFF) as u16);
         self.memory_write_u16(address + 2, (value >> 16) as u16);
     }
 
-    pub fn io_read_u8(&self, port: u16) -> u8 {
+    pub(crate) fn io_read_u8(&self, port: u16) -> u8 {
         for device in &self.devices {
             if let Some(val) = device.borrow().io_read_u8(port) {
                 return val;
@@ -211,11 +210,11 @@ impl Bus {
         0xff
     }
 
-    pub fn io_read_u16(&self, port: u16) -> u16 {
+    pub(crate) fn io_read_u16(&self, port: u16) -> u16 {
         todo!("IoBus read_u16 {port}");
     }
 
-    pub fn io_write_u8(&mut self, port: u16, val: u8) {
+    pub(crate) fn io_write_u8(&mut self, port: u16, val: u8) {
         for device in &self.devices {
             if device.borrow_mut().io_write_u8(port, val) {
                 return;
@@ -226,11 +225,11 @@ impl Bus {
     }
 
     /// Load binary data at a specific address
-    pub fn load_at(&mut self, addr: usize, data: &[u8]) -> Result<()> {
+    pub(crate) fn load_at(&mut self, addr: usize, data: &[u8]) -> Result<()> {
         self.memory.load_at(addr, data)
     }
 
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.cycle_count = 0;
         bios_reset(self);
         for device in &self.devices {
@@ -239,7 +238,7 @@ impl Bus {
     }
 
     /// Get extended memory size in KB
-    pub fn extended_memory_kb(&self) -> u16 {
+    pub(crate) fn extended_memory_kb(&self) -> u16 {
         self.memory.extended_memory_kb()
     }
 }

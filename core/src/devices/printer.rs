@@ -17,25 +17,7 @@ pub struct PrinterStatus {
     pub status: u8,
 }
 
-impl PrinterStatus {
-    /// Create a ready status (printer ready, no errors)
-    pub fn ready() -> Self {
-        Self {
-            status: printer_status::NOT_BUSY
-                | printer_status::SELECTED
-                | printer_status::ACKNOWLEDGE,
-        }
-    }
-
-    /// Create a timeout status
-    pub fn timeout() -> Self {
-        Self {
-            status: printer_status::TIMEOUT,
-        }
-    }
-}
-
-pub fn printer_init(_bus: &Bus, _printer: u8) -> PrinterStatus {
+pub(crate) fn printer_init(_bus: &Bus, _printer: u8) -> PrinterStatus {
     // No printer available - return timeout status
     PrinterStatus {
         status: printer_status::TIMEOUT,

@@ -53,7 +53,7 @@ struct Port {
 }
 
 impl Port {
-    pub fn reset(&mut self) {
+    pub(crate) fn reset(&mut self) {
         self.dll = 0x18; // divisor low  for 4800 baud (24 = 0x0018)
         self.dlm = 0x00; // divisor high for 4800 baud
         self.ier = 0x00; // all interrupts disabled
@@ -132,13 +132,14 @@ pub struct UART {
 }
 
 impl UART {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             ports: Default::default(),
         }
     }
 
-    pub fn set_com_port_device(
+    #[cfg(test)]
+    pub(crate) fn set_com_port_device(
         &mut self,
         port: u8,
         device: Option<Arc<RwLock<dyn ComPortDevice>>>,
@@ -259,7 +260,7 @@ fn port_index(addr: u16) -> Option<(usize, u16)> {
     None
 }
 
-pub fn encode_parity(p: u8) -> u8 {
+pub(crate) fn encode_parity(p: u8) -> u8 {
     match p {
         0b00 => 0x00, // no parity
         0b01 => 0x08, // odd:  PEN=1, EPS=0  → LCR bit3

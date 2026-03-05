@@ -33,7 +33,7 @@ pub struct RenderTextArgs<'a> {
 /// * `vga_dac_palette` - 256-entry VGA DAC palette (6-bit RGB per component)
 /// * `stride` - Output buffer width in pixels (e.g., 640)
 /// * `output` - RGBA buffer to write to
-pub fn render_text(args: RenderTextArgs, output: &mut [u8]) {
+pub(crate) fn render_text(args: RenderTextArgs, output: &mut [u8]) {
     let glyph = args.font.get_glyph(args.character);
     let fg_dac = args.vga_dac_palette[args.text_attr.foreground as usize];
     let bg_dac = args.vga_dac_palette[args.text_attr.background as usize];

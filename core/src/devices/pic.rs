@@ -30,7 +30,7 @@ pub struct PIC {
 }
 
 impl PIC {
-    pub fn new(
+    pub(crate) fn new(
         pit: Rc<RefCell<PIT>>,
         keyboard_controller: Rc<RefCell<KeyboardController>>,
     ) -> Self {
@@ -42,7 +42,7 @@ impl PIC {
         }
     }
 
-    pub fn take_irq(&mut self, cycle_count: u32) -> Option<u8> {
+    pub(crate) fn take_irq(&mut self, cycle_count: u32) -> Option<u8> {
         // pit
         {
             let bit = 1u8 << PIT_IRQ_LINE;

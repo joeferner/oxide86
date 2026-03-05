@@ -58,7 +58,7 @@ pub mod colors {
     pub const WHITE: u8 = 0xF;
 }
 
-pub fn video_set_cursor_pos(bus: &mut Bus, crt_controller_port: u16, linear_offset: u16) {
+pub(crate) fn video_set_cursor_pos(bus: &mut Bus, crt_controller_port: u16, linear_offset: u16) {
     // Send the HIGH byte (Registers 0x0E)
     // Tell the VGA controller we want to update the "Cursor Location High" register
     bus.io_write_u8(crt_controller_port, VIDEO_CARD_REG_CURSOR_LOC_HIGH);
@@ -72,6 +72,6 @@ pub fn video_set_cursor_pos(bus: &mut Bus, crt_controller_port: u16, linear_offs
     bus.io_write_u8(crt_controller_port + 1, (linear_offset & 0xFF) as u8);
 }
 
-pub fn video_calculate_linear_offset(row: u8, col: u8, max_cols: u8) -> u16 {
+pub(crate) fn video_calculate_linear_offset(row: u8, col: u8, max_cols: u8) -> u16 {
     (row as u16 * max_cols as u16) + col as u16
 }

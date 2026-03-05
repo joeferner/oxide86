@@ -23,36 +23,10 @@ impl<B: DiskBackend> BackedDisk<B> {
         })
     }
 
-    /// Create a new backed disk with specific geometry
-    pub fn with_geometry(backend: B, geometry: DiskGeometry) -> Result<Self> {
-        let size = backend.size();
-        if size as usize != geometry.total_size {
-            return Err(anyhow!(
-                "Backend size ({}) doesn't match geometry size ({})",
-                size,
-                geometry.total_size
-            ));
-        }
-        Ok(Self {
-            backend: RefCell::new(backend),
-            geometry,
-            read_only: false,
-        })
-    }
-
     /// Set read-only flag
-    pub fn set_read_only(&mut self, read_only: bool) {
+    #[cfg(test)]
+    pub(crate) fn set_read_only(&mut self, read_only: bool) {
         self.read_only = read_only;
-    }
-
-    /// Get a reference to the underlying backend
-    pub fn backend(&self) -> std::cell::Ref<'_, B> {
-        self.backend.borrow()
-    }
-
-    /// Flush any pending writes to storage
-    pub fn flush(&self) -> Result<()> {
-        self.backend.borrow_mut().flush()
     }
 
     /// Read a sector at the given CHS address

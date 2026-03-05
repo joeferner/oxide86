@@ -81,7 +81,7 @@ impl Cpu {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         let success = if drive.is_floppy() {
-            let drive_index = drive.to_floppy_index() as u8;
+            let drive_index = drive.as_floppy_index() as u8;
 
             // 1. Assert FDC reset: pull nRESET low (DOR bit 2 = 0), motors off
             bus.io_write_u8(FDC_DOR, 0x00);
@@ -174,7 +174,7 @@ impl Cpu {
         let buffer_addr = physical_address(self.es, self.bx);
 
         if drive.is_floppy() {
-            let drive_index = drive.to_floppy_index() as u8;
+            let drive_index = drive.as_floppy_index() as u8;
             let eot = sector + count - 1;
 
             // Select drive and enable motor: nRESET=1, DMA enable=1, motor on, drive select
@@ -232,7 +232,7 @@ impl Cpu {
             }
         } else {
             // Hard drive: issue ATA READ SECTORS command
-            let drive_head = 0xA0 | ((drive.to_hard_drive_index() as u8) << 4) | (head & 0x0F);
+            let drive_head = 0xA0 | ((drive.as_hard_drive_index() as u8) << 4) | (head & 0x0F);
             bus.io_write_u8(HDC_SECTOR_COUNT, count);
             bus.io_write_u8(HDC_SECTOR_NUM, sector);
             bus.io_write_u8(HDC_CYLINDER_LOW, cylinder);
@@ -297,7 +297,7 @@ impl Cpu {
         let buffer_addr = physical_address(self.es, self.bx);
 
         if drive.is_floppy() {
-            let drive_index = drive.to_floppy_index() as u8;
+            let drive_index = drive.as_floppy_index() as u8;
             let eot = sector + count - 1;
 
             // Select drive and enable motor: nRESET=1, DMA enable=1, motor on, drive select
@@ -358,7 +358,7 @@ impl Cpu {
             }
         } else {
             // Hard drive: issue ATA WRITE SECTORS command
-            let drive_head = 0xA0 | ((drive.to_hard_drive_index() as u8) << 4) | (head & 0x0F);
+            let drive_head = 0xA0 | ((drive.as_hard_drive_index() as u8) << 4) | (head & 0x0F);
             bus.io_write_u8(HDC_SECTOR_COUNT, count);
             bus.io_write_u8(HDC_SECTOR_NUM, sector);
             bus.io_write_u8(HDC_CYLINDER_LOW, cylinder);
@@ -437,7 +437,7 @@ impl Cpu {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
 
         if drive.is_floppy() {
-            let drive_index = drive.to_floppy_index() as u8;
+            let drive_index = drive.as_floppy_index() as u8;
             let eot = sector + count - 1;
 
             // Select drive and enable motor: nRESET=1, DMA enable=1, motor on, drive select
@@ -484,7 +484,7 @@ impl Cpu {
             }
         } else {
             // Hard drive: issue ATA VERIFY SECTORS command (0x40), no data transfer
-            let drive_head = 0xA0 | ((drive.to_hard_drive_index() as u8) << 4) | (head & 0x0F);
+            let drive_head = 0xA0 | ((drive.as_hard_drive_index() as u8) << 4) | (head & 0x0F);
             bus.io_write_u8(HDC_SECTOR_COUNT, count);
             bus.io_write_u8(HDC_SECTOR_NUM, sector);
             bus.io_write_u8(HDC_CYLINDER_LOW, cylinder);
@@ -554,7 +554,7 @@ impl Cpu {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         if drive.is_floppy() {
-            let drive_index = drive.to_floppy_index() as u8;
+            let drive_index = drive.as_floppy_index() as u8;
 
             // Read floppy drive types from CMOS register 0x10 (PC AT standard).
             // Bits 7:4 = drive A type, bits 3:0 = drive B type.
@@ -599,7 +599,7 @@ impl Cpu {
             // Drive count was written to BDA[0x475] during POST by IO-port probing.
             let drive_count = bda_get_num_hard_drives(bus);
 
-            let drive_head = 0xA0 | ((drive.to_hard_drive_index() as u8) << 4);
+            let drive_head = 0xA0 | ((drive.as_hard_drive_index() as u8) << 4);
             bus.io_write_u8(HDC_DRIVE_HEAD, drive_head);
             bus.io_write_u8(HDC_COMMAND, HDC_CMD_IDENTIFY);
 
@@ -664,7 +664,7 @@ impl Cpu {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         if drive.is_floppy() {
-            let drive_index = drive.to_floppy_index() as u8;
+            let drive_index = drive.as_floppy_index() as u8;
 
             // Read floppy drive types from CMOS register 0x10 (PC AT standard).
             // Bits 7:4 = drive A type, bits 3:0 = drive B type.
@@ -691,7 +691,7 @@ impl Cpu {
             }
         } else {
             // Hard drive: use ATA IDENTIFY DEVICE to confirm presence and get sector count
-            let drive_head = 0xA0 | ((drive.to_hard_drive_index() as u8) << 4);
+            let drive_head = 0xA0 | ((drive.as_hard_drive_index() as u8) << 4);
             bus.io_write_u8(HDC_DRIVE_HEAD, drive_head);
             bus.io_write_u8(HDC_COMMAND, HDC_CMD_IDENTIFY);
 
@@ -792,7 +792,7 @@ impl Cpu {
             return;
         }
 
-        let drive_index = drive.to_floppy_index() as u8;
+        let drive_index = drive.as_floppy_index() as u8;
 
         // Check drive exists via CMOS register 0x10 (same approach as int13_get_drive_params)
         // Bits 7:4 = drive A type, bits 3:0 = drive B type; 0 = not present

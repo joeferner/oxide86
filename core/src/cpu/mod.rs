@@ -95,7 +95,7 @@ pub struct Cpu {
 }
 
 impl Cpu {
-    pub fn new(cpu_type: CpuType, clock_speed: u32) -> Self {
+    pub(crate) fn new(cpu_type: CpuType, clock_speed: u32) -> Self {
         Self {
             cpu_type,
             clock_speed,
@@ -128,7 +128,7 @@ impl Cpu {
         }
     }
 
-    pub fn clock_speed(&self) -> u32 {
+    pub(crate) fn clock_speed(&self) -> u32 {
         self.clock_speed
     }
 
@@ -146,12 +146,7 @@ impl Cpu {
         (self.flags & flag) != 0
     }
 
-    /// Check if CPU is halted
-    pub fn is_halted(&self) -> bool {
-        self.halted
-    }
-
-    pub fn step(&mut self, bus: &mut Bus) {
+    pub(crate) fn step(&mut self, bus: &mut Bus) {
         // service any interrupts coming from the PIC
         if self.get_flag(cpu_flag::INTERRUPT) {
             let irq = bus.pic_mut().take_irq(bus.cycle_count());
@@ -210,12 +205,12 @@ impl Cpu {
         self.exec_instruction(bus);
     }
 
-    pub fn wait_for_key_press(&self) -> bool {
+    pub(crate) fn wait_for_key_press(&self) -> bool {
         self.wait_for_key_press
     }
 
     /// Signal that a key has been pressed, if we were waiting handle it
-    pub fn key_press(&mut self, bus: &mut Bus) {
+    pub(crate) fn key_press(&mut self, bus: &mut Bus) {
         if self.wait_for_key_press {
             log::debug!("INT 0x16 was waiting for keypress, continuing");
             self.int16_read_char(bus);
@@ -242,7 +237,7 @@ impl Cpu {
         self.cs = segment;
     }
 
-    pub fn patch_flags_and_iret(&mut self, bus: &mut Bus) {
+    pub(crate) fn patch_flags_and_iret(&mut self, bus: &mut Bus) {
         // Patch the stacked FLAGS with any changes the handler made, mirroring how a real
         // BIOS handler modifies the caller's FLAGS on the stack before executing iret.
         // Stack layout after `int`: SP+0=IP, SP+2=CS, SP+4=FLAGS
@@ -266,7 +261,7 @@ impl Cpu {
         (high << 8) | low
     }
 
-    pub fn reset(&mut self, segment: u16, offset: u16, boot_drive: Option<DriveNumber>) {
+    pub(crate) fn reset(&mut self, segment: u16, offset: u16, boot_drive: Option<DriveNumber>) {
         self.ax = 0;
         self.bx = 0;
         self.cx = 0;
@@ -295,7 +290,7 @@ impl Cpu {
 
         if let Some(boot_drive) = boot_drive {
             // DL contains boot drive number (0x00 for floppy A:, 0x80 for first hard disk)
-            self.dx = (self.dx & 0xFF00) | (boot_drive.to_standard() as u16);
+            self.dx = (self.dx & 0xFF00) | (boot_drive.as_standard() as u16);
             // Set up stack at 0x0000:0x7C00 (just below boot sector)
             // Some boot loaders expect this, others set up their own stack
             self.ss = 0x0000;
@@ -330,11 +325,11 @@ impl Cpu {
         }
     }
 
-    pub fn get_exit_code(&self) -> Option<u8> {
+    pub(crate) fn get_exit_code(&self) -> Option<u8> {
         self.exit_code
     }
 
-    pub fn at_reset_vector(&self) -> bool {
+    pub(crate) fn at_reset_vector(&self) -> bool {
         self.cs == 0xFFFF && self.ip == 0x0000
     }
 }
@@ -352,7 +347,7 @@ mod tests {
         video::{VideoBuffer, VideoCard},
     };
 
-    pub fn create_test_cpu() -> (Cpu, Bus) {
+    pub(crate) fn create_test_cpu() -> (Cpu, Bus) {
         let cpu_clock_speed = 8_000_000;
         let cpu = Cpu::new(CpuType::I8086, cpu_clock_speed);
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));

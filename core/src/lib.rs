@@ -24,7 +24,7 @@ pub struct KeyPress {
 }
 
 // Calculate physical address from segment:offset
-pub fn physical_address(segment: u16, offset: u16) -> usize {
+pub(crate) fn physical_address(segment: u16, offset: u16) -> usize {
     ((segment as usize) << 4) + (offset as usize)
 }
 
@@ -37,7 +37,7 @@ pub fn parse_hex_or_dec(s: &str) -> Result<u16> {
     }
 }
 
-pub fn byte_to_printable_char(v: u8) -> char {
+pub(crate) fn byte_to_printable_char(v: u8) -> char {
     if (0x20..0x7F).contains(&v) {
         v as char
     } else {

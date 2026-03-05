@@ -226,7 +226,7 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     bus.memory_write_u16(BDA_START + BDA_MOUSE_MAX_Y, 199); // Maximum Y
 }
 
-pub fn bda_get_cursor_pos(bus: &Bus, page: u8) -> CursorPosition {
+pub(crate) fn bda_get_cursor_pos(bus: &Bus, page: u8) -> CursorPosition {
     // low byte = column, high byte = row
     let pos = bus.memory_read_u16(BDA_START + BDA_CURSOR_POS + (page as usize * 2));
     let col = (pos & 0xff) as u8;
@@ -234,37 +234,37 @@ pub fn bda_get_cursor_pos(bus: &Bus, page: u8) -> CursorPosition {
     CursorPosition { row, col }
 }
 
-pub fn bda_set_cursor_pos(bus: &mut Bus, page: u8, row: u8, col: u8) {
+pub(crate) fn bda_set_cursor_pos(bus: &mut Bus, page: u8, row: u8, col: u8) {
     // low byte = column, high byte = row
     let pos = ((row as u16) << 8) | col as u16;
     bus.memory_write_u16(BDA_START + BDA_CURSOR_POS + (page as usize * 2), pos);
 }
 
-pub fn bda_get_cursor_start_line(bus: &Bus) -> u8 {
+pub(crate) fn bda_get_cursor_start_line(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_CURSOR_START_LINE)
 }
 
-pub fn bda_set_cursor_start_line(bus: &mut Bus, start_line: u8) {
+pub(crate) fn bda_set_cursor_start_line(bus: &mut Bus, start_line: u8) {
     bus.memory_write_u8(BDA_START + BDA_CURSOR_START_LINE, start_line);
 }
 
-pub fn bda_get_cursor_end_line(bus: &Bus) -> u8 {
+pub(crate) fn bda_get_cursor_end_line(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_CURSOR_END_LINE)
 }
 
-pub fn bda_set_cursor_end_line(bus: &mut Bus, end_line: u8) {
+pub(crate) fn bda_set_cursor_end_line(bus: &mut Bus, end_line: u8) {
     bus.memory_write_u8(BDA_START + BDA_CURSOR_END_LINE, end_line);
 }
 
-pub fn bda_get_columns(bus: &Bus) -> u16 {
+pub(crate) fn bda_get_columns(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_SCREEN_COLUMNS)
 }
 
-pub fn bda_set_columns(bus: &mut Bus, cols: u8) {
+pub(crate) fn bda_set_columns(bus: &mut Bus, cols: u8) {
     bus.memory_write_u16(BDA_START + BDA_SCREEN_COLUMNS, cols as u16);
 }
 
-pub fn bda_get_rows(bus: &Bus) -> u8 {
+pub(crate) fn bda_get_rows(bus: &Bus) -> u8 {
     let rows = bus.memory_read_u8(BDA_START + BDA_EGA_ROWS);
     // On very old original IBM PCs (1981), the byte at 0x84 wasn't always
     // initialized because 25 lines was the only option. However, for any
@@ -276,51 +276,51 @@ pub fn bda_get_rows(bus: &Bus) -> u8 {
     }
 }
 
-pub fn bda_set_rows(bus: &mut Bus, rows: u8) {
+pub(crate) fn bda_set_rows(bus: &mut Bus, rows: u8) {
     bus.memory_write_u8(BDA_START + BDA_EGA_ROWS, rows);
 }
 
-pub fn bda_get_video_mode(bus: &Bus) -> u8 {
+pub(crate) fn bda_get_video_mode(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_VIDEO_MODE)
 }
 
-pub fn bda_set_video_mode(bus: &mut Bus, mode: u8) {
+pub(crate) fn bda_set_video_mode(bus: &mut Bus, mode: u8) {
     bus.memory_write_u8(BDA_START + BDA_VIDEO_MODE, mode);
 }
 
-pub fn bda_get_video_page_size(bus: &Bus) -> u16 {
+pub(crate) fn bda_get_video_page_size(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_VIDEO_PAGE_SIZE)
 }
 
-pub fn bda_set_video_page_size(bus: &mut Bus, page_size: u16) {
+pub(crate) fn bda_set_video_page_size(bus: &mut Bus, page_size: u16) {
     bus.memory_write_u16(BDA_START + BDA_VIDEO_PAGE_SIZE, page_size);
 }
 
-pub fn bda_set_video_page_offset(bus: &mut Bus, offset: u16) {
+pub(crate) fn bda_set_video_page_offset(bus: &mut Bus, offset: u16) {
     bus.memory_write_u16(BDA_START + BDA_VIDEO_PAGE_OFFSET, offset);
 }
 
-pub fn bda_get_active_page(bus: &Bus) -> u8 {
+pub(crate) fn bda_get_active_page(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_ACTIVE_PAGE)
 }
 
-pub fn bda_set_active_page(bus: &mut Bus, page: u8) {
+pub(crate) fn bda_set_active_page(bus: &mut Bus, page: u8) {
     bus.memory_write_u8(BDA_START + BDA_ACTIVE_PAGE, page);
 }
 
-pub fn bda_get_keyboard_flags1(bus: &Bus) -> u8 {
+pub(crate) fn bda_get_keyboard_flags1(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_KEYBOARD_FLAGS1)
 }
 
-pub fn bda_set_keyboard_flags1(bus: &mut Bus, flags: u8) {
+pub(crate) fn bda_set_keyboard_flags1(bus: &mut Bus, flags: u8) {
     bus.memory_write_u8(BDA_START + BDA_KEYBOARD_FLAGS1, flags);
 }
 
-pub fn bda_get_crt_controller_port_address(bus: &Bus) -> u16 {
+pub(crate) fn bda_get_crt_controller_port_address(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_CRTC_PORT)
 }
 
-pub fn bda_get_memory_size(bus: &Bus) -> u16 {
+pub(crate) fn bda_get_memory_size(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_MEMORY_SIZE)
 }
 
@@ -331,24 +331,24 @@ pub fn bda_get_memory_size(bus: &Bus) -> u16 {
 /// - Bits 6-7: Number of floppy drives minus 1
 /// - Bits 9-11: Number of serial ports
 /// - Bits 14-15: Number of printers
-pub fn bda_get_equipment_list(bus: &Bus) -> u16 {
+pub(crate) fn bda_get_equipment_list(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_EQUIPMENT_LIST)
 }
 
-pub fn bda_set_timer_counter(bus: &mut Bus, low_word: u16, high_word: u16) {
+pub(crate) fn bda_set_timer_counter(bus: &mut Bus, low_word: u16, high_word: u16) {
     // Write timer counter to BDA (4 bytes, little-endian)
     let counter_addr = BDA_START + BDA_TIMER_COUNTER;
     bus.memory_write_u16(counter_addr, low_word); // Low word
     bus.memory_write_u16(counter_addr + 2, high_word); // High word
 }
 
-pub fn bda_clear_midnight_overflow(bus: &mut Bus) {
+pub(crate) fn bda_clear_midnight_overflow(bus: &mut Bus) {
     // Clear midnight overflow flag when setting time
     let overflow_addr = BDA_START + BDA_TIMER_OVERFLOW;
     bus.memory_write_u8(overflow_addr, 0);
 }
 
-pub fn bda_get_system_time(bus: &Bus) -> SystemTime {
+pub(crate) fn bda_get_system_time(bus: &Bus) -> SystemTime {
     // Read timer counter from BDA (4 bytes, little-endian)
     let counter_addr = BDA_START + BDA_TIMER_COUNTER;
     let low_word = bus.memory_read_u16(counter_addr);
@@ -368,7 +368,7 @@ pub fn bda_get_system_time(bus: &Bus) -> SystemTime {
 ///
 /// If the counter reaches `TICKS_PER_DAY` it wraps to zero and the midnight
 /// overflow flag (0x0040:0070) is set to 1.
-pub fn bda_increment_timer_counter(bus: &mut Bus) {
+pub(crate) fn bda_increment_timer_counter(bus: &mut Bus) {
     let counter_addr = BDA_START + BDA_TIMER_COUNTER;
     let low = bus.memory_read_u16(counter_addr) as u32;
     let high = bus.memory_read_u16(counter_addr + 2) as u32;
@@ -411,19 +411,19 @@ fn post_probe_hard_drives(bus: &mut Bus) -> u8 {
     count
 }
 
-pub fn bda_get_num_hard_drives(bus: &Bus) -> u8 {
+pub(crate) fn bda_get_num_hard_drives(bus: &Bus) -> u8 {
     bus.memory_read_u8(BDA_START + BDA_NUM_HARD_DRIVES)
 }
 
-pub fn bda_get_com_port_address(bus: &Bus, port: u8) -> u16 {
+pub(crate) fn bda_get_com_port_address(bus: &Bus, port: u8) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_COM_PORTS + port as usize * 2)
 }
 
-pub fn bda_clear_timer_overflow(bus: &mut Bus) {
+pub(crate) fn bda_clear_timer_overflow(bus: &mut Bus) {
     bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0);
 }
 
-pub fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {
+pub(crate) fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {
     let head = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_HEAD);
     let tail = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_TAIL);
 
@@ -441,7 +441,7 @@ pub fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {
     }
 }
 
-pub fn bda_read_key(bus: &mut Bus) -> Option<KeyPress> {
+pub(crate) fn bda_read_key(bus: &mut Bus) -> Option<KeyPress> {
     let head = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_HEAD);
     let tail = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_TAIL);
 
@@ -476,7 +476,7 @@ pub fn bda_read_key(bus: &mut Bus) -> Option<KeyPress> {
     }
 }
 
-pub fn bda_add_key_to_buffer(bus: &mut Bus, key: KeyPress) {
+pub(crate) fn bda_add_key_to_buffer(bus: &mut Bus, key: KeyPress) {
     // Add key press to BIOS keyboard buffer
     let head_addr = BDA_START + BDA_KEYBOARD_BUFFER_HEAD;
     let tail_addr = BDA_START + BDA_KEYBOARD_BUFFER_TAIL;

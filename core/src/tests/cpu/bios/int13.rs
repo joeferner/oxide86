@@ -3,7 +3,7 @@ use crate::disk::{BackedDisk, Disk, DiskGeometry, DriveNumber, MemBackend};
 use crate::tests::run_test_configured;
 
 #[test_log::test]
-pub fn floppy_read() {
+pub(crate) fn floppy_read() {
     run_test_configured(
         "cpu/bios/int13/floppy_read",
         make_computer!(cpu_type: CpuType::I80286),
@@ -17,7 +17,7 @@ pub fn floppy_read() {
 }
 
 #[test_log::test]
-pub fn floppy_write() {
+pub(crate) fn floppy_write() {
     run_test_configured(
         "cpu/bios/int13/floppy_write",
         make_computer!(cpu_type: CpuType::I80286),
@@ -35,7 +35,7 @@ pub fn floppy_write() {
 }
 
 #[test_log::test]
-pub fn hard_disk_read() {
+pub(crate) fn hard_disk_read() {
     run_test_configured(
         "cpu/bios/int13/hard_disk_read",
         make_computer!(
@@ -51,7 +51,7 @@ pub fn hard_disk_read() {
 }
 
 #[test_log::test]
-pub fn hard_disk_write() {
+pub(crate) fn hard_disk_write() {
     run_test_configured(
         "cpu/bios/int13/hard_disk_write",
         make_computer!(
@@ -74,7 +74,7 @@ pub fn hard_disk_write() {
 }
 
 #[test_log::test]
-pub fn floppy_write_protected() {
+pub(crate) fn floppy_write_protected() {
     run_test_configured(
         "cpu/bios/int13/floppy_write_protected",
         make_computer!(cpu_type: CpuType::I80286),
@@ -89,7 +89,7 @@ pub fn floppy_write_protected() {
 }
 
 #[test_log::test]
-pub fn floppy_verify() {
+pub(crate) fn floppy_verify() {
     run_test_configured(
         "cpu/bios/int13/floppy_verify",
         make_computer!(cpu_type: CpuType::I80286),
@@ -103,7 +103,7 @@ pub fn floppy_verify() {
 }
 
 #[test_log::test]
-pub fn hard_disk_verify() {
+pub(crate) fn hard_disk_verify() {
     run_test_configured(
         "cpu/bios/int13/hard_disk_verify",
         make_computer!(

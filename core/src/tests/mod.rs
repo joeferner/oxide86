@@ -118,11 +118,11 @@ fn run_test(name: &str) {
 }
 
 #[test_log::test]
-pub fn hello_world_video_memory() {
+pub(crate) fn hello_world_video_memory() {
     run_test("hello_world_video_memory");
 }
 
 #[test_log::test]
-pub fn hello_world_int21_write_string() {
+pub(crate) fn hello_world_int21_write_string() {
     run_test("hello_world_int21_write_string");
 }

@@ -57,7 +57,7 @@ pub struct RTC {
 }
 
 impl RTC {
-    pub fn new(clock: Box<dyn Clock>) -> Self {
+    pub(crate) fn new(clock: Box<dyn Clock>) -> Self {
         Self {
             clock,
             selected_register: 0,
@@ -68,7 +68,7 @@ impl RTC {
     /// Returns the BDA timer counter value (ticks since midnight at ~18.2 Hz).
     ///
     /// Computed as: total_milliseconds_since_midnight * PIT_FREQUENCY_HZ / (PIT_DIVISOR * MS_PER_SECOND)
-    pub fn timer_counter(&self) -> u32 {
+    pub(crate) fn timer_counter(&self) -> u32 {
         const MS_PER_SECOND: u64 = 1_000;
 
         let time = self.clock.get_local_time();
@@ -157,7 +157,7 @@ pub mod tests {
     }
 
     impl MockClock {
-        pub fn new() -> Self {
+        pub(crate) fn new() -> Self {
             Self {
                 local_time: LocalTime {
                     hours: 11,

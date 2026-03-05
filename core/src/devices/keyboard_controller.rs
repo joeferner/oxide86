@@ -19,7 +19,7 @@ pub struct KeyboardController {
 }
 
 impl KeyboardController {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             scan_code: 0,
             pending_key: false,
@@ -27,26 +27,22 @@ impl KeyboardController {
         }
     }
 
-    pub fn key_press(&mut self, scan_code: u8) {
+    pub(crate) fn key_press(&mut self, scan_code: u8) {
         self.scan_code = scan_code;
         self.pending_key = true;
         self.obf.set(true);
     }
 
-    pub fn take_pending_key(&mut self) -> bool {
+    pub(crate) fn take_pending_key(&mut self) -> bool {
         let result = self.pending_key;
         self.pending_key = false;
         result
     }
 
-    pub fn pending_key(&self) -> bool {
-        self.pending_key
-    }
-
     /// Returns true if a scan code is waiting to be read from port 0x60.
     /// Stays true until the guest reads port 0x60, unlike `pending_key` which
     /// is cleared as soon as the PIC dispatches the IRQ.
-    pub fn output_buffer_full(&self) -> bool {
+    pub(crate) fn output_buffer_full(&self) -> bool {
         self.obf.get()
     }
 }
