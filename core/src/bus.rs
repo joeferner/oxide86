@@ -255,4 +255,9 @@ impl Bus {
             device.borrow_mut().reset();
         }
     }
+
+    /// Get extended memory size in KB
+    pub fn extended_memory_kb(&self) -> u16 {
+        self.memory.extended_memory_kb()
+    }
 }

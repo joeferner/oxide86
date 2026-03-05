@@ -15,7 +15,8 @@ impl Cpu {
 
         match function {
             0x41 => self.int15_wait_external_event(),
-            0xC0 => self.int15_get_system_config(bus),
+            0x88 => self.int15_get_extended_memory(bus),
+            0xC0 => self.int15_get_system_config(),
             _ => {
                 log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
@@ -41,6 +42,29 @@ impl Cpu {
         self.set_flag(cpu_flag::CARRY, true);
     }
 
+    /// INT 15h AH=88h - Get Extended Memory Size
+    ///
+    /// Output:
+    ///   AX = number of contiguous 1KB blocks of memory above 1MB
+    ///   CF = 0 if successful, 1 if error
+    ///
+    /// Note: 8086 can only address 1MB, so this returns 0 for an 8086 system.
+    /// 286+ systems return the amount of extended memory available.
+    fn int15_get_extended_memory(&mut self, bus: &Bus) {
+        // Cap reported extended memory by both what the CPU supports and what is installed
+        let cpu_max = self.cpu_type.max_extended_memory_kb();
+        let installed = bus.extended_memory_kb();
+        let extended_memory_kb = cpu_max.min(installed);
+
+        self.ax = extended_memory_kb;
+        self.set_flag(cpu_flag::CARRY, false);
+        log::info!(
+            "INT 15h AH=88h: Returning extended memory size = {} KB ({} CPU)",
+            extended_memory_kb,
+            self.cpu_type.name()
+        );
+    }
+
     /// INT 15h AH=C0h - Get System Configuration Parameters
     ///
     /// Output:
@@ -57,7 +81,7 @@ impl Cpu {
     ///   Offset 7: Feature information byte 3
     ///   Offset 8: Feature information byte 4
     ///   Offset 9: Feature information byte 5
-    fn int15_get_system_config(&mut self, _bus: &mut Bus) {
+    fn int15_get_system_config(&mut self) {
         // Table was written to ROM area at reset; just return the pointer
         self.es = INT15_SYSTEM_CONFIG_SEGMENT;
         self.bx = INT15_SYSTEM_CONFIG_OFFSET;

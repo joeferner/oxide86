@@ -39,4 +39,11 @@ impl Memory {
         }
         self.data[addr] = val;
     }
+
+    /// Extended memory in KB above 1 MB (reported via INT 15h AH=88h on 286+)
+    pub fn extended_memory_kb(&self) -> u16 {
+        (self.data.len() / 1024)
+            .saturating_sub(1024)
+            .min(u16::MAX as usize) as u16
+    }
 }
