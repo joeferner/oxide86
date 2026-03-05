@@ -130,6 +130,9 @@ impl<B: DiskBackend> Disk for BackedDisk<B> {
         sector: u8,
         data: &[u8],
     ) -> Result<(), super::DiskError> {
+        if self.read_only {
+            return Err(super::DiskError::WriteProtected);
+        }
         let sectors_per_track = self.geometry.sectors_per_track;
         let heads = self.geometry.heads;
 

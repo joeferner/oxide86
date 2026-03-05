@@ -333,6 +333,19 @@ impl FloppyDiskController {
                     index: 0,
                     len: 7,
                 },
+                Err(DiskError::WriteProtected) => FdcPhase::Result {
+                    bytes: [
+                        0x40 | (drive_head & 0x07), // ST0: abnormal termination
+                        0x02,                       // ST1: NW (Not Writable) bit
+                        0x00,                       // ST2
+                        cylinder,
+                        head,
+                        sector,
+                        0x02,
+                    ],
+                    index: 0,
+                    len: 7,
+                },
                 Err(_) => FdcPhase::Result {
                     bytes: [
                         0x40 | (drive_head & 0x07), // ST0: abnormal termination

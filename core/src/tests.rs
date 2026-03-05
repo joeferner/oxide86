@@ -211,6 +211,21 @@ mod tests {
                 }
 
                 #[test_log::test]
+                pub fn floppy_write_protected() {
+                    run_test_configured(
+                        "cpu/bios/int13/floppy_write_protected",
+                        make_computer!(cpu_type: CpuType::I80286),
+                        |c| {
+                            let backend = MemBackend::zeroed(DiskGeometry::FLOPPY_1440K.total_size);
+                            let mut disk = BackedDisk::new(backend).unwrap();
+                            disk.set_read_only(true);
+                            c.set_floppy_disk(DriveNumber::floppy_a(), Some(Box::new(disk)));
+                            c.run()
+                        },
+                    );
+                }
+
+                #[test_log::test]
                 pub fn floppy_verify() {
                     run_test_configured(
                         "cpu/bios/int13/floppy_verify",

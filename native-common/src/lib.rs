@@ -39,21 +39,23 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
     computer.add_device(VideoCard::new(buffer));
 
     // Load floppy A:
-    if let Some(path) = &cli.floppy_a {
-        let backend = FileDiskBackend::open(path, false)?;
+    if let Some(spec) = &cli.floppy_a {
+        let (path, read_only) = parse_disk_spec(spec);
+        let backend = FileDiskBackend::open(path, read_only)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
         computer.set_floppy_disk(DriveNumber::floppy_a(), Some(Box::new(disk)));
-        log::info!("Opened floppy A: from {}", path);
+        log::info!("Opened floppy A: from {} (read_only={})", path, read_only);
     }
 
     // Load floppy B:
-    if let Some(path) = &cli.floppy_b {
-        let backend = FileDiskBackend::open(path, false)?;
+    if let Some(spec) = &cli.floppy_b {
+        let (path, read_only) = parse_disk_spec(spec);
+        let backend = FileDiskBackend::open(path, read_only)?;
         let disk = BackedDisk::new(backend)
             .with_context(|| format!("Failed to create disk from: {}", path))?;
         computer.set_floppy_disk(DriveNumber::floppy_b(), Some(Box::new(disk)));
-        log::info!("Opened floppy B: from {}", path);
+        log::info!("Opened floppy B: from {} (read_only={})", path, read_only);
     }
 
     if let Some(program_path) = &cli.program {
@@ -117,6 +119,15 @@ fn parse_memory(memory: &str) -> Result<usize> {
             .parse::<usize>()
             .map_err(|_| anyhow!("Could not parse memory: {memory}"))?;
         Ok(mb * 1024)
+    }
+}
+
+/// Parse a disk spec like "path/to/disk.img" or "path/to/disk.img:r" (read-only).
+fn parse_disk_spec(spec: &str) -> (&str, bool) {
+    if let Some(path) = spec.strip_suffix(":r") {
+        (path, true)
+    } else {
+        (spec, false)
     }
 }
 

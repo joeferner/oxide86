@@ -324,9 +324,10 @@ impl Cpu {
                 }
             }
 
-            // Read 7 result bytes; ST0 is first
+            // Read 7 result bytes: ST0, ST1, ST2, C, H, R, N
             let st0 = bus.io_read_u8(FDC_DATA);
-            for _ in 1..7 {
+            let st1 = bus.io_read_u8(FDC_DATA);
+            for _ in 2..7 {
                 let _ = bus.io_read_u8(FDC_DATA);
             }
 
@@ -337,15 +338,18 @@ impl Cpu {
                 self.set_flag(cpu_flag::CARRY, false);
                 self.last_disk_status = DiskError::Success as u8;
             } else {
-                let error = if st0 & 0x08 != 0 {
+                let error = if st1 & 0x02 != 0 {
+                    DiskError::WriteProtected
+                } else if st0 & 0x08 != 0 {
                     DiskError::DriveNotReady
                 } else {
                     DiskError::SectorNotFound
                 };
                 log::warn!(
-                    "INT 0x13 AH=0x03: FDC write failed for drive {}, ST0=0x{:02X}",
+                    "INT 0x13 AH=0x03: FDC write failed for drive {}, ST0=0x{:02X} ST1=0x{:02X}",
                     drive,
-                    st0
+                    st0,
+                    st1
                 );
                 self.ax = (self.ax & 0x00FF) | ((error as u16) << 8); // AH = error
                 self.ax &= 0xFF00; // AL = 0

@@ -35,11 +35,11 @@ pub struct CommonCli {
     #[arg(long, default_value = "0x00")]
     pub boot_drive: String,
 
-    /// Path to disk image file for floppy A:
+    /// Path to disk image file for floppy A: (append :r for read-only, e.g. disk.img:r)
     #[arg(long = "floppy-a")]
     pub floppy_a: Option<String>,
 
-    /// Path to disk image file for floppy A:
+    /// Path to disk image file for floppy B: (append :r for read-only, e.g. disk.img:r)
     #[arg(long = "floppy-b")]
     pub floppy_b: Option<String>,
 
