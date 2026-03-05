@@ -95,7 +95,7 @@ impl Command {
         let text = text.trim().to_lowercase();
         if text == "quit" || text == "q" {
             Self::Quit
-        } else if text == "resume" || text == "" {
+        } else if text == "resume" || text.is_empty() {
             Self::Resume
         } else if text == "log exec" || text == "l" {
             Self::ToggleLogExec

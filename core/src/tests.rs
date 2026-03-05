@@ -209,6 +209,36 @@ mod tests {
                         },
                     );
                 }
+
+                #[test_log::test]
+                pub fn floppy_verify() {
+                    run_test_configured(
+                        "cpu/bios/int13/floppy_verify",
+                        make_computer!(cpu_type: CpuType::I80286),
+                        |c| {
+                            let backend = MemBackend::zeroed(DiskGeometry::FLOPPY_1440K.total_size);
+                            let disk = BackedDisk::new(backend).unwrap();
+                            c.set_floppy_disk(DriveNumber::floppy_a(), Some(Box::new(disk)));
+                            c.run()
+                        },
+                    );
+                }
+
+                #[test_log::test]
+                pub fn hard_disk_verify() {
+                    run_test_configured(
+                        "cpu/bios/int13/hard_disk_verify",
+                        make_computer!(
+                            cpu_type: CpuType::I80286,
+                            hard_disks: {
+                                let backend = MemBackend::zeroed(10 * 1024 * 1024);
+                                let disk = BackedDisk::new(backend).unwrap();
+                                vec![Box::new(disk) as Box<dyn Disk>]
+                            }
+                        ),
+                        |c| c.run(),
+                    );
+                }
             }
 
             mod int1a {

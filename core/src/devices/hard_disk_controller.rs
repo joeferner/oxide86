@@ -27,6 +27,7 @@ pub const HDC_ERR_ABRT: u8 = 0x04; // Aborted command
 
 /// ATA commands
 const HDC_CMD_READ_SECTORS: u8 = 0x20;
+const HDC_CMD_VERIFY_SECTORS: u8 = 0x40;
 const HDC_CMD_WRITE_SECTORS: u8 = 0x30;
 const HDC_CMD_EXECUTE_DIAG: u8 = 0x90;
 const HDC_CMD_IDENTIFY: u8 = 0xEC;
@@ -175,6 +176,34 @@ impl HardDiskController {
                     }
                     None => {
                         log::warn!("HDC READ_SECTORS: no disk at index {drive_index}");
+                        self.error = HDC_ERR_ABRT;
+                    }
+                }
+            }
+
+            HDC_CMD_VERIFY_SECTORS => {
+                // Verify that sectors are readable (ECC check) without transferring data to host
+                let cylinder = (self.cylinder_low as u16) | ((self.cylinder_high as u16) << 8);
+                let head = self.drive_head & 0x0F;
+                let sector = self.sector_num;
+                let count = self.sector_count;
+
+                let result = self
+                    .disks
+                    .get(drive_index)
+                    .map(|disk| disk.read_sectors(cylinder as u8, head, sector, count));
+
+                match result {
+                    Some(Ok(_)) => {
+                        // Sectors readable — stay in Idle, no data phase
+                        self.error = 0;
+                    }
+                    Some(Err(e)) => {
+                        log::warn!("HDC VERIFY_SECTORS failed: {e}");
+                        self.error = HDC_ERR_ABRT;
+                    }
+                    None => {
+                        log::warn!("HDC VERIFY_SECTORS: no disk at index {drive_index}");
                         self.error = HDC_ERR_ABRT;
                     }
                 }

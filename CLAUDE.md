@@ -11,6 +11,13 @@ Intel x86 CPU emulator in Rust with native and WebAssembly support.
 - logs are written to oxide86.log
 - when logging unimplemented features use log::warn!
 
+## Testing
+
+- Assembly files to test various aspects of the emulator are found in core/src/test_data
+- The assembly files (.asm) are compiled in core/build.rs using nasm
+- Tests are run from core/src/tests.rs
+- You can run the tests using `cargo test --all`
+
 ## Resources
 - [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
 - [x86 Reference](https://www.felixcloutier.com/x86/)

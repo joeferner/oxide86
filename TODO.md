@@ -9,7 +9,9 @@
 - [X] Improve CLI render speed by not set FG/BG if they haven't changed
 - [X] Add command mode to CLI to turn on/off exec logging and quit
 - [X] Reboot support
-- [ ] Add hard drive support
+- [X] Add hard drive support
+  - [X] fdisk
+  - [X] format
 - [ ] Add read only floppy support "--floppy-a test.img:r"
 - [ ] Add memory CLI flag, support KB, MB suffixes default to KB
 - [ ] Get MS-DOS 4.01 Working

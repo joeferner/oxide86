@@ -19,6 +19,7 @@ use crate::{
 
 /// ATA commands used by the INT 13h handlers
 const HDC_CMD_READ_SECTORS: u8 = 0x20;
+const HDC_CMD_VERIFY_SECTORS: u8 = 0x40;
 const HDC_CMD_WRITE_SECTORS: u8 = 0x30;
 const HDC_CMD_IDENTIFY: u8 = 0xEC;
 
@@ -41,9 +42,11 @@ impl Cpu {
             0x01 => self.int13_get_status(),
             0x02 => self.int13_read_sectors(bus),
             0x03 => self.int13_write_sectors(bus),
+            0x04 => self.int13_verify_sectors(bus),
             0x08 => self.int13_get_drive_params(bus),
             0x15 => self.int13_get_disk_type(bus),
             0x16 => self.int13_detect_disk_change(bus),
+            0x18 => self.int13_set_dasd_type(bus),
             _ => {
                 log::warn!("Unhandled INT 0x13 function: AH=0x{:02X}", function);
                 // Set error: invalid command
@@ -410,6 +413,110 @@ impl Cpu {
         }
     }
 
+    /// INT 13h, AH=04h - Verify Disk Sectors
+    /// Input:
+    ///   AL = number of sectors to verify (1-128)
+    ///   CH = cylinder number (0-1023, low 8 bits)
+    ///   CL = sector number (1-63, bits 0-5) + high 2 bits of cylinder (bits 6-7)
+    ///   DH = head number (0-255)
+    ///   DL = drive number
+    ///   ES:BX = not used (no data transfer)
+    /// Output:
+    ///   AH = status (0 = success)
+    ///   AL = number of sectors verified
+    ///   CF = clear if success, set if error
+    fn int13_verify_sectors(&mut self, bus: &mut Bus) {
+        let count = (self.ax & 0xFF) as u8; // AL
+        let cylinder = (self.cx >> 8) as u8; // CH (8-bit cylinder for 8086 compatibility)
+        let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
+        let head = (self.dx >> 8) as u8; // DH
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
+
+        if drive.is_floppy() {
+            let drive_index = drive.to_floppy_index() as u8;
+            let eot = sector + count - 1;
+
+            // Select drive and enable motor: nRESET=1, DMA enable=1, motor on, drive select
+            bus.io_write_u8(FDC_DOR, 0x1C | drive_index);
+
+            // Send VERIFY command (0x56): same parameters as READ DATA but no data transfer
+            bus.io_write_u8(FDC_DATA, 0x56); // VERIFY: MFM=1, MT=0, SK=0
+            bus.io_write_u8(FDC_DATA, (head << 2) | drive_index); // HD, US1, US0
+            bus.io_write_u8(FDC_DATA, cylinder); // C
+            bus.io_write_u8(FDC_DATA, head); // H
+            bus.io_write_u8(FDC_DATA, sector); // R (starting sector, 1-based)
+            bus.io_write_u8(FDC_DATA, 0x02); // N (512 bytes/sector)
+            bus.io_write_u8(FDC_DATA, eot); // EOT (last sector number)
+            bus.io_write_u8(FDC_DATA, 0x1B); // GPL (gap length)
+            bus.io_write_u8(FDC_DATA, 0xFF); // DTL
+
+            // No data transfer phase for VERIFY — FDC goes straight to Result phase.
+            // Read 7 result bytes; ST0 is first
+            let st0 = bus.io_read_u8(FDC_DATA);
+            for _ in 1..7 {
+                let _ = bus.io_read_u8(FDC_DATA);
+            }
+
+            if st0 & 0xC0 == 0 {
+                self.ax = (self.ax & 0xFF00) | (count as u16); // AL = sectors verified
+                self.ax &= 0x00FF; // AH = 0 (success)
+                self.set_flag(cpu_flag::CARRY, false);
+                self.last_disk_status = DiskError::Success as u8;
+            } else {
+                let error = if st0 & 0x08 != 0 {
+                    DiskError::DriveNotReady
+                } else {
+                    DiskError::SectorNotFound
+                };
+                log::warn!(
+                    "INT 0x13 AH=0x04: FDC verify failed for drive {}, ST0=0x{:02X}",
+                    drive,
+                    st0
+                );
+                self.ax = (self.ax & 0x00FF) | ((error as u16) << 8);
+                self.ax &= 0xFF00; // AL = 0
+                self.set_flag(cpu_flag::CARRY, true);
+                self.last_disk_status = error as u8;
+            }
+        } else {
+            // Hard drive: issue ATA VERIFY SECTORS command (0x40), no data transfer
+            let drive_head = 0xA0 | ((drive.to_hard_drive_index() as u8) << 4) | (head & 0x0F);
+            bus.io_write_u8(HDC_SECTOR_COUNT, count);
+            bus.io_write_u8(HDC_SECTOR_NUM, sector);
+            bus.io_write_u8(HDC_CYLINDER_LOW, cylinder);
+            bus.io_write_u8(HDC_CYLINDER_HIGH, 0x00);
+            bus.io_write_u8(HDC_DRIVE_HEAD, drive_head);
+            bus.io_write_u8(HDC_COMMAND, HDC_CMD_VERIFY_SECTORS);
+
+            // Wait for BSY to clear
+            loop {
+                let status = bus.io_read_u8(HDC_COMMAND);
+                if status & HDC_STATUS_BSY == 0 {
+                    break;
+                }
+            }
+
+            let status = bus.io_read_u8(HDC_COMMAND);
+            if status & HDC_STATUS_ERR != 0 {
+                let error = DiskError::SectorNotFound;
+                log::warn!(
+                    "INT 0x13 AH=0x04: HDC verify failed for drive {}, status=0x{:02X}",
+                    drive,
+                    status
+                );
+                self.ax = (self.ax & 0x00FF) | ((error as u16) << 8);
+                self.ax &= 0xFF00; // AL = 0
+                self.set_flag(cpu_flag::CARRY, true);
+                self.last_disk_status = error as u8;
+            } else {
+                self.ax = (self.ax & 0xFF00) | (count as u16); // AL = sectors verified
+                self.ax &= 0x00FF; // AH = 0 (success)
+                self.set_flag(cpu_flag::CARRY, false);
+                self.last_disk_status = DiskError::Success as u8;
+            }
+        }
+    }
+
     /// INT 13h, AH=08h - Get Drive Parameters
     /// Input:
     ///   DL = drive number
@@ -648,5 +755,97 @@ impl Cpu {
             self.set_flag(cpu_flag::CARRY, false);
             self.last_disk_status = DiskError::Success as u8;
         }
+    }
+
+    /// INT 13h, AH=18h - Set DASD Type for Format (PS/2)
+    /// Input:
+    ///   DL = drive number (0x00-0x7F for floppies)
+    ///   CH = number of tracks (low 8 bits)
+    ///   CL = sectors per track (bits 0-5) + high 2 bits of tracks (bits 6-7)
+    /// Output:
+    ///   AH = status:
+    ///     0x00 = successful, disk formatted correctly
+    ///     0x01 = invalid function or parameter
+    ///     0x80 = disk does not support function
+    ///   CF = clear if successful, set on error
+    ///   On success:
+    ///     ES:DI = pointer to 11-byte Disk Base Table (DBT)
+    fn int13_set_dasd_type(&mut self, bus: &mut Bus) {
+        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
+        let tracks_low = (self.cx >> 8) as u8; // CH
+        let sectors_and_tracks_high = (self.cx & 0xFF) as u8; // CL
+
+        // Extract sectors per track and high bits of tracks
+        let sectors_per_track = sectors_and_tracks_high & 0x3F; // Bits 0-5
+        let tracks_high = (sectors_and_tracks_high >> 6) & 0x03; // Bits 6-7
+        let tracks = ((tracks_high as u16) << 8) | (tracks_low as u16);
+
+        // AH=18h is only valid for floppy drives
+        if !drive.is_floppy() {
+            self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::InvalidCommand as u8;
+            return;
+        }
+
+        let drive_index = drive.to_floppy_index() as u8;
+
+        // Check drive exists via CMOS register 0x10 (same approach as int13_get_drive_params)
+        // Bits 7:4 = drive A type, bits 3:0 = drive B type; 0 = not present
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, CMOS_REG_FLOPPY_TYPES);
+        let floppy_types = bus.io_read_u8(RTC_IO_PORT_DATA);
+        let drive_type = if drive_index == 0 {
+            (floppy_types >> 4) & 0x0F
+        } else {
+            floppy_types & 0x0F
+        };
+
+        if drive_type == 0 {
+            // Drive not present
+            self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::InvalidCommand as u8;
+            return;
+        }
+
+        // Validate the requested parameters are reasonable
+        if sectors_per_track == 0 || sectors_per_track > 63 || tracks == 0 || tracks > 1024 {
+            self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
+            self.set_flag(cpu_flag::CARRY, true);
+            self.last_disk_status = DiskError::InvalidCommand as u8;
+            return;
+        }
+
+        // Build Disk Base Table (DBT) in BIOS ROM area at F000:E000
+        const DBT_SEGMENT: u16 = 0xF000;
+        const DBT_OFFSET: u16 = 0xE000;
+        let dbt_addr = physical_address(DBT_SEGMENT, DBT_OFFSET);
+
+        // Disk Base Table format (11 bytes):
+        // Standard values for common floppy formats
+        let dbt: [u8; 11] = [
+            0xDF,              // Offset 0: Step rate (D) and head unload time (F)
+            0x02,              // Offset 1: Head load time (2ms) and DMA flag
+            0x25,              // Offset 2: Motor off delay (37 * 55ms = ~2 seconds)
+            0x02,              // Offset 3: Bytes per sector (2 = 512 bytes)
+            sectors_per_track, // Offset 4: Last sector number per track
+            0x1B,              // Offset 5: Gap length between sectors (27 bytes)
+            0xFF,              // Offset 6: Data length (0xFF = use bytes per sector)
+            0x54,              // Offset 7: Gap length for format (84 bytes)
+            0xF6,              // Offset 8: Format filler byte (typically 0xF6)
+            0x0F,              // Offset 9: Head settle time (15ms)
+            0x08,              // Offset 10: Motor startup time (8 * 125ms = 1 second)
+        ];
+
+        for (i, &byte) in dbt.iter().enumerate() {
+            bus.memory_write_u8(dbt_addr + i, byte);
+        }
+
+        // Return success with ES:DI pointing to DBT
+        self.es = DBT_SEGMENT;
+        self.di = DBT_OFFSET;
+        self.ax &= 0x00FF; // AH = 0 (success)
+        self.set_flag(cpu_flag::CARRY, false);
+        self.last_disk_status = DiskError::Success as u8;
     }
 }
