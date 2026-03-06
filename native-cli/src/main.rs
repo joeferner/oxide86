@@ -64,7 +64,7 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
     let mouse = Arc::new(RwLock::new(SerialMouse::new()));
-    let mut computer = create_computer(&cli.common, video_buffer.clone(), mouse.clone())?;
+    let (mut computer, sink) = create_computer(&cli.common, video_buffer.clone(), mouse.clone())?;
 
     let mut stdout = std::io::stdout();
     let mut last_modifiers = KeyModifiers::empty();
@@ -220,6 +220,11 @@ fn main() -> Result<()> {
     stdout.flush()?;
 
     terminal::disable_raw_mode()?;
+
+    // use sink down here to make sure it doesn't get dropped
+    if let Some(mut sink) = sink {
+        sink.log_on_drop(false);
+    }
 
     Ok(())
 }

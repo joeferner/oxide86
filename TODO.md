@@ -18,7 +18,6 @@
 - [X] Get MS-DOS 4.01 Working
 - [X] Add mouse support
 - [ ] Add PC Speaker support
-  - [ ] test with examples/pc_speaker.asm
 - [ ] Get MS-DOS 5.0 Working
 - [ ] Command mode reset
 - [ ] Joystick

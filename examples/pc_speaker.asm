@@ -23,6 +23,11 @@ BEAT equ 9
 start:
     sti                 ; enable interrupts so the PIT tick counter increments
 
+    ; Print startup message
+    mov ah, 0x09
+    mov dx, msg
+    int 0x21
+
     ; Configure PIT channel 2: lobyte/hibyte, mode 3 (square wave), binary
     mov al, 0xB6
     out 0x43, al
@@ -98,6 +103,8 @@ start:
 ; Beat count is in quarter-note units (1=quarter, 2=half, 4=whole).
 ; A zero divisor marks the end of the tune.
 ; -----------------------------------------------------------------------
+msg db 'Playing: Mary Had a Little Lamb', 0x0D, 0x0A, '$'
+
 tune:
     ; "Mary had a little lamb"
     dw E4, 1            ; Ma-

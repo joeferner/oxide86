@@ -23,13 +23,13 @@ use oxide86_core::{
 use crate::{
     cli::CommonCli, clock::NativeClock, disk::FileDiskBackend, rodio_pc_speaker::RodioPcSpeaker,
 };
-use rodio::DeviceSinkBuilder;
+use rodio::{DeviceSinkBuilder, MixerDeviceSink};
 
 pub fn create_computer(
     cli: &CommonCli,
     video_buffer: Arc<RwLock<VideoBuffer>>,
     native_mouse: Arc<RwLock<SerialMouse>>,
-) -> Result<Computer> {
+) -> Result<(Computer, Option<MixerDeviceSink>)> {
     let cpu_type = if let Some(cpu_type) = CpuType::parse(&cli.cpu_type) {
         cpu_type
     } else {
@@ -46,7 +46,16 @@ pub fn create_computer(
         ));
     };
 
-    let pc_speaker = create_pc_speaker(!cli.disable_pc_speaker);
+    let (sink, pc_speaker) = match DeviceSinkBuilder::open_default_sink() {
+        Ok(sink) => {
+            let pc_speaker = create_pc_speaker(&sink, !cli.disable_pc_speaker);
+            (Some(sink), pc_speaker as Box<dyn PcSpeaker>)
+        }
+        Err(e) => {
+            log::warn!("Audio device unavailable: {}", e);
+            (None, Box::new(NullPcSpeaker::new()) as Box<dyn PcSpeaker>)
+        }
+    };
 
     let mut computer = Computer::new(ComputerConfig {
         cpu_type,
@@ -131,7 +140,7 @@ pub fn create_computer(
         log::info!("Boot sector loaded at 0x0000:0x7C00");
     }
 
-    Ok(computer)
+    Ok((computer, sink))
 }
 
 fn create_com_device(
@@ -152,16 +161,8 @@ fn create_com_device(
     }
 }
 
-fn create_pc_speaker(enabled: bool) -> Box<dyn PcSpeaker> {
+fn create_pc_speaker(sink: &MixerDeviceSink, enabled: bool) -> Box<dyn PcSpeaker> {
     if enabled {
-        let sink = match DeviceSinkBuilder::open_default_sink() {
-            Ok(s) => s,
-            Err(e) => {
-                log::warn!("Audio device unavailable: {}", e);
-                return Box::new(NullPcSpeaker::new());
-            }
-        };
-
         Box::new(RodioPcSpeaker::new(&sink))
     } else {
         Box::new(NullPcSpeaker::new())
