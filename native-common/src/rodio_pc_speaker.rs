@@ -15,9 +15,8 @@ impl RodioPcSpeaker {
 
 impl PcSpeaker for RodioPcSpeaker {
     fn enable(&mut self, freq: f32) {
-        let source = SquareWave::new(freq);
-
-        self.player.append(source);
+        self.player.stop();
+        self.player.append(SquareWave::new(freq));
         self.player.play();
     }
 

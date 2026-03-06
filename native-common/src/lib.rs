@@ -163,7 +163,7 @@ fn create_com_device(
 
 fn create_pc_speaker(sink: &MixerDeviceSink, enabled: bool) -> Box<dyn PcSpeaker> {
     if enabled {
-        Box::new(RodioPcSpeaker::new(&sink))
+        Box::new(RodioPcSpeaker::new(sink))
     } else {
         Box::new(NullPcSpeaker::new())
     }
