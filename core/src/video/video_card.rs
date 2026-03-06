@@ -1,5 +1,6 @@
 use std::{
     any::Any,
+    cell::Cell,
     sync::{Arc, RwLock},
 };
 
@@ -28,6 +29,17 @@ pub const VIDEO_CARD_START_ADDRESS_LOW_REGISTER: u8 = 0x0d;
 pub const VIDEO_CARD_REG_CURSOR_LOC_HIGH: u8 = 0x0e;
 pub const VIDEO_CARD_REG_CURSOR_LOC_LOW: u8 = 0x0f;
 
+// EGA/VGA Attribute Controller ports
+pub const AC_ADDR_DATA_PORT: u16 = 0x3C0;
+pub const AC_DATA_READ_PORT: u16 = 0x3C1;
+pub const AC_REG_MODE_CONTROL: u8 = 0x10;
+// VGA DAC ports
+pub const DAC_READ_INDEX_PORT: u16 = 0x3C7;
+pub const DAC_WRITE_INDEX_PORT: u16 = 0x3C8;
+pub const DAC_DATA_PORT: u16 = 0x3C9;
+// Input Status Register 1 (resets AC flip-flop on read)
+pub const INPUT_STATUS_1_PORT: u16 = 0x3DA;
+
 pub(crate) struct ModeInfo {
     pub rows: u8,
     pub cols: u8,
@@ -39,6 +51,14 @@ pub struct VideoCard {
     vram_size: usize,
     io_register: u8,
     color_select: u8,
+    // EGA/VGA Attribute Controller registers (16 palette + 1 border color)
+    ac_registers: [u8; 17],
+    ac_address: u8,
+    ac_flip_flop: Cell<bool>, // false = address mode, true = data mode
+    // VGA DAC registers (256 entries, each RGB 0-63)
+    dac_registers: Vec<[u8; 3]>,
+    dac_write_pos: usize, // index * 3 + color_component
+    dac_read_pos: Cell<usize>,
 }
 
 impl VideoCard {
@@ -49,6 +69,12 @@ impl VideoCard {
             vram_size: CGA_MEMORY_SIZE, // TODO change based on video card type
             io_register: 0,
             color_select: 0,
+            ac_registers: [0u8; 17],
+            ac_address: 0,
+            ac_flip_flop: Cell::new(false),
+            dac_registers: vec![[0u8; 3]; 256],
+            dac_write_pos: 0,
+            dac_read_pos: Cell::new(0),
         }
     }
 
@@ -143,6 +169,12 @@ impl Device for VideoCard {
         self.vram_size = CGA_MEMORY_SIZE; // TODO change based on video card type
         self.io_register = 0;
         self.color_select = 0;
+        self.ac_registers = [0u8; 17];
+        self.ac_address = 0;
+        self.ac_flip_flop.set(false);
+        self.dac_registers = vec![[0u8; 3]; 256];
+        self.dac_write_pos = 0;
+        self.dac_read_pos.set(0);
     }
 
     fn memory_read_u8(&self, addr: usize) -> Option<u8> {
@@ -187,6 +219,21 @@ impl Device for VideoCard {
                     Some(val)
                 }
                 CGA_COLOR_SELECT_ADDR => Some(self.color_select),
+                // AC data read (EGA/VGA)
+                0x3C1 => Some(self.ac_registers[(self.ac_address & 0x0F) as usize]),
+                // DAC data read (VGA)
+                0x3C9 => {
+                    let pos = self.dac_read_pos.get();
+                    let reg = pos / 3;
+                    let component = pos % 3;
+                    self.dac_read_pos.set((pos + 1) % (256 * 3));
+                    Some(self.dac_registers[reg][component])
+                }
+                // Input Status Register 1: resets AC flip-flop to address mode
+                0x3DA => {
+                    self.ac_flip_flop.set(false);
+                    Some(0x00)
+                }
                 _ => None,
             },
         }
@@ -237,6 +284,35 @@ impl Device for VideoCard {
                             val
                         ),
                     }
+                    true
+                }
+                // AC address/data write (EGA/VGA) — flip-flop toggles address vs data
+                0x3C0 => {
+                    if !self.ac_flip_flop.get() {
+                        self.ac_address = val & 0x1F;
+                        self.ac_flip_flop.set(true);
+                    } else {
+                        self.ac_registers[(self.ac_address & 0x0F) as usize] = val;
+                        self.ac_flip_flop.set(false);
+                    }
+                    true
+                }
+                // DAC read index (VGA)
+                0x3C7 => {
+                    self.dac_read_pos.set((val as usize) * 3);
+                    true
+                }
+                // DAC write index (VGA)
+                0x3C8 => {
+                    self.dac_write_pos = (val as usize) * 3;
+                    true
+                }
+                // DAC data write (VGA) — cycles R, G, B
+                0x3C9 => {
+                    let reg = self.dac_write_pos / 3;
+                    let component = self.dac_write_pos % 3;
+                    self.dac_registers[reg][component] = val & 0x3F;
+                    self.dac_write_pos = (self.dac_write_pos + 1) % (256 * 3);
                     true
                 }
                 _ => false,

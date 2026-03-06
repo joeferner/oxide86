@@ -36,7 +36,7 @@ pub fn create_computer(
         return Err(anyhow!("Could not parse CPU type: {}", cli.cpu_type));
     };
 
-    let hard_disks = load_hard_disks(&cli.hard_disks);
+    let hard_disks = load_hard_disks(&cli.hard_disks)?;
     let video_card_type = if let Some(video_card_type) = VideoCardType::parse(&cli.video_card) {
         video_card_type
     } else {
@@ -195,20 +195,18 @@ pub fn parse_disk_spec(spec: &str) -> (&str, bool) {
     }
 }
 
-fn load_hard_disks(hard_disks: &[String]) -> Vec<Box<dyn Disk>> {
+fn load_hard_disks(hard_disks: &[String]) -> Result<Vec<Box<dyn Disk>>> {
     hard_disks
         .iter()
         .enumerate()
-        .filter_map(|(i, path)| {
+        .map(|(i, path)| {
             let backend = FileDiskBackend::open(path, false)
-                .map_err(|e| log::error!("Failed to open hard drive {}: {}", path, e))
-                .ok()?;
+                .with_context(|| format!("Failed to open hard drive: {}", path))?;
             let disk = BackedDisk::new(backend)
-                .map_err(|e| log::error!("Failed to create disk from {}: {}", path, e))
-                .ok()?;
+                .with_context(|| format!("Failed to create disk from: {}", path))?;
             let letter = DriveNumber::from_hard_drive_index(i).to_letter();
             log::info!("Opened hard drive {}: from {}", letter, path);
-            Some(Box::new(disk) as Box<dyn Disk>)
+            Ok(Box::new(disk) as Box<dyn Disk>)
         })
         .collect()
 }
