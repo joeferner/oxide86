@@ -1,8 +1,6 @@
 use std::{any::Any, cell::RefCell};
 
-#[cfg(test)]
-use crate::disk::DriveNumber;
-use crate::{Device, disk::Disk};
+use crate::{Device, disk::{Disk, DriveNumber}};
 
 /// ATA Primary controller I/O ports (base 0x1F0)
 pub const HDC_DATA: u16 = 0x1F0; // Data register (read/write)
@@ -83,7 +81,6 @@ impl HardDiskController {
         }
     }
 
-    #[cfg(test)]
     pub(crate) fn get_disk(&self, drive: DriveNumber) -> Option<&dyn Disk> {
         self.disks
             .get(drive.as_hard_drive_index())

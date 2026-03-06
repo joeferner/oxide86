@@ -7,13 +7,13 @@ use crate::{
     byte_to_printable_char,
     cpu::{Cpu, CpuType, bios::int09_keyboard_hardware_interrupt::scan_code_to_ascii},
     devices::rtc::{CMOS_REG_FLOPPY_TYPES, Clock, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
-    disk::{Disk, DriveNumber, disk_read_sectors},
+    disk::{Disk, DiskError, DriveNumber},
     memory::Memory,
     physical_address,
     video::{VideoBuffer, VideoCard, VideoCardType},
 };
 #[cfg(test)]
-use crate::{devices::uart::ComPortDevice, disk::DiskError};
+use crate::devices::uart::ComPortDevice;
 use anyhow::{Result, anyhow};
 
 pub struct ComputerConfig {
@@ -164,10 +164,17 @@ impl Computer {
         // made by a previous session (e.g. DOS replacing INT 13h at 0x0070) don't persist.
         self.bus.reset();
 
-        // Read boot sector using BIOS disk services
-        // Boot sector is at cylinder 0, head 0, sector 1
-        let boot_sector = disk_read_sectors(&self.bus, drive, 0, 0, 1, 1)
-            .map_err(|err| anyhow!("failed to read boot sector: {err}"))?;
+        // Read boot sector: cylinder 0, head 0, sector 1
+        let boot_sector = if drive.is_floppy() {
+            self.bus.floppy_controller().read_sectors(drive, 0, 0, 1, 1)
+        } else {
+            self.bus
+                .hard_disk_controller()
+                .get_disk(drive)
+                .ok_or(DiskError::DriveNotReady)
+                .and_then(|disk| disk.read_sectors(0, 0, 1, 1))
+        }
+        .map_err(|err| anyhow!("failed to read boot sector: {err}"))?;
 
         if boot_sector.len() != 512 {
             return Err(anyhow::anyhow!(

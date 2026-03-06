@@ -29,7 +29,6 @@ pub(crate) struct Bus {
     memory: Memory,
     devices: Vec<DeviceRef>,
     floppy_controller: Rc<RefCell<FloppyDiskController>>,
-    #[cfg(test)]
     hard_disk_controller: Rc<RefCell<HardDiskController>>,
     pic: Rc<RefCell<Pic>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
@@ -79,7 +78,6 @@ impl Bus {
             memory,
             devices,
             floppy_controller,
-            #[cfg(test)]
             hard_disk_controller,
             pic,
             keyboard_controller,
@@ -132,7 +130,6 @@ impl Bus {
         self.video_card.borrow_mut()
     }
 
-    #[cfg(test)]
     pub(crate) fn hard_disk_controller(&self) -> Ref<'_, HardDiskController> {
         self.hard_disk_controller.borrow()
     }
@@ -250,6 +247,7 @@ impl Bus {
 fn unimplemented_port_hint(port: u16) -> Option<&'static str> {
     match port {
         0x02F2..=0x02F7 => Some("possible secondary FDC/serial probe"),
+        0x06F0..=0x06FF => Some("DOS 4.01 hardware probe"),
         0x31A0..=0x31AF => Some("unknown ISA card detection probe"),
         _ => None,
     }

@@ -95,16 +95,20 @@ pub(crate) fn run_command_mode(computer: &mut Computer, stdout: &mut Stdout) -> 
                         }
                         Command::LoadA(filename) => {
                             let (path, read_only) = parse_disk_spec(&filename);
-                            let backend = FileDiskBackend::open(path, read_only)?;
-                            match BackedDisk::new(backend) {
-                                Ok(disk) => {
-                                    computer.set_floppy_disk(
-                                        DriveNumber::floppy_a(),
-                                        Some(Box::new(disk)),
-                                    );
-                                    editor = StringEditor::new();
-                                    message = Some("Disk A: loaded".to_string());
-                                }
+                            match FileDiskBackend::open(path, read_only) {
+                                Ok(backend) => match BackedDisk::new(backend) {
+                                    Ok(disk) => {
+                                        computer.set_floppy_disk(
+                                            DriveNumber::floppy_a(),
+                                            Some(Box::new(disk)),
+                                        );
+                                        editor = StringEditor::new();
+                                        message = Some("Disk A: loaded".to_string());
+                                    }
+                                    Err(err) => {
+                                        message = Some(format!("Failed to load disk A: {err}"));
+                                    }
+                                },
                                 Err(err) => {
                                     message = Some(format!("Failed to load disk A: {err}"));
                                 }
@@ -112,16 +116,20 @@ pub(crate) fn run_command_mode(computer: &mut Computer, stdout: &mut Stdout) -> 
                         }
                         Command::LoadB(filename) => {
                             let (path, read_only) = parse_disk_spec(&filename);
-                            let backend = FileDiskBackend::open(path, read_only)?;
-                            match BackedDisk::new(backend) {
-                                Ok(disk) => {
-                                    computer.set_floppy_disk(
-                                        DriveNumber::floppy_b(),
-                                        Some(Box::new(disk)),
-                                    );
-                                    editor = StringEditor::new();
-                                    message = Some("Disk B: loaded".to_string());
-                                }
+                            match FileDiskBackend::open(path, read_only) {
+                                Ok(backend) => match BackedDisk::new(backend) {
+                                    Ok(disk) => {
+                                        computer.set_floppy_disk(
+                                            DriveNumber::floppy_b(),
+                                            Some(Box::new(disk)),
+                                        );
+                                        editor = StringEditor::new();
+                                        message = Some("Disk B: loaded".to_string());
+                                    }
+                                    Err(err) => {
+                                        message = Some(format!("Failed to load disk B: {err}"));
+                                    }
+                                },
                                 Err(err) => {
                                     message = Some(format!("Failed to load disk B: {err}"));
                                 }
@@ -152,7 +160,7 @@ enum Command {
 
 impl Command {
     pub(crate) fn parse(text: &str) -> Self {
-        let text = text.trim().to_lowercase();
+        let text = text.trim();
         if text == "quit" || text == "q" {
             Self::Quit
         } else if text == "resume" || text.is_empty() {

@@ -849,6 +849,12 @@ impl Cpu {
                 self.ax = (self.ax & 0xFF00) | 0x12;
                 log::warn!("INT 10h/AH=12h/BL=35h: Display switch");
             }
+            0x20 => {
+                // Set alternate print screen handler
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::debug!("INT 10h/AH=12h/BL=20h: Set alternate print screen handler");
+            }
             0x36 => {
                 // Video refresh control
                 // AL = 0 enable refresh, 1 disable refresh
