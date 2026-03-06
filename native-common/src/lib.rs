@@ -1,8 +1,4 @@
-use std::{
-    cell::RefCell,
-    rc::Rc,
-    sync::{Arc, RwLock},
-};
+use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
@@ -10,7 +6,7 @@ use oxide86_core::{
     cpu::CpuType,
     disk::{BackedDisk, Disk, DriveNumber},
     parse_hex_or_dec,
-    video::{VideoBuffer, VideoCard, VideoCardType},
+    video::{VideoBuffer, VideoCardType},
 };
 
 use crate::{cli::CommonCli, clock::NativeClock, disk::FileDiskBackend};
@@ -20,7 +16,10 @@ pub mod clock;
 pub mod disk;
 pub mod logging;
 
-pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Result<Computer> {
+pub fn create_computer(
+    cli: &CommonCli,
+    video_buffer: Arc<RwLock<VideoBuffer>>,
+) -> Result<Computer> {
     let cpu_type = if let Some(cpu_type) = CpuType::parse(&cli.cpu_type) {
         cpu_type
     } else {
@@ -43,7 +42,8 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         memory_size: parse_memory(&cli.memory)?,
         clock: Box::new(NativeClock::new()),
         hard_disks,
-        video_card: Rc::new(RefCell::new(VideoCard::new(video_card_type, buffer))),
+        video_card_type,
+        video_buffer,
     });
     if cli.exec_log {
         computer.set_exec_logging_enabled(true);

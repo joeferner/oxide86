@@ -15,7 +15,6 @@ mod macros {
     macro_rules! make_computer {
         ($($key:ident: $val:expr),* $(,)?) => {{
             let video_buffer = std::sync::Arc::new(std::sync::RwLock::new($crate::video::VideoBuffer::new()));
-            let video_card = $crate::video::VideoCard::new(crate::video::VideoCardType::VGA, video_buffer.clone());
             #[allow(unused_mut)]
             let mut config = $crate::computer::ComputerConfig {
                 clock: Box::new($crate::devices::rtc::tests::MockClock::new()),
@@ -23,7 +22,8 @@ mod macros {
                 cpu_type: $crate::cpu::CpuType::I8086,
                 memory_size: 2048 * 1024,
                 hard_disks: vec![],
-                video_card: std::rc::Rc::new(std::cell::RefCell::new(video_card)),
+                video_card_type: crate::video::VideoCardType::CGA,
+                video_buffer: video_buffer.clone(),
             };
             $(config.$key = $val;)*
             let computer = $crate::computer::Computer::new(config);

@@ -2,7 +2,7 @@ use std::fmt;
 
 use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
 use crate::video::palette::TextModePalette;
-use crate::video::renderer::{RenderTextArgs, render_text};
+use crate::video::renderer::{RenderTextArgs, dac_to_8bit, render_text};
 use crate::video::text::TextAttribute;
 use crate::video::{
     DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_ROWS,
@@ -225,10 +225,52 @@ impl VideoBuffer {
             }
         }
 
+        self.render_cursor(&mut data, width);
+
         RenderResult {
             data,
             width: width as u32,
             height: height as u32,
+        }
+    }
+
+    fn render_cursor(&self, data: &mut [u8], width: usize) {
+        // Render cursor if visible (bit 5 of cursor_start_line = disable flag)
+        let cursor_hidden = (self.cursor_start_line & 0x20) != 0;
+        if !cursor_hidden {
+            let cursor_row = (self.cursor_loc / self.text_columns as u16) as usize;
+            let cursor_col = (self.cursor_loc % self.text_columns as u16) as usize;
+
+            if cursor_row < TEXT_MODE_ROWS && cursor_col < TEXT_MODE_COLS {
+                // Use foreground color of the character cell under the cursor
+                let cell_idx = (cursor_row * self.text_columns as usize + cursor_col) * 2;
+                let attr_byte = self.vram[cell_idx + 1];
+                let text_attr = TextAttribute::from_byte(attr_byte, self.blink_enabled);
+                let fg_dac = self.vga_dac_palette[text_attr.foreground as usize];
+                let fg_color = [
+                    dac_to_8bit(fg_dac[0]),
+                    dac_to_8bit(fg_dac[1]),
+                    dac_to_8bit(fg_dac[2]),
+                ];
+
+                let start_scan = (self.cursor_start_line & 0x1F) as usize;
+                let end_scan = (self.cursor_end_line as usize).min(CHAR_HEIGHT - 1);
+
+                let char_x = cursor_col * CHAR_WIDTH;
+                let char_y = cursor_row * CHAR_HEIGHT;
+
+                for scan_line in start_scan..=end_scan {
+                    let pixel_y = char_y + scan_line;
+                    for bit in 0..CHAR_WIDTH {
+                        let pixel_x = char_x + bit;
+                        let offset = (pixel_y * width + pixel_x) * 4;
+                        data[offset] = fg_color[0];
+                        data[offset + 1] = fg_color[1];
+                        data[offset + 2] = fg_color[2];
+                        data[offset + 3] = 0xFF;
+                    }
+                }
+            }
         }
     }
 }
