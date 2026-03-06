@@ -9,11 +9,9 @@ impl Cpu {
     pub(super) fn handle_int16(&mut self, bus: &mut Bus, io: &mut super::Bios) {
         match function {
             
-            0x02 => self.int16_get_shift_flags(bus),
             0x10 => self.int16_read_char(bus, io), // Extended read (same as 00h)
             0x11 => self.int16_check_keystroke(bus, io), // Extended check (same as 01h)
             0x12 => self.int16_get_shift_flags(bus), // Extended shift flags (same as 02h)
-            0x55 => self.int16_word_tsr_check(),
         }
     }
 
@@ -86,36 +84,9 @@ impl Cpu {
         }
     }
 
-    /// INT 16h, AH=02h - Get Shift Flags
-    /// Returns the current state of keyboard shift flags
-    /// Input: None
-    /// Output:
-    ///   AL = shift flags
-    ///     Bit 0: Right Shift pressed
-    ///     Bit 1: Left Shift pressed
-    ///     Bit 2: Ctrl pressed
-    ///     Bit 3: Alt pressed
-    ///     Bit 4: Scroll Lock active
-    ///     Bit 5: Num Lock active
-    ///     Bit 6: Caps Lock active
-    ///     Bit 7: Insert mode active
-    fn int16_get_shift_flags(&mut self, bus: &mut Bus) {
-        let flags_addr = BDA_START + BDA_KEYBOARD_FLAGS1;
-        let flags = bus.read_u8(flags_addr);
 
-        // Return flags in AL
-        self.ax = (self.ax & 0xFF00) | (flags as u16);
-    }
 
-    /// INT 16h, AH=55h - Microsoft Word TSR Detection
-    /// Used by Microsoft Word for DOS to detect if its TSR utility is installed.
-    /// If the TSR were installed, it would return "MS" (0x4D53) in AX.
-    /// Input: None
-    /// Output: AX unchanged (signals TSR NOT installed)
-    fn int16_word_tsr_check(&mut self) {
-        // Intentionally do nothing - leave AX unchanged to indicate
-        // that the Microsoft Word TSR is NOT installed
-    }
+
 
 
 }

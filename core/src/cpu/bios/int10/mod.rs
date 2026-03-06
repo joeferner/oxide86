@@ -25,10 +25,8 @@ impl Cpu {
             
             0x0C => self.int10_write_pixel(bus),
             0x0D => self.int10_read_pixel(bus),
-            0x10 => self.int10_palette_registers(bus),
             0x13 => self.int10_write_string(bus),
             0x4F => self.int10_vbe(),
-            0xFA => self.int10_installation_checks(),
             
         }
     }
@@ -129,186 +127,7 @@ impl Cpu {
     }
 
 
-    /// INT 10h, AH=10h - Set/Get Palette Registers
-    /// Subfunction in AL:
-    ///   00h = Set individual palette register
-    ///   01h = Set border color
-    ///   02h = Set all palette registers
-    ///   03h = Toggle intensity/blinking bit
-    ///   07h = Read individual palette register
-    ///   08h = Read overscan register
-    ///   09h = Read all palette registers
-    ///   10h = Set individual DAC register
-    ///   12h = Set block of DAC registers
-    ///   15h = Read individual DAC register
-    ///   17h = Read block of DAC registers
-    ///   1Ah = Read color page state
-    ///   1Bh = Perform gray-scale summing
-    fn int10_palette_registers(&mut self, bus: &mut Bus) {
-        use crate::video_card_type::VideoCardType;
-        // CGA BIOS does not implement AH=10h (EGA/VGA function only)
-        if bus.video().card_type() == VideoCardType::CGA {
-            log::warn!("INT 10h AH=10h: not supported by CGA card - ignoring");
-            return;
-        }
-
-        let subfunction = (self.ax & 0xFF) as u8; // AL
-
-        // DAC register operations are VGA-only (EGA has no DAC)
-        if bus.video().card_type() == VideoCardType::EGA
-            && matches!(subfunction, 0x10 | 0x12 | 0x15 | 0x17 | 0x1A | 0x1B)
-        {
-            log::warn!(
-                "INT 10h/AH=10h/AL={:02X}h: DAC function not supported by EGA card - ignoring",
-                subfunction
-            );
-            return;
-        }
-
-        match subfunction {
-            0x00 => {
-                // Set individual AC palette register
-                // BL = register number (0-15), BH = color value (EGA 6-bit index)
-                let register = (self.bx & 0xFF) as u8; // BL
-                let value = ((self.bx >> 8) & 0xFF) as u8; // BH
-                bus.video_mut().set_ac_register(register, value);
-                log::debug!(
-                    "INT 10h/AH=10h/AL=00h: Set AC register {} = {}",
-                    register,
-                    value
-                );
-            }
-            0x01 => {
-                // Set border (overscan) color
-                // BH = border color value
-                log::warn!("INT 10h/AH=10h/AL=01h: Set border color");
-            }
-            0x02 => {
-                // Set all AC palette registers and border
-                // ES:DX -> 17-byte table (16 AC register values + 1 border color byte)
-                let table_addr = Self::physical_address(self.es, self.dx);
-                for i in 0..16usize {
-                    let value = bus.read_u8(table_addr + i);
-                    bus.video_mut().set_ac_register(i as u8, value);
-                }
-                let border = bus.read_u8(table_addr + 16);
-                log::debug!(
-                    "INT 10h/AH=10h/AL=02h: Set all AC palette registers, border={}",
-                    border
-                );
-            }
-            0x03 => {
-                // Toggle intensity/blinking bit
-                // BL = 0: bit 7 = high-intensity background (16 bg colors, no blink)
-                // BL = 1: bit 7 = character blink (8 bg colors, blink enabled, default)
-                let blink_enabled = (self.bx & 0xFF) as u8 != 0;
-                bus.video_mut().set_blink_enabled(blink_enabled);
-                log::debug!(
-                    "INT 10h/AH=10h/AL=03h: {} mode",
-                    if blink_enabled { "blink" } else { "intensity" }
-                );
-            }
-            0x10 => {
-                // Set individual DAC register
-                // Input: BX = register number (0-255)
-                //        DH = red value (0-63)
-                //        CH = green value (0-63)
-                //        CL = blue value (0-63)
-                let register = (self.bx & 0xFF) as u8; // Use low byte only
-                let red = ((self.dx >> 8) & 0x3F) as u8; // DH, mask to 6 bits
-                let green = ((self.cx >> 8) & 0x3F) as u8; // CH, mask to 6 bits
-                let blue = (self.cx & 0x3F) as u8; // CL, mask to 6 bits
-
-                bus.video_mut()
-                    .set_vga_dac_register(register, red, green, blue);
-
-                log::debug!(
-                    "INT 10h/AH=10h/AL=10h: Set DAC register {} to RGB({}, {}, {})",
-                    register,
-                    red,
-                    green,
-                    blue
-                );
-            }
-            0x12 => {
-                // Set block of DAC registers
-                // Input: BX = first register number (0-255)
-                //        CX = number of registers to set (0-256)
-                //        ES:DX -> table of RGB triplets (3 bytes per entry)
-                let first_register = (self.bx & 0xFF) as u8; // Use low byte only
-                let count = self.cx;
-                let mut table_addr = Self::physical_address(self.es, self.dx);
-
-                for i in 0..count {
-                    let register = first_register.wrapping_add(i as u8);
-                    let red = bus.read_u8(table_addr) & 0x3F; // Mask to 6 bits
-                    let green = bus.read_u8(table_addr + 1) & 0x3F;
-                    let blue = bus.read_u8(table_addr + 2) & 0x3F;
-                    table_addr += 3;
-
-                    bus.video_mut()
-                        .set_vga_dac_register(register, red, green, blue);
-                }
-
-                log::debug!(
-                    "INT 10h/AH=10h/AL=12h: Set {} DAC registers starting at {}",
-                    count,
-                    first_register
-                );
-            }
-            0x15 => {
-                // Read individual DAC register
-                // Input: BX = register number (0-255)
-                // Output: DH = red value (0-63)
-                //         CH = green value (0-63)
-                //         CL = blue value (0-63)
-                let register = (self.bx & 0xFF) as u8;
-                let rgb = bus.video().get_vga_dac_register(register);
-
-                self.dx = (self.dx & 0x00FF) | ((rgb[0] as u16) << 8); // DH = red
-                self.cx = ((rgb[1] as u16) << 8) | (rgb[2] as u16); // CH = green, CL = blue
-
-                log::debug!(
-                    "INT 10h/AH=10h/AL=15h: Read DAC register {} = RGB({}, {}, {})",
-                    register,
-                    rgb[0],
-                    rgb[1],
-                    rgb[2]
-                );
-            }
-            0x17 => {
-                // Read block of DAC registers
-                // Input: BX = first register number (0-255)
-                //        CX = number of registers to read (0-256)
-                //        ES:DX -> buffer for RGB triplets (3 bytes per entry)
-                let first_register = (self.bx & 0xFF) as u8;
-                let count = self.cx;
-                let mut table_addr = Self::physical_address(self.es, self.dx);
-
-                for i in 0..count {
-                    let register = first_register.wrapping_add(i as u8);
-                    let rgb = bus.video().get_vga_dac_register(register);
-
-                    bus.write_u8(table_addr, rgb[0]); // Red
-                    bus.write_u8(table_addr + 1, rgb[1]); // Green
-                    bus.write_u8(table_addr + 2, rgb[2]); // Blue
-                    table_addr += 3;
-                }
-
-                log::debug!(
-                    "INT 10h/AH=10h/AL=17h: Read {} DAC registers starting at {}",
-                    count,
-                    first_register
-                );
-            }
-            _ => {
-                log::warn!(
-                    "Unhandled INT 10h/AH=10h palette subfunction: AL=0x{:02X}",
-                    subfunction
-                );
-            }
-        }
-    }
+    
 
     
 
@@ -347,36 +166,7 @@ impl Cpu {
 
     
 
-    /// INT 10h, AH=FAh - Installation Checks (EGA RIL / FASTBUFF.COM)
-    /// This function has two uses depending on BX value:
-    ///
-    /// When BX=0000h: EGA Register Interface Library - INTERROGATE DRIVER
-    /// Input:
-    ///   AH = FAh, BX = 0000h
-    /// Output:
-    ///   BX = 0000h (if RIL driver not present)
-    ///   ES:BX -> version number (if present): byte 0=major, byte 1=minor
-    ///
-    /// When BX!=0000h: FASTBUFF.COM - INSTALLATION CHECK
-    /// Input:
-    ///   AH = FAh
-    /// Output:
-    ///   AX = 00FAh (if installed), ES = segment of resident code
-    ///
-    /// This emulator returns "not installed" for both.
-    fn int10_installation_checks(&mut self) {
-        if self.bx == 0x0000 {
-            // EGA Register Interface Library - INTERROGATE DRIVER
-            // Return BX = 0000h to indicate driver not present
-            self.bx = 0x0000;
-            log::debug!("INT 10h/AH=FAh/BX=0000h: EGA Register Interface not present");
-        } else {
-            // FASTBUFF.COM - INSTALLATION CHECK
-            // Don't modify AX (leave it as is to indicate not installed)
-            // The check looks for AX = 00FAh, so leaving AX unchanged signals "not installed"
-            log::debug!("INT 10h/AH=FAh: FASTBUFF.COM not installed");
-        }
-    }
+
 
 
 }

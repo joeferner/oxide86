@@ -6,14 +6,6 @@ pub struct CommonCli {
     #[arg(long = "mount-dir", action = clap::ArgAction::Append)]
     pub mount_dirs: Vec<String>,
 
-    /// Device to attach to COM1 (e.g., "mouse", "logger")
-    #[arg(long = "com1", value_name = "DEVICE")]
-    pub com1_device: Option<String>,
-
-    /// Device to attach to COM2 (e.g., "mouse", "logger")
-    #[arg(long = "com2", value_name = "DEVICE")]
-    pub com2_device: Option<String>,
-
     /// Enable interrupt logging (logs INT calls to oxide86.log)
     #[arg(long = "int-log")]
     pub int_log: bool,
@@ -25,10 +17,6 @@ pub struct CommonCli {
     /// Enable joystick B (port 0x201)
     #[arg(long = "joystick-b")]
     pub joystick_b: bool,
-
-    /// Disable PC speaker / audio output
-    #[arg(long = "disable-pc-speaker")]
-    pub disable_pc_speaker: bool,
 
     /// Sound card to emulate (none, adlib)
     #[arg(long = "sound-card", default_value = "adlib")]
