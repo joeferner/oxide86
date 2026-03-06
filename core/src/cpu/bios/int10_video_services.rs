@@ -18,7 +18,8 @@ use crate::{
         CGA_MEMORY_START, VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
         VideoCardType, video_calculate_linear_offset,
         video_card::{
-            AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_MODE_CONTROL, DAC_DATA_PORT,
+            AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
+            DAC_DATA_PORT,
             DAC_READ_INDEX_PORT, DAC_WRITE_INDEX_PORT, INPUT_STATUS_1_PORT,
             VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_DATA_ADDR, VIDEO_CARD_REG_CURSOR_END_LINE,
             VIDEO_CARD_REG_CURSOR_START_LINE,
@@ -864,6 +865,38 @@ impl Cpu {
                     "INT 10h/AH=10h/AL=17h: Read {} DAC registers starting at {}",
                     count,
                     first_register
+                );
+            }
+            0x1A => {
+                // Read color page state
+                // Output: BH = color paging mode (0 = 4 pages of 64 regs, 1 = 16 pages of 16 regs)
+                //         BL = current page number
+                //
+                // Paging mode is bit 7 of AC Mode Control register (0x10).
+                // Current page comes from AC Color Select register (0x14):
+                //   mode 0: page = bits [3:2]
+                //   mode 1: page = bits [3:0]
+                let _ = bus.io_read_u8(INPUT_STATUS_1_PORT); // reset AC flip-flop
+                bus.io_write_u8(AC_ADDR_DATA_PORT, AC_REG_MODE_CONTROL);
+                let mode_ctrl = bus.io_read_u8(AC_DATA_READ_PORT);
+
+                let _ = bus.io_read_u8(INPUT_STATUS_1_PORT); // reset AC flip-flop
+                bus.io_write_u8(AC_ADDR_DATA_PORT, AC_REG_COLOR_SELECT);
+                let color_select = bus.io_read_u8(AC_DATA_READ_PORT);
+
+                let paging_mode = (mode_ctrl >> 7) & 0x01; // bit 7: P54S
+                let page = if paging_mode == 0 {
+                    (color_select >> 2) & 0x03 // bits [3:2] select 1-of-4 pages
+                } else {
+                    color_select & 0x0F // bits [3:0] select 1-of-16 pages
+                };
+
+                self.bx = ((paging_mode as u16) << 8) | (page as u16); // BH=mode, BL=page
+
+                log::debug!(
+                    "INT 10h/AH=10h/AL=1Ah: Read color page state: mode={}, page={}",
+                    paging_mode,
+                    page
                 );
             }
             _ => {

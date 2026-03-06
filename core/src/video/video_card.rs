@@ -33,6 +33,7 @@ pub const VIDEO_CARD_REG_CURSOR_LOC_LOW: u8 = 0x0f;
 pub const AC_ADDR_DATA_PORT: u16 = 0x3C0;
 pub const AC_DATA_READ_PORT: u16 = 0x3C1;
 pub const AC_REG_MODE_CONTROL: u8 = 0x10;
+pub const AC_REG_COLOR_SELECT: u8 = 0x14;
 // VGA DAC ports
 pub const DAC_READ_INDEX_PORT: u16 = 0x3C7;
 pub const DAC_WRITE_INDEX_PORT: u16 = 0x3C8;
