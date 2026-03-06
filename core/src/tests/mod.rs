@@ -4,6 +4,7 @@ use std::io::Read;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
+use crate::video::VideoCardType;
 use crate::video::video_buffer::RenderResult;
 use crate::{computer::Computer, video::VideoBuffer};
 
@@ -114,6 +115,13 @@ fn run_test_with_interaction(name: &str, f: fn(&mut Computer)) {
 
 fn run_test(name: &str) {
     run_test_with_interaction(name, |computer| {
+        computer.run();
+    });
+}
+
+fn run_test_vga(name: &str) {
+    let computer = make_computer!(video_card_type: VideoCardType::VGA);
+    run_test_configured(name, computer, |computer| {
         computer.run();
     });
 }

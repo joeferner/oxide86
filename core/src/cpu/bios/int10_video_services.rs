@@ -5,9 +5,11 @@ use crate::{
         Cpu,
         bios::bda::{
             bda_get_active_page, bda_get_columns, bda_get_crt_controller_port_address,
-            bda_get_cursor_end_line, bda_get_cursor_pos, bda_get_cursor_start_line, bda_get_rows,
+            bda_get_crt_palette, bda_get_cursor_end_line, bda_get_cursor_pos,
+            bda_get_cursor_start_line, bda_get_display_combination_code, bda_get_rows,
             bda_get_video_mode, bda_get_video_page_size, bda_set_active_page, bda_set_columns,
-            bda_set_cursor_end_line, bda_set_cursor_pos, bda_set_cursor_start_line, bda_set_rows,
+            bda_set_crt_palette, bda_set_cursor_end_line, bda_set_cursor_pos,
+            bda_set_cursor_start_line, bda_set_display_combination_code, bda_set_rows,
             bda_set_video_mode, bda_set_video_page_offset, bda_set_video_page_size,
         },
     },
@@ -22,6 +24,20 @@ use crate::{
         video_set_cursor_pos,
     },
 };
+
+// ROM Font Data locations
+// These addresses are in the ROM BIOS area (F000 segment)
+// Must fit within 1MB memory (0x100000)
+// 8x16 font needs 4096 bytes (0x1000), 8x8 font needs 2048 bytes (0x800)
+const FONT_8X16_SEGMENT: u16 = 0xF000;
+const FONT_8X16_OFFSET: u16 = 0xB000; // F000:B000
+#[allow(dead_code)]
+const FONT_8X16_ADDR: usize = 0xFB000; // Physical address, ends at 0xFC000
+
+const FONT_8X8_SEGMENT: u16 = 0xF000;
+const FONT_8X8_OFFSET: u16 = 0xC000; // F000:C000
+#[allow(dead_code)]
+const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
 
 impl Cpu {
     /// INT 0x10 - Video Services
@@ -39,10 +55,15 @@ impl Cpu {
             0x08 => self.int10_read_char_attr(bus),
             0x09 => self.int10_write_char_attr(bus),
             0x0A => self.int10_write_char(bus),
+            0x0B => self.int10_set_color_palette(bus),
             0x0E => self.int10_teletype_output(bus),
             0x0F => self.int10_get_video_mode(bus),
+            0x11 => self.int10_character_generator(bus),
             0x12 => self.int10_alternate_function_select(bus),
+            0x15 => self.int10_return_physical_display_params(bus),
+            0x1A => self.int10_display_combination_code(bus),
             0x1B => self.int10_functionality_state_info(bus),
+            0xFE => self.int10_get_video_buffer(bus),
             _ => {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
             }
@@ -421,6 +442,55 @@ impl Cpu {
         // Cursor position is NOT updated by this function
     }
 
+    /// INT 10h, AH=0Bh - Set Color Palette
+    /// Subfunction in BH:
+    ///   00h = Set background/border color
+    ///        BL = color value (bits 0-3 = border/background color, bit 4 = intensity)
+    ///   01h = Set palette
+    ///        BL = palette ID (0 = green/red/brown, 1 = cyan/magenta/white)
+    fn int10_set_color_palette(&mut self, bus: &mut Bus) {
+        let subfunction = (self.bx >> 8) as u8; // BH
+        let value = (self.bx & 0xFF) as u8; // BL
+
+        // CGA Color Select Register is at CRTC base + 5 (0x3D9 for color, 0x3B9 for mono).
+        // Bit layout:
+        //   Bits 0-3: border/background color
+        //   Bit 4:    intensity of background
+        //   Bit 5:    palette select (0 = green/red/brown, 1 = cyan/magenta/white)
+        let color_select_port = bda_get_crt_controller_port_address(bus) + 5;
+        let current = bda_get_crt_palette(bus);
+
+        match subfunction {
+            0x00 => {
+                // Set background/border color: update bits 0-4, preserve bit 5
+                let new_value = (current & 0xE0) | (value & 0x1F);
+                bda_set_crt_palette(bus, new_value);
+                bus.io_write_u8(color_select_port, new_value);
+                log::debug!(
+                    "INT 10h/AH=0Bh/BH=00h: Set border/background color=0x{:02X}",
+                    new_value
+                );
+            }
+            0x01 => {
+                // Select CGA palette: update bit 5, preserve bits 0-4
+                let new_value = (current & 0xDF) | ((value & 0x01) << 5);
+                bda_set_crt_palette(bus, new_value);
+                bus.io_write_u8(color_select_port, new_value);
+                log::debug!(
+                    "INT 10h/AH=0Bh/BH=01h: Set CGA palette={}, register=0x{:02X}",
+                    value & 0x01,
+                    new_value
+                );
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 10h/AH=0Bh subfunction: BH=0x{:02X}",
+                    subfunction
+                );
+            }
+        }
+    }
+
     /// INT 10h, AH=0Eh - Teletype Output
     /// Input:
     ///   AL = character to write
@@ -520,6 +590,172 @@ impl Cpu {
 
         self.ax = (columns << 8) | (mode as u16);
         self.bx = (self.bx & 0x00FF) | ((page as u16) << 8);
+    }
+
+    /// INT 10h, AH=11h - Character Generator
+    /// Subfunction in AL:
+    ///   00h = Load user-specified character set
+    ///   01h = Load ROM monochrome patterns (8x14)
+    ///   02h = Load ROM 8x8 double-dot patterns
+    ///   03h = Set block specifier
+    ///   04h = Load ROM 8x16 character set
+    ///   10h = Load user-specified character set and program mode
+    ///   11h = Load ROM monochrome patterns (8x14) and program mode
+    ///   12h = Load ROM 8x8 double-dot patterns and program mode
+    ///   14h = Load ROM 8x16 character set and program mode
+    ///   20h = Set user 8x8 graphics character table (INT 1Fh)
+    ///   21h = Set user graphics character table
+    ///   22h = Set ROM 8x14 graphics character table
+    ///   23h = Set ROM 8x8 graphics character table
+    ///   24h = Set ROM 8x16 graphics character table
+    ///   30h = Get font information
+    /// Input (for subfunction 30h):
+    ///   BH = pointer type
+    ///     00h = INT 1Fh pointer (8x8 graphics characters)
+    ///     01h = INT 43h pointer (8x14/8x16 graphics characters)
+    ///     02h = ROM 8x14 character font pointer
+    ///     03h = ROM 8x8 double-dot font pointer
+    ///     04h = ROM 8x8 double-dot font (top half)
+    ///     05h = ROM 9x14 alphanumeric alternate
+    ///     06h = ROM 8x16 font
+    ///     07h = ROM 9x16 alternate
+    /// Output (for subfunction 30h):
+    ///   ES:BP = pointer to font
+    ///   CX = bytes per character
+    ///   DL = rows on screen - 1
+    fn int10_character_generator(&mut self, bus: &mut Bus) {
+        // CGA BIOS does not implement AH=11h (EGA/VGA function only)
+        if bus.video_card().card_type() == VideoCardType::CGA {
+            log::warn!("INT 10h AH=11h: not supported by CGA card - ignoring");
+            return;
+        }
+
+        let subfunction = (self.ax & 0xFF) as u8; // AL
+
+        match subfunction {
+            0x00..=0x04 => {
+                // Load character set functions
+                log::warn!(
+                    "Unhandled INT 10h/AH=11h/AL={:02X}h: Load character set",
+                    subfunction
+                );
+            }
+            0x10..=0x14 => {
+                // Load character set and program mode
+                log::warn!(
+                    "Unhandled INT 10h/AH=11h/AL={:02X}h: Load character set and program mode",
+                    subfunction
+                );
+            }
+            0x20..=0x24 => {
+                // Set graphics character table
+                log::warn!(
+                    "Unhandled INT 10h/AH=11h/AL={:02X}h: Set graphics character table",
+                    subfunction
+                );
+            }
+            0x30 => {
+                // Get font information
+                self.int10_get_font_info(bus);
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 10h/AH=11h subfunction: AL=0x{:02X}",
+                    subfunction
+                );
+            }
+        }
+    }
+
+    /// INT 10h, AH=11h, AL=30h - Get Font Information
+    /// Input:
+    ///   BH = pointer type
+    /// Output:
+    ///   ES:BP = pointer to font
+    ///   CX = bytes per character
+    ///   DL = rows on screen - 1
+    fn int10_get_font_info(&mut self, bus: &mut Bus) {
+        let pointer_type = (self.bx >> 8) as u8; // BH
+
+        // Determine which font to return based on pointer type
+        let (segment, offset, bytes_per_char, rows) = match pointer_type {
+            0x00 => {
+                // INT 1Fh pointer (8x8 graphics characters)
+                // Read INT 1Fh vector from IVT
+                let int_1f_offset = bus.memory_read_u16(0x1F * 4);
+                let int_1f_segment = bus.memory_read_u16(0x1F * 4 + 2);
+                // If not set, default to our ROM 8x8 font
+                if int_1f_segment == 0xF000 && int_1f_offset < 0x100 {
+                    // Not initialized, use ROM font
+                    (FONT_8X8_SEGMENT, FONT_8X8_OFFSET, 8, 25)
+                } else {
+                    (int_1f_segment, int_1f_offset, 8, 25)
+                }
+            }
+            0x01 => {
+                // INT 43h pointer (8x14/8x16 graphics characters)
+                // Read INT 43h vector from IVT
+                let int_43_offset = bus.memory_read_u16(0x43 * 4);
+                let int_43_segment = bus.memory_read_u16(0x43 * 4 + 2);
+                // If not set, default to our ROM 8x16 font
+                if int_43_segment == 0xF000 && int_43_offset < 0x100 {
+                    // Not initialized, use ROM font
+                    (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+                } else {
+                    (int_43_segment, int_43_offset, 16, 25)
+                }
+            }
+            0x02 => {
+                // ROM 8x14 character font pointer
+                // We don't have a real 8x14 font, return 8x16 instead
+                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+            }
+            0x03 | 0x04 => {
+                // ROM 8x8 double-dot font pointer (both regular and top half)
+                (FONT_8X8_SEGMENT, FONT_8X8_OFFSET, 8, 25)
+            }
+            0x05 => {
+                // ROM 9x14 alphanumeric alternate
+                // We don't have a 9x14 font, return 8x16 instead
+                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+            }
+            0x06 => {
+                // ROM 8x16 font
+                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+            }
+            0x07 => {
+                // ROM 9x16 alternate
+                // We don't have a 9x16 font, return 8x16 instead
+                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+            }
+            _ => {
+                // Unknown pointer type, default to 8x16
+                log::warn!(
+                    "INT 10h/AH=11h/AL=30h: Unknown pointer type BH=0x{:02X}, defaulting to 8x16",
+                    pointer_type
+                );
+                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+            }
+        };
+
+        // Return font pointer in ES:BP
+        self.es = segment;
+        self.bp = offset;
+
+        // Return bytes per character in CX
+        self.cx = bytes_per_char;
+
+        // Return rows - 1 in DL
+        self.dx = (self.dx & 0xFF00) | ((rows - 1) as u16);
+
+        log::debug!(
+            "INT 10h/AH=11h/AL=30h: Get font info BH={:02X}h -> ES:BP={:04X}:{:04X}, CX={}, DL={}",
+            pointer_type,
+            self.es,
+            self.bp,
+            self.cx,
+            rows - 1
+        );
     }
 
     /// INT 10h, AH=12h - Video Alternate Function Select
@@ -623,6 +859,117 @@ impl Cpu {
             _ => {
                 log::warn!(
                     "Unhandled INT 10h/AH=12h alternate function: BL=0x{:02X}",
+                    subfunction
+                );
+            }
+        }
+    }
+
+    /// INT 10h, AH=15h - Return Physical Display Parameters (VGA)
+    /// Input: None
+    /// Output:
+    ///   AL = 15h if function supported
+    ///   BH = active display code
+    ///   BL = alternate display code
+    fn int10_return_physical_display_params(&mut self, bus: &Bus) {
+        // AH=15h is a VGA-only function; CGA and EGA leave registers unchanged
+        if bus.video_card().card_type() != VideoCardType::VGA {
+            log::warn!(
+                "INT 10h AH=15h: not supported by {} card - ignoring",
+                bus.video_card().card_type()
+            );
+            return;
+        }
+
+        // Active display code (08h = VGA with color display)
+        let active_display = 0x08u8;
+        // Alternate display code (00h = no alternate display)
+        let alternate_display = 0x00u8;
+
+        // Return AL = 15h to indicate function is supported
+        self.ax = (self.ax & 0xFF00) | 0x15;
+
+        // Return display codes in BH/BL
+        self.bx = ((active_display as u16) << 8) | (alternate_display as u16);
+
+        log::debug!(
+            "INT 10h/AH=15h: Return physical display params (active={:02X}h, alt={:02X}h)",
+            active_display,
+            alternate_display
+        );
+    }
+
+    /// INT 10h, AH=1Ah - Display Combination Code (VGA/MCGA)
+    /// Subfunction in AL:
+    ///   00h = Read display combination code
+    ///   01h = Write display combination code
+    /// Input (for AL=01h):
+    ///   BL = active display code
+    ///   BH = alternate display code
+    /// Output (for AL=00h):
+    ///   AL = 1Ah if function supported
+    ///   BL = active display code
+    ///   BH = alternate display code
+    ///
+    /// Display codes:
+    ///   00h = no display
+    ///   01h = MDA with monochrome display
+    ///   02h = CGA with color display
+    ///   04h = EGA with color display
+    ///   05h = EGA with monochrome display
+    ///   07h = VGA with monochrome analog display
+    ///   08h = VGA with color analog display
+    ///   0Bh = MCGA with color digital display
+    ///   0Ch = MCGA with monochrome analog display
+    fn int10_display_combination_code(&mut self, bus: &mut Bus) {
+        // AH=1Ah was introduced with PS/2 VGA BIOS (1987); CGA and EGA BIOSes do not support it
+        if bus.video_card().card_type() != VideoCardType::VGA {
+            log::warn!(
+                "INT 10h AH=1Ah: not supported by {} card - ignoring",
+                bus.video_card().card_type()
+            );
+            return;
+        }
+
+        let subfunction = (self.ax & 0xFF) as u8; // AL
+
+        match subfunction {
+            0x00 => {
+                // Read display combination code
+                let (active, alternate) = bda_get_display_combination_code(bus);
+
+                // Return AL = 1Ah to indicate function is supported
+                self.ax = (self.ax & 0xFF00) | 0x1A;
+
+                // Return display codes in BL/BH
+                self.bx = (alternate as u16) << 8 | active as u16;
+
+                log::debug!(
+                    "INT 10h/AH=1Ah/AL=00h: Read display combination (active={:02X}h, alt={:02X}h)",
+                    active,
+                    alternate
+                );
+            }
+            0x01 => {
+                // Write display combination code
+                let active_display = (self.bx & 0xFF) as u8; // BL
+                let alternate_display = (self.bx >> 8) as u8; // BH
+
+                // Store in BDA
+                bda_set_display_combination_code(bus, active_display, alternate_display);
+
+                // Return AL = 1Ah to indicate function is supported
+                self.ax = (self.ax & 0xFF00) | 0x1A;
+
+                log::debug!(
+                    "INT 10h/AH=1Ah/AL=01h: Write display combination (active={:02X}h, alt={:02X}h)",
+                    active_display,
+                    alternate_display
+                );
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 10h/AH=1Ah subfunction: AL=0x{:02X}",
                     subfunction
                 );
             }
@@ -773,6 +1120,32 @@ impl Cpu {
         log::trace!(
             "INT 10h/AH=1Bh: Returned functionality/state info at {:05X}",
             buffer_addr
+        );
+    }
+
+    /// INT 10h, AH=FEh - Get Video Buffer (TopView/DESQview/DOSSHELL)
+    /// Input: None
+    /// Output:
+    ///   ES:DI = segment:offset of video buffer for current page
+    ///
+    /// This function returns a pointer to the video buffer that applications
+    /// can write to directly for better performance. For standard text mode,
+    /// this is typically B800:0000 for color displays or B000:0000 for mono.
+    fn int10_get_video_buffer(&mut self, _bus: &mut Bus) {
+        // For color text mode, video buffer is at B800:0000
+        // For monochrome text mode, it's at B000:0000
+        // We'll assume color mode (most common)
+        let video_segment = 0xB800;
+        let video_offset = 0x0000;
+
+        // Return pointer in ES:DI
+        self.es = video_segment;
+        self.di = video_offset;
+
+        log::debug!(
+            "INT 10h/AH=FEh: Get video buffer -> ES:DI={:04X}:{:04X}",
+            self.es,
+            self.di
         );
     }
 }

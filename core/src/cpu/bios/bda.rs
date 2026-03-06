@@ -50,6 +50,7 @@ const BDA_KEYBOARD_BUFFER_START: usize = 0x80; // Keyboard buffer start pointer 
 const BDA_KEYBOARD_BUFFER_END: usize = 0x82; // Keyboard buffer end pointer (word, normally 0x003E)
 const BDA_EGA_ROWS: usize = 0x84; // EGA/VGA: number of rows on screen minus 1 (byte, e.g. 24 for 25-row mode)
 const BDA_EGA_CHAR_HEIGHT: usize = 0x85; // EGA/VGA: bytes per character (byte, e.g. 16 for 8x16 font)
+const BDA_DISPLAY_COMBINATION_CODE: usize = 0x8A; // PS/2 VGA: DCC word (low=active, high=alternate)
 const BDA_MOUSE_X: usize = 0xE0; // Mouse X position (word)
 const BDA_MOUSE_Y: usize = 0xE2; // Mouse Y position (word)
 const BDA_MOUSE_BUTTONS: usize = 0xE4; // Mouse button state (byte)
@@ -204,6 +205,10 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // Programs (e.g., Turbo Pascal, dBASE) read these to determine screen dimensions
     bus.memory_write_u8(BDA_START + BDA_EGA_ROWS, 24); // 25 rows - 1 = 24
     bus.memory_write_u8(BDA_START + BDA_EGA_CHAR_HEIGHT, 16); // 8x16 VGA font
+
+    // Display combination code (0x0040:008A) - PS/2 VGA extension
+    let dcc = bus.video_card().card_type().display_combination_code();
+    bda_set_display_combination_code(bus, dcc, 0x00);
 
     // Mouse position (0x0040:00E0-00E3) - custom emulator area, not standard BDA
     // Initialize to center of default 640x200 resolution
@@ -409,6 +414,26 @@ fn post_probe_hard_drives(bus: &mut Bus) -> u8 {
     }
     log::info!("found {count} hard drives");
     count
+}
+
+pub(crate) fn bda_get_crt_palette(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_CRT_PALETTE)
+}
+
+pub(crate) fn bda_set_crt_palette(bus: &mut Bus, value: u8) {
+    bus.memory_write_u8(BDA_START + BDA_CRT_PALETTE, value);
+}
+
+pub(crate) fn bda_get_display_combination_code(bus: &Bus) -> (u8, u8) {
+    let code = bus.memory_read_u16(BDA_START + BDA_DISPLAY_COMBINATION_CODE);
+    let active = (code & 0xFF) as u8;
+    let alternate = (code >> 8) as u8;
+    (active, alternate)
+}
+
+pub(crate) fn bda_set_display_combination_code(bus: &mut Bus, active: u8, alternate: u8) {
+    let code = (alternate as u16) << 8 | active as u16;
+    bus.memory_write_u16(BDA_START + BDA_DISPLAY_COMBINATION_CODE, code);
 }
 
 pub(crate) fn bda_get_num_hard_drives(bus: &Bus) -> u8 {
