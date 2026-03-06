@@ -66,17 +66,18 @@ impl Cpu {
     /// INT 15h AH=4Fh - Keyboard Intercept
     ///
     /// Input:
-    ///   AL = scan code
+    ///   AL = scan code, CF = 1 (calling convention)
     ///
     /// Output:
-    ///   CF = 0: proceed to buffer key in BDA
-    ///   CF = 1: key intercepted, skip BDA buffering
+    ///   CF = 1: key NOT intercepted → caller should buffer key in BDA
+    ///   CF = 0: key intercepted/consumed → caller should discard key
     ///
     /// Called by INT 09h before buffering a keystroke. Multitaskers (DESQview, etc.)
     /// install a custom INT 15h to route keystrokes to the active task.
+    /// The default (no interception) is CF=1: pass the key through to the BDA buffer.
     fn int15_keyboard_intercept(&mut self) {
-        // Default: clear CF to indicate key should proceed to BDA buffer
-        self.set_flag(cpu_flag::CARRY, false);
+        // Set CF to indicate key is NOT intercepted and should proceed to BDA buffer
+        self.set_flag(cpu_flag::CARRY, true);
     }
 
     /// INT 15h AH=88h - Get Extended Memory Size

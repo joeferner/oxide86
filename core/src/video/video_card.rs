@@ -12,8 +12,14 @@ use crate::{
     },
 };
 
+// CGA/EGA/VGA CRTC ports
 pub const VIDEO_CARD_CONTROL_ADDR: u16 = 0x03D4;
 pub const VIDEO_CARD_DATA_ADDR: u16 = 0x03D5;
+pub const CGA_COLOR_SELECT_ADDR: u16 = 0x03D9;
+
+// MDA CRTC ports (same 6845 chip but different address; none of our card types are MDA)
+const MDA_CRTC_CONTROL_ADDR: u16 = 0x03B4;
+const MDA_CRTC_DATA_ADDR: u16 = 0x03B5;
 
 pub const VIDEO_CARD_REG_CURSOR_START_LINE: u8 = 0x0a;
 pub const VIDEO_CARD_REG_CURSOR_END_LINE: u8 = 0x0b;
@@ -32,6 +38,7 @@ pub struct VideoCard {
     buffer: Arc<RwLock<VideoBuffer>>,
     vram_size: usize,
     io_register: u8,
+    color_select: u8,
 }
 
 impl VideoCard {
@@ -41,6 +48,7 @@ impl VideoCard {
             buffer,
             vram_size: CGA_MEMORY_SIZE, // TODO change based on video card type
             io_register: 0,
+            color_select: 0,
         }
     }
 
@@ -134,6 +142,7 @@ impl Device for VideoCard {
         buffer.reset();
         self.vram_size = CGA_MEMORY_SIZE; // TODO change based on video card type
         self.io_register = 0;
+        self.color_select = 0;
     }
 
     fn memory_read_u8(&self, addr: usize) -> Option<u8> {
@@ -157,48 +166,82 @@ impl Device for VideoCard {
         }
     }
 
-    fn io_read_u8(&self, _port: u16) -> Option<u8> {
-        None
+    fn io_read_u8(&self, port: u16) -> Option<u8> {
+        match self.card_type {
+            VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
+                // MDA ports: return 0xFF — no MDA card present
+                MDA_CRTC_CONTROL_ADDR | MDA_CRTC_DATA_ADDR => Some(0xFF),
+                VIDEO_CARD_DATA_ADDR => {
+                    let buffer = self.buffer.read().unwrap();
+                    let val = match self.io_register {
+                        VIDEO_CARD_REG_CURSOR_LOC_HIGH => (buffer.cursor_loc() >> 8) as u8,
+                        VIDEO_CARD_REG_CURSOR_LOC_LOW => (buffer.cursor_loc() & 0xFF) as u8,
+                        VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
+                            (buffer.start_address() >> 8) as u8
+                        }
+                        VIDEO_CARD_START_ADDRESS_LOW_REGISTER => {
+                            (buffer.start_address() & 0xFF) as u8
+                        }
+                        _ => 0,
+                    };
+                    Some(val)
+                }
+                CGA_COLOR_SELECT_ADDR => Some(self.color_select),
+                _ => None,
+            },
+        }
     }
 
     fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
-        if port == VIDEO_CARD_CONTROL_ADDR {
-            self.io_register = val;
-            true
-        } else if port == VIDEO_CARD_DATA_ADDR {
-            let mut buffer = self.buffer.write().unwrap();
-            match self.io_register {
-                VIDEO_CARD_REG_CURSOR_START_LINE => {
-                    buffer.set_cursor_start_line(val);
+        match self.card_type {
+            VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
+                // MDA ports: silently ignore — no MDA card present
+                MDA_CRTC_CONTROL_ADDR | MDA_CRTC_DATA_ADDR => true,
+                CGA_COLOR_SELECT_ADDR => {
+                    self.color_select = val;
+                    true
                 }
-                VIDEO_CARD_REG_CURSOR_END_LINE => {
-                    buffer.set_cursor_end_line(val);
+                VIDEO_CARD_CONTROL_ADDR => {
+                    self.io_register = val;
+                    true
                 }
-                VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
-                    let new_start = (buffer.start_address() & 0x00ff) | ((val as u16) << 8);
-                    buffer.set_start_address(new_start);
+                VIDEO_CARD_DATA_ADDR => {
+                    let mut buffer = self.buffer.write().unwrap();
+                    match self.io_register {
+                        VIDEO_CARD_REG_CURSOR_START_LINE => {
+                            buffer.set_cursor_start_line(val);
+                        }
+                        VIDEO_CARD_REG_CURSOR_END_LINE => {
+                            buffer.set_cursor_end_line(val);
+                        }
+                        VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
+                            let new_start =
+                                (buffer.start_address() & 0x00ff) | ((val as u16) << 8);
+                            buffer.set_start_address(new_start);
+                        }
+                        VIDEO_CARD_START_ADDRESS_LOW_REGISTER => {
+                            let new_start = (buffer.start_address() & 0xff00) | val as u16;
+                            buffer.set_start_address(new_start);
+                        }
+                        VIDEO_CARD_REG_CURSOR_LOC_HIGH => {
+                            let new_cursor_loc =
+                                (buffer.cursor_loc() & 0x00ff) | ((val as u16) << 8);
+                            buffer.set_cursor_loc(new_cursor_loc);
+                        }
+                        VIDEO_CARD_REG_CURSOR_LOC_LOW => {
+                            let new_cursor_loc = (buffer.cursor_loc() & 0xff00) | val as u16;
+                            buffer.set_cursor_loc(new_cursor_loc);
+                        }
+                        _ => log::warn!(
+                            "invalid IO Register: 0x{:04X} (val: 0x{:02X})",
+                            self.io_register,
+                            val
+                        ),
+                    }
+                    true
                 }
-                VIDEO_CARD_START_ADDRESS_LOW_REGISTER => {
-                    let new_start = (buffer.start_address() & 0xff00) | val as u16;
-                    buffer.set_start_address(new_start);
-                }
-                VIDEO_CARD_REG_CURSOR_LOC_HIGH => {
-                    let new_cursor_loc = (buffer.cursor_loc() & 0x00ff) | ((val as u16) << 8);
-                    buffer.set_cursor_loc(new_cursor_loc);
-                }
-                VIDEO_CARD_REG_CURSOR_LOC_LOW => {
-                    let new_cursor_loc = (buffer.cursor_loc() & 0xff00) | val as u16;
-                    buffer.set_cursor_loc(new_cursor_loc);
-                }
-                _ => log::warn!(
-                    "invalid IO Register: 0x{:04X} (val: 0x{:02X})",
-                    self.io_register,
-                    val
-                ),
-            }
-            true
-        } else {
-            false
+                _ => false,
+            },
         }
     }
 }

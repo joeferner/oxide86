@@ -200,7 +200,11 @@ impl Bus {
             }
         }
 
-        log::warn!("No device responded to io read port: 0x{port:04X}");
+        if let Some(hint) = unimplemented_port_hint(port) {
+            log::info!("Unhandled io read port: 0x{port:04X} ({hint})");
+        } else {
+            log::warn!("No device responded to io read port: 0x{port:04X}");
+        }
         0xff
     }
 
@@ -215,7 +219,11 @@ impl Bus {
             }
         }
 
-        log::warn!("No device responded to io write port: 0x{port:04X}, val: 0x{val:02X}");
+        if let Some(hint) = unimplemented_port_hint(port) {
+            log::info!("Unhandled io write port: 0x{port:04X} val: 0x{val:02X} ({hint})");
+        } else {
+            log::warn!("No device responded to io write port: 0x{port:04X}, val: 0x{val:02X}");
+        }
     }
 
     /// Load binary data at a specific address
@@ -234,5 +242,15 @@ impl Bus {
     /// Get extended memory size in KB
     pub(crate) fn extended_memory_kb(&self) -> u16 {
         self.memory.extended_memory_kb()
+    }
+}
+
+/// Returns a hint string for ports that are known to be probed but not implemented,
+/// so they can be logged at a lower level than truly unrecognised ports.
+fn unimplemented_port_hint(port: u16) -> Option<&'static str> {
+    match port {
+        0x02F2..=0x02F7 => Some("possible secondary FDC/serial probe"),
+        0x31A0..=0x31AF => Some("unknown ISA card detection probe"),
+        _ => None,
     }
 }
