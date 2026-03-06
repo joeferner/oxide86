@@ -26,6 +26,7 @@ impl Cpu {
         match function {
             0x00 => self.int16_read_char(bus),
             0x01 => self.int16_check_keystroke(bus),
+            0x92 => self.int16_get_keyboard_capabilities(),
             _ => {
                 log::warn!("Unhandled INT 0x16 function: AH=0x{:02X}", function);
             }
@@ -79,5 +80,18 @@ impl Cpu {
             // Set ZF to indicate no keystroke available
             self.set_flag(cpu_flag::ZERO, true);
         }
+    }
+
+    /// INT 16h, AH=92h - Get Keyboard Capabilities Flag
+    /// Returns keyboard capabilities, indicating support for INT 15h keyboard intercept
+    /// Input: None
+    /// Output:
+    ///   AH = capabilities flag
+    ///     Bit 7: INT 15h, AH=4Fh keyboard intercept supported
+    ///   CF = clear (success)
+    fn int16_get_keyboard_capabilities(&mut self) {
+        // Return AH with bit 7 set to indicate INT 15h keyboard intercept is supported
+        self.ax = (self.ax & 0x00FF) | 0x8000;
+        self.set_flag(cpu_flag::CARRY, false);
     }
 }

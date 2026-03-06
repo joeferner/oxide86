@@ -14,15 +14,36 @@ impl Cpu {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
+            0x10 => self.int15_top_view_multi_dos(),
             0x41 => self.int15_wait_external_event(),
+            0x4F => self.int15_keyboard_intercept(),
             0x88 => self.int15_get_extended_memory(bus),
             0xC0 => self.int15_get_system_config(),
+            0xC1 => self.int15_get_ebda_segment(),
             _ => {
                 log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
                 self.set_flag(cpu_flag::CARRY, true);
             }
         }
+    }
+
+    /// INT 15h AH=10h - TopView/MultiDOS Plus Vendor-Specific Function
+    ///
+    /// This function has different meanings depending on the environment:
+    /// - TopView: UNIMPLEMENTED in DESQview 2.x
+    /// - MultiDOS Plus: TEST RESOURCE SEMAPHORE
+    ///
+    /// Output:
+    ///   CF = 1 (function not supported on standard 8086 BIOS)
+    ///
+    /// Note: This is a vendor-specific function not available on standard 8086 systems.
+    /// Standard 8086 BIOS does not implement this function.
+    fn int15_top_view_multi_dos(&mut self) {
+        // This is a vendor-specific function (TopView/MultiDOS Plus)
+        // not available on standard 8086 BIOS
+        // Return function not supported
+        self.set_flag(cpu_flag::CARRY, true);
     }
 
     /// INT 15h AH=41h - Wait for External Event (PS/2)
@@ -40,6 +61,22 @@ impl Cpu {
         // This is a PS/2 function not available on 8086 systems
         // Return function not supported
         self.set_flag(cpu_flag::CARRY, true);
+    }
+
+    /// INT 15h AH=4Fh - Keyboard Intercept
+    ///
+    /// Input:
+    ///   AL = scan code
+    ///
+    /// Output:
+    ///   CF = 0: proceed to buffer key in BDA
+    ///   CF = 1: key intercepted, skip BDA buffering
+    ///
+    /// Called by INT 09h before buffering a keystroke. Multitaskers (DESQview, etc.)
+    /// install a custom INT 15h to route keystrokes to the active task.
+    fn int15_keyboard_intercept(&mut self) {
+        // Default: clear CF to indicate key should proceed to BDA buffer
+        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// INT 15h AH=88h - Get Extended Memory Size
@@ -86,5 +123,21 @@ impl Cpu {
         self.es = INT15_SYSTEM_CONFIG_SEGMENT;
         self.bx = INT15_SYSTEM_CONFIG_OFFSET;
         self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 15h AH=C1h - Get Extended BIOS Data Area (EBDA) Segment Address
+    ///
+    /// Output:
+    ///   ES = segment of EBDA
+    ///   CF = 0 if successful, 1 if EBDA not present
+    ///
+    /// Note: The EBDA is a feature of AT-class and later machines.
+    /// Original PC/XT systems (8086) do not have an EBDA, so this function
+    /// returns CF=1 to indicate the function is not supported.
+    fn int15_get_ebda_segment(&mut self) {
+        // 8086/PC/XT systems do not have an Extended BIOS Data Area
+        // Return function not supported
+        self.set_flag(cpu_flag::CARRY, true);
+        log::info!("INT 15h AH=C1h: EBDA not present (8086/PC/XT system)");
     }
 }
