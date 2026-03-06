@@ -2,7 +2,6 @@ use std::sync::{Arc, RwLock};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use crate::devices::pc_speaker::PcSpeaker;
-#[cfg(test)]
 use crate::devices::uart::ComPortDevice;
 use crate::{
     Device,
@@ -298,7 +297,6 @@ impl Computer {
         self.cpu.wait_for_key_press()
     }
 
-    #[cfg(test)]
     pub fn set_com_port_device(
         &mut self,
         port: u8,

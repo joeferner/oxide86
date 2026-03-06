@@ -9,12 +9,16 @@ use anyhow::Result;
 use clap::Parser;
 use crossterm::{
     cursor,
-    event::{self, DisableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{
+        self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers,
+        MouseButton, MouseEventKind,
+    },
     execute,
     style::{Color, Print, SetBackgroundColor, SetForegroundColor},
     terminal::{self, ClearType, EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode},
 };
 use oxide86_core::{
+    devices::serial_mouse::SerialMouse,
     scan_code::{
         SCAN_CODE_F12, SCAN_CODE_LEFT_ALT, SCAN_CODE_LEFT_CTRL, SCAN_CODE_LEFT_SHIFT,
         SCAN_CODE_RELEASE,
@@ -59,7 +63,8 @@ fn main() -> Result<()> {
     let mut video_cache: Vec<VideoCachedValue> = vec![];
     let cli = Cli::parse();
     let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
-    let mut computer = create_computer(&cli.common, video_buffer.clone())?;
+    let mouse = Arc::new(RwLock::new(SerialMouse::new()));
+    let mut computer = create_computer(&cli.common, video_buffer.clone(), mouse.clone())?;
 
     let mut stdout = std::io::stdout();
     let mut last_modifiers = KeyModifiers::empty();
@@ -69,10 +74,16 @@ fn main() -> Result<()> {
     execute!(
         stdout,
         EnterAlternateScreen,
+        EnableMouseCapture,
         SetForegroundColor(Color::White),
         SetBackgroundColor(Color::Black),
         terminal::Clear(ClearType::All)
     )?;
+
+    let mut last_mouse_col: u16 = 0;
+    let mut last_mouse_row: u16 = 0;
+    let mut mouse_left: bool = false;
+    let mut mouse_right: bool = false;
 
     let mut quit_from_command_mode = false;
     while computer.get_exit_code().is_none() && !quit_from_command_mode {
@@ -88,7 +99,41 @@ fn main() -> Result<()> {
         draw_frame(&mut video_cache, &video_buffer, &mut stdout)?;
 
         while event::poll(Duration::from_secs(0))? {
-            if let Event::Key(key_event) = event::read()? {
+            let ev = event::read()?;
+            if let Event::Mouse(mouse_event) = ev {
+                match mouse_event.kind {
+                    MouseEventKind::Moved | MouseEventKind::Drag(_) => {
+                        let dx = (mouse_event.column as i16) - (last_mouse_col as i16);
+                        let dy = (mouse_event.row as i16) - (last_mouse_row as i16);
+                        last_mouse_col = mouse_event.column;
+                        last_mouse_row = mouse_event.row;
+                        if dx != 0 || dy != 0 {
+                            mouse.write().unwrap().push_motion(dx * 2, dy * 4);
+                        }
+                    }
+                    MouseEventKind::Down(btn) => {
+                        last_mouse_col = mouse_event.column;
+                        last_mouse_row = mouse_event.row;
+                        match btn {
+                            MouseButton::Left => mouse_left = true,
+                            MouseButton::Right => mouse_right = true,
+                            _ => {}
+                        }
+                        mouse.write().unwrap().push_buttons(mouse_left, mouse_right);
+                    }
+                    MouseEventKind::Up(btn) => {
+                        last_mouse_col = mouse_event.column;
+                        last_mouse_row = mouse_event.row;
+                        match btn {
+                            MouseButton::Left => mouse_left = false,
+                            MouseButton::Right => mouse_right = false,
+                            _ => {}
+                        }
+                        mouse.write().unwrap().push_buttons(mouse_left, mouse_right);
+                    }
+                    _ => {}
+                }
+            } else if let Event::Key(key_event) = ev {
                 // Only process key press events; ignore release and repeat to avoid
                 // duplicate input on Windows (which emits both Press and Release events)
                 if key_event.kind == KeyEventKind::Press {

@@ -23,8 +23,12 @@
     - [ ] Remove CLI disable-pc-speaker
     - [ ] Remove NullSpeaker
     - [ ] Remove RodioSpeaker
-- [ ] Command mode reset
 - [ ] Mouse
+  - [ ] no-vibe-transition
+    - [ ] Remove CLI com1,com2
+    - [ ] Remove serial_mouse.rs
+    - [ ] Remove terminal_mouse.rs
+- [ ] Command mode reset
 - [ ] Joystick
 - [ ] AdLib
   - [ ] CLI --sound-card=none/adlib option

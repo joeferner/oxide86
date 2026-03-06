@@ -37,6 +37,7 @@ mod macros {
 mod cpu;
 mod keyboard;
 mod mock_com_device;
+mod mouse;
 mod pit;
 mod uart;
 

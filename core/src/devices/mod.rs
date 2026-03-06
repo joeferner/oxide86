@@ -6,4 +6,5 @@ pub mod pic;
 pub mod pit;
 pub mod printer;
 pub mod rtc;
+pub mod serial_mouse;
 pub mod uart;

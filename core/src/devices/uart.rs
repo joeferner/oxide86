@@ -63,6 +63,9 @@ impl Port {
         self.msr = 0x00;
         self.rbr.set(0x00);
         self.thr.set(None);
+        if let Some(device) = &self.device {
+            device.write().unwrap().reset();
+        }
     }
 
     /// Retry sending a buffered THR byte to the device. If the device now accepts
@@ -119,12 +122,48 @@ impl Default for Port {
     }
 }
 
+/// MCR (Modem Control Register) signal lines, passed to [`ComPortDevice::modem_control_changed`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModemControlLines {
+    /// DTR — Data Terminal Ready (MCR bit 0)
+    pub dtr: bool,
+    /// RTS — Request To Send (MCR bit 1)
+    pub rts: bool,
+    /// OUT1 — general-purpose output 1 (MCR bit 2)
+    pub out1: bool,
+    /// OUT2 — general-purpose output 2 / IRQ enable on AT hardware (MCR bit 3)
+    pub out2: bool,
+    /// LOOP — internal loopback mode (MCR bit 4)
+    pub loopback: bool,
+}
+
+impl ModemControlLines {
+    pub fn from_mcr(mcr: u8) -> Self {
+        Self {
+            dtr: mcr & 0x01 != 0,
+            rts: mcr & 0x02 != 0,
+            out1: mcr & 0x04 != 0,
+            out2: mcr & 0x08 != 0,
+            loopback: mcr & 0x10 != 0,
+        }
+    }
+}
+
 pub trait ComPortDevice {
+    fn reset(&mut self);
+
     /// try reading a value from the device. If a value is not ready return None.
     fn read(&mut self) -> Option<u8>;
 
     /// try writing a value to the device. If the device is not ready to write return false.
     fn write(&mut self, value: u8) -> bool;
+
+    /// Returns and clears a pending IRQ condition on this device (e.g. RX data available).
+    fn take_irq(&mut self) -> bool;
+
+    /// Called whenever the MCR is written and the modem control lines change.
+    /// The default implementation does nothing.
+    fn modem_control_changed(&mut self, lines: ModemControlLines);
 }
 
 pub(crate) struct Uart {
@@ -138,7 +177,19 @@ impl Uart {
         }
     }
 
-    #[cfg(test)]
+    /// Returns and clears a pending IRQ for the given port (0-based).
+    /// Gated on IER bit 0 (ERBFI — Received Data Available interrupt enable).
+    pub(crate) fn take_pending_irq(&self, port_idx: usize) -> bool {
+        let p = &self.ports[port_idx];
+        if p.ier & 0x01 == 0 {
+            return false;
+        }
+        let Some(ref dev) = p.device else {
+            return false;
+        };
+        dev.write().is_ok_and(|mut g| g.take_irq())
+    }
+
     pub(crate) fn set_com_port_device(
         &mut self,
         port: u8,
@@ -240,7 +291,18 @@ impl Device for Uart {
                 }
             }
             3 => p.lcr = val,
-            4 => p.mcr = val,
+            4 => {
+                let prev = p.mcr;
+                p.mcr = val;
+                if val != prev
+                    && let Some(ref dev) = p.device
+                {
+                    let lines = ModemControlLines::from_mcr(val);
+                    if let Ok(mut guard) = dev.write() {
+                        guard.modem_control_changed(lines);
+                    }
+                }
+            }
             5 => p.lsr.set(val),
             6 => p.msr = val,
             _ => return false,

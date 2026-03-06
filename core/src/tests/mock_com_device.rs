@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, VecDeque};
 
-use crate::devices::uart::ComPortDevice;
+use crate::devices::uart::{ComPortDevice, ModemControlLines};
 
 pub(crate) struct MockComDevice {
     /// Simulates hardware delay/asynchronicity
@@ -41,6 +41,19 @@ impl MockComDevice {
 }
 
 impl ComPortDevice for MockComDevice {
+    fn reset(&mut self) {
+        self.async_count = 0;
+        self.input_buffer.clear();
+        self.output_queue.clear();
+        self.matched_history.clear();
+    }
+
+    fn take_irq(&mut self) -> bool {
+        false
+    }
+
+    fn modem_control_changed(&mut self, _lines: ModemControlLines) {}
+
     fn read(&mut self) -> Option<u8> {
         if self.async_count >= self.async_threshold {
             if let Some(out) = self.output_queue.pop_front() {
