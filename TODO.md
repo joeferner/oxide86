@@ -24,6 +24,7 @@
     - [ ] Remove NullSpeaker
     - [ ] Remove RodioSpeaker
 - [ ] Mouse
+  - [ ] test with examples/mouse.asm
   - [ ] no-vibe-transition
     - [ ] Remove CLI com1,com2
     - [ ] Remove serial_mouse.rs
