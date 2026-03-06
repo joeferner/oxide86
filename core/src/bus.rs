@@ -1,5 +1,4 @@
 use std::{
-    any::Any,
     cell::{Ref, RefCell, RefMut},
     rc::Rc,
 };
@@ -37,7 +36,7 @@ pub(crate) struct Bus {
     #[cfg(test)]
     uart: Rc<RefCell<Uart>>,
     rtc: Option<Rc<RefCell<Rtc>>>,
-    video_card: Option<Rc<RefCell<VideoCard>>>,
+    video_card: Rc<RefCell<VideoCard>>,
 
     /// Cycle count to accurately track CPU cycles
     cycle_count: u32,
@@ -49,6 +48,7 @@ impl Bus {
         cpu_clock_speed: u32,
         clock: Option<Box<dyn Clock>>,
         hard_disks: Vec<Box<dyn Disk>>,
+        video_card: Rc<RefCell<VideoCard>>,
     ) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
         let pit = Rc::new(RefCell::new(Pit::new(cpu_clock_speed)));
@@ -66,6 +66,7 @@ impl Bus {
             uart.clone(),
             floppy_controller.clone(),
             hard_disk_controller.clone(),
+            video_card.clone(),
         ];
         let rtc = if let Some(clock) = clock {
             let rtc = Rc::new(RefCell::new(Rtc::new(clock)));
@@ -84,7 +85,7 @@ impl Bus {
             keyboard_controller,
             #[cfg(test)]
             uart,
-            video_card: None,
+            video_card,
             cycle_count: 0,
             rtc,
         }
@@ -123,10 +124,12 @@ impl Bus {
         self.keyboard_controller.borrow_mut()
     }
 
-    pub(crate) fn video_card_mut(&self) -> Option<RefMut<'_, VideoCard>> {
-        self.video_card
-            .as_ref()
-            .map(|video_card| video_card.borrow_mut())
+    pub(crate) fn video_card(&self) -> Ref<'_, VideoCard> {
+        self.video_card.borrow()
+    }
+
+    pub(crate) fn video_card_mut(&self) -> RefMut<'_, VideoCard> {
+        self.video_card.borrow_mut()
     }
 
     #[cfg(test)]
@@ -144,15 +147,6 @@ impl Bus {
 
     pub(crate) fn add_device<T: Device + 'static>(&mut self, device: T) {
         let rc = Rc::new(RefCell::new(device));
-
-        let rc_any: Rc<dyn Any> = rc.clone();
-        if let Ok(dc) = Rc::downcast::<RefCell<VideoCard>>(rc_any) {
-            if self.video_card.is_some() {
-                panic!("video card already added");
-            }
-            self.video_card = Some(dc);
-        }
-
         self.devices.push(rc);
     }
 

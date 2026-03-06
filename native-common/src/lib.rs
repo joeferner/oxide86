@@ -1,4 +1,8 @@
-use std::sync::{Arc, RwLock};
+use std::{
+    cell::RefCell,
+    rc::Rc,
+    sync::{Arc, RwLock},
+};
 
 use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
@@ -6,7 +10,7 @@ use oxide86_core::{
     cpu::CpuType,
     disk::{BackedDisk, Disk, DriveNumber},
     parse_hex_or_dec,
-    video::{VideoBuffer, VideoCard},
+    video::{VideoBuffer, VideoCard, VideoCardType},
 };
 
 use crate::{cli::CommonCli, clock::NativeClock, disk::FileDiskBackend};
@@ -24,6 +28,14 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
     };
 
     let hard_disks = load_hard_disks(&cli.hard_disks);
+    let video_card_type = if let Some(video_card_type) = VideoCardType::parse(&cli.video_card) {
+        video_card_type
+    } else {
+        return Err(anyhow!(
+            "Could not parse video card type: {}",
+            cli.video_card
+        ));
+    };
 
     let mut computer = Computer::new(ComputerConfig {
         cpu_type,
@@ -31,12 +43,11 @@ pub fn create_computer(cli: &CommonCli, buffer: Arc<RwLock<VideoBuffer>>) -> Res
         memory_size: parse_memory(&cli.memory)?,
         clock: Box::new(NativeClock::new()),
         hard_disks,
+        video_card: Rc::new(RefCell::new(VideoCard::new(video_card_type, buffer))),
     });
     if cli.exec_log {
         computer.set_exec_logging_enabled(true);
     }
-
-    computer.add_device(VideoCard::new(buffer));
 
     // Load floppy A:
     if let Some(spec) = &cli.floppy_a {

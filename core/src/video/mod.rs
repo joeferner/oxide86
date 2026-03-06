@@ -4,9 +4,11 @@ pub mod renderer;
 pub mod text;
 pub mod video_buffer;
 pub mod video_card;
+pub mod video_card_type;
 
 pub use video_buffer::VideoBuffer;
 pub use video_card::VideoCard;
+pub use video_card_type::VideoCardType;
 
 use crate::{
     bus::Bus,

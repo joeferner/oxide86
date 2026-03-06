@@ -1,6 +1,6 @@
-use std::collections::VecDeque;
 #[cfg(test)]
 use std::sync::{Arc, RwLock};
+use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use crate::{
     Device,
@@ -11,6 +11,7 @@ use crate::{
     disk::{Disk, DriveNumber, disk_read_sectors},
     memory::Memory,
     physical_address,
+    video::VideoCard,
 };
 #[cfg(test)]
 use crate::{devices::uart::ComPortDevice, disk::DiskError};
@@ -22,6 +23,7 @@ pub struct ComputerConfig {
     pub memory_size: usize,
     pub clock: Box<dyn Clock>,
     pub hard_disks: Vec<Box<dyn Disk>>,
+    pub video_card: Rc<RefCell<VideoCard>>,
 }
 
 pub struct Computer {
@@ -44,7 +46,13 @@ impl Computer {
         };
         let mut computer = Self {
             cpu,
-            bus: Bus::new(memory, clock_speed, clock, config.hard_disks),
+            bus: Bus::new(
+                memory,
+                clock_speed,
+                clock,
+                config.hard_disks,
+                config.video_card,
+            ),
             key_presses: VecDeque::new(),
             boot_drive: None,
         };

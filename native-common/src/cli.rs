@@ -27,6 +27,10 @@ pub struct CommonCli {
     #[arg(long, default_value = "2048", value_name = "KB")]
     pub memory: String,
 
+    /// Video card type to emulate (cga, ega, vga)
+    #[arg(long = "video-card", default_value = "vga")]
+    pub video_card: String,
+
     /// Enable execution logging (logs each instruction to oxide86.log)
     #[arg(long = "exec-log")]
     pub exec_log: bool,

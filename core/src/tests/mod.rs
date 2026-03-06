@@ -14,6 +14,8 @@ const TEST_OFFSET: u16 = 0x0100;
 mod macros {
     macro_rules! make_computer {
         ($($key:ident: $val:expr),* $(,)?) => {{
+            let video_buffer = std::sync::Arc::new(std::sync::RwLock::new($crate::video::VideoBuffer::new()));
+            let video_card = $crate::video::VideoCard::new(crate::video::VideoCardType::VGA, video_buffer.clone());
             #[allow(unused_mut)]
             let mut config = $crate::computer::ComputerConfig {
                 clock: Box::new($crate::devices::rtc::tests::MockClock::new()),
@@ -21,11 +23,10 @@ mod macros {
                 cpu_type: $crate::cpu::CpuType::I8086,
                 memory_size: 2048 * 1024,
                 hard_disks: vec![],
+                video_card: std::rc::Rc::new(std::cell::RefCell::new(video_card)),
             };
             $(config.$key = $val;)*
-            let video_buffer = std::sync::Arc::new(std::sync::RwLock::new($crate::video::VideoBuffer::new()));
-            let mut computer = $crate::computer::Computer::new(config);
-            computer.add_device($crate::video::VideoCard::new(video_buffer.clone()));
+            let computer = $crate::computer::Computer::new(config);
             (computer, video_buffer)
         }};
     }

@@ -8,6 +8,7 @@ use crate::{
     video::{
         CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, TEXT_MODE_COLS, TEXT_MODE_ROWS,
         VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VideoBuffer,
+        VideoCardType,
     },
 };
 
@@ -27,18 +28,24 @@ pub(crate) struct ModeInfo {
 }
 
 pub struct VideoCard {
+    card_type: VideoCardType,
     buffer: Arc<RwLock<VideoBuffer>>,
     vram_size: usize,
     io_register: u8,
 }
 
 impl VideoCard {
-    pub fn new(buffer: Arc<RwLock<VideoBuffer>>) -> Self {
+    pub fn new(card_type: VideoCardType, buffer: Arc<RwLock<VideoBuffer>>) -> Self {
         Self {
+            card_type,
             buffer,
             vram_size: CGA_MEMORY_SIZE, // TODO change based on video card type
             io_register: 0,
         }
+    }
+
+    pub(crate) fn card_type(&self) -> VideoCardType {
+        self.card_type
     }
 
     fn internal_read_u8(&self, addr: usize) -> u8 {

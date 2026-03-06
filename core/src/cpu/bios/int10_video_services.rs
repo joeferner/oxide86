@@ -11,9 +11,10 @@ use crate::{
             bda_set_video_mode, bda_set_video_page_offset, bda_set_video_page_size,
         },
     },
+    physical_address,
     video::{
         CGA_MEMORY_START, VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
-        video_calculate_linear_offset,
+        VideoCardType, video_calculate_linear_offset,
         video_card::{
             VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_DATA_ADDR, VIDEO_CARD_REG_CURSOR_END_LINE,
             VIDEO_CARD_REG_CURSOR_START_LINE,
@@ -40,6 +41,8 @@ impl Cpu {
             0x0A => self.int10_write_char(bus),
             0x0E => self.int10_teletype_output(bus),
             0x0F => self.int10_get_video_mode(bus),
+            0x12 => self.int10_alternate_function_select(bus),
+            0x1B => self.int10_functionality_state_info(bus),
             _ => {
                 log::warn!("Unhandled INT 0x10 function: AH=0x{:02X}", function);
             }
@@ -62,12 +65,7 @@ impl Cpu {
         let clear_screen_flag = (mode & 0x80) == 0;
         let mode = mode & 0x7f;
 
-        let mode_info = if let Some(mut video_card) = bus.video_card_mut() {
-            video_card.set_mode(mode, clear_screen_flag)
-        } else {
-            log::warn!("no video card found");
-            return;
-        };
+        let mode_info = bus.video_card_mut().set_mode(mode, clear_screen_flag);
 
         let mode_info = if let Some(mode_info) = mode_info {
             mode_info
@@ -522,6 +520,260 @@ impl Cpu {
 
         self.ax = (columns << 8) | (mode as u16);
         self.bx = (self.bx & 0x00FF) | ((page as u16) << 8);
+    }
+
+    /// INT 10h, AH=12h - Video Alternate Function Select
+    /// BL = subfunction:
+    ///   10h = Get EGA info
+    ///   30h = Select vertical resolution
+    ///   31h = Palette loading
+    ///   32h = Video enable/disable
+    ///   33h = Summing
+    ///   34h = Cursor emulation
+    ///   35h = Display switch
+    ///   36h = Video refresh control
+    fn int10_alternate_function_select(&mut self, bus: &Bus) {
+        // CGA BIOS does not implement AH=12h (EGA/VGA function only)
+        if bus.video_card().card_type() == VideoCardType::CGA {
+            log::warn!("INT 10h AH=12h: not supported by CGA card - ignoring");
+            return;
+        }
+
+        let subfunction = (self.bx & 0xFF) as u8; // BL
+
+        match subfunction {
+            0x10 => {
+                // Get EGA info
+                // Returns: BH = color/mono mode, BL = memory size, CH = feature bits, CL = switch setting
+                self.bx = 0x0003; // BH=0 (color mode), BL=3 (256KB video memory)
+                self.cx = 0x0000; // CH=0, CL=0
+                log::debug!("INT 10h/AH=12h/BL=10h: Get EGA info");
+            }
+            0x30 => {
+                // Select vertical resolution
+                // Input: AL = resolution (0=200, 1=350, 2=400 scan lines)
+                // Output: AL = 12h if function supported
+                let requested_resolution = (self.ax & 0xFF) as u8; // AL
+                let scan_lines = match requested_resolution {
+                    0x00 => 200,
+                    0x01 => 350,
+                    0x02 => 400,
+                    _ => {
+                        log::warn!(
+                            "INT 10h/AH=12h/BL=30h: Invalid resolution code AL=0x{:02X}",
+                            requested_resolution
+                        );
+                        0 // Invalid
+                    }
+                };
+
+                if scan_lines > 0 {
+                    log::debug!(
+                        "INT 10h/AH=12h/BL=30h: Select vertical resolution {} scan lines (AL=0x{:02X})",
+                        scan_lines,
+                        requested_resolution
+                    );
+                }
+
+                // Return AL = 12h to indicate function is supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+            }
+            0x31 => {
+                // Palette loading (enable/disable default palette loading)
+                // AL = 0 enable, 1 disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::warn!("INT 10h/AH=12h/BL=31h: Palette loading control");
+            }
+            0x32 => {
+                // Video enable/disable
+                // AL = 0 enable, 1 disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::warn!("INT 10h/AH=12h/BL=32h: Video enable/disable");
+            }
+            0x33 => {
+                // Gray-scale summing enable/disable
+                // AL = 0 enable, 1 disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::warn!("INT 10h/AH=12h/BL=33h: Gray-scale summing");
+            }
+            0x34 => {
+                // Cursor emulation enable/disable
+                // AL = 0 enable, 1 disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::warn!("INT 10h/AH=12h/BL=34h: Cursor emulation");
+            }
+            0x35 => {
+                // Display switch interface
+                // AL = 0 initial switch, 80h adapter off, FF disable
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::warn!("INT 10h/AH=12h/BL=35h: Display switch");
+            }
+            0x36 => {
+                // Video refresh control
+                // AL = 0 enable refresh, 1 disable refresh
+                // Returns: AL = 12h if supported
+                self.ax = (self.ax & 0xFF00) | 0x12;
+                log::warn!("INT 10h/AH=12h/BL=36h: Video refresh control");
+            }
+            _ => {
+                log::warn!(
+                    "Unhandled INT 10h/AH=12h alternate function: BL=0x{:02X}",
+                    subfunction
+                );
+            }
+        }
+    }
+
+    /// INT 10h, AH=1Bh - Return Functionality/State Information
+    /// Input:
+    ///   BX = implementation type (0000h = return state info)
+    ///   ES:DI = pointer to 64-byte buffer
+    /// Output:
+    ///   AL = 1Bh if function supported
+    ///   ES:DI buffer filled with state information
+    fn int10_functionality_state_info(&mut self, bus: &mut Bus) {
+        // AH=1Bh is a VGA-only function; CGA and EGA leave registers unchanged
+        if bus.video_card().card_type() != VideoCardType::VGA {
+            log::warn!(
+                "INT 10h AH=1Bh: not supported by {} card - ignoring",
+                bus.video_card().card_type()
+            );
+            return;
+        }
+
+        let impl_type = self.bx;
+
+        if impl_type != 0x0000 {
+            // Only implementation type 0 is supported
+            log::warn!(
+                "INT 10h/AH=1Bh: Unsupported implementation type: 0x{:04X}",
+                impl_type
+            );
+            return;
+        }
+
+        let buffer_addr = physical_address(self.es, self.di);
+
+        // Build the 64-byte state information structure
+        // Offset 00h-03h: Pointer to static functionality table (we'll point to a dummy location)
+        // For simplicity, we set this to 0 (null pointer)
+        bus.memory_write_u16(buffer_addr, 0x0000); // Offset
+        bus.memory_write_u16(buffer_addr + 2, 0x0000); // Segment
+
+        // Offset 04h: Current video mode
+        let mode = bda_get_video_mode(bus);
+        bus.memory_write_u8(buffer_addr + 4, mode);
+
+        // Offset 05h-06h: Number of columns
+        let cols = bda_get_columns(bus);
+        bus.memory_write_u16(buffer_addr + 5, cols);
+
+        // Offset 07h-08h: Length of regen buffer (page size in bytes)
+        // cols * rows * 2 bytes per cell (char + attr)
+        let rows = bda_get_rows(bus);
+        let buffer_size = cols * rows as u16 * 2;
+        bus.memory_write_u16(buffer_addr + 7, buffer_size);
+
+        // Offset 09h-0Ah: Starting address in regen buffer (current page offset)
+        bus.memory_write_u16(buffer_addr + 9, 0x0000);
+
+        // Offset 0Bh-1Ah: Cursor positions for 8 pages (row, column pairs)
+        for page in 0..8 {
+            let cursor = bda_get_cursor_pos(bus, page);
+            let offset = buffer_addr + 0x0B + (page as usize * 2);
+            if page == 0 {
+                bus.memory_write_u8(offset, cursor.col as u8); // Column
+                bus.memory_write_u8(offset + 1, cursor.row as u8); // Row
+            } else {
+                bus.memory_write_u8(offset, 0);
+                bus.memory_write_u8(offset + 1, 0);
+            }
+        }
+
+        // Offset 1Bh-1Ch: Cursor type (start/end scan lines)
+        let cursor_start = bda_get_cursor_start_line(bus);
+        let cursor_end = bda_get_cursor_end_line(bus);
+        bus.memory_write_u8(buffer_addr + 0x1B, cursor_end);
+        bus.memory_write_u8(buffer_addr + 0x1C, cursor_start);
+
+        // Offset 1Dh: Active display page
+        bus.memory_write_u8(buffer_addr + 0x1D, 0);
+
+        // Offset 1Eh-1Fh: CRTC port address (3D4h for color, 3B4h for mono)
+        bus.memory_write_u16(buffer_addr + 0x1E, 0x03D4);
+
+        // Offset 20h: Current setting of register 3x8h
+        bus.memory_write_u8(buffer_addr + 0x20, 0x00);
+
+        // Offset 21h: Current setting of register 3x9h
+        bus.memory_write_u8(buffer_addr + 0x21, 0x00);
+
+        // Offset 22h: Number of rows - 1
+        bus.memory_write_u8(buffer_addr + 0x22, rows - 1);
+
+        // Offset 23h-24h: Character height (scan lines per character)
+        bus.memory_write_u16(buffer_addr + 0x23, 16); // 16 scan lines for VGA
+
+        // Offset 25h: Active display combination code
+        bus.memory_write_u8(buffer_addr + 0x25, 0x08); // VGA with color analog display
+
+        // Offset 26h: Alternate display combination code
+        bus.memory_write_u8(buffer_addr + 0x26, 0x00); // No alternate display
+
+        // Offset 27h-28h: Number of colors supported (0 = mono)
+        bus.memory_write_u16(buffer_addr + 0x27, 16); // 16 colors in text mode
+
+        // Offset 29h: Number of pages supported
+        bus.memory_write_u8(buffer_addr + 0x29, 8);
+
+        // Offset 2Ah: Number of scan lines active
+        // 0 = 200, 1 = 350, 2 = 400
+        bus.memory_write_u8(buffer_addr + 0x2A, 2); // 400 scan lines
+
+        // Offset 2Bh: Primary character block
+        bus.memory_write_u8(buffer_addr + 0x2B, 0);
+
+        // Offset 2Ch: Secondary character block
+        bus.memory_write_u8(buffer_addr + 0x2C, 0);
+
+        // Offset 2Dh: Miscellaneous state flags
+        // Bit 0: All modes on all displays
+        // Bit 1: Gray summing enabled
+        // Bit 2: Monochrome display attached
+        // Bit 3: Default palette loading disabled
+        // Bit 4: Cursor emulation enabled
+        // Bit 5: Blinking enabled
+        // Bit 6-7: Reserved
+        bus.memory_write_u8(buffer_addr + 0x2D, 0x21); // All modes + blinking
+
+        // Offset 2Eh-2Fh: Reserved
+        bus.memory_write_u8(buffer_addr + 0x2E, 0);
+        bus.memory_write_u8(buffer_addr + 0x2F, 0);
+
+        // Offset 30h: Video memory available
+        // 0 = 64KB, 1 = 128KB, 2 = 192KB, 3 = 256KB
+        bus.memory_write_u8(buffer_addr + 0x30, 3); // 256KB
+
+        // Offset 31h: Save pointer state flags
+        bus.memory_write_u8(buffer_addr + 0x31, 0);
+
+        // Offset 32h-3Fh: Reserved (fill with zeros)
+        for i in 0x32..0x40 {
+            bus.memory_write_u8(buffer_addr + i, 0);
+        }
+
+        // Return AL = 1Bh to indicate function is supported
+        self.ax = (self.ax & 0xFF00) | 0x1B;
+
+        log::trace!(
+            "INT 10h/AH=1Bh: Returned functionality/state info at {:05X}",
+            buffer_addr
+        );
     }
 }
 

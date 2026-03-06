@@ -336,10 +336,13 @@ impl Cpu {
 
 #[cfg(test)]
 mod tests {
+    use std::cell::RefCell;
+    use std::rc::Rc;
     use std::sync::{Arc, RwLock};
 
     use crate::cpu::CpuType;
     use crate::devices::rtc::tests::MockClock;
+    use crate::video::VideoCardType;
     use crate::{
         bus::Bus,
         cpu::Cpu,
@@ -351,13 +354,16 @@ mod tests {
         let cpu_clock_speed = 8_000_000;
         let cpu = Cpu::new(CpuType::I8086, cpu_clock_speed);
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
-        let mut bus = Bus::new(
+        let bus = Bus::new(
             Memory::new(1024),
             cpu_clock_speed,
             Some(Box::new(MockClock::new())),
             vec![],
+            Rc::new(RefCell::new(VideoCard::new(
+                VideoCardType::VGA,
+                video_buffer,
+            ))),
         );
-        bus.add_device(VideoCard::new(video_buffer));
 
         (cpu, bus)
     }

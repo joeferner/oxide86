@@ -17,7 +17,9 @@
 - [X] Command mode switch floppy disk
 - [ ] Get MS-DOS 4.01 Working
 - [ ] PC Speaker
-- [ ] remove functions from bus to get internal devices unless really needed
+- [ ] Command mode reset
+- [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions
-- [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
+- [ ] remove functions from bus to get internal devices unless really needed
+- [ ] check all #[allow(dead_code)]
