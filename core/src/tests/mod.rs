@@ -25,6 +25,7 @@ mod macros {
                 hard_disks: vec![],
                 video_card_type: crate::video::VideoCardType::CGA,
                 video_buffer: video_buffer.clone(),
+                pc_speaker: Box::new($crate::devices::pc_speaker::NullPcSpeaker::new())
             };
             $(config.$key = $val;)*
             let computer = $crate::computer::Computer::new(config);

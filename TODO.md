@@ -18,7 +18,16 @@
 - [X] Get MS-DOS 4.01 Working
 - [ ] Get MS-DOS 5.0 Working
 - [ ] PC Speaker
+  - [ ] test with examples/pc_speaker.asm
+  - [ ] no-vide-transition
+    - [ ] Remove CLI disable-pc-speaker
+    - [ ] Remove NullSpeaker
+    - [ ] Remove RodioSpeaker
 - [ ] Command mode reset
+- [ ] Mouse
+- [ ] Joystick
+- [ ] AdLib
+  - [ ] CLI --sound-card=none/adlib option
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions

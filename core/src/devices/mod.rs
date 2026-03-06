@@ -1,6 +1,7 @@
 pub mod floppy_disk_controller;
 pub mod hard_disk_controller;
 pub mod keyboard_controller;
+pub mod pc_speaker;
 pub mod pic;
 pub mod pit;
 pub mod printer;

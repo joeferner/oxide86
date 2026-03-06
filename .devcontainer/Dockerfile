@@ -4,7 +4,7 @@ RUN apt-get update
 
 # install wasm pack, llvm-cov, flamegraph, and nasm
 RUN \
-  apt-get install -y linux-perf nasm mtools dosfstools xxd \
+  apt-get install -y linux-perf nasm mtools dosfstools xxd alsa-utils libasound2-dev \
   && rustup target add wasm32-unknown-unknown \
   && cargo install wasm-pack \
   && cargo install cargo-llvm-cov \

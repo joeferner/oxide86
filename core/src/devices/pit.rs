@@ -1,6 +1,6 @@
 use std::any::Any;
 
-use crate::Device;
+use crate::{Device, devices::pc_speaker::PcSpeaker};
 
 /// PIT oscillator frequency in Hz.
 pub const PIT_FREQUENCY_HZ: u64 = 1_193_182;
@@ -63,10 +63,11 @@ pub(crate) struct Pit {
     ch2: Channel,
     /// Port B (0x0061): bit 0 = timer 2 gate, bit 1 = speaker enable.
     port_b: u8,
+    pc_speaker: Box<dyn PcSpeaker>,
 }
 
 impl Pit {
-    pub(crate) fn new(cpu_clock_speed: u32) -> Self {
+    pub(crate) fn new(cpu_clock_speed: u32, pc_speaker: Box<dyn PcSpeaker>) -> Self {
         Self {
             cpu_clock_speed,
             cycles_per_irq: ((cpu_clock_speed as u64 * PIT_DIVISOR) / PIT_FREQUENCY_HZ) as u32,
@@ -74,6 +75,28 @@ impl Pit {
             ch0: Channel::default(),
             ch2: Channel::default(),
             port_b: 0x00,
+            pc_speaker,
+        }
+    }
+
+    fn speaker_active(&self) -> bool {
+        self.port_b & 0x03 == 0x03
+    }
+
+    fn ch2_freq(&self) -> f32 {
+        let d = if self.ch2.divisor == 0 {
+            PIT_DIVISOR
+        } else {
+            self.ch2.divisor as u64
+        };
+        PIT_FREQUENCY_HZ as f32 / d as f32
+    }
+
+    fn update_speaker(&mut self) {
+        if self.speaker_active() {
+            self.pc_speaker.enable(self.ch2_freq());
+        } else {
+            self.pc_speaker.disable();
         }
     }
 
@@ -117,6 +140,7 @@ impl Device for Pit {
         self.ch0 = Channel::default();
         self.ch2 = Channel::default();
         self.port_b = 0x00;
+        self.pc_speaker.disable();
     }
 
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
@@ -163,11 +187,13 @@ impl Device for Pit {
             PIT_CHANNEL_2 => {
                 if let Some(divisor) = self.ch2.write(val) {
                     self.ch2.divisor = divisor;
+                    self.update_speaker();
                 }
                 true
             }
             PORT_B => {
                 self.port_b = val;
+                self.update_speaker();
                 true
             }
             _ => false,

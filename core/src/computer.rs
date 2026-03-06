@@ -1,11 +1,12 @@
 use std::sync::{Arc, RwLock};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
+use crate::devices::pc_speaker::PcSpeaker;
 #[cfg(test)]
 use crate::devices::uart::ComPortDevice;
 use crate::{
     Device,
-    bus::Bus,
+    bus::{Bus, BusConfig},
     byte_to_printable_char,
     cpu::{Cpu, CpuType, bios::int09_keyboard_hardware_interrupt::scan_code_to_ascii},
     devices::rtc::{CMOS_REG_FLOPPY_TYPES, Clock, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
@@ -24,6 +25,7 @@ pub struct ComputerConfig {
     pub hard_disks: Vec<Box<dyn Disk>>,
     pub video_card_type: VideoCardType,
     pub video_buffer: Arc<RwLock<VideoBuffer>>,
+    pub pc_speaker: Box<dyn PcSpeaker>,
 }
 
 pub struct Computer {
@@ -38,7 +40,7 @@ impl Computer {
         let cpu = Cpu::new(config.cpu_type, config.clock_speed);
         log::info!("Memory {}kb", config.memory_size / 1024);
         let memory = Memory::new(config.memory_size);
-        let clock_speed = cpu.clock_speed();
+        let cpu_clock_speed = cpu.clock_speed();
         let clock = if config.cpu_type == CpuType::I8086 {
             None
         } else {
@@ -50,7 +52,14 @@ impl Computer {
         )));
         let mut computer = Self {
             cpu,
-            bus: Bus::new(memory, clock_speed, clock, config.hard_disks, video_card),
+            bus: Bus::new(BusConfig {
+                memory,
+                cpu_clock_speed,
+                clock,
+                hard_disks: config.hard_disks,
+                video_card,
+                pc_speaker: config.pc_speaker,
+            }),
             key_presses: VecDeque::new(),
             boot_drive: None,
         };

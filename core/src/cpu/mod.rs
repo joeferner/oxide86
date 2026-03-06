@@ -341,10 +341,11 @@ mod tests {
     use std::sync::{Arc, RwLock};
 
     use crate::cpu::CpuType;
+    use crate::devices::pc_speaker::NullPcSpeaker;
     use crate::devices::rtc::tests::MockClock;
     use crate::video::VideoCardType;
     use crate::{
-        bus::Bus,
+        bus::{Bus, BusConfig},
         cpu::Cpu,
         memory::Memory,
         video::{VideoBuffer, VideoCard},
@@ -354,16 +355,17 @@ mod tests {
         let cpu_clock_speed = 8_000_000;
         let cpu = Cpu::new(CpuType::I8086, cpu_clock_speed);
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
-        let bus = Bus::new(
-            Memory::new(1024),
+        let bus = Bus::new(BusConfig {
+            memory: Memory::new(1024),
             cpu_clock_speed,
-            Some(Box::new(MockClock::new())),
-            vec![],
-            Rc::new(RefCell::new(VideoCard::new(
+            clock: Some(Box::new(MockClock::new())),
+            hard_disks: vec![],
+            video_card: Rc::new(RefCell::new(VideoCard::new(
                 VideoCardType::VGA,
                 video_buffer,
             ))),
-        );
+            pc_speaker: Box::new(NullPcSpeaker::new()),
+        });
 
         (cpu, bus)
     }

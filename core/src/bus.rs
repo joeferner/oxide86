@@ -12,6 +12,7 @@ use crate::{
         floppy_disk_controller::FloppyDiskController,
         hard_disk_controller::HardDiskController,
         keyboard_controller::KeyboardController,
+        pc_speaker::PcSpeaker,
         pic::Pic,
         pit::Pit,
         rtc::{Clock, Rtc},
@@ -24,6 +25,15 @@ use crate::{
 
 const MEMORY_MAPPED_IO_START: usize = 0xA0000;
 const MEMORY_MAPPED_IO_END: usize = 0xF0000;
+
+pub(crate) struct BusConfig {
+    pub memory: Memory,
+    pub cpu_clock_speed: u32,
+    pub clock: Option<Box<dyn Clock>>,
+    pub hard_disks: Vec<Box<dyn Disk>>,
+    pub video_card: Rc<RefCell<VideoCard>>,
+    pub pc_speaker: Box<dyn PcSpeaker>,
+}
 
 pub(crate) struct Bus {
     memory: Memory,
@@ -42,22 +52,20 @@ pub(crate) struct Bus {
 }
 
 impl Bus {
-    pub(crate) fn new(
-        memory: Memory,
-        cpu_clock_speed: u32,
-        clock: Option<Box<dyn Clock>>,
-        hard_disks: Vec<Box<dyn Disk>>,
-        video_card: Rc<RefCell<VideoCard>>,
-    ) -> Self {
+    pub(crate) fn new(config: BusConfig) -> Self {
         let keyboard_controller = Rc::new(RefCell::new(KeyboardController::new()));
-        let pit = Rc::new(RefCell::new(Pit::new(cpu_clock_speed)));
+        let pit = Rc::new(RefCell::new(Pit::new(
+            config.cpu_clock_speed,
+            config.pc_speaker,
+        )));
         let uart = Rc::new(RefCell::new(Uart::new()));
         let pic = Rc::new(RefCell::new(Pic::new(
             pit.clone(),
             keyboard_controller.clone(),
         )));
         let floppy_controller = Rc::new(RefCell::new(FloppyDiskController::new()));
-        let hard_disk_controller = Rc::new(RefCell::new(HardDiskController::new(hard_disks)));
+        let hard_disk_controller =
+            Rc::new(RefCell::new(HardDiskController::new(config.hard_disks)));
         let mut devices: Vec<DeviceRef> = vec![
             pic.clone(),
             pit,
@@ -65,9 +73,9 @@ impl Bus {
             uart.clone(),
             floppy_controller.clone(),
             hard_disk_controller.clone(),
-            video_card.clone(),
+            config.video_card.clone(),
         ];
-        let rtc = if let Some(clock) = clock {
+        let rtc = if let Some(clock) = config.clock {
             let rtc = Rc::new(RefCell::new(Rtc::new(clock)));
             devices.push(rtc.clone());
             Some(rtc)
@@ -75,7 +83,7 @@ impl Bus {
             None
         };
         Self {
-            memory,
+            memory: config.memory,
             devices,
             floppy_controller,
             hard_disk_controller,
@@ -83,7 +91,7 @@ impl Bus {
             keyboard_controller,
             #[cfg(test)]
             uart,
-            video_card,
+            video_card: config.video_card,
             cycle_count: 0,
             rtc,
         }

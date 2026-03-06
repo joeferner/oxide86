@@ -4,17 +4,22 @@ use anyhow::{Context, Result, anyhow};
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
+    devices::pc_speaker::{NullPcSpeaker, PcSpeaker},
     disk::{BackedDisk, Disk, DriveNumber},
     parse_hex_or_dec,
     video::{VideoBuffer, VideoCardType},
 };
 
-use crate::{cli::CommonCli, clock::NativeClock, disk::FileDiskBackend};
+use crate::{
+    cli::CommonCli, clock::NativeClock, disk::FileDiskBackend, rodio_pc_speaker::RodioPcSpeaker,
+};
+use rodio::DeviceSinkBuilder;
 
 pub mod cli;
 pub mod clock;
 pub mod disk;
 pub mod logging;
+pub mod rodio_pc_speaker;
 
 pub fn create_computer(
     cli: &CommonCli,
@@ -36,6 +41,8 @@ pub fn create_computer(
         ));
     };
 
+    let pc_speaker = create_pc_speaker(!cli.disable_pc_speaker);
+
     let mut computer = Computer::new(ComputerConfig {
         cpu_type,
         clock_speed: (cli.speed * 1_000_000.0) as u32,
@@ -44,6 +51,7 @@ pub fn create_computer(
         hard_disks,
         video_card_type,
         video_buffer,
+        pc_speaker,
     });
     if cli.exec_log {
         computer.set_exec_logging_enabled(true);
@@ -114,6 +122,22 @@ pub fn create_computer(
     }
 
     Ok(computer)
+}
+
+fn create_pc_speaker(enabled: bool) -> Box<dyn PcSpeaker> {
+    if enabled {
+        let sink = match DeviceSinkBuilder::open_default_sink() {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("Audio device unavailable: {}", e);
+                return Box::new(NullPcSpeaker::new());
+            }
+        };
+
+        Box::new(RodioPcSpeaker::new(&sink))
+    } else {
+        Box::new(NullPcSpeaker::new())
+    }
 }
 
 fn parse_memory(memory: &str) -> Result<usize> {

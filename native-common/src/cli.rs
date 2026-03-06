@@ -50,4 +50,8 @@ pub struct CommonCli {
     /// Path to hard disk image file(s) - can be specified multiple times for C:, D:, etc.
     #[arg(long = "hdd", action = clap::ArgAction::Append)]
     pub hard_disks: Vec<String>,
+
+    /// Disable PC speaker / audio output
+    #[arg(long = "disable-pc-speaker")]
+    pub disable_pc_speaker: bool,
 }
