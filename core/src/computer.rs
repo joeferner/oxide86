@@ -1,6 +1,8 @@
 use std::sync::{Arc, RwLock};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
+#[cfg(test)]
+use crate::devices::uart::ComPortDevice;
 use crate::{
     Device,
     bus::Bus,
@@ -12,8 +14,6 @@ use crate::{
     physical_address,
     video::{VideoBuffer, VideoCard, VideoCardType},
 };
-#[cfg(test)]
-use crate::devices::uart::ComPortDevice;
 use anyhow::{Result, anyhow};
 
 pub struct ComputerConfig {

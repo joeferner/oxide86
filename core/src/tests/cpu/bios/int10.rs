@@ -47,6 +47,14 @@ pub(crate) fn scroll_up() {
     run_test("cpu/bios/int10/scroll_up");
 }
 
+/// INT 10h / AH=07h - Scroll Down Window
+/// Writes a character to row 23, scrolls down by 1 line, verifies the character
+/// is now visible at row 24.
+#[test_log::test]
+pub(crate) fn scroll_down() {
+    run_test("cpu/bios/int10/scroll_down");
+}
+
 /// INT 10h / AH=0Ah - Write Character Only at Cursor (no attribute)
 /// Writes a character+attribute with AH=09h, then overwrites the character
 /// with AH=0Ah and verifies the attribute is preserved while the character changes.

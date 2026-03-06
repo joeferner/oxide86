@@ -1,6 +1,9 @@
 use std::{any::Any, cell::RefCell};
 
-use crate::{Device, disk::{Disk, DriveNumber}};
+use crate::{
+    Device,
+    disk::{Disk, DriveNumber},
+};
 
 /// ATA Primary controller I/O ports (base 0x1F0)
 pub const HDC_DATA: u16 = 0x1F0; // Data register (read/write)

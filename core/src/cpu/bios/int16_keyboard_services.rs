@@ -27,6 +27,7 @@ impl Cpu {
             0x00 => self.int16_read_char(bus),
             0x01 => self.int16_check_keystroke(bus),
             0x92 => self.int16_get_keyboard_capabilities(),
+            0xA2 => self.int16_122_key_capability_check(),
             _ => {
                 log::warn!("Unhandled INT 0x16 function: AH=0x{:02X}", function);
             }
@@ -93,5 +94,17 @@ impl Cpu {
         // Return AH with bit 7 set to indicate INT 15h keyboard intercept is supported
         self.ax = (self.ax & 0x00FF) | 0x8000;
         self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 16h, AH=A2h - 122-Key Keyboard Capability Check
+    /// Called by DOS 5.0+ KEYB.COM to detect support for 122-key keyboard functions.
+    /// This is not a real BIOS function but a detection mechanism that exploits how
+    /// the BIOS handles unknown function numbers. KEYB.COM checks if AH is modified
+    /// to determine if functions 20h-22h are supported.
+    /// Input: None
+    /// Output: AH unchanged (signals functions 20h-22h NOT supported)
+    fn int16_122_key_capability_check(&mut self) {
+        // Intentionally do nothing - leave AH unchanged to indicate
+        // that 122-key keyboard functions (AH=20h-22h) are NOT supported
     }
 }

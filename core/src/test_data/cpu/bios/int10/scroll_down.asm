@@ -1,11 +1,11 @@
-; INT 10h Function 06h - Scroll Up
+; INT 10h Function 07h - Scroll Down
 ; Fill col 0 of each row with a distinct char: rows 0-9 -> '0'-'9', rows 10-24 -> 'A'-'O'
-; Scroll up 1 line across the full screen, then verify:
-;   row  0 = '1' (was at row 1)
-;   row  9 = 'A' (was at row 10: 'A'+0)
-;   row 10 = 'B' (was at row 11: 'A'+1)
-;   row 23 = 'O' (was at row 24: 'A'+14)
-;   row 24 = ' ' (new blank line inserted at bottom)
+; Scroll down 1 line across the full screen, then verify:
+;   row  0 = ' ' (new blank line inserted at top)
+;   row  1 = '0' (was at row 0)
+;   row 10 = '9' (was at row 9)
+;   row 11 = 'A' (was at row 10)
+;   row 24 = 'N' (was at row 23: 'A'+13)
 
 [CPU 8086]
 org 0x0100
@@ -46,8 +46,8 @@ fill_loop:
     cmp di, 25
     jl fill_loop
 
-    ; Scroll up 1 line across full screen
-    mov ah, 0x06
+    ; Scroll down 1 line across full screen
+    mov ah, 0x07
     mov al, 1           ; scroll 1 line
     mov bh, 0x07        ; blank line attribute
     mov ch, 0           ; top row
@@ -56,7 +56,7 @@ fill_loop:
     mov dl, 79          ; right col
     int 0x10
 
-    ; Verify row 0 = '1' (was at row 1)
+    ; Verify row 0 = ' ' (blank line inserted at top)
     mov ah, 0x02
     mov bh, 0
     mov dh, 0
@@ -65,22 +65,22 @@ fill_loop:
     mov ah, 0x08
     mov bh, 0
     int 0x10
-    cmp al, '1'
+    cmp al, ' '
     jne fail
 
-    ; Verify row 9 = 'A' (was at row 10: 'A'+0)
+    ; Verify row 1 = '0' (was at row 0)
     mov ah, 0x02
     mov bh, 0
-    mov dh, 9
+    mov dh, 1
     mov dl, 0
     int 0x10
     mov ah, 0x08
     mov bh, 0
     int 0x10
-    cmp al, 'A'
+    cmp al, '0'
     jne fail
 
-    ; Verify row 10 = 'B' (was at row 11: 'A'+1)
+    ; Verify row 10 = '9' (was at row 9)
     mov ah, 0x02
     mov bh, 0
     mov dh, 10
@@ -89,22 +89,22 @@ fill_loop:
     mov ah, 0x08
     mov bh, 0
     int 0x10
-    cmp al, 'B'
+    cmp al, '9'
     jne fail
 
-    ; Verify row 23 = 'O' (was at row 24: 'A'+14)
+    ; Verify row 11 = 'A' (was at row 10)
     mov ah, 0x02
     mov bh, 0
-    mov dh, 23
+    mov dh, 11
     mov dl, 0
     int 0x10
     mov ah, 0x08
     mov bh, 0
     int 0x10
-    cmp al, 'O'
+    cmp al, 'A'
     jne fail
 
-    ; Verify row 24 = ' ' (blank line inserted at bottom)
+    ; Verify row 24 = 'N' (was at row 23: 'A'+13)
     mov ah, 0x02
     mov bh, 0
     mov dh, 24
@@ -113,7 +113,7 @@ fill_loop:
     mov ah, 0x08
     mov bh, 0
     int 0x10
-    cmp al, ' '
+    cmp al, 'N'
     jne fail
 
     mov ah, 0x4C

@@ -16,6 +16,7 @@
 - [X] Add read only floppy support "--floppy-a test.img:r"
 - [X] Command mode switch floppy disk
 - [X] Get MS-DOS 4.01 Working
+- [ ] Get MS-DOS 5.0 Working
 - [ ] PC Speaker
 - [ ] Command mode reset
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc

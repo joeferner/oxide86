@@ -52,6 +52,7 @@ impl Cpu {
             0x03 => self.int10_get_cursor_position(bus),
             0x05 => self.int10_select_active_page(bus),
             0x06 => self.int10_scroll_up(bus),
+            0x07 => self.int10_scroll_down(bus),
             0x08 => self.int10_read_char_attr(bus),
             0x09 => self.int10_write_char_attr(bus),
             0x0A => self.int10_write_char(bus),
@@ -307,6 +308,83 @@ impl Cpu {
         }
     }
 
+    /// INT 10h, AH=07h - Scroll Down Window
+    /// Input:
+    ///   AL = number of lines to scroll (0 = clear entire window)
+    ///   BH = attribute for blank lines
+    ///   CH = row of upper-left corner of window
+    ///   CL = column of upper-left corner
+    ///   DH = row of lower-right corner
+    ///   DL = column of lower-right corner
+    /// Output: None
+    fn int10_scroll_down(&mut self, bus: &mut Bus) {
+        let lines = (self.ax & 0xFF) as u8; // AL
+        let attr = (self.bx >> 8) as u8; // BH
+        let top = (self.cx >> 8) as u8; // CH
+        let left = (self.cx & 0xFF) as u8; // CL
+        let bottom = (self.dx >> 8) as u8; // DH
+        let right = (self.dx & 0xFF) as u8; // DL
+
+        let rows = bda_get_rows(bus);
+        let cols = bda_get_columns(bus);
+
+        log::debug!(
+            "INT 10h AH=07h: Scroll down lines={}, attr=0x{:02X}, window=({},{}) to ({},{})",
+            lines,
+            attr,
+            top,
+            left,
+            bottom,
+            right
+        );
+
+        // Clamp to valid range (real BIOS behavior: clip out-of-range coords)
+        let right = right.min((cols - 1) as u8);
+        let bottom = bottom.min(rows); // rows is already last valid row index from BDA
+        if top > bottom || left > right {
+            return;
+        }
+
+        // TODO
+        // if bus.video().is_graphics_mode() {
+        //     bus.video_mut()
+        //         .scroll_down_window(lines, top, left, bottom, right, attr);
+        //     return;
+        // }
+
+        if lines == 0 {
+            // Clear entire window
+            for row in top..=bottom {
+                for col in left..=right {
+                    let offset = (row as usize * cols as usize + col as usize) * 2;
+                    bus.memory_write_u8(CGA_MEMORY_START + offset, b' ');
+                    bus.memory_write_u8(CGA_MEMORY_START + offset + 1, attr);
+                }
+            }
+        } else {
+            // Scroll down by 'lines' rows (process bottom to top)
+            for row in (top..=bottom).rev() {
+                for col in left..=right {
+                    let dest_offset = (row as usize * cols as usize + col as usize) * 2;
+
+                    if row >= top + lines {
+                        // Copy from above - read from video buffer, not memory
+                        let src_row = row - lines;
+                        let src_offset = (src_row as usize * cols as usize + col as usize) * 2;
+                        let ch = bus.memory_read_u8(CGA_MEMORY_START + src_offset);
+                        let at = bus.memory_read_u8(CGA_MEMORY_START + src_offset + 1);
+                        bus.memory_write_u8(CGA_MEMORY_START + dest_offset, ch);
+                        bus.memory_write_u8(CGA_MEMORY_START + dest_offset + 1, at);
+                    } else {
+                        // Fill with blanks
+                        bus.memory_write_u8(CGA_MEMORY_START + dest_offset, b' ');
+                        bus.memory_write_u8(CGA_MEMORY_START + dest_offset + 1, attr);
+                    }
+                }
+            }
+        }
+    }
+
     /// INT 10h, AH=08h - Read Character and Attribute at Cursor Position
     /// Input:
     ///   BH = page number (0 for text mode)
@@ -346,7 +424,7 @@ impl Cpu {
             // Text mode: write to video memory
             for i in 0..count {
                 let pos = cursor.row as usize * cols + cursor.col as usize + (i as usize);
-                if pos >= cols * rows {
+                if pos >= cols * (rows + 1) {
                     break; // Don't write beyond screen
                 }
                 let offset = pos * 2;
@@ -430,7 +508,7 @@ impl Cpu {
         // Text mode: write to video memory
         for i in 0..count {
             let pos = cursor.row as usize * cols as usize + cursor.col as usize + (i as usize);
-            if pos >= cols as usize * rows as usize {
+            if pos >= cols as usize * (rows as usize + 1) {
                 break; // Don't write beyond screen
             }
             let offset = pos * 2;
@@ -1193,7 +1271,7 @@ struct ScrollUp {
 fn scroll_up_advanced(bus: &mut Bus, options: ScrollUp) {
     // Clamp to valid range (real BIOS behavior: clip out-of-range coords)
     let right = options.right.min(options.cols - 1);
-    let bottom = options.bottom.min(options.rows - 1);
+    let bottom = options.bottom.min(options.rows); // rows is already last valid row index from BDA
     if options.top > bottom || options.left > right {
         return;
     }

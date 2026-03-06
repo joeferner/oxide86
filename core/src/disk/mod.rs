@@ -47,4 +47,3 @@ pub trait Disk {
 
     fn disk_geometry(&self) -> DiskGeometry;
 }
-
