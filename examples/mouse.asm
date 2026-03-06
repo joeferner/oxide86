@@ -53,6 +53,7 @@ start:
 
     ; Draw initial cursor at centre of screen
     call draw_cursor
+    call update_buttons
 
 main_loop:
     ; Non-blocking keyboard check: ZF=0 if a key is waiting
@@ -160,6 +161,7 @@ main_loop:
     mov [cur_row], bl
 
     call draw_cursor
+    call update_buttons
     jmp main_loop
 
 exit:
@@ -225,9 +227,55 @@ erase_cursor:
     ret
 
 ; -----------------------------------------------------------------------
+; update_buttons: display left/right button state at row 0, col 65
+; Reads b1: bit 5 = left button, bit 4 = right button
+; -----------------------------------------------------------------------
+update_buttons:
+    mov ah, 0x02        ; set cursor position
+    xor bh, bh
+    mov dh, 0           ; row 0
+    mov dl, 65          ; col 65
+    int 0x10
+
+    mov ah, 0x09
+    mov dx, lb_label    ; "L:"
+    int 0x21
+
+    mov al, [b1]
+    test al, 0x20       ; bit 5 = left button
+    jz .lb_off
+    mov dx, btn_on_str
+    jmp .print_lb
+.lb_off:
+    mov dx, btn_off_str
+.print_lb:
+    mov ah, 0x09
+    int 0x21
+
+    mov ah, 0x09
+    mov dx, rb_label    ; " R:"
+    int 0x21
+
+    mov al, [b1]
+    test al, 0x10       ; bit 4 = right button
+    jz .rb_off
+    mov dx, btn_on_str
+    jmp .print_rb
+.rb_off:
+    mov dx, btn_off_str
+.print_rb:
+    mov ah, 0x09
+    int 0x21
+    ret
+
+; -----------------------------------------------------------------------
 ; Data
 ; -----------------------------------------------------------------------
-title_msg: db 'Mouse demo - move cursor with mouse, press any key to exit$'
+title_msg:   db 'Mouse demo - move cursor with mouse, press any key to exit$'
+lb_label:    db 'L:$'
+rb_label:    db ' R:$'
+btn_on_str:  db 'ON  $'
+btn_off_str: db 'OFF $'
 cur_col:   db SCREEN_COLS / 2
 cur_row:   db SCREEN_ROWS / 2
 b1:        db 0

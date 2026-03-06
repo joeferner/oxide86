@@ -16,19 +16,10 @@
 - [X] Add read only floppy support "--floppy-a test.img:r"
 - [X] Command mode switch floppy disk
 - [X] Get MS-DOS 4.01 Working
-- [ ] Get MS-DOS 5.0 Working
-- [ ] PC Speaker
+- [X] Add mouse support
+- [ ] Add PC Speaker support
   - [ ] test with examples/pc_speaker.asm
-  - [ ] no-vide-transition
-    - [ ] Remove CLI disable-pc-speaker
-    - [ ] Remove NullSpeaker
-    - [ ] Remove RodioSpeaker
-- [ ] Mouse
-  - [ ] test with examples/mouse.asm
-  - [ ] no-vibe-transition
-    - [ ] Remove CLI com1,com2
-    - [ ] Remove serial_mouse.rs
-    - [ ] Remove terminal_mouse.rs
+- [ ] Get MS-DOS 5.0 Working
 - [ ] Command mode reset
 - [ ] Joystick
 - [ ] AdLib

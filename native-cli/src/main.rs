@@ -108,7 +108,7 @@ fn main() -> Result<()> {
                         last_mouse_col = mouse_event.column;
                         last_mouse_row = mouse_event.row;
                         if dx != 0 || dy != 0 {
-                            mouse.write().unwrap().push_motion(dx * 2, dy * 4);
+                            mouse.write().unwrap().push_motion(dx, dy);
                         }
                     }
                     MouseEventKind::Down(btn) => {
