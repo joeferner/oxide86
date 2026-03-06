@@ -215,8 +215,7 @@ impl Device for VideoCard {
                             buffer.set_cursor_end_line(val);
                         }
                         VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
-                            let new_start =
-                                (buffer.start_address() & 0x00ff) | ((val as u16) << 8);
+                            let new_start = (buffer.start_address() & 0x00ff) | ((val as u16) << 8);
                             buffer.set_start_address(new_start);
                         }
                         VIDEO_CARD_START_ADDRESS_LOW_REGISTER => {

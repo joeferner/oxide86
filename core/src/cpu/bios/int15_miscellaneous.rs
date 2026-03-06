@@ -18,6 +18,7 @@ impl Cpu {
             0x41 => self.int15_wait_external_event(),
             0x4F => self.int15_keyboard_intercept(),
             0x88 => self.int15_get_extended_memory(bus),
+            0x91 => self.int15_device_interrupt_complete(),
             0xC0 => self.int15_get_system_config(),
             0xC1 => self.int15_get_ebda_segment(),
             _ => {
@@ -77,6 +78,19 @@ impl Cpu {
     /// The default (no interception) is CF=1: pass the key through to the BDA buffer.
     fn int15_keyboard_intercept(&mut self) {
         // Set CF to indicate key is NOT intercepted and should proceed to BDA buffer
+        self.set_flag(cpu_flag::CARRY, true);
+    }
+
+    /// INT 15h AH=91h - Device Interrupt Complete
+    ///
+    /// Input:
+    ///   AL = device type (0x01 = keyboard, 0x02 = keyboard in some implementations)
+    ///
+    /// Called by device interrupt handlers (e.g. IO.SYS INT 09h) to signal that a
+    /// device interrupt has been fully serviced. Used by PS/2-class BIOS for
+    /// post-interrupt processing. Not supported on standard AT-class hardware.
+    fn int15_device_interrupt_complete(&mut self) {
+        // Not supported on this system; caller should check CF and continue regardless
         self.set_flag(cpu_flag::CARRY, true);
     }
 

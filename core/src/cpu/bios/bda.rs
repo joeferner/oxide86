@@ -453,10 +453,11 @@ pub(crate) fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {
     let tail = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_TAIL);
 
     if head != tail {
-        // Buffer has data - peek at it without removing
+        // Buffer has data - peek at it without removing.
+        // BDA keyboard buffer format: [ascii_code][scan_code] (ascii at lower address)
         let char_addr = BDA_START + head as usize;
-        let scan_code = bus.memory_read_u8(char_addr);
-        let ascii_code = bus.memory_read_u8(char_addr + 1);
+        let ascii_code = bus.memory_read_u8(char_addr);
+        let scan_code = bus.memory_read_u8(char_addr + 1);
         Some(KeyPress {
             scan_code,
             ascii_code,
@@ -471,11 +472,12 @@ pub(crate) fn bda_read_key(bus: &mut Bus) -> Option<KeyPress> {
     let tail = bus.memory_read_u16(BDA_START + BDA_KEYBOARD_BUFFER_TAIL);
 
     if head != tail {
-        // Buffer has data - read from it
+        // Buffer has data - read from it.
+        // BDA keyboard buffer format: [ascii_code][scan_code] (ascii at lower address)
         let buffer_start = 0x001E; // Relative to BDA
         let char_addr = BDA_START + head as usize;
-        let scan_code = bus.memory_read_u8(char_addr);
-        let ascii_code = bus.memory_read_u8(char_addr + 1);
+        let ascii_code = bus.memory_read_u8(char_addr);
+        let scan_code = bus.memory_read_u8(char_addr + 1);
 
         log::debug!(
             "BDA: Read key from buffer - Scan: 0x{:02X}, ASCII: 0x{:02X} ('{}')",
@@ -527,10 +529,11 @@ pub(crate) fn bda_add_key_to_buffer(bus: &mut Bus, key: KeyPress) {
         return;
     }
 
-    // Add key to buffer
+    // Add key to buffer.
+    // BDA keyboard buffer format: [ascii_code][scan_code] (ascii at lower address)
     let char_addr = BDA_START + tail as usize;
-    bus.memory_write_u8(char_addr, key.scan_code);
-    bus.memory_write_u8(char_addr + 1, key.ascii_code);
+    bus.memory_write_u8(char_addr, key.ascii_code);
+    bus.memory_write_u8(char_addr + 1, key.scan_code);
     bus.memory_write_u16(tail_addr, new_tail);
 
     log::debug!(
