@@ -2,15 +2,6 @@ use clap::Parser;
 
 #[derive(Parser)]
 pub struct CommonCli {
-
-    /// Path to disk image file for floppy B:
-    #[arg(long = "floppy-b")]
-    pub floppy_b: Option<String>,
-
-    /// Path to hard disk image file(s) - can be specified multiple times for C:, D:, etc.
-    #[arg(long = "hdd", action = clap::ArgAction::Append)]
-    pub hard_disks: Vec<String>,
-
     /// Mount host directory as DOS drive (format: /path:E: or /path/to/dir:D:)
     #[arg(long = "mount-dir", action = clap::ArgAction::Append)]
     pub mount_dirs: Vec<String>,
@@ -26,15 +17,6 @@ pub struct CommonCli {
     /// Enable interrupt logging (logs INT calls to oxide86.log)
     #[arg(long = "int-log")]
     pub int_log: bool,
-
-    /// Memory size in KB (default: 1024; conventional memory capped at 640 KB,
-    /// extended memory = memory - 1024 KB on 286+ CPUs)
-    #[arg(long, default_value = "1024", value_name = "KB")]
-    pub memory: u32,
-
-    /// Video card type to emulate (cga, ega, vga)
-    #[arg(long = "video-card", default_value = "vga")]
-    pub video_card: String,
 
     /// Enable joystick A (port 0x201)
     #[arg(long = "joystick-a")]

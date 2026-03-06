@@ -8,19 +8,10 @@ impl Cpu {
         
         match function {
             0x24 => self.int15_a20_gate(bus),
-            0x10 => self.int15_top_view_multi_dos(),
             0x86 => self.int15_wait(),
             0x87 => self.int15_move_extended_memory(bus),
-            0x88 => {
-                // Cap reported extended memory by both what the CPU supports and what is installed
-                let cpu_max = cpu_type.max_extended_memory_kb();
-                let installed = bus.memory().extended_memory_kb();
-                let extended_kb = cpu_max.min(installed);
-                self.int15_get_extended_memory(cpu_type, extended_kb);
-            }
+            
            
-            0xC1 => self.int15_get_ebda_segment(),
-            0x4F => self.int15_keyboard_intercept(),
             0x53 => self.int15_apm_not_present(),
             0xD8 => self.int15_eisa_not_supported(),
          
@@ -82,24 +73,6 @@ impl Cpu {
         }
     }
 
-    /// INT 15h AH=10h - TopView/MultiDOS Plus Vendor-Specific Function
-    ///
-    /// This function has different meanings depending on the environment:
-    /// - TopView: UNIMPLEMENTED in DESQview 2.x
-    /// - MultiDOS Plus: TEST RESOURCE SEMAPHORE
-    ///
-    /// Output:
-    ///   CF = 1 (function not supported on standard 8086 BIOS)
-    ///
-    /// Note: This is a vendor-specific function not available on standard 8086 systems.
-    /// Standard 8086 BIOS does not implement this function.
-    fn int15_top_view_multi_dos(&mut self) {
-        // This is a vendor-specific function (TopView/MultiDOS Plus)
-        // not available on standard 8086 BIOS
-        // Return function not supported
-        self.set_flag(cpu_flag::CARRY, true);
-    }
-
     /// INT 15h AH=86h - Wait (microsecond delay)
     ///
     /// Input:
@@ -138,26 +111,6 @@ impl Cpu {
         self.set_flag(cpu_flag::CARRY, false);
     }
 
-    /// INT 15h AH=88h - Get Extended Memory Size
-    ///
-    /// Output:
-    ///   AX = number of contiguous 1KB blocks of memory above 1MB
-    ///   CF = 0 if successful, 1 if error
-    ///
-    /// Note: 8086 can only address 1MB, so this returns 0 for an 8086 system.
-    /// 286+ systems return the amount of extended memory available.
-    fn int15_get_extended_memory(&mut self, cpu_type: CpuType, extended_memory_kb: u16) {
-        self.ax = extended_memory_kb;
-        self.set_flag(cpu_flag::CARRY, false);
-        log::info!(
-            "INT 15h AH=88h: Returning extended memory size = {} KB ({} CPU)",
-            extended_memory_kb,
-            cpu_type.name()
-        );
-    }
-
-
-
     /// INT 15h AH=D8h - EISA System Functions (not supported)
     ///
     /// Output:
@@ -171,37 +124,6 @@ impl Cpu {
         self.set_flag(cpu_flag::CARRY, true);
     }
 
-    /// INT 15h AH=C1h - Get Extended BIOS Data Area (EBDA) Segment Address
-    ///
-    /// Output:
-    ///   ES = segment of EBDA
-    ///   CF = 0 if successful, 1 if EBDA not present
-    ///
-    /// Note: The EBDA is a feature of AT-class and later machines.
-    /// Original PC/XT systems (8086) do not have an EBDA, so this function
-    /// returns CF=1 to indicate the function is not supported.
-    fn int15_get_ebda_segment(&mut self) {
-        // 8086/PC/XT systems do not have an Extended BIOS Data Area
-        // Return function not supported
-        self.set_flag(cpu_flag::CARRY, true);
-        log::info!("INT 15h AH=C1h: EBDA not present (8086/PC/XT system)");
-    }
-
-    /// INT 15h AH=4Fh - Keyboard Intercept
-    ///
-    /// Input:
-    ///   AL = scan code
-    ///
-    /// Output:
-    ///   CF = 0: proceed to buffer key in BDA
-    ///   CF = 1: key intercepted, skip BDA buffering
-    ///
-    /// Called by INT 09h before buffering a keystroke. Multitaskers (DESQview, etc.)
-    /// install a custom INT 15h to route keystrokes to the active task.
-    fn int15_keyboard_intercept(&mut self) {
-        // Default: clear CF to indicate key should proceed to BDA buffer
-        self.set_flag(cpu_flag::CARRY, false);
-    }
 
     /// INT 15h AH=87h - Move Extended Memory Block
     ///

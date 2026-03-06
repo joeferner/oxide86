@@ -87,20 +87,6 @@ pub fn load_disks<V: VideoController>(
     floppy_b: &Option<String>,
     hard_disks: &[String],
 ) -> Result<()> {
-    // MIGRATED load floppy A:
-
-    // Load floppy B:
-    if let Some(path) = floppy_b {
-        let backend = FileDiskBackend::open(path, false)?;
-        let disk = BackedDisk::new(backend)
-            .with_context(|| format!("Failed to create disk from: {}", path))?;
-        computer
-            .bios_mut()
-            .insert_floppy(DriveNumber::floppy_b(), Box::new(disk))
-            .map_err(|e| anyhow::anyhow!("Failed to insert floppy B:: {}", e))?;
-        log::info!("Opened floppy B: from {}", path);
-    }
-
     // Load hard drives (C:, D:, etc.)
     for (i, path) in hard_disks.iter().enumerate() {
         let drive = DriveNumber::from_hard_drive_index(i);

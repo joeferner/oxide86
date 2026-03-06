@@ -103,8 +103,6 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 :x: - Does not work
 
 - OS
-  - :white_check_mark: MS-DOS 4.01
-  - :white_check_mark: MS-DOS 5.0
   - :white_check_mark: SvarDOS
 
 - Games

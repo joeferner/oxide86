@@ -14,8 +14,6 @@ impl Cpu {
             0x11 => self.int16_check_keystroke(bus, io), // Extended check (same as 01h)
             0x12 => self.int16_get_shift_flags(bus), // Extended shift flags (same as 02h)
             0x55 => self.int16_word_tsr_check(),
-            0x92 => self.int16_get_keyboard_capabilities(),
-            0xA2 => self.int16_122_key_capability_check(),
         }
     }
 
@@ -109,19 +107,6 @@ impl Cpu {
         self.ax = (self.ax & 0xFF00) | (flags as u16);
     }
 
-    /// INT 16h, AH=92h - Get Keyboard Capabilities Flag
-    /// Returns keyboard capabilities, indicating support for INT 15h keyboard intercept
-    /// Input: None
-    /// Output:
-    ///   AH = capabilities flag
-    ///     Bit 7: INT 15h, AH=4Fh keyboard intercept supported
-    ///   CF = clear (success)
-    fn int16_get_keyboard_capabilities(&mut self) {
-        // Return AH with bit 7 set to indicate INT 15h keyboard intercept is supported
-        self.ax = (self.ax & 0x00FF) | 0x8000;
-        self.set_flag(cpu_flag::CARRY, false);
-    }
-
     /// INT 16h, AH=55h - Microsoft Word TSR Detection
     /// Used by Microsoft Word for DOS to detect if its TSR utility is installed.
     /// If the TSR were installed, it would return "MS" (0x4D53) in AX.
@@ -132,15 +117,5 @@ impl Cpu {
         // that the Microsoft Word TSR is NOT installed
     }
 
-    /// INT 16h, AH=A2h - 122-Key Keyboard Capability Check
-    /// Called by DOS 5.0+ KEYB.COM to detect support for 122-key keyboard functions.
-    /// This is not a real BIOS function but a detection mechanism that exploits how
-    /// the BIOS handles unknown function numbers. KEYB.COM checks if AH is modified
-    /// to determine if functions 20h-22h are supported.
-    /// Input: None
-    /// Output: AH unchanged (signals functions 20h-22h NOT supported)
-    fn int16_122_key_capability_check(&mut self) {
-        // Intentionally do nothing - leave AH unchanged to indicate
-        // that 122-key keyboard functions (AH=20h-22h) are NOT supported
-    }
+
 }

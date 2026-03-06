@@ -17,10 +17,7 @@ impl Cpu {
 
         match function {
             0x03 => self.int13_write_sectors(bus, io),
-            0x04 => self.int13_verify_sectors(io),
             0x05 => self.int13_format_track(io),
-            
-            0x18 => self.int13_set_dasd_type(bus, io),
             0x41 => self.int13_check_extensions_present(io),
         }
     }
@@ -73,49 +70,7 @@ impl Cpu {
         }
     }
 
-    /// INT 13h, AH=04h - Verify Disk Sectors
-    /// Input:
-    ///   AL = number of sectors to verify (1-128)
-    ///   CH = cylinder number (0-1023, low 8 bits)
-    ///   CL = sector number (1-63, bits 0-5) + high 2 bits of cylinder (bits 6-7)
-    ///   DH = head number (0-255)
-    ///   DL = drive number
-    ///   ES:BX = not used (no data transfer)
-    /// Output:
-    ///   AH = status (0 = success)
-    ///   AL = number of sectors verified
-    ///   CF = clear if success, set if error
-    fn int13_verify_sectors(&mut self, io: &mut super::Bios) {
-        let count = (self.ax & 0xFF) as u8; // AL
-        let cylinder_low = (self.cx >> 8) as u8; // CH
-        let sector_and_cyl_high = (self.cx & 0xFF) as u8; // CL
-        let head = (self.dx >> 8) as u8; // DH
-        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
-
-        // Extract cylinder and sector from CL
-        let sector = sector_and_cyl_high & 0x3F; // Bits 0-5
-        // For 8086, we only support 8-bit cylinders (compatibility mode)
-        let cylinder_8bit = cylinder_low;
-
-        // Verify sectors by attempting to read them (data is discarded)
-        match io.disk_read_sectors(drive, cylinder_8bit, head, sector, count) {
-            Ok(data) => {
-                // Calculate actual sectors verified
-                let sectors_verified = (data.len() / 512).min(count as usize) as u8;
-
-                self.ax = (self.ax & 0xFF00) | (sectors_verified as u16); // AL = sectors verified
-                self.ax &= 0x00FF; // AH = 0 (success)
-                self.set_flag(cpu_flag::CARRY, false);
-                io.set_last_disk_status(DiskError::Success as u8);
-            }
-            Err(error_code) => {
-                self.ax = (self.ax & 0x00FF) | ((error_code as u16) << 8); // AH = error code
-                self.ax &= 0xFF00; // AL = 0 (no sectors verified)
-                self.set_flag(cpu_flag::CARRY, true);
-                io.set_last_disk_status(error_code as u8);
-            }
-        }
-    }
+    
 
     /// INT 13h, AH=05h - Format Track
     /// Input:
@@ -151,106 +106,6 @@ impl Cpu {
         }
     }
 
-    
-
-   
-
-    /// INT 13h, AH=18h - Set DASD Type for Format (PS/2)
-    /// Input:
-    ///   DL = drive number (0x00-0x7F for floppies)
-    ///   CH = number of tracks (low 8 bits)
-    ///   CL = sectors per track (bits 0-5) + high 2 bits of tracks (bits 6-7)
-    /// Output:
-    ///   AH = status:
-    ///     0x00 = successful, disk formatted correctly
-    ///     0x01 = invalid function or parameter
-    ///     0x80 = disk does not support function
-    ///   CF = clear if successful, set on error
-    ///   On success:
-    ///     ES:DI = pointer to 11-byte Disk Base Table (DBT)
-    fn int13_set_dasd_type(&mut self, bus: &mut Bus, io: &mut super::Bios) {
-        let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
-        let tracks_low = (self.cx >> 8) as u8; // CH
-        let sectors_and_tracks_high = (self.cx & 0xFF) as u8; // CL
-
-        // Extract sectors per track and high bits of tracks
-        let sectors_per_track = sectors_and_tracks_high & 0x3F; // Bits 0-5
-        let tracks_high = (sectors_and_tracks_high >> 6) & 0x03; // Bits 6-7
-        let tracks = ((tracks_high as u16) << 8) | (tracks_low as u16);
-
-        if self.log_interrupts_enabled {
-            log::info!(
-                "INT 13h AH=18h: Set DASD Type for drive {}, tracks={}, sectors_per_track={}",
-                drive,
-                tracks,
-                sectors_per_track
-            );
-        }
-
-        // Verify drive exists and get its parameters
-        match io.disk_get_params(drive) {
-            Ok(_params) => {
-                // Validate the requested parameters are reasonable
-                if sectors_per_track == 0 || sectors_per_track > 63 || tracks == 0 || tracks > 1024
-                {
-                    // Invalid parameters
-                    self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
-                    self.set_flag(cpu_flag::CARRY, true);
-                    io.set_last_disk_status(DiskError::InvalidCommand as u8);
-                    return;
-                }
-
-                // Build Disk Base Table (DBT) in BIOS ROM area at F000:E000
-                const DBT_SEGMENT: u16 = 0xF000;
-                const DBT_OFFSET: u16 = 0xE000;
-                let dbt_addr = Self::physical_address(DBT_SEGMENT, DBT_OFFSET);
-
-                // Disk Base Table format (11 bytes):
-                // Standard values for common floppy formats
-                let dbt: [u8; 11] = [
-                    0xDF,              // Offset 0: Step rate (D) and head unload time (F)
-                    0x02,              // Offset 1: Head load time (2ms) and DMA flag
-                    0x25,              // Offset 2: Motor off delay (37 * 55ms = ~2 seconds)
-                    0x02,              // Offset 3: Bytes per sector (2 = 512 bytes)
-                    sectors_per_track, // Offset 4: Last sector number per track
-                    0x1B,              // Offset 5: Gap length between sectors (27 bytes)
-                    0xFF,              // Offset 6: Data length (0xFF = use bytes per sector)
-                    0x54,              // Offset 7: Gap length for format (84 bytes)
-                    0xF6,              // Offset 8: Format filler byte (typically 0xF6)
-                    0x0F,              // Offset 9: Head settle time (15ms)
-                    0x08,              // Offset 10: Motor startup time (8 * 125ms = 1 second)
-                ];
-
-                // Write DBT to memory
-                for (i, &byte) in dbt.iter().enumerate() {
-                    bus.write_u8(dbt_addr + i, byte);
-                }
-
-                // Return success with ES:DI pointing to DBT
-                self.es = DBT_SEGMENT;
-                self.di = DBT_OFFSET;
-                self.ax &= 0x00FF; // AH = 0 (success)
-                self.set_flag(cpu_flag::CARRY, false);
-                io.set_last_disk_status(DiskError::Success as u8);
-                if self.log_interrupts_enabled {
-                    log::info!(
-                        "INT 13h AH=18h: Success, DBT at {:04X}:{:04X}",
-                        DBT_SEGMENT,
-                        DBT_OFFSET
-                    );
-                }
-            }
-            Err(_) => {
-                // Drive not present
-                if self.log_interrupts_enabled {
-                    log::info!("INT 13h AH=18h: Drive {} not present", drive);
-                }
-                self.ax = (self.ax & 0x00FF) | (0x01_u16 << 8); // AH = 0x01 (invalid)
-                self.set_flag(cpu_flag::CARRY, true);
-                io.set_last_disk_status(DiskError::InvalidCommand as u8);
-            }
-        }
-    }
 
     /// INT 13h, AH=41h - Check Extensions Present
     /// Input:

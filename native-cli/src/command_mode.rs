@@ -162,16 +162,7 @@ fn show_help(stdout: &mut Stdout) -> Result<()> {
     execute!(
         stdout,
         Print("Commands:\r\n"),
-        Print("  load a path/to/disk.img   - Insert disk into drive A:\r\n"),
-        Print("  load b path/to/disk.img   - Insert disk into drive B:\r\n"),
-        Print("  eject a                   - Eject floppy from drive A:\r\n"),
-        Print("  eject b                   - Eject floppy from drive B:\r\n"),
         Print("  reset                     - Reset and reboot the computer\r\n"),
-        Print("  log enable/disable        - Enable/Disable all additional logging\r\n"),
-        Print("  log enable/disable exec   - Enable/Disable execution logging\r\n"),
-        Print("  log enable/disable int    - Enable/Disable interrupt logging\r\n"),
-        Print("  resume (or Enter)         - Resume emulation\r\n"),
-        Print("  q, quit, exit             - Halt emulator and exit\r\n"),
     )?;
     Ok(())
 }

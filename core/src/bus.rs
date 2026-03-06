@@ -150,9 +150,4 @@ impl Bus {
     pub fn is_a20_enabled(&self) -> bool {
         self.memory.is_a20_enabled()
     }
-
-    /// Get extended memory size in KB
-    pub fn extended_memory_kb(&self) -> u16 {
-        self.memory.extended_memory_kb()
-    }
 }

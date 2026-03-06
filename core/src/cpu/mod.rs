@@ -319,10 +319,6 @@ impl Cpu {
         io_device: &mut IoDevice,
     ) {
         match opcode {
-            // POP SS (17)
-            0x17 => self.pop_segreg(opcode, bus),
-
-
             // POPA - Pop All General Registers (61)
             0x61 => self.popa(bus),
 
