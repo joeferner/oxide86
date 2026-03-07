@@ -15,8 +15,6 @@ clap = { workspace = true }
 egui = "0.27"
 egui-winit = { version = "0.27", default-features = false, features = ["links"] }
 egui-wgpu = "0.27"
-rfd = "0.17.2"
-chrono = "0.4"
 image = "0.25"
 
 [lints]

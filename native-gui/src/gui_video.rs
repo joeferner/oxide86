@@ -7,9 +7,6 @@ use oxide86_core::{
 };
 use pixels::Pixels;
 
-/// Screen dimensions in pixels
-pub const SCREEN_WIDTH: usize = TEXT_MODE_COLS * CHAR_WIDTH; // 640
-pub const SCREEN_HEIGHT: usize = TEXT_MODE_ROWS * CHAR_HEIGHT; // 400
 
 /// Video controller for GUI rendering
 pub struct PixelsVideoController {
