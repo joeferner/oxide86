@@ -24,8 +24,9 @@ pub(crate) struct KeyPress {
 }
 
 // Calculate physical address from segment:offset
+// 8086 has 20 address lines so addresses wrap at 1MB (0x100000)
 pub(crate) fn physical_address(segment: u16, offset: u16) -> usize {
-    ((segment as usize) << 4) + (offset as usize)
+    (((segment as usize) << 4) + (offset as usize)) & 0xFFFFF
 }
 
 pub fn parse_hex_or_dec(s: &str) -> Result<u16> {

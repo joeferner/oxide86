@@ -22,12 +22,14 @@
 - [X] Get MS-DOS 5.0 Working
 - [X] Add CGA support
 - [X] Command mode reset
+- [X] `edit autoexec.bat` failing with `Packed file is corrupted` (8086 has 20 address lines so addresses wrap at 1MB (0x100000))
 - [ ] Get Alley Cat working
 - [ ] Add Joystick support
 - [ ] Add AdLib support
   - [ ] CLI --sound-card=none/adlib option
 - [ ] Add EGA support
 - [ ] Add VGA support
+- [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
 - [ ] Add mounted drive support
