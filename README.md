@@ -85,6 +85,7 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 - :white_check_mark: MS-DOS 2.12
 - :white_check_mark: MS-DOS 3.31
 - :white_check_mark: MS-DOS 4.01
+- :white_check_mark: MS-DOS 5.0
 
 ## Resources
 - [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)

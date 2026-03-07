@@ -3,6 +3,7 @@ pub mod clock;
 pub mod disk;
 pub mod logging;
 pub mod rodio_pc_speaker;
+pub mod throttle;
 
 use std::sync::{Arc, RwLock};
 

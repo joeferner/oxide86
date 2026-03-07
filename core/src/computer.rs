@@ -370,6 +370,10 @@ impl Computer {
         self.bus.cycle_count() as u64
     }
 
+    pub fn get_clock_speed(&self) -> u32 {
+        self.cpu.clock_speed()
+    }
+
     pub fn is_terminal_halt(&self) -> bool {
         self.cpu.is_terminal_halt()
     }

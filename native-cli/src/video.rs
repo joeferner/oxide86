@@ -108,7 +108,12 @@ pub(crate) fn draw_frame(
         let cursor_pos = buffer.get_cursor_position();
         stdout.queue(cursor::MoveTo(cursor_pos.col as u16, cursor_pos.row as u16))?;
     } else {
-        todo!("graphics unsupported, clear the screen and write a message")
+        video_cache.clear();
+        stdout.queue(cursor::MoveTo(0, 0))?;
+        stdout.queue(terminal::Clear(terminal::ClearType::All))?;
+        stdout.queue(crossterm::style::ResetColor)?;
+        stdout.queue(crossterm::style::Print("Graphics mode unsupported"))?;
+        stdout.flush()?;
     }
 
     stdout.flush()?;

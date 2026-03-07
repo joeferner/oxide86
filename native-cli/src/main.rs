@@ -26,7 +26,7 @@ use oxide86_core::{
     video::VideoBuffer,
 };
 use oxide86_native_common::{
-    cli::CommonCli, create_computer, has_com_mouse, logging::setup_logging,
+    cli::CommonCli, create_computer, has_com_mouse, logging::setup_logging, throttle::CpuThrottle,
 };
 
 use crate::{
@@ -94,6 +94,8 @@ fn main() -> Result<()> {
     let mut mouse_left: bool = false;
     let mut mouse_right: bool = false;
 
+    let mut throttle = CpuThrottle::new(computer.get_clock_speed(), computer.get_cycle_count());
+
     let mut quit_from_command_mode = false;
     while computer.get_exit_code().is_none() && !quit_from_command_mode {
         if !computer.wait_for_key_press() {
@@ -103,6 +105,8 @@ fn main() -> Result<()> {
                     break;
                 }
             }
+
+            throttle.sync(computer.get_cycle_count(), Duration::from_millis(250));
         }
 
         draw_frame(&mut video_cache, &video_buffer, &mut stdout)?;
@@ -173,6 +177,8 @@ fn main() -> Result<()> {
                         if !quit_from_command_mode {
                             video_cache.clear();
                             draw_frame(&mut video_cache, &video_buffer, &mut stdout)?;
+                            // Reset throttle reference after command mode to avoid a burst sleep
+                            throttle.reset(computer.get_cycle_count());
                         }
                     } else {
                         // Some terminals omit KeyModifiers::SHIFT for symbol characters

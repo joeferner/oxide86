@@ -22,6 +22,7 @@
 - [X] Get MS-DOS 5.0 Working
 - [X] Add CGA support
 - [X] Command mode reset
+- [ ] Get Alley Cat working
 - [ ] Add Joystick support
 - [ ] Add AdLib support
   - [ ] CLI --sound-card=none/adlib option

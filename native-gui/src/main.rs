@@ -19,11 +19,11 @@ use oxide86_native_common::create_computer;
 use oxide86_native_common::disk::FileDiskBackend;
 use oxide86_native_common::has_com_mouse;
 use oxide86_native_common::logging::setup_logging;
+use oxide86_native_common::throttle::CpuThrottle;
 use pixels::{Pixels, SurfaceTexture, wgpu};
 use rodio::MixerDeviceSink;
 use std::sync::Mutex;
 use std::sync::{Arc, RwLock};
-use std::time::Instant;
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
@@ -126,12 +126,16 @@ fn run(cli: Cli) -> Result<()> {
     };
     // TODO app_state.menu.update_cdrom_state(app_state.cdrom_present);
 
-    // Speed throttling state
-    let cpu_freq = (cli.common.speed * 1_000_000.0) as u64;
-    let nanos_per_cycle = 1_000_000_000u64 / cpu_freq;
-    let throttle_start = Instant::now();
+    let clock_speed = computer.get_clock_speed();
+    let max_cycles_per_frame = (clock_speed as u64 / 40).max(100_000);
+    let mut throttle = CpuThrottle::new(clock_speed, computer.get_cycle_count());
+    let mut was_paused = false;
 
-    log::info!("Running at {:.2} MHz ({} Hz)", cli.common.speed, cpu_freq);
+    log::info!(
+        "Running at {:.2} MHz ({} Hz)",
+        cli.common.speed,
+        clock_speed
+    );
 
     // Update menu states
     app_state
@@ -262,13 +266,19 @@ fn run(cli: Cli) -> Result<()> {
                         //     js.poll();
                         // }
 
+                        // Reset throttle when resuming from pause to avoid burst catch-up
+                        if was_paused && !app_state.is_paused {
+                            throttle.reset(computer.get_cycle_count());
+                        }
+                        was_paused = app_state.is_paused;
+
                         let halted = step_emulator(
                             &mut computer,
                             &mut pixels,
                             &video_buffer,
                             app_state.is_paused || app_state.halted,
-                            throttle_start,
-                            nanos_per_cycle,
+                            &mut throttle,
+                            max_cycles_per_frame,
                         );
 
                         // Handle halt: show notification and exit exclusive mode
@@ -818,19 +828,17 @@ fn step_emulator(
     pixels: &mut Pixels,
     video_buffer: &Arc<RwLock<VideoBuffer>>,
     is_paused: bool,
-    throttle_start: Instant,
-    nanos_per_cycle: u64,
+    throttle: &mut CpuThrottle,
+    max_cycles_per_frame: u64,
 ) -> bool {
     let mut halted = false;
 
     // Skip execution if paused
     if !is_paused {
-        let elapsed_nanos = throttle_start.elapsed().as_nanos() as u64;
-        let target_cycles = elapsed_nanos / nanos_per_cycle;
         let current_cycles = computer.get_cycle_count();
-
-        let max_cycles_per_frame = (25_000_000u64 / nanos_per_cycle).max(100_000);
-        let frame_target = target_cycles.min(current_cycles + max_cycles_per_frame);
+        let frame_target = throttle
+            .target_cycles()
+            .min(current_cycles + max_cycles_per_frame);
 
         while computer.get_cycle_count() < frame_target {
             computer.step();
