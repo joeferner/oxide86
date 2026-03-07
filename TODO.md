@@ -18,12 +18,18 @@
 - [X] Get MS-DOS 4.01 Working
 - [X] Add mouse support
 - [X] Add PC Speaker support
+- [X] implement native-gui
 - [ ] Get MS-DOS 5.0 Working
+- [ ] Add PS/2 mouse support
+  - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
 - [ ] Command mode reset
 - [ ] Add Joystick support
 - [ ] Add AdLib support
   - [ ] CLI --sound-card=none/adlib option
+- [ ] Add mounted drive support
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
+- [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code
+- [ ] Change io_read_u8 to &mut self. Many of the implementations need to modify internal state on change requiring Cell
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions
 - [ ] remove functions from bus to get internal devices unless really needed

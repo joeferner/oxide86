@@ -17,6 +17,8 @@ strum_macros = "0.28"
 walkdir = "2.5"
 image = "0.25"
 test-log = "0.2"
+chrono = "0.4"
+rodio = "0.22"
 
 [workspace.lints.clippy]
 new_without_default = "allow"

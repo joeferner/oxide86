@@ -137,7 +137,7 @@ impl Computer {
         }
     }
 
-    fn reset(&mut self) {
+    pub fn reset(&mut self) {
         self.bus.reset();
         self.cpu.reset(0xffff, 0x0000, None);
     }
@@ -305,11 +305,47 @@ impl Computer {
         self.bus.uart_mut().set_com_port_device(port, device)
     }
 
+    /// Inject a PS/2 mouse event.  The event is encoded as a 3-byte PS/2 packet
+    /// and queued through the keyboard controller's auxiliary port, exactly as
+    /// real hardware would do.  IRQ12 fires on the next step() call (provided
+    /// interrupts are enabled and the aux port has been enabled via
+    /// INT 15h AH=C2h AL=00h BH=01h).
+    ///
+    /// `buttons`: bit 0 = left, bit 1 = right, bit 2 = middle.
+    pub fn push_ps2_mouse_event(&mut self, dx: i8, dy: i8, buttons: u8) {
+        self.bus.push_ps2_mouse_event(dx, dy, buttons);
+    }
+
+    /// Returns true once the guest has both enabled the PS/2 aux port
+    /// (INT 15h AH=C2h AL=00h BH=01h) and registered a callback handler
+    /// (INT 15h AH=C2h AL=07h).  Use this as the trigger for injecting
+    /// test mouse events so the packet is not discarded before the handler exists.
+    #[cfg(test)]
+    pub(crate) fn is_ps2_mouse_ready(&self) -> bool {
+        if !self.bus.keyboard_controller().is_aux_enabled() {
+            return false;
+        }
+        let (seg, off, _mask) = crate::cpu::bios::bda::bda_get_ps2_mouse_handler(&self.bus);
+        seg != 0 || off != 0
+    }
+
     pub fn set_exec_logging_enabled(&mut self, enabled: bool) {
+        log::info!(
+            "exec logging {}",
+            if enabled { "enabled" } else { "disabled" }
+        );
         self.cpu.exec_logging_enabled = enabled;
     }
 
     pub fn exec_logging_enabled(&self) -> bool {
         self.cpu.exec_logging_enabled
+    }
+
+    pub fn get_cycle_count(&self) -> u64 {
+        self.bus.cycle_count() as u64
+    }
+
+    pub fn is_terminal_halt(&self) -> bool {
+        self.cpu.is_terminal_halt()
     }
 }

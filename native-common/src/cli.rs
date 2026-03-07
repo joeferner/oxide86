@@ -55,6 +55,11 @@ pub struct CommonCli {
     #[arg(long = "disable-pc-speaker")]
     pub disable_pc_speaker: bool,
 
+    /// Route host mouse events to the PS/2 auxiliary port (INT 15h AH=C2h / IRQ12)
+    /// instead of a serial mouse on a COM port
+    #[arg(long = "ps2-mouse")]
+    pub ps2_mouse: bool,
+
     /// Device to attach to COM1 (e.g., "mouse")
     #[arg(long = "com1", value_name = "DEVICE")]
     pub com1_device: Option<String>,

@@ -196,6 +196,12 @@ impl VideoBuffer {
         self.dirty
     }
 
+    pub fn render_and_clear_dirty(&mut self) -> RenderResult {
+        let result = self.render();
+        self.dirty = false;
+        result
+    }
+
     pub fn render(&self) -> RenderResult {
         let bytes_per_pixel = 4;
         let width = CHAR_WIDTH * TEXT_MODE_COLS;

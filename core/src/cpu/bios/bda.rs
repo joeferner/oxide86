@@ -59,6 +59,10 @@ const BDA_MOUSE_MIN_X: usize = 0xE6; // Mouse horizontal minimum (word)
 const BDA_MOUSE_MAX_X: usize = 0xE8; // Mouse horizontal maximum (word)
 const BDA_MOUSE_MIN_Y: usize = 0xEA; // Mouse vertical minimum (word)
 const BDA_MOUSE_MAX_Y: usize = 0xEC; // Mouse vertical maximum (word)
+// PS/2 mouse BIOS handler (INT 15h AH=C2h AL=07h)
+const BDA_MOUSE_HANDLER_OFF: usize = 0xEE; // Far-pointer offset  (word)
+const BDA_MOUSE_HANDLER_SEG: usize = 0xF0; // Far-pointer segment (word)
+const BDA_MOUSE_HANDLER_MASK: usize = 0xF2; // Event mask byte (byte)
 
 // Equipment list bits
 const EQUIPMENT_FLOPPY_INSTALLED: u16 = 0x0001;
@@ -229,6 +233,11 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     bus.memory_write_u16(BDA_START + BDA_MOUSE_MAX_X, 639); // Maximum X
     bus.memory_write_u16(BDA_START + BDA_MOUSE_MIN_Y, 0); // Minimum Y
     bus.memory_write_u16(BDA_START + BDA_MOUSE_MAX_Y, 199); // Maximum Y
+
+    // PS/2 mouse BIOS handler (0x0040:00EE-00F2) — cleared until registered
+    bus.memory_write_u16(BDA_START + BDA_MOUSE_HANDLER_OFF, 0);
+    bus.memory_write_u16(BDA_START + BDA_MOUSE_HANDLER_SEG, 0);
+    bus.memory_write_u8(BDA_START + BDA_MOUSE_HANDLER_MASK, 0);
 }
 
 pub(crate) fn bda_get_cursor_pos(bus: &Bus, page: u8) -> CursorPosition {
@@ -446,6 +455,25 @@ pub(crate) fn bda_get_com_port_address(bus: &Bus, port: u8) -> u16 {
 
 pub(crate) fn bda_clear_timer_overflow(bus: &mut Bus) {
     bus.memory_write_u8(BDA_START + BDA_TIMER_OVERFLOW, 0);
+}
+
+// ── PS/2 mouse BIOS handler ──────────────────────────────────────────────────
+
+pub(crate) fn bda_get_ps2_mouse_handler(bus: &Bus) -> (u16, u16, u8) {
+    let off = bus.memory_read_u16(BDA_START + BDA_MOUSE_HANDLER_OFF);
+    let seg = bus.memory_read_u16(BDA_START + BDA_MOUSE_HANDLER_SEG);
+    let mask = bus.memory_read_u8(BDA_START + BDA_MOUSE_HANDLER_MASK);
+    (seg, off, mask)
+}
+
+pub(crate) fn bda_set_ps2_mouse_handler(bus: &mut Bus, seg: u16, off: u16, mask: u8) {
+    bus.memory_write_u16(BDA_START + BDA_MOUSE_HANDLER_OFF, off);
+    bus.memory_write_u16(BDA_START + BDA_MOUSE_HANDLER_SEG, seg);
+    bus.memory_write_u8(BDA_START + BDA_MOUSE_HANDLER_MASK, mask);
+}
+
+pub(crate) fn bda_clear_ps2_mouse_handler(bus: &mut Bus) {
+    bda_set_ps2_mouse_handler(bus, 0, 0, 0);
 }
 
 pub(crate) fn bda_peek_key(bus: &Bus) -> Option<KeyPress> {

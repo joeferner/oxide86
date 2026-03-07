@@ -246,6 +246,22 @@ impl Bus {
     pub(crate) fn extended_memory_kb(&self) -> u16 {
         self.memory.extended_memory_kb()
     }
+
+    /// Encode a PS/2 mouse event as a 3-byte packet and queue it into the
+    /// keyboard controller's auxiliary output buffer.  IRQ12 will fire on the
+    /// next CPU step (if interrupts are enabled and the aux port is enabled).
+    ///
+    /// `buttons`: bit 0 = left, bit 1 = right, bit 2 = middle.
+    pub(crate) fn push_ps2_mouse_event(&mut self, dx: i8, dy: i8, buttons: u8) {
+        let sign_x: u8 = if dx < 0 { 0x10 } else { 0 };
+        let sign_y: u8 = if dy < 0 { 0x20 } else { 0 };
+        let byte0 = 0x08 | (buttons & 0x07) | sign_x | sign_y;
+        let byte1 = dx as u8;
+        let byte2 = dy as u8;
+        self.keyboard_controller
+            .borrow_mut()
+            .push_mouse_bytes(&[byte0, byte1, byte2]);
+    }
 }
 
 /// Returns a hint string for ports that are known to be probed but not implemented,

@@ -25,7 +25,9 @@ use oxide86_core::{
     },
     video::VideoBuffer,
 };
-use oxide86_native_common::{cli::CommonCli, create_computer, logging::setup_logging};
+use oxide86_native_common::{
+    cli::CommonCli, create_computer, has_com_mouse, logging::setup_logging,
+};
 
 use crate::{
     command_mode::run_command_mode,
@@ -62,9 +64,16 @@ fn main() -> Result<()> {
 
     let mut video_cache: Vec<VideoCachedValue> = vec![];
     let cli = Cli::parse();
+
+    let com_has_mouse = has_com_mouse(&cli.common)?;
     let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
-    let mouse = Arc::new(RwLock::new(SerialMouse::new()));
-    let (mut computer, sink) = create_computer(&cli.common, video_buffer.clone(), mouse.clone())?;
+    let mouse = if com_has_mouse {
+        Some(Arc::new(RwLock::new(SerialMouse::new())))
+    } else {
+        None
+    };
+    let (mut computer, audio_sink) =
+        create_computer(&cli.common, video_buffer.clone(), mouse.clone())?;
 
     let mut stdout = std::io::stdout();
     let mut last_modifiers = KeyModifiers::empty();
@@ -108,7 +117,16 @@ fn main() -> Result<()> {
                         last_mouse_col = mouse_event.column;
                         last_mouse_row = mouse_event.row;
                         if dx != 0 || dy != 0 {
-                            mouse.write().unwrap().push_motion(dx, dy);
+                            if cli.common.ps2_mouse {
+                                let buttons = (mouse_left as u8) | ((mouse_right as u8) << 1);
+                                computer.push_ps2_mouse_event(
+                                    dx.clamp(-128, 127) as i8,
+                                    dy.clamp(-128, 127) as i8,
+                                    buttons,
+                                );
+                            } else if let Some(mouse) = &mouse {
+                                mouse.write().unwrap().push_motion(dx, dy);
+                            }
                         }
                     }
                     MouseEventKind::Down(btn) => {
@@ -119,7 +137,12 @@ fn main() -> Result<()> {
                             MouseButton::Right => mouse_right = true,
                             _ => {}
                         }
-                        mouse.write().unwrap().push_buttons(mouse_left, mouse_right);
+                        if cli.common.ps2_mouse {
+                            let buttons = (mouse_left as u8) | ((mouse_right as u8) << 1);
+                            computer.push_ps2_mouse_event(0, 0, buttons);
+                        } else if let Some(mouse) = &mouse {
+                            mouse.write().unwrap().push_buttons(mouse_left, mouse_right);
+                        }
                     }
                     MouseEventKind::Up(btn) => {
                         last_mouse_col = mouse_event.column;
@@ -129,7 +152,12 @@ fn main() -> Result<()> {
                             MouseButton::Right => mouse_right = false,
                             _ => {}
                         }
-                        mouse.write().unwrap().push_buttons(mouse_left, mouse_right);
+                        if cli.common.ps2_mouse {
+                            let buttons = (mouse_left as u8) | ((mouse_right as u8) << 1);
+                            computer.push_ps2_mouse_event(0, 0, buttons);
+                        } else if let Some(mouse) = &mouse {
+                            mouse.write().unwrap().push_buttons(mouse_left, mouse_right);
+                        }
                     }
                     _ => {}
                 }
@@ -222,8 +250,8 @@ fn main() -> Result<()> {
     terminal::disable_raw_mode()?;
 
     // use sink down here to make sure it doesn't get dropped
-    if let Some(mut sink) = sink {
-        sink.log_on_drop(false);
+    if let Some(mut audio_sink) = audio_sink {
+        audio_sink.log_on_drop(false);
     }
 
     Ok(())

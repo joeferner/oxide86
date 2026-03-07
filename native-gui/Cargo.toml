@@ -8,11 +8,18 @@ oxide86-native-common = { path = "../native-common" }
 oxide86-core = { path = "../core" }
 anyhow = { workspace = true }
 log = { workspace = true }
+clap = { workspace = true }
 winit = "0.29"
 pixels = "0.15"
 egui = "0.27"
-egui-winit = { version = "0.27", default-features = false, features = ["links"] }
+egui-winit = { version = "0.27", default-features = false, features = [
+    "links",
+] }
 egui-wgpu = "0.27"
+image = "0.25"
+rfd = "0.17"
+chrono = { workspace = true }
+rodio = { workspace = true }
 
 [lints]
 workspace = true

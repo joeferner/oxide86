@@ -4,6 +4,7 @@ use crate::{
     disk::DriveNumber,
     physical_address,
 };
+
 pub mod bios;
 mod cpu_type;
 mod instructions;
@@ -167,6 +168,14 @@ impl Cpu {
                 self.wait_for_key_press_patch_flags = true;
                 return;
             }
+            // If the BIOS handler did a FAR CALL into user code (e.g. the PS/2
+            // mouse callback) CS will no longer point to the BIOS segment.
+            // Skip patch_flags_and_iret — the callback will RETF to the
+            // trampoline at PS2_MOUSE_RETURN_IP, which then lets
+            // patch_flags_and_iret clean up the original INT frame.
+            if self.cs != BIOS_CODE_SEGMENT {
+                return;
+            }
             self.patch_flags_and_iret(bus);
             return;
         }
@@ -238,11 +247,19 @@ impl Cpu {
     }
 
     pub(crate) fn patch_flags_and_iret(&mut self, bus: &mut Bus) {
-        // Patch the stacked FLAGS with any changes the handler made, mirroring how a real
-        // BIOS handler modifies the caller's FLAGS on the stack before executing iret.
+        // Patch the stacked FLAGS with any changes the handler made (CF, ZF, SF, etc.),
+        // mirroring how a real BIOS handler modifies the caller's FLAGS before iret.
         // Stack layout after `int`: SP+0=IP, SP+2=CS, SP+4=FLAGS
+        //
+        // We preserve IF from the original stacked flags: dispatch_interrupt cleared IF,
+        // so self.flags has IF=0, but the stacked copy reflects the caller's IF state
+        // (typically IF=1).  Clobbering IF here would leave the caller running with
+        // interrupts disabled after every BIOS call.
         let stacked_flags_addr = physical_address(self.ss, self.sp.wrapping_add(4));
-        bus.memory_write_u16(stacked_flags_addr, self.flags);
+        let original_stacked = bus.memory_read_u16(stacked_flags_addr);
+        let patched =
+            (self.flags & !cpu_flag::INTERRUPT) | (original_stacked & cpu_flag::INTERRUPT);
+        bus.memory_write_u16(stacked_flags_addr, patched);
         self.iret(bus);
     }
 
@@ -321,6 +338,11 @@ impl Cpu {
             0x17 => self.handle_int17_printer_services(bus),
             0x1a => self.handle_int1a_time_services(bus),
             0x21 => self.handle_int21_dos_services(bus),
+            0x74 => self.handle_int74_ps2_mouse_interrupt(bus),
+            // PS/2 mouse callback RETF trampoline — the application's handler
+            // returned here.  Nothing to do; step() will call patch_flags_and_iret
+            // to IRET back to wherever INT 74h originally interrupted.
+            0xF4 => {}
             _ => log::error!("unhandled BIOS interrupt 0x{irq:02X}"),
         }
     }
@@ -331,6 +353,10 @@ impl Cpu {
 
     pub(crate) fn at_reset_vector(&self) -> bool {
         self.cs == 0xFFFF && self.ip == 0x0000
+    }
+
+    pub(crate) fn is_terminal_halt(&self) -> bool {
+        self.halted && !self.get_flag(cpu_flag::INTERRUPT)
     }
 }
 

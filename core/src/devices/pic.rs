@@ -5,8 +5,13 @@ use crate::{
     devices::{keyboard_controller::KeyboardController, pit::Pit, uart::Uart},
 };
 
+// PIC1 (master) ports
 pub const PIC_IO_PORT_COMMAND: u16 = 0x0020;
 pub const PIC_IO_PORT_MASK: u16 = 0x0021;
+
+// PIC2 (slave) ports
+pub const PIC2_IO_PORT_COMMAND: u16 = 0x00A0;
+pub const PIC2_IO_PORT_MASK: u16 = 0x00A1;
 
 /// End of Interrupt
 pub const PIC_COMMAND_EOI: u8 = 0x20;
@@ -21,22 +26,34 @@ pub const COM2_CPU_IRQ: u8 = 0x0B;
 /// IRQ that COM1/COM3 interrupts map to on the CPU (IRQ4 → INT 0x0C)
 pub const COM1_CPU_IRQ: u8 = 0x0C;
 
-/// IRQ line for the PIT (IRQ0)
+/// IRQ that the PS/2 mouse maps to (IRQ12 → INT 0x74, via PIC2)
+pub const PS2_MOUSE_CPU_IRQ: u8 = 0x74;
+
+/// IRQ line for the PIT (IRQ0, PIC1 bit 0)
 const PIT_IRQ_LINE: u8 = 0;
-/// IRQ line for the keyboard (IRQ1)
+/// IRQ line for the keyboard (IRQ1, PIC1 bit 1)
 const KEYBOARD_IRQ_LINE: u8 = 1;
-/// IRQ line for COM2/COM4 (IRQ3)
+/// IRQ line for COM2/COM4 (IRQ3, PIC1 bit 3)
 const COM2_IRQ_LINE: u8 = 3;
-/// IRQ line for COM1/COM3 (IRQ4)
+/// IRQ line for COM1/COM3 (IRQ4, PIC1 bit 4)
 const COM1_IRQ_LINE: u8 = 4;
+
+/// IRQ12 occupies bit 4 of PIC2 (PIC2 handles IRQ8–IRQ15, so IRQ12 = bit 4)
+const PS2_MOUSE_PIC2_BIT: u8 = 4;
 
 pub(crate) struct Pic {
     pit: Rc<RefCell<Pit>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     uart: Rc<RefCell<Uart>>,
+
+    // PIC1 (master) state
     mask: u8,
-    /// Bitmask of IRQ lines currently being serviced (awaiting EOI)
+    /// Bitmask of PIC1 IRQ lines currently being serviced (awaiting EOI)
     in_service: u8,
+
+    // PIC2 (slave) state — handles IRQ8–IRQ15 (PS/2 mouse is IRQ12)
+    pic2_mask: u8,
+    pic2_in_service: u8,
 }
 
 impl Pic {
@@ -51,11 +68,13 @@ impl Pic {
             uart,
             mask: 0,
             in_service: 0,
+            pic2_mask: 0,
+            pic2_in_service: 0,
         }
     }
 
     pub(crate) fn take_irq(&mut self, cycle_count: u32) -> Option<u8> {
-        // pit
+        // PIT (IRQ0)
         {
             let bit = 1u8 << PIT_IRQ_LINE;
             let masked = self.mask & bit != 0;
@@ -67,7 +86,7 @@ impl Pic {
             }
         }
 
-        // keyboard
+        // Keyboard (IRQ1)
         {
             let bit = 1u8 << KEYBOARD_IRQ_LINE;
             let masked = self.mask & bit != 0;
@@ -111,6 +130,19 @@ impl Pic {
             }
         }
 
+        // PS/2 mouse — IRQ12 via PIC2 (cascaded through PIC1 IRQ2)
+        {
+            let pic2_bit = PS2_MOUSE_PIC2_BIT;
+            let masked = self.pic2_mask & (1 << pic2_bit) != 0;
+            let in_service = self.pic2_in_service & (1 << pic2_bit) != 0;
+
+            if !masked && !in_service && self.keyboard_controller.borrow_mut().take_pending_mouse()
+            {
+                self.pic2_in_service |= 1 << pic2_bit;
+                return Some(PS2_MOUSE_CPU_IRQ);
+            }
+        }
+
         None
     }
 }
@@ -123,6 +155,8 @@ impl Device for Pic {
     fn reset(&mut self) {
         self.mask = 0;
         self.in_service = 0;
+        self.pic2_mask = 0;
+        self.pic2_in_service = 0;
     }
 
     fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
@@ -136,6 +170,7 @@ impl Device for Pic {
     fn io_read_u8(&self, port: u16) -> Option<u8> {
         match port {
             PIC_IO_PORT_MASK => Some(self.mask),
+            PIC2_IO_PORT_MASK => Some(self.pic2_mask),
             _ => None,
         }
     }
@@ -151,12 +186,29 @@ impl Device for Pic {
                             self.in_service &= !lowest_bit;
                         }
                     }
-                    _ => log::warn!("unhandled PIC command 0x{val:02X}"),
+                    _ => log::warn!("unhandled PIC1 command 0x{val:02X}"),
                 }
                 true
             }
             PIC_IO_PORT_MASK => {
                 self.mask = val;
+                true
+            }
+            PIC2_IO_PORT_COMMAND => {
+                match val {
+                    PIC_COMMAND_EOI => {
+                        if self.pic2_in_service != 0 {
+                            let lowest_bit =
+                                self.pic2_in_service & self.pic2_in_service.wrapping_neg();
+                            self.pic2_in_service &= !lowest_bit;
+                        }
+                    }
+                    _ => log::warn!("unhandled PIC2 command 0x{val:02X}"),
+                }
+                true
+            }
+            PIC2_IO_PORT_MASK => {
+                self.pic2_mask = val;
                 true
             }
             _ => false,

@@ -2,7 +2,10 @@ use crate::{
     bus::Bus,
     cpu::{
         Cpu,
-        bios::{INT15_SYSTEM_CONFIG_OFFSET, INT15_SYSTEM_CONFIG_SEGMENT},
+        bios::{
+            INT15_SYSTEM_CONFIG_OFFSET, INT15_SYSTEM_CONFIG_SEGMENT,
+            bda::{bda_clear_ps2_mouse_handler, bda_set_ps2_mouse_handler},
+        },
         cpu_flag,
     },
 };
@@ -21,6 +24,7 @@ impl Cpu {
             0x91 => self.int15_device_interrupt_complete(),
             0xC0 => self.int15_get_system_config(),
             0xC1 => self.int15_get_ebda_segment(),
+            0xC2 => self.int15_ps2_mouse_services(bus),
             _ => {
                 log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
@@ -154,5 +158,160 @@ impl Cpu {
         // Return function not supported
         self.set_flag(cpu_flag::CARRY, true);
         log::info!("INT 15h AH=C1h: EBDA not present (8086/PC/XT system)");
+    }
+
+    // ── INT 15h AH=C2h — PS/2 Mouse BIOS Services ───────────────────────────
+
+    /// INT 15h AH=C2h - PS/2 Mouse BIOS Services
+    ///
+    /// AL = subfunction number.  Mouse handler far-pointer is stored in the
+    /// BDA extension area (0x0040:EE–F2) so any code, not just the BIOS, can
+    /// locate it if needed.
+    fn int15_ps2_mouse_services(&mut self, bus: &mut Bus) {
+        let subfunction = self.ax as u8; // AL
+
+        match subfunction {
+            0x00 => self.int15_ps2_mouse_enable_disable(bus),
+            0x01 => self.int15_ps2_mouse_reset(bus),
+            0x02 => self.int15_ps2_mouse_set_sample_rate(),
+            0x03 => self.int15_ps2_mouse_set_resolution(),
+            0x04 => self.int15_ps2_mouse_get_type(),
+            0x05 => self.int15_ps2_mouse_initialize(bus),
+            0x06 => self.int15_ps2_mouse_extended_commands(),
+            0x07 => self.int15_ps2_mouse_set_handler(bus),
+            _ => {
+                log::warn!(
+                    "INT 15h AH=C2h: unhandled subfunction AL=0x{:02X}",
+                    subfunction
+                );
+                self.ax = (self.ax & 0x00FF) | 0x0100; // AH = 0x01 (invalid function)
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 15h AH=C2h AL=00h — Enable/Disable Mouse
+    ///
+    /// Input:  BH = 0x00 disable, 0x01 enable
+    /// Output: CF = 0, AH = 0 on success
+    fn int15_ps2_mouse_enable_disable(&mut self, bus: &mut Bus) {
+        let enable = (self.bx >> 8) as u8 == 0x01; // BH
+        bus.keyboard_controller_mut().set_aux_enabled(enable);
+        self.ax &= 0x00FF; // AH = 0
+        self.set_flag(cpu_flag::CARRY, false);
+        log::debug!(
+            "INT 15h AH=C2h AL=00h: PS/2 mouse {}",
+            if enable { "enabled" } else { "disabled" }
+        );
+    }
+
+    /// INT 15h AH=C2h AL=01h — Reset Mouse
+    ///
+    /// Output: CF = 0, AH = 0, BX = 0x00AA (reset OK), CL = 0x00 (standard mouse)
+    fn int15_ps2_mouse_reset(&mut self, bus: &mut Bus) {
+        bus.keyboard_controller_mut().set_aux_enabled(false);
+        bda_clear_ps2_mouse_handler(bus);
+        self.ax = 0x0000; // AH = 0
+        self.bx = 0x00AA; // reset-complete sentinel
+        self.cx = 0x0000; // CL = 0x00: standard PS/2 mouse device ID
+        self.set_flag(cpu_flag::CARRY, false);
+        log::debug!("INT 15h AH=C2h AL=01h: PS/2 mouse reset");
+    }
+
+    /// INT 15h AH=C2h AL=02h — Set Sample Rate
+    ///
+    /// Input:  BH = rate index (0–6 → 10/20/40/60/80/100/200 samples/s)
+    /// Output: CF = 0, AH = 0
+    fn int15_ps2_mouse_set_sample_rate(&mut self) {
+        self.ax &= 0x00FF; // AH = 0
+        self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 15h AH=C2h AL=03h — Set Resolution
+    ///
+    /// Input:  BH = resolution (0 = 1/mm, 1 = 2/mm, 2 = 4/mm, 3 = 8/mm)
+    /// Output: CF = 0, AH = 0
+    fn int15_ps2_mouse_set_resolution(&mut self) {
+        self.ax &= 0x00FF; // AH = 0
+        self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 15h AH=C2h AL=04h — Get Device Type
+    ///
+    /// Output: CF = 0, AH = 0, BH = 0x00 (standard PS/2 mouse)
+    fn int15_ps2_mouse_get_type(&mut self) {
+        self.ax &= 0x00FF; // AH = 0
+        self.bx &= 0x00FF; // BH = 0x00: standard mouse
+        self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 15h AH=C2h AL=05h — Initialize Mouse
+    ///
+    /// Input:  BH = packet size (must be 3 for a standard mouse)
+    /// Output: CF = 0, AH = 0 on success; CF = 1, AH = 0x02 for bad packet size
+    fn int15_ps2_mouse_initialize(&mut self, bus: &mut Bus) {
+        let packet_size = (self.bx >> 8) as u8; // BH
+        if packet_size != 3 {
+            self.ax = (self.ax & 0x00FF) | 0x0200; // AH = 0x02 (invalid input)
+            self.set_flag(cpu_flag::CARRY, true);
+            return;
+        }
+        bda_clear_ps2_mouse_handler(bus);
+        self.ax &= 0x00FF; // AH = 0
+        self.set_flag(cpu_flag::CARRY, false);
+        log::debug!("INT 15h AH=C2h AL=05h: PS/2 mouse initialized (packet size 3)");
+    }
+
+    /// INT 15h AH=C2h AL=06h — Extended Commands
+    ///
+    /// BH=00h: return status → BX = status, CX = resolution, DX = sample rate
+    /// BH=01h: set 1:1 scaling
+    /// BH=02h: set 2:1 scaling
+    fn int15_ps2_mouse_extended_commands(&mut self) {
+        let sub = (self.bx >> 8) as u8; // BH
+        match sub {
+            0x00 => {
+                self.bx = 0x0000; // status flags
+                self.cx = 0x0002; // 4 counts/mm resolution
+                self.dx = 0x0064; // 100 samples/sec
+                self.ax &= 0x00FF;
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            0x01 | 0x02 => {
+                // Set 1:1 or 2:1 scaling — accept silently
+                self.ax &= 0x00FF;
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            _ => {
+                log::warn!(
+                    "INT 15h AH=C2h AL=06h: unhandled extended command BH=0x{:02X}",
+                    sub
+                );
+                self.ax = (self.ax & 0x00FF) | 0x0100; // AH = 0x01
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
+    }
+
+    /// INT 15h AH=C2h AL=07h — Set Mouse Handler Address
+    ///
+    /// Input:  ES:BX = far pointer to handler, CX = event mask
+    /// Output: CF = 0, AH = 0
+    ///
+    /// The handler is called with a virtual FAR CALL when INT 74h fires:
+    ///   AL = PS/2 status byte, BL = ΔX, CL = ΔY, DL = ΔZ, AH = 0
+    fn int15_ps2_mouse_set_handler(&mut self, bus: &mut Bus) {
+        let seg = self.es;
+        let off = self.bx;
+        let mask = self.cx as u8;
+        bda_set_ps2_mouse_handler(bus, seg, off, mask);
+        self.ax &= 0x00FF; // AH = 0
+        self.set_flag(cpu_flag::CARRY, false);
+        log::debug!(
+            "INT 15h AH=C2h AL=07h: PS/2 mouse handler {:04X}:{:04X} mask=0x{:02X}",
+            seg,
+            off,
+            mask
+        );
     }
 }

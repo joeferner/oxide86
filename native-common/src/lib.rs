@@ -25,10 +25,28 @@ use crate::{
 };
 use rodio::{DeviceSinkBuilder, MixerDeviceSink};
 
+pub fn has_com_mouse(cli: &CommonCli) -> Result<bool> {
+    let com_has_mouse = [
+        &cli.com1_device,
+        &cli.com2_device,
+        &cli.com3_device,
+        &cli.com4_device,
+    ]
+    .iter()
+    .any(|d| d.as_deref() == Some("mouse"));
+    if cli.ps2_mouse && com_has_mouse {
+        Err(anyhow!(
+            "cannot use --ps2-mouse together with a serial mouse on a COM port"
+        ))
+    } else {
+        Ok(com_has_mouse)
+    }
+}
+
 pub fn create_computer(
     cli: &CommonCli,
     video_buffer: Arc<RwLock<VideoBuffer>>,
-    native_mouse: Arc<RwLock<SerialMouse>>,
+    serial_mouse: Option<Arc<RwLock<SerialMouse>>>,
 ) -> Result<(Computer, Option<MixerDeviceSink>)> {
     let cpu_type = if let Some(cpu_type) = CpuType::parse(&cli.cpu_type) {
         cpu_type
@@ -91,10 +109,10 @@ pub fn create_computer(
         log::info!("Opened floppy B: from {} (read_only={})", path, read_only);
     }
 
-    computer.set_com_port_device(1, create_com_device(&cli.com1_device, &native_mouse)?);
-    computer.set_com_port_device(2, create_com_device(&cli.com2_device, &native_mouse)?);
-    computer.set_com_port_device(3, create_com_device(&cli.com3_device, &native_mouse)?);
-    computer.set_com_port_device(4, create_com_device(&cli.com4_device, &native_mouse)?);
+    computer.set_com_port_device(1, create_com_device(&cli.com1_device, &serial_mouse)?);
+    computer.set_com_port_device(2, create_com_device(&cli.com2_device, &serial_mouse)?);
+    computer.set_com_port_device(3, create_com_device(&cli.com3_device, &serial_mouse)?);
+    computer.set_com_port_device(4, create_com_device(&cli.com4_device, &serial_mouse)?);
 
     if let Some(program_path) = &cli.program {
         // Load program from file
@@ -145,14 +163,18 @@ pub fn create_computer(
 
 fn create_com_device(
     device_name: &Option<String>,
-    native_mouse: &Arc<RwLock<SerialMouse>>,
+    serial_mouse: &Option<Arc<RwLock<SerialMouse>>>,
 ) -> Result<Option<Arc<RwLock<dyn ComPortDevice>>>> {
     if let Some(device_name) = device_name {
         let device_name = device_name.trim().to_lowercase();
         if device_name == "none" || device_name == "null" {
             Ok(None)
         } else if device_name == "mouse" {
-            Ok(Some(native_mouse.clone()))
+            if let Some(native_mouse) = serial_mouse {
+                Ok(Some(native_mouse.clone()))
+            } else {
+                Err(anyhow!("Serial mouse not initialized"))
+            }
         } else {
             Err(anyhow!("Invalid COM device name: {device_name}"))
         }
