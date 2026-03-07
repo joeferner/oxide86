@@ -1,4 +1,5 @@
 use std::any::Any;
+use std::cell::Cell;
 
 use crate::{Device, devices::pc_speaker::PcSpeaker};
 
@@ -16,11 +17,15 @@ pub const PORT_B: u16 = 0x0061;
 
 struct Channel {
     divisor: u16,
-    /// True when waiting for the low byte (lobyte/hibyte mode).
+    /// True when waiting for the low byte (lo/hi mode).
     expect_low: bool,
     latch_buf: u8,
-    /// 1=lobyte only, 2=hibyte only, 3=lobyte/hibyte
+    /// 1=lo only, 2=hi only, 3=lo/hi
     access_mode: u8,
+    /// Latched counter value from a counter-latch command.
+    latched: Cell<Option<u16>>,
+    /// True when the high byte of the latch should be returned next.
+    latch_read_high: Cell<bool>,
 }
 
 impl Default for Channel {
@@ -30,6 +35,8 @@ impl Default for Channel {
             expect_low: true,
             latch_buf: 0,
             access_mode: 3,
+            latched: Cell::new(None),
+            latch_read_high: Cell::new(false),
         }
     }
 }
@@ -79,6 +86,18 @@ impl Pit {
         }
     }
 
+    /// Returns the channel 0 counter value based on emulated CPU cycles.
+    fn counter_value_ch0(&self, cycle_count: u32) -> u16 {
+        let d = if self.ch0.divisor == 0 {
+            PIT_DIVISOR
+        } else {
+            self.ch0.divisor as u64
+        };
+        let ticks =
+            (cycle_count as u64).wrapping_mul(PIT_FREQUENCY_HZ) / self.cpu_clock_speed as u64;
+        (d - ticks % d) as u16
+    }
+
     fn speaker_active(&self) -> bool {
         self.port_b & 0x03 == 0x03
     }
@@ -111,13 +130,20 @@ impl Pit {
         }
     }
 
-    fn write_control(&mut self, val: u8) {
+    fn write_control(&mut self, val: u8, cycle_count: u32) {
         let channel = (val >> 6) & 0x03;
         let access = (val >> 4) & 0x03;
         match channel {
             0 => {
-                self.ch0.access_mode = access;
-                self.ch0.expect_low = access == 3;
+                if access == 0 {
+                    // Counter latch command: capture current counter value.
+                    let count = self.counter_value_ch0(cycle_count);
+                    self.ch0.latched.set(Some(count));
+                    self.ch0.latch_read_high.set(false);
+                } else {
+                    self.ch0.access_mode = access;
+                    self.ch0.expect_low = access == 3;
+                }
             }
             2 => {
                 self.ch2.access_mode = access;
@@ -143,17 +169,35 @@ impl Device for Pit {
         self.pc_speaker.disable();
     }
 
-    fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
+    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
-    fn memory_write_u8(&mut self, _addr: usize, _val: u8) -> bool {
+    fn memory_write_u8(&mut self, _addr: usize, _val: u8, _cycle_count: u32) -> bool {
         false
     }
 
-    fn io_read_u8(&self, port: u16) -> Option<u8> {
+    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
         match port {
-            PIT_CHANNEL_0 | PIT_CHANNEL_1 | PIT_CHANNEL_2 | PIT_CONTROL => Some(0xFF),
+            PIT_CHANNEL_0 => {
+                if let Some(count) = self.ch0.latched.get() {
+                    let high = self.ch0.latch_read_high.get();
+                    let byte = if high {
+                        (count >> 8) as u8
+                    } else {
+                        count as u8
+                    };
+                    self.ch0.latch_read_high.set(!high);
+                    if high {
+                        self.ch0.latched.set(None);
+                        self.ch0.latch_read_high.set(false);
+                    }
+                    Some(byte)
+                } else {
+                    Some(0xFF)
+                }
+            }
+            PIT_CHANNEL_1 | PIT_CHANNEL_2 | PIT_CONTROL => Some(0xFF),
             PORT_B => {
                 // Bit 5: timer 2 output (high if channel 2 running and gate open).
                 let timer2_out = if self.port_b & 0x01 != 0 { 0x20 } else { 0x00 };
@@ -163,10 +207,10 @@ impl Device for Pit {
         }
     }
 
-    fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
+    fn io_write_u8(&mut self, port: u16, val: u8, cycle_count: u32) -> bool {
         match port {
             PIT_CONTROL => {
-                self.write_control(val);
+                self.write_control(val, cycle_count);
                 true
             }
             PIT_CHANNEL_0 => {

@@ -145,15 +145,15 @@ impl Device for KeyboardController {
         self.aux_enabled = false;
     }
 
-    fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
+    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
-    fn memory_write_u8(&mut self, _addr: usize, _val: u8) -> bool {
+    fn memory_write_u8(&mut self, _addr: usize, _val: u8, _cycle_count: u32) -> bool {
         false
     }
 
-    fn io_read_u8(&self, port: u16) -> Option<u8> {
+    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
         match port {
             KEYBOARD_IO_PORT_DATA => {
                 // On real 8042 hardware OBF and AUXOBF share a single output
@@ -192,7 +192,7 @@ impl Device for KeyboardController {
         }
     }
 
-    fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
+    fn io_write_u8(&mut self, port: u16, val: u8, _cycle_count: u32) -> bool {
         match port {
             KEYBOARD_IO_PORT_COMMAND => {
                 match val {

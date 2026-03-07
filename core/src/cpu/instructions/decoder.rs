@@ -56,6 +56,74 @@ struct MemoryRef {
     is_word: bool,
 }
 
+fn port_name(port: u16) -> Option<&'static str> {
+    match port {
+        // PIC
+        0x0020 => Some("PIC1 Command"),
+        0x0021 => Some("PIC1 Mask"),
+        0x00A0 => Some("PIC2 Command"),
+        0x00A1 => Some("PIC2 Mask"),
+        // PIT
+        0x0040 => Some("PIT Channel 0"),
+        0x0041 => Some("PIT Channel 1"),
+        0x0042 => Some("PIT Channel 2"),
+        0x0043 => Some("PIT Control"),
+        // System Control Port B
+        0x0061 => Some("System Control Port B"),
+        // Keyboard Controller
+        0x0060 => Some("KBC Data"),
+        0x0064 => Some("KBC Status/Command"),
+        // RTC
+        0x0070 => Some("RTC Register Select"),
+        0x0071 => Some("RTC Data"),
+        // CGA/VGA CRTC
+        0x03B4 => Some("MDA CRTC Address"),
+        0x03B5 => Some("MDA CRTC Data"),
+        0x03C0 => Some("VGA AC Address/Data"),
+        0x03C1 => Some("VGA AC Data Read"),
+        0x03C7 => Some("VGA DAC Read Index"),
+        0x03C8 => Some("VGA DAC Write Index"),
+        0x03C9 => Some("VGA DAC Data"),
+        0x03D4 => Some("CGA CRTC Address"),
+        0x03D5 => Some("CGA CRTC Data"),
+        0x03D9 => Some("CGA Color Select"),
+        0x03DA => Some("CGA Status"),
+        // FDC
+        0x03F2 => Some("FDC DOR"),
+        0x03F4 => Some("FDC Status"),
+        0x03F5 => Some("FDC Data"),
+        0x03F7 => Some("FDC DIR"),
+        // HDC
+        0x01F0 => Some("HDC Data"),
+        0x01F1 => Some("HDC Error/Features"),
+        0x01F2 => Some("HDC Sector Count"),
+        0x01F3 => Some("HDC Sector Number"),
+        0x01F4 => Some("HDC Cylinder Low"),
+        0x01F5 => Some("HDC Cylinder High"),
+        0x01F6 => Some("HDC Drive/Head"),
+        0x01F7 => Some("HDC Command/Status"),
+        0x03F6 => Some("HDC Device Control"),
+        // UART (COM ports)
+        0x03F8 => Some("COM1 Data"),
+        0x03F9 => Some("COM1 IER/DLM"),
+        0x03FA => Some("COM1 IIR/FCR"),
+        0x03FB => Some("COM1 LCR"),
+        0x03FC => Some("COM1 MCR"),
+        0x03FD => Some("COM1 LSR"),
+        0x03FE => Some("COM1 MSR"),
+        0x02F8 => Some("COM2 Data"),
+        0x02F9 => Some("COM2 IER/DLM"),
+        0x02FA => Some("COM2 IIR/FCR"),
+        0x02FB => Some("COM2 LCR"),
+        0x02FC => Some("COM2 MCR"),
+        0x02FD => Some("COM2 LSR"),
+        0x02FE => Some("COM2 MSR"),
+        0x03E8 => Some("COM3 Data"),
+        0x02E8 => Some("COM4 Data"),
+        _ => None,
+    }
+}
+
 struct InstructionDecoder<'a> {
     bus: &'a Bus,
     cs: u16,
@@ -1044,19 +1112,33 @@ impl<'a> InstructionDecoder<'a> {
             // IN/OUT
             0xE4 => {
                 let port = self.fetch_byte();
-                format!("in al, 0x{:02x}", port)
+                let name = port_name(port as u16)
+                    .map(|n| format!(" ; {}", n))
+                    .unwrap_or_default();
+                format!("in al, 0x{:02x}{}", port, name)
             }
             0xE5 => {
                 let port = self.fetch_byte();
-                format!("in ax, 0x{:02x}", port)
+                let name = port_name(port as u16)
+                    .map(|n| format!(" ; {}", n))
+                    .unwrap_or_default();
+                format!("in ax, 0x{:02x}{}", port, name)
             }
             0xE6 => {
                 let port = self.fetch_byte();
-                format!("out 0x{:02x}, al", port)
+                self.mark_reg_input("al");
+                let name = port_name(port as u16)
+                    .map(|n| format!(" ; {}", n))
+                    .unwrap_or_default();
+                format!("out 0x{:02x}, al{}", port, name)
             }
             0xE7 => {
                 let port = self.fetch_byte();
-                format!("out 0x{:02x}, ax", port)
+                self.mark_reg_input("ax");
+                let name = port_name(port as u16)
+                    .map(|n| format!(" ; {}", n))
+                    .unwrap_or_default();
+                format!("out 0x{:02x}, ax{}", port, name)
             }
 
             // CALL/JMP near/short
@@ -1081,8 +1163,16 @@ impl<'a> InstructionDecoder<'a> {
             // IN/OUT with DX
             0xEC => "in al, dx".to_string(),
             0xED => "in ax, dx".to_string(),
-            0xEE => "out dx, al".to_string(),
-            0xEF => "out dx, ax".to_string(),
+            0xEE => {
+                self.mark_reg_input("al");
+                self.mark_reg_input("dx");
+                "out dx, al".to_string()
+            }
+            0xEF => {
+                self.mark_reg_input("ax");
+                self.mark_reg_input("dx");
+                "out dx, ax".to_string()
+            }
 
             // HLT and flag instructions
             0xF4 => "hlt".to_string(),

@@ -141,7 +141,7 @@ impl Device for VideoCard {
         self.dac_read_pos.set(0);
     }
 
-    fn memory_read_u8(&self, addr: usize) -> Option<u8> {
+    fn memory_read_u8(&self, addr: usize, _cycle_count: u32) -> Option<u8> {
         // Route to Video for memory-mapped ranges
         if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
@@ -151,7 +151,7 @@ impl Device for VideoCard {
         }
     }
 
-    fn memory_write_u8(&mut self, addr: usize, val: u8) -> bool {
+    fn memory_write_u8(&mut self, addr: usize, val: u8, _cycle_count: u32) -> bool {
         // Route to Video for memory-mapped ranges
         if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
@@ -162,7 +162,7 @@ impl Device for VideoCard {
         }
     }
 
-    fn io_read_u8(&self, port: u16) -> Option<u8> {
+    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
         match self.card_type {
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: return 0xFF — no MDA card present
@@ -203,7 +203,7 @@ impl Device for VideoCard {
         }
     }
 
-    fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
+    fn io_write_u8(&mut self, port: u16, val: u8, _cycle_count: u32) -> bool {
         match self.card_type {
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: silently ignore — no MDA card present

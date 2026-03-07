@@ -213,15 +213,15 @@ impl Device for Uart {
         }
     }
 
-    fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
+    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
-    fn memory_write_u8(&mut self, _addr: usize, _val: u8) -> bool {
+    fn memory_write_u8(&mut self, _addr: usize, _val: u8, _cycle_count: u32) -> bool {
         false
     }
 
-    fn io_read_u8(&self, port: u16) -> Option<u8> {
+    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
         let (idx, offset) = port_index(port)?;
         let p = &self.ports[idx];
         let dlab = p.lcr & 0x80 != 0;
@@ -258,7 +258,7 @@ impl Device for Uart {
         Some(val)
     }
 
-    fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
+    fn io_write_u8(&mut self, port: u16, val: u8, _cycle_count: u32) -> bool {
         let Some((idx, offset)) = port_index(port) else {
             return false;
         };

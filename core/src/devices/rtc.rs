@@ -93,15 +93,15 @@ impl Device for Rtc {
         // floppy_types is battery-backed CMOS RAM — preserved across resets
     }
 
-    fn memory_read_u8(&self, _addr: usize) -> Option<u8> {
+    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
-    fn memory_write_u8(&mut self, _addr: usize, _val: u8) -> bool {
+    fn memory_write_u8(&mut self, _addr: usize, _val: u8, _cycle_count: u32) -> bool {
         false
     }
 
-    fn io_read_u8(&self, port: u16) -> Option<u8> {
+    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
         if port != RTC_IO_PORT_DATA {
             return None;
         }
@@ -128,7 +128,7 @@ impl Device for Rtc {
         Some(val)
     }
 
-    fn io_write_u8(&mut self, port: u16, val: u8) -> bool {
+    fn io_write_u8(&mut self, port: u16, val: u8, _cycle_count: u32) -> bool {
         match port {
             RTC_IO_PORT_REGISTER_SELECT => {
                 // Bit 7 is the NMI disable bit; mask it out to get the register index

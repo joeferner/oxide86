@@ -160,7 +160,7 @@ impl Bus {
     pub(crate) fn memory_read_u8(&self, addr: usize) -> u8 {
         if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
             for device in &self.devices {
-                if let Some(val) = device.borrow().memory_read_u8(addr) {
+                if let Some(val) = device.borrow().memory_read_u8(addr, self.cycle_count) {
                     return val;
                 }
             }
@@ -170,9 +170,10 @@ impl Bus {
     }
 
     pub(crate) fn memory_write_u8(&mut self, addr: usize, val: u8) {
+        let cycle_count = self.cycle_count;
         if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
             for device in &self.devices {
-                if device.borrow_mut().memory_write_u8(addr, val) {
+                if device.borrow_mut().memory_write_u8(addr, val, cycle_count) {
                     return;
                 }
             }
@@ -202,7 +203,7 @@ impl Bus {
 
     pub(crate) fn io_read_u8(&self, port: u16) -> u8 {
         for device in &self.devices {
-            if let Some(val) = device.borrow().io_read_u8(port) {
+            if let Some(val) = device.borrow().io_read_u8(port, self.cycle_count) {
                 return val;
             }
         }
@@ -220,8 +221,9 @@ impl Bus {
     }
 
     pub(crate) fn io_write_u8(&mut self, port: u16, val: u8) {
+        let cycle_count = self.cycle_count;
         for device in &self.devices {
-            if device.borrow_mut().io_write_u8(port, val) {
+            if device.borrow_mut().io_write_u8(port, val, cycle_count) {
                 return;
             }
         }
