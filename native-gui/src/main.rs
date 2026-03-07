@@ -27,7 +27,7 @@ use std::sync::{Arc, RwLock};
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey};
 use winit::window::{CursorGrabMode, WindowBuilder};
 
 use crate::mouse_motion_state::MouseMotionState;
@@ -191,8 +191,11 @@ fn run(cli: Cli) -> Result<()> {
                 // When not in exclusive mode, let egui handle events first
                 if !exclusive_mode {
                     let response = egui_state.on_window_event(window, &event);
-                    // If egui consumed the event (e.g., clicking on menu), don't process it further
-                    if response.consumed {
+                    // Keyboard events always reach the emulator — egui's overlay has no
+                    // text inputs that should steal from the emulated program.
+                    // Non-keyboard events (e.g., clicking on the menu) are blocked if egui
+                    // consumed them.
+                    if response.consumed && !matches!(event, WindowEvent::KeyboardInput { .. }) {
                         return;
                     }
                 }
@@ -408,6 +411,8 @@ fn handle_keyboard_input(
     input: &winit::event::KeyEvent,
     exclusive_mode: &mut bool,
 ) {
+    log::debug!("KeyboardInput {input:?}");
+
     // Check if F12 is pressed to exit exclusive mode
     if input.state == ElementState::Pressed
         && let PhysicalKey::Code(KeyCode::F12) = input.physical_key
@@ -425,25 +430,75 @@ fn handle_keyboard_input(
         return;
     }
 
-    // Skip auto-repeated key events
-    if input.repeat {
-        return;
+    // Convert physical key to XT scan code and send to emulator.
+    // Repeat events are forwarded as additional make codes — this matches real
+    // hardware where the keyboard controller generates typematic repeats.
+    // Key-release events are never repeated by the OS, so no break code duplication occurs.
+    let scan_code = keycode_to_scan_code(input);
+    if scan_code != 0 {
+        match input.state {
+            ElementState::Pressed => computer.push_key_press(scan_code),
+            ElementState::Released => computer.push_key_press(SCAN_CODE_RELEASE | scan_code),
+        }
     }
+}
 
-    // Convert physical key to XT scan code and send to emulator
+/// Map a winit KeyEvent to an IBM PC XT scan code.
+/// Tries the physical key first; falls back to logical key for non-standard layouts.
+fn keycode_to_scan_code(input: &winit::event::KeyEvent) -> u8 {
     if let PhysicalKey::Code(key_code) = input.physical_key {
-        let scan_code = keycode_to_scan_code(key_code);
-        if scan_code != 0 {
-            match input.state {
-                ElementState::Pressed => computer.push_key_press(scan_code),
-                ElementState::Released => computer.push_key_press(SCAN_CODE_RELEASE | scan_code),
-            }
+        let sc = physical_keycode_to_scan_code(key_code);
+        if sc != 0 {
+            return sc;
+        }
+    }
+    match &input.logical_key {
+        Key::Named(NamedKey::Escape) => 0x01,
+        Key::Named(NamedKey::Backspace) => 0x0E,
+        Key::Named(NamedKey::Tab) => 0x0F,
+        Key::Named(NamedKey::Enter) => 0x1C,
+        Key::Named(NamedKey::CapsLock) => 0x3A,
+        Key::Named(NamedKey::F1) => 0x3B,
+        Key::Named(NamedKey::F2) => 0x3C,
+        Key::Named(NamedKey::F3) => 0x3D,
+        Key::Named(NamedKey::F4) => 0x3E,
+        Key::Named(NamedKey::F5) => 0x3F,
+        Key::Named(NamedKey::F6) => 0x40,
+        Key::Named(NamedKey::F7) => 0x41,
+        Key::Named(NamedKey::F8) => 0x42,
+        Key::Named(NamedKey::F9) => 0x43,
+        Key::Named(NamedKey::F10) => 0x44,
+        Key::Named(NamedKey::NumLock) => 0x45,
+        Key::Named(NamedKey::ScrollLock) => 0x46,
+        Key::Named(NamedKey::Home) => 0x47,
+        Key::Named(NamedKey::ArrowUp) => 0x48,
+        Key::Named(NamedKey::PageUp) => 0x49,
+        Key::Named(NamedKey::ArrowLeft) => 0x4B,
+        Key::Named(NamedKey::ArrowRight) => 0x4D,
+        Key::Named(NamedKey::End) => 0x4F,
+        Key::Named(NamedKey::ArrowDown) => 0x50,
+        Key::Named(NamedKey::PageDown) => 0x51,
+        Key::Named(NamedKey::Insert) => 0x52,
+        Key::Named(NamedKey::Delete) => 0x53,
+        Key::Named(NamedKey::F11) => 0x57,
+        Key::Named(NamedKey::F12) => 0x58,
+        Key::Named(NamedKey::Space) => 0x39,
+        Key::Named(NamedKey::Alt) => 0x38,
+        Key::Named(NamedKey::Control) => 0x1D,
+        Key::Named(NamedKey::Shift) => 0x2A,
+        _ => {
+            log::warn!(
+                "unhandled key: physical={:?} logical={:?}",
+                input.physical_key,
+                input.logical_key
+            );
+            0x00
         }
     }
 }
 
 /// Map a winit physical KeyCode to an IBM PC XT scan code.
-fn keycode_to_scan_code(key: KeyCode) -> u8 {
+fn physical_keycode_to_scan_code(key: KeyCode) -> u8 {
     match key {
         KeyCode::Escape => 0x01,
         KeyCode::Digit1 => 0x02,

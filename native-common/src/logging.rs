@@ -9,15 +9,16 @@ pub fn setup_logging() -> Result<()> {
 
     // Initialize logger from RUST_LOG env var, or use defaults if not set
     let mut builder = env_logger::Builder::from_default_env();
+    builder
+        .filter_module("naga", log::LevelFilter::Info)
+        .filter_module("wgpu_core", log::LevelFilter::Info)
+        .filter_module("wgpu_hal", log::LevelFilter::Error)
+        .filter_module("calloop", log::LevelFilter::Debug);
 
     // Only apply defaults if RUST_LOG is not set
     if std::env::var("RUST_LOG").is_err() {
         builder
             .filter_level(log::LevelFilter::Error)
-            .filter_module("naga", log::LevelFilter::Info)
-            .filter_module("wgpu_core", log::LevelFilter::Info)
-            .filter_module("wgpu_hal", log::LevelFilter::Error)
-            .filter_module("calloop", log::LevelFilter::Debug)
             .filter_module("oxide86_core", log::LevelFilter::Info)
             .filter_module("oxide86_native", log::LevelFilter::Info);
     }
