@@ -211,7 +211,11 @@ impl Device for VideoCard {
                 CGA_COLOR_SELECT_ADDR => {
                     self.color_select = val;
                     let mut buffer = self.buffer.write().unwrap();
-                    buffer.set_cga_color_select(val);
+                    buffer.set_cga_color_select(
+                        (val & 0x0F) as usize,
+                        (val & 0x10) != 0,
+                        (val & 0x20) != 0,
+                    );
                     true
                 }
                 VIDEO_CARD_CONTROL_ADDR => {

@@ -43,9 +43,12 @@ pub struct VideoBuffer {
     /// Persists across mode changes, just like real hardware.
     vram: Vec<u8>,
 
-    /// CGA color select register (port 0x3D9).
-    /// Bits 3:0 = background color, bit 4 = palette select, bit 5 = intensity.
-    cga_color_select: u8,
+    /// Background color index (bits 3:0 of port 0x3D9). Used as color 0 in 4-color graphics modes.
+    cga_bg: usize,
+    /// High-intensity colors (bit 4 of port 0x3D9). Selects bright variants of the active palette.
+    cga_intensity: bool,
+    /// Palette select (bit 5 of port 0x3D9). false = green/red/brown, true = cyan/magenta/white.
+    cga_palette: bool,
 
     font: Cp437Font,
     /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
@@ -82,7 +85,9 @@ impl VideoBuffer {
             mode: VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
             text_columns: TEXT_MODE_COLS as u8,
             vram: vec![0; VIDEO_MEMORY_SIZE],
-            cga_color_select: 0,
+            cga_bg: 0,
+            cga_intensity: false,
+            cga_palette: false,
             font: Cp437Font::new(),
             vga_dac_palette: Self::default_vga_dac_palette(),
             blink_enabled: false,
@@ -99,7 +104,9 @@ impl VideoBuffer {
 
     pub(crate) fn reset(&mut self) {
         self.mode = VIDEO_MODE_03H_COLOR_TEXT_80_X_25;
-        self.cga_color_select = 0;
+        self.cga_bg = 0;
+        self.cga_intensity = false;
+        self.cga_palette = false;
         self.text_columns = TEXT_MODE_COLS as u8;
         self.font = Cp437Font::new();
         self.vga_dac_palette = Self::default_vga_dac_palette();
@@ -194,8 +201,10 @@ impl VideoBuffer {
         &self.vga_dac_palette
     }
 
-    pub(crate) fn set_cga_color_select(&mut self, val: u8) {
-        self.cga_color_select = val;
+    pub(crate) fn set_cga_color_select(&mut self, bg: usize, intensity: bool, palette: bool) {
+        self.cga_bg = bg;
+        self.cga_intensity = intensity;
+        self.cga_palette = palette;
         self.dirty = true;
     }
 
@@ -326,21 +335,21 @@ impl VideoBuffer {
     /// CGA VRAM is interleaved: even scan lines at 0x0000, odd scan lines at 0x2000.
     /// Each pixel is 2 bits (4 pixels per byte). The CGA color select register
     /// (port 0x3D9) determines the palette: bits 3:0 = background color,
-    /// bit 4 = palette (0=green/red/yellow, 1=cyan/magenta/white), bit 5 = intensity.
+    /// bit 4 = intensity, bit 5 = palette (0=green/red/yellow, 1=cyan/magenta/white).
     fn render_mode_04h_320x200x4(&self, buf: &mut [u8]) {
         const WIDTH: usize = 320;
         const HEIGHT: usize = 200;
 
-        let bg = (self.cga_color_select & 0x0F) as usize;
-        let palette = (self.cga_color_select >> 4) & 0x01;
-        let intensity = (self.cga_color_select >> 5) & 0x01;
+        let bg = self.cga_bg;
+        let intensity = self.cga_intensity;
+        let palette = self.cga_palette;
 
         // Map 2-bit pixel values to EGA color indices (0-15)
         let color_map: [usize; 4] = match (palette, intensity) {
-            (0, 0) => [bg, 2, 4, 6],    // green, red, brown
-            (0, _) => [bg, 10, 12, 14], // light green, light red, yellow
-            (1, 0) => [bg, 3, 5, 7],    // cyan, magenta, white
-            _ => [bg, 11, 13, 15],      // light cyan, light magenta, bright white
+            (false, false) => [bg, 2, 4, 6],   // green, red, brown
+            (false, true) => [bg, 10, 12, 14], // light green, light red, yellow
+            (true, false) => [bg, 3, 5, 7],    // cyan, magenta, white
+            (true, true) => [bg, 11, 13, 15],  // light cyan, light magenta, bright white
         };
 
         for y in 0..HEIGHT {
