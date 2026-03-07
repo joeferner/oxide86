@@ -43,6 +43,7 @@ pub(crate) fn run_command_mode(computer: &mut Computer, stdout: &mut Stdout) -> 
             }
         );
         println!("   resume/enter              - Resume execution\r");
+        println!("   reset                     - Reset computer\r");
         println!("   quit/q                    - Quit Emulator\r");
         println!();
         if let Some(error) = &message {
@@ -135,6 +136,11 @@ pub(crate) fn run_command_mode(computer: &mut Computer, stdout: &mut Stdout) -> 
                                 }
                             }
                         }
+                        Command::Reset => {
+                            log::info!("Resetting computer...");
+                            computer.reset();
+                            return Ok(false);
+                        }
                     }
                 }
                 _ => {}
@@ -155,6 +161,7 @@ enum Command {
     EjectB,
     LoadA(String),
     LoadB(String),
+    Reset,
     Invalid,
 }
 
@@ -175,6 +182,8 @@ impl Command {
             Self::LoadA(filename.trim().to_string())
         } else if let Some(filename) = text.strip_prefix("load b ") {
             Self::LoadB(filename.trim().to_string())
+        } else if text == "reset" {
+            Self::Reset
         } else {
             Self::Invalid
         }

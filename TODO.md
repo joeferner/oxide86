@@ -21,7 +21,7 @@
 - [X] implement native-gui
 - [X] Get MS-DOS 5.0 Working
 - [X] Add CGA support
-- [ ] Command mode reset
+- [X] Command mode reset
 - [ ] Add Joystick support
 - [ ] Add AdLib support
   - [ ] CLI --sound-card=none/adlib option
