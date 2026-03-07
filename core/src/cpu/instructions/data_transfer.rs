@@ -534,6 +534,23 @@ impl Cpu {
         bus.increment_cycle_count(timing::cycles::PUSHA)
     }
 
+    /// POPA - Pop All General Registers (opcode 0x61)
+    /// Pops DI, SI, BP, (discard), BX, DX, CX, AX from stack
+    /// 80186+ instruction
+    pub(in crate::cpu) fn popa(&mut self, bus: &mut Bus) {
+        self.di = self.pop(bus);
+        self.si = self.pop(bus);
+        self.bp = self.pop(bus);
+        let _discard = self.pop(bus); // SP is discarded
+        self.bx = self.pop(bus);
+        self.dx = self.pop(bus);
+        self.cx = self.pop(bus);
+        self.ax = self.pop(bus);
+
+        // POPA: 51 cycles (80186+)
+        bus.increment_cycle_count(timing::cycles::POPA);
+    }
+
     /// PUSH immediate (opcode 68: 16-bit, 6A: sign-extended 8-bit)
     pub(in crate::cpu) fn push_imm(&mut self, opcode: u8, bus: &mut Bus) {
         let value = if opcode == 0x68 {

@@ -192,28 +192,46 @@ impl VideoBuffer {
         self.dirty
     }
 
-    pub fn render_and_clear_dirty(&mut self) -> RenderResult {
-        let result = self.render();
-        self.dirty = false;
-        result
-    }
-
-    pub fn render(&self) -> RenderResult {
+    pub fn resolution(&self) -> (u32, u32) {
         match self.mode {
-            VIDEO_MODE_02H_COLOR_TEXT_80_X_25 | VIDEO_MODE_03H_COLOR_TEXT_80_X_25 => {
-                self.render_text_mode()
-            }
-            VIDEO_MODE_04H_CGA_320_X_200_4 => self.render_mode_04h_320x200x4(),
-            VIDEO_MODE_06H_CGA_640_X_200_2 => self.render_mode_06h_640x200x2(),
-            _ => self.render_text_mode(),
+            VIDEO_MODE_04H_CGA_320_X_200_4 => (320, 200),
+            VIDEO_MODE_06H_CGA_640_X_200_2 => (640, 400),
+            _ => (
+                (CHAR_WIDTH * TEXT_MODE_COLS) as u32,
+                (CHAR_HEIGHT * TEXT_MODE_ROWS) as u32,
+            ),
         }
     }
 
-    fn render_text_mode(&self) -> RenderResult {
-        let bytes_per_pixel = 4;
+    pub fn render_and_clear_dirty(&mut self, buf: &mut [u8]) {
+        self.render_into(buf);
+        self.dirty = false;
+    }
+
+    pub fn render(&self) -> RenderResult {
+        let (width, height) = self.resolution();
+        let mut data = vec![0u8; width as usize * height as usize * 4];
+        self.render_into(&mut data);
+        RenderResult {
+            data,
+            width,
+            height,
+        }
+    }
+
+    fn render_into(&self, buf: &mut [u8]) {
+        match self.mode {
+            VIDEO_MODE_02H_COLOR_TEXT_80_X_25 | VIDEO_MODE_03H_COLOR_TEXT_80_X_25 => {
+                self.render_text_mode(buf)
+            }
+            VIDEO_MODE_04H_CGA_320_X_200_4 => self.render_mode_04h_320x200x4(buf),
+            VIDEO_MODE_06H_CGA_640_X_200_2 => self.render_mode_06h_640x200x2(buf),
+            _ => self.render_text_mode(buf),
+        }
+    }
+
+    fn render_text_mode(&self, buf: &mut [u8]) {
         let width = CHAR_WIDTH * TEXT_MODE_COLS;
-        let height = CHAR_HEIGHT * TEXT_MODE_ROWS;
-        let mut data = vec![0; width * height * bytes_per_pixel];
 
         // Render all cells
         let mut i = (self.start_address as usize) * 2;
@@ -233,18 +251,12 @@ impl VideoBuffer {
                         vga_dac_palette: &self.vga_dac_palette,
                         stride: width,
                     },
-                    &mut data,
+                    buf,
                 );
             }
         }
 
-        self.render_cursor(&mut data, width);
-
-        RenderResult {
-            data,
-            width: width as u32,
-            height: height as u32,
-        }
+        self.render_cursor(buf, width);
     }
 
     fn render_cursor(&self, data: &mut [u8], width: usize) {
@@ -293,10 +305,9 @@ impl VideoBuffer {
     /// Each pixel is 2 bits (4 pixels per byte). The CGA color select register
     /// (port 0x3D9) determines the palette: bits 3:0 = background color,
     /// bit 4 = palette (0=green/red/yellow, 1=cyan/magenta/white), bit 5 = intensity.
-    fn render_mode_04h_320x200x4(&self) -> RenderResult {
+    fn render_mode_04h_320x200x4(&self, buf: &mut [u8]) {
         const WIDTH: usize = 320;
         const HEIGHT: usize = 200;
-        const BYTES_PER_PIXEL: usize = 4;
 
         let bg = (self.cga_color_select & 0x0F) as usize;
         let palette = (self.cga_color_select >> 4) & 0x01;
@@ -309,8 +320,6 @@ impl VideoBuffer {
             (1, 0) => [bg, 3, 5, 7],    // cyan, magenta, white
             _ => [bg, 11, 13, 15],      // light cyan, light magenta, bright white
         };
-
-        let mut data = vec![0; WIDTH * HEIGHT * BYTES_PER_PIXEL];
 
         for y in 0..HEIGHT {
             let bank_offset = if y % 2 == 1 { 0x2000 } else { 0 };
@@ -328,17 +337,11 @@ impl VideoBuffer {
                 ];
 
                 let offset = (y * WIDTH + x) * 4;
-                data[offset] = rgb[0];
-                data[offset + 1] = rgb[1];
-                data[offset + 2] = rgb[2];
-                data[offset + 3] = 0xFF;
+                buf[offset] = rgb[0];
+                buf[offset + 1] = rgb[1];
+                buf[offset + 2] = rgb[2];
+                buf[offset + 3] = 0xFF;
             }
-        }
-
-        RenderResult {
-            data,
-            width: WIDTH as u32,
-            height: HEIGHT as u32,
         }
     }
 
@@ -348,11 +351,9 @@ impl VideoBuffer {
     /// Each pixel is 1 bit (8 pixels per byte). Background is black, foreground is white.
     /// Scanlines are doubled to 640x400 to approximate the 4:3 CRT aspect ratio,
     /// since real CGA monitors displayed 640x200 with non-square pixels (~2× taller).
-    fn render_mode_06h_640x200x2(&self) -> RenderResult {
+    fn render_mode_06h_640x200x2(&self, buf: &mut [u8]) {
         const WIDTH: usize = 640;
         const SRC_HEIGHT: usize = 200;
-        const DST_HEIGHT: usize = 400;
-        const BYTES_PER_PIXEL: usize = 4;
 
         let fg_dac = self.vga_dac_palette[15]; // white
         let bg_dac = self.vga_dac_palette[0]; // black
@@ -366,8 +367,6 @@ impl VideoBuffer {
             dac_to_8bit(bg_dac[1]),
             dac_to_8bit(bg_dac[2]),
         ];
-
-        let mut data = vec![0; WIDTH * DST_HEIGHT * BYTES_PER_PIXEL];
 
         for y in 0..SRC_HEIGHT {
             let bank_offset = if y % 2 == 1 { 0x2000 } else { 0 };
@@ -383,18 +382,12 @@ impl VideoBuffer {
                 // Double each scanline for correct CRT aspect ratio
                 for dy in 0..2 {
                     let offset = ((y * 2 + dy) * WIDTH + x) * 4;
-                    data[offset] = rgb[0];
-                    data[offset + 1] = rgb[1];
-                    data[offset + 2] = rgb[2];
-                    data[offset + 3] = 0xFF;
+                    buf[offset] = rgb[0];
+                    buf[offset + 1] = rgb[1];
+                    buf[offset + 2] = rgb[2];
+                    buf[offset + 3] = 0xFF;
                 }
             }
-        }
-
-        RenderResult {
-            data,
-            width: WIDTH as u32,
-            height: DST_HEIGHT as u32,
         }
     }
 }

@@ -32,6 +32,7 @@ pub struct Computer {
     bus: Bus,
     key_presses: VecDeque<u8>,
     boot_drive: Option<DriveNumber>,
+    loaded_program: Option<(Vec<u8>, u16, u16)>,
 }
 
 impl Computer {
@@ -61,6 +62,7 @@ impl Computer {
             }),
             key_presses: VecDeque::new(),
             boot_drive: None,
+            loaded_program: None,
         };
         computer.reset();
         computer
@@ -111,6 +113,7 @@ impl Computer {
         let physical_addr = physical_address(segment, offset);
         self.bus.load_at(physical_addr, program_data)?;
         self.cpu.reset(segment, offset, None);
+        self.loaded_program = Some((program_data.to_vec(), segment, offset));
         Ok(())
     }
 
@@ -131,7 +134,9 @@ impl Computer {
                     log::error!("Reboot failed: {e}");
                 }
             } else {
-                log::warn!("Reset vector reached but no boot drive set; resetting CPU");
+                if self.loaded_program.is_none() {
+                    log::warn!("Reset vector reached but no boot drive set; resetting CPU");
+                }
                 self.reset();
             }
         }
@@ -139,7 +144,15 @@ impl Computer {
 
     pub fn reset(&mut self) {
         self.bus.reset();
-        self.cpu.reset(0xffff, 0x0000, None);
+        if let Some((data, segment, offset)) = self.loaded_program.clone() {
+            let physical_addr = physical_address(segment, offset);
+            if let Err(e) = self.bus.load_at(physical_addr, &data) {
+                log::error!("Failed to reload program on reset: {e}");
+            }
+            self.cpu.reset(segment, offset, None);
+        } else {
+            self.cpu.reset(0xffff, 0x0000, None);
+        }
     }
 
     /// Boot from disk by loading boot sector to 0x0000:0x7C00

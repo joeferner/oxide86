@@ -266,18 +266,25 @@ fn run(cli: Cli) -> Result<()> {
                             &mut computer,
                             &mut pixels,
                             &video_buffer,
-                            app_state.is_paused,
+                            app_state.is_paused || app_state.halted,
                             throttle_start,
                             nanos_per_cycle,
                         );
 
-                        // Handle halt: show notification
+                        // Handle halt: show notification and exit exclusive mode
                         if halted && !app_state.halted {
                             app_state.halted = true;
                             app_state.notification = Some(Notification::new(
                                 "Program terminated. Close window to exit.".to_string(),
                                 NotificationType::Success,
                             ));
+                            // Exit exclusive mode so the cursor and menu are visible
+                            if exclusive_mode {
+                                exclusive_mode = false;
+                                window.set_cursor_visible(true);
+                                let _ = window.set_cursor_grab(CursorGrabMode::None);
+                            }
+                            window.set_title(&format!("{} [Terminated]", TITLE));
                         }
 
                         // Update performance tracker
@@ -581,7 +588,7 @@ fn process_egui_frame(
                         );
                     }
                     _ if action.is_debug_action() => {
-                        handle_debug_action(action, computer, app_state, video_buffer);
+                        handle_debug_action(action, computer, app_state, video_buffer, window);
                     }
                     _ => {
                         eject_floppy_disk(
@@ -835,19 +842,31 @@ fn step_emulator(
                 halted = true;
                 break;
             }
+            // If waiting for a keypress, step() returns without advancing cycles,
+            // which would spin this loop forever and lock up the window.
+            if computer.wait_for_key_press() {
+                break;
+            }
         }
     }
 
     // Always update the pixel buffer from the video buffer
-    let is_dirty = video_buffer.read().unwrap().is_dirty();
+    let (is_dirty, width, height) = {
+        let vb = video_buffer.read().unwrap();
+        let (w, h) = vb.resolution();
+        (vb.is_dirty(), w, h)
+    };
     if is_dirty {
-        let render = {
-            let mut vb = video_buffer.write().unwrap();
-            vb.render_and_clear_dirty()
-        };
-        let frame = pixels.frame_mut();
-        let len = render.data.len().min(frame.len());
-        frame[..len].copy_from_slice(&render.data[..len]);
+        if pixels.frame_mut().len() != width as usize * height as usize * 4 {
+            log::info!("resizing pixel buffer {width}x{height}");
+            if let Err(e) = pixels.resize_buffer(width, height) {
+                log::error!("Failed to resize pixel buffer to {width}x{height}: {e}");
+            }
+        }
+        video_buffer
+            .write()
+            .unwrap()
+            .render_and_clear_dirty(pixels.frame_mut());
     }
 
     halted
@@ -858,6 +877,7 @@ fn handle_debug_action(
     computer: &mut Computer,
     app_state: &mut AppState,
     video_buffer: &Arc<RwLock<VideoBuffer>>,
+    window: &winit::window::Window,
 ) {
     use menu::MenuAction;
 
@@ -867,6 +887,7 @@ fn handle_debug_action(
             computer.reset();
             app_state.notification = None;
             app_state.halted = false;
+            window.set_title(TITLE);
             log::info!("Computer reset complete");
         }
         MenuAction::SaveScreenshot => {

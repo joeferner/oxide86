@@ -160,6 +160,9 @@ impl Cpu {
             // PUSHA - Push All General Registers (60)
             0x60 => self.pusha(bus),
 
+            // POPA - Pop All General Registers (61)
+            0x61 => self.popa(bus),
+
             // FS: segment override prefix (64) - 80386+
             0x64 => {
                 self.segment_override = Some(self.fs);
