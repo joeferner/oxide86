@@ -120,6 +120,10 @@ impl Bus {
         self.uart.borrow_mut()
     }
 
+    pub(crate) fn is_keyboard_irq_in_service(&self) -> bool {
+        self.pic.borrow().is_keyboard_irq_in_service()
+    }
+
     pub(crate) fn keyboard_controller(&self) -> Ref<'_, KeyboardController> {
         self.keyboard_controller.borrow()
     }

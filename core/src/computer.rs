@@ -263,8 +263,20 @@ impl Computer {
         // If we load the next scan code then, we overwrite the previous one
         // before INT 09h can read it, so it never reaches the BDA buffer.
         // obf stays true until port 0x60 is actually read, which is the right gate.
+        //
+        // Additionally, gate on keyboard IRQ not being in service. When a program
+        // installs a custom INT 09h handler, it may read port 0x60 directly (clearing
+        // obf) and then chain to the old BIOS INT 09h handler. Without this extra gate,
+        // process_key_presses would load the next key between those two events, causing
+        // the chained BIOS handler to read the wrong scan code and miss modifier state
+        // (e.g. ALT+key would arrive as plain key because 0x38/ALT was processed by the
+        // custom handler but the BIOS handler read the next key instead).
         let obf = self.bus.keyboard_controller().output_buffer_full();
-        if !obf && let Some(scan_code) = self.key_presses.pop_front() {
+        let irq_in_service = self.bus.is_keyboard_irq_in_service();
+        if !obf
+            && !irq_in_service
+            && let Some(scan_code) = self.key_presses.pop_front()
+        {
             {
                 let mut keyboard_controller = self.bus.keyboard_controller_mut();
                 keyboard_controller.key_press(scan_code);

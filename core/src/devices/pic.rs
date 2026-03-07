@@ -73,6 +73,10 @@ impl Pic {
         }
     }
 
+    pub(crate) fn is_keyboard_irq_in_service(&self) -> bool {
+        self.in_service & (1u8 << KEYBOARD_IRQ_LINE) != 0
+    }
+
     pub(crate) fn take_irq(&mut self, cycle_count: u32) -> Option<u8> {
         // PIT (IRQ0)
         {
