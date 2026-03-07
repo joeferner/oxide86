@@ -61,9 +61,10 @@ pub struct VideoBuffer {
     /// Scan line within a character cell where the cursor begins, written by
     /// CRT controller register 0x0A (bits 4:0). Together with `cursor_end_line`
     /// this defines the vertical extent of the cursor block (0 = top of cell).
-    /// Bit 5 (0x20) is the cursor-disable flag: when set the cursor is hidden;
-    /// when clear the cursor is visible. This is standard CGA/EGA/VGA behavior.
     cursor_start_line: u8,
+    /// Whether the cursor is visible. Derived from bit 5 (0x20) of CRT register 0x0A:
+    /// when that bit is set the cursor is hidden; when clear the cursor is visible.
+    cursor_visible: bool,
     /// Scan line within a character cell where the cursor ends (inclusive),
     /// written by CRT controller register 0x0B (bits 4:0). A value equal to
     /// `CHAR_HEIGHT - 1` produces an underline cursor at the bottom of the cell.
@@ -87,6 +88,7 @@ impl VideoBuffer {
             blink_enabled: false,
             cursor_loc: 0,
             cursor_start_line: DEFAULT_CURSOR_START_LINE,
+            cursor_visible: true,
             cursor_end_line: DEFAULT_CURSOR_END_LINE,
             start_address: 0,
             dirty: false,
@@ -104,6 +106,7 @@ impl VideoBuffer {
         self.blink_enabled = false;
         self.cursor_loc = 0;
         self.cursor_start_line = DEFAULT_CURSOR_START_LINE;
+        self.cursor_visible = true;
         self.cursor_end_line = DEFAULT_CURSOR_END_LINE;
         self.start_address = 0;
         self.dirty = false;
@@ -150,11 +153,19 @@ impl VideoBuffer {
     }
 
     pub(crate) fn set_cursor_start_line(&mut self, start_line: u8) {
+        log::info!("set_cursor_start_line {start_line}");
         self.cursor_start_line = start_line;
         self.dirty = true;
     }
 
+    pub(crate) fn set_cursor_visible(&mut self, visible: bool) {
+        log::info!("set_cursor_visible {visible}");
+        self.cursor_visible = visible;
+        self.dirty = true;
+    }
+
     pub(crate) fn set_cursor_end_line(&mut self, end_line: u8) {
+        log::info!("set_cursor_end_line {end_line}");
         self.cursor_end_line = end_line;
         self.dirty = true;
     }
@@ -260,9 +271,7 @@ impl VideoBuffer {
     }
 
     fn render_cursor(&self, data: &mut [u8], width: usize) {
-        // Render cursor if visible (bit 5 of cursor_start_line = disable flag)
-        let cursor_hidden = (self.cursor_start_line & 0x20) != 0;
-        if !cursor_hidden {
+        if self.cursor_visible {
             let cursor_row = (self.cursor_loc / self.text_columns as u16) as usize;
             let cursor_col = (self.cursor_loc % self.text_columns as u16) as usize;
 
@@ -278,8 +287,21 @@ impl VideoBuffer {
                     dac_to_8bit(fg_dac[2]),
                 ];
 
-                let start_scan = (self.cursor_start_line & 0x1F) as usize;
-                let end_scan = (self.cursor_end_line as usize).min(CHAR_HEIGHT - 1);
+                // Scale CGA-style cursor scan lines (0-7 range) to our CHAR_HEIGHT.
+                // Real VGA BIOSes do this translation: if end <= 7, the caller assumed
+                // 8-scanline CGA characters, so we scale proportionally.
+                let (start_scan, end_scan) = if self.cursor_end_line <= 7 && CHAR_HEIGHT > 8 {
+                    let scale = CHAR_HEIGHT / 8;
+                    let s = self.cursor_start_line as usize * scale;
+                    let e =
+                        (self.cursor_end_line as usize * scale + scale - 1).min(CHAR_HEIGHT - 1);
+                    (s, e)
+                } else {
+                    (
+                        self.cursor_start_line as usize,
+                        (self.cursor_end_line as usize).min(CHAR_HEIGHT - 1),
+                    )
+                };
 
                 let char_x = cursor_col * CHAR_WIDTH;
                 let char_y = cursor_row * CHAR_HEIGHT;

@@ -105,6 +105,7 @@ impl VideoCard {
     }
 
     pub(crate) fn set_mode(&mut self, mode: u8) -> Option<ModeInfo> {
+        log::info!("set mode: 0x{mode:02X}");
         self.buffer.write().unwrap().set_mode(mode);
         if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
             Some(ModeInfo {
@@ -221,7 +222,8 @@ impl Device for VideoCard {
                     let mut buffer = self.buffer.write().unwrap();
                     match self.io_register {
                         VIDEO_CARD_REG_CURSOR_START_LINE => {
-                            buffer.set_cursor_start_line(val);
+                            buffer.set_cursor_visible((val & 0x20) == 0);
+                            buffer.set_cursor_start_line(val & 0x1F);
                         }
                         VIDEO_CARD_REG_CURSOR_END_LINE => {
                             buffer.set_cursor_end_line(val);

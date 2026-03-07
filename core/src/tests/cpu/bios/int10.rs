@@ -50,6 +50,18 @@ pub(crate) fn write_read_char_attr() {
     });
 }
 
+/// INT 10h / AH=01h - CGA underline cursor (start=6, end=7)
+/// Verifies that a CGA-style cursor positioned at scan lines 6-7 of 8 is
+/// scaled correctly to the bottom of a 16-scanline VGA character cell.
+#[test_log::test]
+pub(crate) fn cursor_cga_underline() {
+    let name = "cpu/bios/int10/cursor_cga_underline";
+    run_test(name, create_computer(), |computer, video_buffer| {
+        computer.run();
+        assert_screen(name, video_buffer);
+    });
+}
+
 /// INT 10h / AH=01h - Set Cursor Shape
 /// Sets cursor start/end scan lines and verifies via AH=03h (get cursor position
 /// returns shape in CH/CL).
