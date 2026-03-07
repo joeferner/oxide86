@@ -1,10 +1,10 @@
 use anyhow::Context;
+use core::panic;
 use std::fs::File;
 use std::io::Read;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
 
-use crate::video::VideoCardType;
 use crate::video::video_buffer::RenderResult;
 use crate::{computer::Computer, video::VideoBuffer};
 
@@ -35,29 +35,26 @@ mod macros {
 }
 
 mod cpu;
-mod keyboard;
-mod mock_com_device;
-mod mouse;
-mod pit;
-mod uart;
+mod devices;
+mod video;
 
 fn create_computer() -> (Computer, Arc<RwLock<VideoBuffer>>) {
     make_computer!()
 }
 
-fn load_data(name: &str) -> (Vec<u8>, Option<RenderResult>) {
-    let program_data = {
-        let filename = format!("src/test_data/{name}.com");
-        let mut f = File::open(&filename)
-            .context(format!("failed to open: {filename}"))
-            .unwrap();
-        let mut buffer = Vec::new();
-        f.read_to_end(&mut buffer)
-            .context(format!("failed to read: {filename}"))
-            .unwrap();
-        buffer
-    };
+fn load_program_data(name: &str) -> Vec<u8> {
+    let filename = format!("src/test_data/{name}.com");
+    let mut f = File::open(&filename)
+        .context(format!("failed to open: {filename}"))
+        .unwrap();
+    let mut buffer = Vec::new();
+    f.read_to_end(&mut buffer)
+        .context(format!("failed to read: {filename}"))
+        .unwrap();
+    buffer
+}
 
+fn assert_screen(name: &str, video_buffer: Arc<RwLock<VideoBuffer>>) {
     let expected_image_data = {
         let filename = format!("src/test_data/{name}.png");
         if Path::new(&filename).exists() {
@@ -65,29 +62,25 @@ fn load_data(name: &str) -> (Vec<u8>, Option<RenderResult>) {
                 .context(format!("failed to open: {filename}"))
                 .unwrap();
             let data = f.to_rgba8().into_raw();
-            Some(RenderResult {
+            RenderResult {
                 data,
                 width: f.width(),
                 height: f.height(),
-            })
+            }
         } else {
-            None
+            panic!("could not find screen file: {filename}");
         }
     };
 
-    (program_data, expected_image_data)
-}
-
-fn assert_screen(name: &str, expected_screen: RenderResult, buffer: Arc<RwLock<VideoBuffer>>) {
-    let buffer = buffer.read().unwrap();
-    let render = buffer.render();
-    if render != expected_screen {
+    let buffer = video_buffer.read().unwrap();
+    let rendered_data = buffer.render();
+    if rendered_data != expected_image_data {
         let filename = format!("src/test_data/{name}_actual.png");
         image::save_buffer(
             &filename,
-            &render.data,
-            render.width,
-            render.height,
+            &rendered_data.data,
+            rendered_data.width,
+            rendered_data.height,
             image::ColorType::Rgba8,
         )
         .expect(&format!("failed to save {filename}"));
@@ -95,45 +88,33 @@ fn assert_screen(name: &str, expected_screen: RenderResult, buffer: Arc<RwLock<V
     }
 }
 
-fn run_test_configured(
+fn run_test(
     name: &str,
     (mut computer, video_buffer): (Computer, Arc<RwLock<VideoBuffer>>),
-    f: fn(&mut Computer),
+    f: impl Fn(&mut Computer, Arc<RwLock<VideoBuffer>>),
 ) {
-    let (program_data, expected_screen) = load_data(name);
+    let program_data = load_program_data(name);
     computer
         .load_program(&program_data, TEST_SEGMENT, TEST_OFFSET)
         .unwrap();
-    f(&mut computer);
-    if let Some(expected_screen) = expected_screen {
-        assert_screen(name, expected_screen, video_buffer);
-    }
+    f(&mut computer, video_buffer);
     assert_eq!(Some(0), computer.get_exit_code());
-}
-
-fn run_test_with_interaction(name: &str, f: fn(&mut Computer)) {
-    run_test_configured(name, create_computer(), f);
-}
-
-fn run_test(name: &str) {
-    run_test_with_interaction(name, |computer| {
-        computer.run();
-    });
-}
-
-fn run_test_vga(name: &str) {
-    let computer = make_computer!(video_card_type: VideoCardType::VGA);
-    run_test_configured(name, computer, |computer| {
-        computer.run();
-    });
 }
 
 #[test_log::test]
 pub(crate) fn hello_world_video_memory() {
-    run_test("hello_world_video_memory");
+    let name = "hello_world_video_memory";
+    run_test(name, create_computer(), |computer, video_buffer| {
+        computer.run();
+        assert_screen(name, video_buffer);
+    });
 }
 
 #[test_log::test]
 pub(crate) fn hello_world_int21_write_string() {
-    run_test("hello_world_int21_write_string");
+    let name = "hello_world_int21_write_string";
+    run_test(name, create_computer(), |computer, video_buffer| {
+        computer.run();
+        assert_screen(name, video_buffer);
+    });
 }

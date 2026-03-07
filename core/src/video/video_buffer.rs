@@ -6,7 +6,9 @@ use crate::video::renderer::{RenderTextArgs, dac_to_8bit, render_text};
 use crate::video::text::TextAttribute;
 use crate::video::{
     DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_ROWS,
-    TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE,
+    TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
+    VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
+    VIDEO_MODE_06H_CGA_640_X_200_2,
 };
 
 #[derive(PartialEq)]
@@ -15,21 +17,6 @@ pub struct RenderResult {
     pub data: Vec<u8>,
     pub width: u32,
     pub height: u32,
-}
-
-/// Video mode type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum VideoMode {
-    /// Text modes: 80x25 or 40x25
-    Text { cols: usize, rows: usize },
-    /// CGA 320x200, 4 colors
-    Graphics320x200,
-    /// CGA 640x200, 2 colors
-    Graphics640x200,
-    /// EGA 320x200, 16 colors (mode 0x0D)
-    Graphics320x200x16,
-    /// VGA 320x200, 256 colors (mode 0x13) — linear framebuffer, 1 byte per pixel
-    Graphics320x200x256,
 }
 
 /// Cursor position
@@ -46,7 +33,7 @@ impl fmt::Display for CursorPosition {
 }
 
 pub struct VideoBuffer {
-    mode: VideoMode,
+    mode: u8,
     text_columns: u8,
 
     /// Raw video RAM (64KB).
@@ -55,6 +42,10 @@ pub struct VideoBuffer {
     /// In VGA mode 0x13: linear framebuffer vram[0..64000], 1 byte per pixel.
     /// Persists across mode changes, just like real hardware.
     vram: Vec<u8>,
+
+    /// CGA color select register (port 0x3D9).
+    /// Bits 3:0 = background color, bit 4 = palette select, bit 5 = intensity.
+    cga_color_select: u8,
 
     font: Cp437Font,
     /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
@@ -87,12 +78,10 @@ pub struct VideoBuffer {
 impl VideoBuffer {
     pub fn new() -> Self {
         let mut me = Self {
-            mode: VideoMode::Text {
-                cols: TEXT_MODE_COLS,
-                rows: TEXT_MODE_ROWS,
-            },
+            mode: VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
             text_columns: TEXT_MODE_COLS as u8,
             vram: vec![0; VIDEO_MEMORY_SIZE],
+            cga_color_select: 0,
             font: Cp437Font::new(),
             vga_dac_palette: Self::default_vga_dac_palette(),
             blink_enabled: false,
@@ -107,10 +96,8 @@ impl VideoBuffer {
     }
 
     pub(crate) fn reset(&mut self) {
-        self.mode = VideoMode::Text {
-            cols: TEXT_MODE_COLS,
-            rows: TEXT_MODE_ROWS,
-        };
+        self.mode = VIDEO_MODE_03H_COLOR_TEXT_80_X_25;
+        self.cga_color_select = 0;
         self.text_columns = TEXT_MODE_COLS as u8;
         self.font = Cp437Font::new();
         self.vga_dac_palette = Self::default_vga_dac_palette();
@@ -136,8 +123,12 @@ impl VideoBuffer {
         palette
     }
 
-    pub fn mode(&self) -> VideoMode {
+    pub fn mode(&self) -> u8 {
         self.mode
+    }
+
+    pub fn set_mode(&mut self, mode: u8) {
+        self.mode = mode;
     }
 
     pub fn read_vram(&self, addr: usize) -> u8 {
@@ -192,6 +183,11 @@ impl VideoBuffer {
         &self.vga_dac_palette
     }
 
+    pub(crate) fn set_cga_color_select(&mut self, val: u8) {
+        self.cga_color_select = val;
+        self.dirty = true;
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
@@ -203,6 +199,17 @@ impl VideoBuffer {
     }
 
     pub fn render(&self) -> RenderResult {
+        match self.mode {
+            VIDEO_MODE_02H_COLOR_TEXT_80_X_25 | VIDEO_MODE_03H_COLOR_TEXT_80_X_25 => {
+                self.render_text_mode()
+            }
+            VIDEO_MODE_04H_CGA_320_X_200_4 => self.render_mode_04h_320x200x4(),
+            VIDEO_MODE_06H_CGA_640_X_200_2 => self.render_mode_06h_640x200x2(),
+            _ => self.render_text_mode(),
+        }
+    }
+
+    fn render_text_mode(&self) -> RenderResult {
         let bytes_per_pixel = 4;
         let width = CHAR_WIDTH * TEXT_MODE_COLS;
         let height = CHAR_HEIGHT * TEXT_MODE_ROWS;
@@ -277,6 +284,117 @@ impl VideoBuffer {
                     }
                 }
             }
+        }
+    }
+
+    /// Render CGA 320x200 4-color graphics (mode 04h).
+    ///
+    /// CGA VRAM is interleaved: even scan lines at 0x0000, odd scan lines at 0x2000.
+    /// Each pixel is 2 bits (4 pixels per byte). The CGA color select register
+    /// (port 0x3D9) determines the palette: bits 3:0 = background color,
+    /// bit 4 = palette (0=green/red/yellow, 1=cyan/magenta/white), bit 5 = intensity.
+    fn render_mode_04h_320x200x4(&self) -> RenderResult {
+        const WIDTH: usize = 320;
+        const HEIGHT: usize = 200;
+        const BYTES_PER_PIXEL: usize = 4;
+
+        let bg = (self.cga_color_select & 0x0F) as usize;
+        let palette = (self.cga_color_select >> 4) & 0x01;
+        let intensity = (self.cga_color_select >> 5) & 0x01;
+
+        // Map 2-bit pixel values to EGA color indices (0-15)
+        let color_map: [usize; 4] = match (palette, intensity) {
+            (0, 0) => [bg, 2, 4, 6],    // green, red, brown
+            (0, _) => [bg, 10, 12, 14], // light green, light red, yellow
+            (1, 0) => [bg, 3, 5, 7],    // cyan, magenta, white
+            _ => [bg, 11, 13, 15],      // light cyan, light magenta, bright white
+        };
+
+        let mut data = vec![0; WIDTH * HEIGHT * BYTES_PER_PIXEL];
+
+        for y in 0..HEIGHT {
+            let bank_offset = if y % 2 == 1 { 0x2000 } else { 0 };
+            for x in 0..WIDTH {
+                let byte_offset = bank_offset + (y / 2) * 80 + x / 4;
+                let shift = 6 - (x % 4) * 2;
+                let color_index = ((self.vram[byte_offset] >> shift) & 0x03) as usize;
+
+                let dac_index = color_map[color_index];
+                let dac = self.vga_dac_palette[dac_index];
+                let rgb = [
+                    dac_to_8bit(dac[0]),
+                    dac_to_8bit(dac[1]),
+                    dac_to_8bit(dac[2]),
+                ];
+
+                let offset = (y * WIDTH + x) * 4;
+                data[offset] = rgb[0];
+                data[offset + 1] = rgb[1];
+                data[offset + 2] = rgb[2];
+                data[offset + 3] = 0xFF;
+            }
+        }
+
+        RenderResult {
+            data,
+            width: WIDTH as u32,
+            height: HEIGHT as u32,
+        }
+    }
+
+    /// Render CGA 640x200 monochrome graphics (mode 06h).
+    ///
+    /// CGA VRAM is interleaved: even scan lines at 0x0000, odd scan lines at 0x2000.
+    /// Each pixel is 1 bit (8 pixels per byte). Background is black, foreground is white.
+    /// Scanlines are doubled to 640x400 to approximate the 4:3 CRT aspect ratio,
+    /// since real CGA monitors displayed 640x200 with non-square pixels (~2× taller).
+    fn render_mode_06h_640x200x2(&self) -> RenderResult {
+        const WIDTH: usize = 640;
+        const SRC_HEIGHT: usize = 200;
+        const DST_HEIGHT: usize = 400;
+        const BYTES_PER_PIXEL: usize = 4;
+
+        let fg_dac = self.vga_dac_palette[15]; // white
+        let bg_dac = self.vga_dac_palette[0]; // black
+        let fg_rgb = [
+            dac_to_8bit(fg_dac[0]),
+            dac_to_8bit(fg_dac[1]),
+            dac_to_8bit(fg_dac[2]),
+        ];
+        let bg_rgb = [
+            dac_to_8bit(bg_dac[0]),
+            dac_to_8bit(bg_dac[1]),
+            dac_to_8bit(bg_dac[2]),
+        ];
+
+        let mut data = vec![0; WIDTH * DST_HEIGHT * BYTES_PER_PIXEL];
+
+        for y in 0..SRC_HEIGHT {
+            let bank_offset = if y % 2 == 1 { 0x2000 } else { 0 };
+            for x in 0..WIDTH {
+                let byte_val = self.vram[bank_offset + (y / 2) * 80 + x / 8];
+                let bit_mask = 0x80u8 >> (x % 8);
+                let rgb = if (byte_val & bit_mask) != 0 {
+                    fg_rgb
+                } else {
+                    bg_rgb
+                };
+
+                // Double each scanline for correct CRT aspect ratio
+                for dy in 0..2 {
+                    let offset = ((y * 2 + dy) * WIDTH + x) * 4;
+                    data[offset] = rgb[0];
+                    data[offset + 1] = rgb[1];
+                    data[offset + 2] = rgb[2];
+                    data[offset + 3] = 0xFF;
+                }
+            }
+        }
+
+        RenderResult {
+            data,
+            width: WIDTH as u32,
+            height: DST_HEIGHT as u32,
         }
     }
 }

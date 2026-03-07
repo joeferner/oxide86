@@ -19,14 +19,12 @@ const VGA_FONT_8X16: &[u8] = include_bytes!("IBM_VGA_8x16.bin");
 /// IBM PC/XT CGA BIOS 8x8 font data (256 characters × 8 bytes each)
 /// This is the IBM PC Version 3 CGA ROM font
 /// Each character is 8 bytes, one byte per row, MSB is leftmost pixel
-#[cfg(test)]
 const CGA_FONT_8X8: &[u8] = include_bytes!("IBM_VGA_8x8.bin");
 
 /// CP437 font wrapper around embedded BIOS fonts
 #[derive(Clone)]
 pub(crate) struct Cp437Font {
     vga_font_data: &'static [u8],
-    #[cfg(test)]
     cga_font_data: &'static [u8],
 }
 
@@ -35,7 +33,6 @@ impl Cp437Font {
     pub(crate) fn new() -> Self {
         Self {
             vga_font_data: VGA_FONT_8X16,
-            #[cfg(test)]
             cga_font_data: CGA_FONT_8X8,
         }
     }
@@ -51,7 +48,6 @@ impl Cp437Font {
     /// Get the glyph data for a character from the 8x8 CGA font
     /// Returns 8 bytes, each byte represents one row of 8 pixels
     /// Bit 7 = leftmost pixel, Bit 0 = rightmost pixel
-    #[cfg(test)]
     pub(crate) fn get_glyph_8(&self, character: u8) -> &[u8] {
         let offset = (character as usize) * CHAR_HEIGHT_8;
         &self.cga_font_data[offset..offset + CHAR_HEIGHT_8]

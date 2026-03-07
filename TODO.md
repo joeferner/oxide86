@@ -20,7 +20,8 @@
 - [X] Add PC Speaker support
 - [X] implement native-gui
 - [X] Get MS-DOS 5.0 Working
-- [ ] Add CGA support
+- [X] Add CGA support
+  - [ ] Update render, instead of returning the data take a mutable array as an argument and fill it out. Before calling render the caller will need to query the VideoBuffer for the resolution and make the appropriate buffer first
 - [ ] Command mode reset
 - [ ] Add Joystick support
 - [ ] Add AdLib support

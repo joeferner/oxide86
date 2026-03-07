@@ -8,8 +8,8 @@ use crate::{
     Device, byte_to_printable_char,
     video::{
         CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, TEXT_MODE_COLS, TEXT_MODE_ROWS,
-        VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VideoBuffer,
-        VideoCardType,
+        VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
+        VIDEO_MODE_04H_CGA_320_X_200_4, VIDEO_MODE_06H_CGA_640_X_200_2, VideoBuffer, VideoCardType,
     },
 };
 
@@ -104,58 +104,20 @@ impl VideoCard {
         }
     }
 
-    pub(crate) fn set_mode(&mut self, mode: u8, _clear_screen: bool) -> Option<ModeInfo> {
+    pub(crate) fn set_mode(&mut self, mode: u8) -> Option<ModeInfo> {
+        self.buffer.write().unwrap().set_mode(mode);
         if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
-            return Some(ModeInfo {
+            Some(ModeInfo {
                 rows: TEXT_MODE_ROWS as u8,
                 cols: TEXT_MODE_COLS as u8,
-            });
+            })
+        } else if mode == VIDEO_MODE_04H_CGA_320_X_200_4 {
+            Some(ModeInfo { rows: 25, cols: 40 })
+        } else if mode == VIDEO_MODE_06H_CGA_640_X_200_2 {
+            Some(ModeInfo { rows: 25, cols: 80 })
+        } else {
+            None
         }
-
-        // TODO
-
-        // // 3. Look up Mode Parameters in BIOS Video Parameter Table
-        // params = VideoParameterTable[actual_mode]
-
-        // // 4. Update the CRT Controller (CRTC) Registers
-        // // These define screen resolution, timing, and refresh rates
-        // FOR EACH register IN CRTC_Registers:
-        //     WriteToPort(0x3D4, register.index)
-        //     WriteToPort(0x3D5, params.value)
-        // END FOR
-
-        // // 5. Initialize the Sequencer and Graphics Controller
-        // InitializeSequencer(params)
-        // InitializeGraphicsController(params)
-
-        // // 6. Set up the Attribute Controller (Palette and Colors)
-        // InitializePalette(params.default_colors)
-
-        // // 7. Clear Video Buffer (VRAM)
-        // IF clear_screen_flag == TRUE THEN
-        //     FillMemory(start_address: 0xA0000, size: 64KB, value: 0)
-        // END IF
-
-        // Check if the requested mode is supported by the video card type
-        // if !bus.video().supports_mode(mode) {
-        //     log::warn!(
-        //         "INT 0x10 AH=0x00: Video mode 0x{:02X} not supported by {} card - ignoring",
-        //         mode,
-        //         bus.video().card_type()
-        //     );
-        //     return;
-        // }
-
-        // // INT 10h mode set = RGB rendering; composite only via port 0x3D8
-        // bus.video_mut().set_composite_mode(false);
-        // bus.video_mut().set_mode(mode, false); // INT 10h clears video memory (real BIOS behavior)
-        // // Reset cursor to top-left (only relevant for text modes)
-        // bus.video_mut().set_cursor(0, 0);
-
-        // let cols = bus.video().get_cols();
-        // let rows = bus.video().get_rows();
-
-        None
     }
 }
 
@@ -247,6 +209,8 @@ impl Device for VideoCard {
                 MDA_CRTC_CONTROL_ADDR | MDA_CRTC_DATA_ADDR => true,
                 CGA_COLOR_SELECT_ADDR => {
                     self.color_select = val;
+                    let mut buffer = self.buffer.write().unwrap();
+                    buffer.set_cga_color_select(val);
                     true
                 }
                 VIDEO_CARD_CONTROL_ADDR => {

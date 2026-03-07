@@ -1,15 +1,15 @@
 use std::sync::{Arc, RwLock};
 
 use crate::cpu::CpuType;
-use crate::tests::mock_com_device::MockComDevice;
-use crate::tests::run_test_configured;
+use crate::tests::devices::mock_com_device::MockComDevice;
+use crate::tests::run_test;
 
 #[test_log::test]
 pub(crate) fn com1_read_write() {
-    run_test_configured(
+    run_test(
         "cpu/bios/int14/com1_read_write",
         make_computer!(cpu_type: CpuType::I8086),
-        |computer| {
+        |computer, _video_buffer| {
             let mut mock = MockComDevice::new(3);
             mock.add_response("8", "6");
 

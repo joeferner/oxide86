@@ -15,8 +15,11 @@ use crate::{
     },
     physical_address,
     video::{
-        CGA_MEMORY_START, VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
-        VideoCardType, video_calculate_linear_offset,
+        CGA_MEMORY_START, TEXT_MODE_SIZE, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
+        VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
+        VIDEO_MODE_06H_CGA_640_X_200_2, VideoCardType,
+        font::{CHAR_HEIGHT_8, Cp437Font},
+        video_calculate_linear_offset,
         video_card::{
             AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
             DAC_DATA_PORT, DAC_READ_INDEX_PORT, DAC_WRITE_INDEX_PORT, INPUT_STATUS_1_PORT,
@@ -91,7 +94,25 @@ impl Cpu {
         let clear_screen_flag = (mode & 0x80) == 0;
         let mode = mode & 0x7f;
 
-        let mode_info = bus.video_card_mut().set_mode(mode, clear_screen_flag);
+        if clear_screen_flag {
+            match mode {
+                VIDEO_MODE_04H_CGA_320_X_200_4 | VIDEO_MODE_06H_CGA_640_X_200_2 => {
+                    // Clear both CGA interleaved banks (even rows at 0x0000, odd at 0x2000)
+                    for i in 0..0x4000usize {
+                        bus.memory_write_u8(CGA_MEMORY_START + i, 0);
+                    }
+                }
+                _ => {
+                    // Text mode: fill with space + light gray on black
+                    for i in (0..TEXT_MODE_SIZE).step_by(2) {
+                        bus.memory_write_u8(CGA_MEMORY_START + i, 0x20);
+                        bus.memory_write_u8(CGA_MEMORY_START + i + 1, 0x07);
+                    }
+                }
+            }
+        }
+
+        let mode_info = bus.video_card_mut().set_mode(mode);
 
         let mode_info = if let Some(mode_info) = mode_info {
             mode_info
@@ -573,6 +594,68 @@ impl Cpu {
         }
     }
 
+    /// Draw a character pixel-by-pixel into CGA graphics VRAM.
+    ///
+    /// Uses the 8x8 CGA font. Draws in transparent mode: foreground pixels are
+    /// OR'd into the framebuffer; background pixels are left unchanged.
+    ///
+    /// CGA memory is interleaved: even scan lines at offset 0x0000, odd at 0x2000.
+    /// Mode 06h: 1bpp, 80 bytes/row, glyph byte maps directly to pixel bits.
+    /// Mode 04h: 2bpp, 80 bytes/row, each glyph bit expands to a 2-bit color index.
+    fn draw_char_cga_graphics(
+        &self,
+        bus: &mut Bus,
+        mode: u8,
+        ch: u8,
+        row: u8,
+        col: u8,
+        fg_color: u8,
+    ) {
+        let font = Cp437Font::new();
+        let glyph = font.get_glyph_8(ch);
+
+        match mode {
+            VIDEO_MODE_06H_CGA_640_X_200_2 => {
+                for (r, &row_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
+                    let pixel_y = row as usize * CHAR_HEIGHT_8 + r;
+                    let bank_offset = if pixel_y % 2 == 1 { 0x2000 } else { 0 };
+                    let vram_offset = bank_offset + (pixel_y / 2) * 80 + col as usize;
+                    let existing = bus.memory_read_u8(CGA_MEMORY_START + vram_offset);
+                    bus.memory_write_u8(CGA_MEMORY_START + vram_offset, existing | row_byte);
+                }
+            }
+            VIDEO_MODE_04H_CGA_320_X_200_4 => {
+                let fg_2bit = fg_color & 0x03;
+                for (r, &row_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
+                    let pixel_y = row as usize * CHAR_HEIGHT_8 + r;
+                    let bank_offset = if pixel_y % 2 == 1 { 0x2000 } else { 0 };
+                    // Each char is 8 pixels wide = 2 bytes at 2bpp
+                    let vram_base = bank_offset + (pixel_y / 2) * 80 + col as usize * 2;
+
+                    // Expand glyph bits to 2bpp: bits 7-4 → byte0, bits 3-0 → byte1
+                    let mut byte0 = 0u8;
+                    let mut byte1 = 0u8;
+                    for bit in 0..4usize {
+                        if (row_byte & (0x80 >> bit)) != 0 {
+                            byte0 |= fg_2bit << ((3 - bit) * 2);
+                        }
+                    }
+                    for bit in 4..8usize {
+                        if (row_byte & (0x80 >> bit)) != 0 {
+                            byte1 |= fg_2bit << ((7 - bit) * 2);
+                        }
+                    }
+
+                    let existing0 = bus.memory_read_u8(CGA_MEMORY_START + vram_base);
+                    let existing1 = bus.memory_read_u8(CGA_MEMORY_START + vram_base + 1);
+                    bus.memory_write_u8(CGA_MEMORY_START + vram_base, existing0 | byte0);
+                    bus.memory_write_u8(CGA_MEMORY_START + vram_base + 1, existing1 | byte1);
+                }
+            }
+            _ => {}
+        }
+    }
+
     /// INT 10h, AH=0Eh - Teletype Output
     /// Input:
     ///   AL = character to write
@@ -615,31 +698,17 @@ impl Cpu {
             }
             ch => {
                 // Normal character - handle based on video mode
-                // TODO  if bus.video().is_graphics_mode() {
-                // TODO      // Graphics mode: draw character pixel-by-pixel
-                // TODO      let fg_color = (self.bx & 0xFF) as u8; // BL
-                // TODO      // AH=0Eh (teletype) draws transparent characters - no background, no XOR
-                // TODO      self.draw_char_graphics(
-                // TODO          bus,
-                // TODO          ch,
-                // TODO          cursor.row,
-                // TODO          cursor.col,
-                // TODO          fg_color,
-                // TODO          GraphicsDrawMode::Transparent,
-                // TODO      );
-                // TODO  } else {
-                // Text mode: write character byte directly
-                let offset = (cursor.row as usize * columns as usize + cursor.col as usize) * 2;
-                bus.memory_write_u8(CGA_MEMORY_START + offset, ch);
-                // TODO     // Preserve existing color, but substitute 0x07 for 0x00 (black on black)
-                // TODO     // since text with attribute 0x00 is always invisible. Many BIOS implementations
-                // TODO     // do this as a compatibility measure for programs that clear the screen with
-                // TODO     // attribute 0x00 before exiting (e.g., EDIT, Checkit).
-                // TODO     let existing_attr = bus.video().read_byte(offset + 1);
-                // TODO     if existing_attr == 0x00 {
-                // TODO         bus.video_mut().write_byte(offset + 1, 0x07);
-                // TODO     }
-                // TODO  }
+                let mode = bda_get_video_mode(bus);
+                if mode == VIDEO_MODE_04H_CGA_320_X_200_4 || mode == VIDEO_MODE_06H_CGA_640_X_200_2
+                {
+                    // Graphics mode: draw character pixel-by-pixel into CGA framebuffer
+                    let fg_color = (self.bx & 0xFF) as u8; // BL
+                    self.draw_char_cga_graphics(bus, mode, ch, cursor.row, cursor.col, fg_color);
+                } else {
+                    // Text mode: write character byte directly
+                    let offset = (cursor.row as usize * columns as usize + cursor.col as usize) * 2;
+                    bus.memory_write_u8(CGA_MEMORY_START + offset, ch);
+                }
 
                 // Advance cursor
                 let new_col = cursor.col + 1;

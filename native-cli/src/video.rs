@@ -10,10 +10,10 @@ use crossterm::{
     terminal,
 };
 use oxide86_core::video::{
-    VideoBuffer,
+    TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
+    VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VideoBuffer,
     renderer::dac_to_8bit,
     text::{TextAttribute, cp437_to_unicode},
-    video_buffer::VideoMode,
 };
 
 #[derive(Debug, PartialEq)]
@@ -35,15 +35,17 @@ pub(crate) fn draw_frame(
 
     // TODO use start address for scrolling
 
-    if let VideoMode::Text { cols, rows } = buffer.mode() {
+    if buffer.mode() == VIDEO_MODE_02H_COLOR_TEXT_80_X_25
+        || buffer.mode() == VIDEO_MODE_03H_COLOR_TEXT_80_X_25
+    {
         let (term_cols, term_rows) = terminal::size()?;
-        if (term_cols as usize) < cols || (term_rows as usize) < rows {
+        if (term_cols as usize) < TEXT_MODE_COLS || (term_rows as usize) < TEXT_MODE_ROWS {
             video_cache.clear();
             stdout.queue(cursor::MoveTo(0, 0))?;
             stdout.queue(crossterm::style::ResetColor)?;
             stdout.queue(crossterm::style::Print(format!(
                 "Terminal too small: need {}x{}, got {}x{}",
-                cols, rows, term_cols, term_rows
+                TEXT_MODE_COLS, TEXT_MODE_ROWS, term_cols, term_rows
             )))?;
             stdout.flush()?;
             return Ok(());
@@ -54,8 +56,8 @@ pub(crate) fn draw_frame(
         let mut current_bg: Option<Color> = None;
         let mut cursor_col: Option<usize> = None;
         let mut cursor_row: Option<usize> = None;
-        for row in 0..rows {
-            for col in 0..cols {
+        for row in 0..TEXT_MODE_ROWS {
+            for col in 0..TEXT_MODE_COLS {
                 let cache_location = addr;
                 let cached_value = video_cache.get(cache_location);
                 let character = buffer.read_vram(addr);
