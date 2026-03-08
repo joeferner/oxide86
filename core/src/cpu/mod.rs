@@ -7,7 +7,7 @@ use crate::{
 
 pub mod bios;
 mod cpu_type;
-mod instructions;
+pub(crate) mod instructions;
 mod timing;
 
 pub use cpu_type::CpuType;

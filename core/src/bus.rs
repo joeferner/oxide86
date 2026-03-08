@@ -270,6 +270,16 @@ impl Bus {
     }
 }
 
+impl crate::ByteReader for Bus {
+    fn read_u8(&self, addr: usize) -> u8 {
+        self.memory_read_u8(addr)
+    }
+
+    fn read_u16(&self, addr: usize) -> u16 {
+        self.memory_read_u16(addr)
+    }
+}
+
 /// Returns a hint string for ports that are known to be probed but not implemented,
 /// so they can be logged at a lower level than truly unrecognised ports.
 fn unimplemented_port_hint(port: u16) -> Option<&'static str> {

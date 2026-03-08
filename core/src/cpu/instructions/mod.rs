@@ -8,7 +8,7 @@ mod arithmetic;
 mod comparison;
 mod control_flow;
 mod data_transfer;
-mod decoder;
+pub(crate) mod decoder;
 mod io;
 mod logical;
 mod shift_rotate;

@@ -1,5 +1,8 @@
 target/
 .claude/
+exe-analysis/*.asm
+exe-analysis/*.exe
+exe-analysis/*.com
 .vscode/launch.json
 *.log
 *.com

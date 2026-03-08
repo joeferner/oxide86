@@ -46,6 +46,55 @@ Plain `Vec<u8>`. Reads beyond size return `0xFF`; writes beyond size are silentl
 2. Either add it to `Bus::new` (for core devices with named fields) or call `bus.add_device(device)`.
 3. Handle the relevant IO ports or memory range in `io_read_u8` / `io_write_u8` / `memory_read_u8` / `memory_write_u8`.
 
+## Disassembler (`oxide86-disasm`)
+
+Standalone recursive-descent 286 disassembler for COM and EXE files. Output CS:IP addresses match the emulator's execution logs when `loadSegment` is configured correctly.
+
+### Basic usage
+
+```bash
+cargo run -p oxide86-disasm -- <file.exe>
+cargo run -p oxide86-disasm -- --config target/myprogram.json target/myprogram.exe > target/myprogram.asm
+```
+
+### Config file format
+
+```json
+{
+  "loadSegment": "0EEC",
+  "entryPoints": {
+    "160F:0000": "main"
+  },
+  "comments": {
+    "160F:0042": "reads key from keyboard"
+  }
+}
+```
+
+All fields are optional.
+
+| Field | Description |
+|---|---|
+| `loadSegment` | Hex segment at which the EXE was loaded in the emulator. Fixes CS values so they match execution logs. |
+| `entryPoints` | Map of `"SEG:OFF"` → label name. Adds extra disassembly roots and gives them named labels. |
+| `comments` | Map of `"SEG:OFF"` → comment string. Appended as `; comment` on the instruction at that address. |
+
+### Finding the load segment
+
+When the emulator's entry CS differs from the disassembler's output:
+
+```
+emulator entry:      160F:0000
+disassembler entry:  0723:0000
+load_segment = 0x160F - 0x0723 = 0x0EEC  →  "loadSegment": "0EEC"
+```
+
+The load segment is the paragraph DOS allocated for the program (PSP base). The disassembler defaults to `0x0000` (no relocation).
+
+### Address format
+
+All addresses use `SEG:OFF` with hex values, matching the emulator's execution log format (e.g. `160F:0042`). The `0x` prefix is accepted but not required.
+
 ## Resources
 - [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
 - [x86 Reference](https://www.felixcloutier.com/x86/)

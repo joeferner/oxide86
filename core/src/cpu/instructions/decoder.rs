@@ -1,3 +1,4 @@
+use crate::ByteReader;
 use crate::bus::Bus;
 use crate::cpu::Cpu;
 use crate::physical_address;
@@ -40,7 +41,7 @@ impl Cpu {
         let bytes: Vec<u8> = {
             let start = ((self.cs as usize) << 4) + (self.ip as usize);
             let end = ((self.cs as usize) << 4) + (decoder.ip as usize);
-            (start..end).map(|addr| bus.memory_read_u8(addr)).collect()
+            (start..end).map(|addr| bus.read_u8(addr)).collect()
         };
 
         DecodedInstruction {
@@ -253,8 +254,8 @@ fn int_description(int_num: u8, ah: u8) -> Option<(&'static str, bool)> {
     }
 }
 
-struct InstructionDecoder<'a> {
-    bus: &'a Bus,
+struct InstructionDecoder<'a, R: ByteReader> {
+    reader: &'a R,
     cs: u16,
     ip: u16,
     segment_override: Option<&'static str>,
@@ -267,10 +268,10 @@ struct InstructionDecoder<'a> {
     memory_refs: Vec<MemoryRef>,
 }
 
-impl<'a> InstructionDecoder<'a> {
-    fn new(bus: &'a Bus, cs: u16, ip: u16) -> Self {
+impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
+    fn new(reader: &'a R, cs: u16, ip: u16) -> Self {
         Self {
-            bus,
+            reader,
             cs,
             ip,
             segment_override: None,
@@ -374,9 +375,9 @@ impl<'a> InstructionDecoder<'a> {
 
             // Read the value from memory
             let value = if mem_ref.is_word {
-                self.bus.memory_read_u16(address)
+                self.reader.read_u16(address)
             } else {
-                self.bus.memory_read_u8(address) as u16
+                self.reader.read_u8(address) as u16
             };
 
             // Calculate segment for display (only for direct addresses without override)
@@ -435,7 +436,7 @@ impl<'a> InstructionDecoder<'a> {
 
     fn fetch_byte(&mut self) -> u8 {
         let addr = Self::physical_address(self.cs, self.ip);
-        let byte = self.bus.memory_read_u8(addr);
+        let byte = self.reader.read_u8(addr);
         self.ip = self.ip.wrapping_add(1);
         byte
     }
@@ -448,7 +449,7 @@ impl<'a> InstructionDecoder<'a> {
 
     fn peek_byte(&self) -> u8 {
         let addr = Self::physical_address(self.cs, self.ip);
-        self.bus.memory_read_u8(addr)
+        self.reader.read_u8(addr)
     }
 
     fn reg8_name(reg: u8) -> &'static str {
@@ -886,8 +887,9 @@ impl<'a> InstructionDecoder<'a> {
                 format!("pop {}", Self::reg16_name(reg))
             }
 
-            // PUSHA
+            // PUSHA / POPA
             0x60 => "pusha".to_string(),
+            0x61 => "popa".to_string(),
 
             // BOUND
             0x62 => {
@@ -909,6 +911,11 @@ impl<'a> InstructionDecoder<'a> {
             0x69 => {
                 let (reg, _rm, rm_str) = self.decode_modrm(true);
                 let imm = self.fetch_word();
+                format!("imul {}, {}, 0x{:04x}", Self::reg16_name(reg), rm_str, imm)
+            }
+            0x6B => {
+                let (reg, _rm, rm_str) = self.decode_modrm(true);
+                let imm = self.fetch_byte() as i8 as i16 as u16;
                 format!("imul {}, {}, 0x{:04x}", Self::reg16_name(reg), rm_str, imm)
             }
 
@@ -1169,6 +1176,14 @@ impl<'a> InstructionDecoder<'a> {
                 format!("mov {}, 0x{:04x}", rm_str, imm)
             }
 
+            // ENTER / LEAVE
+            0xC8 => {
+                let stack_size = self.fetch_word();
+                let nesting = self.fetch_byte();
+                format!("enter 0x{:04x}, 0x{:02x}", stack_size, nesting)
+            }
+            0xC9 => "leave".to_string(),
+
             // RETF
             0xCA => {
                 let imm = self.fetch_word();
@@ -1344,4 +1359,20 @@ impl<'a> InstructionDecoder<'a> {
             _ => format!("db 0x{:02x}", opcode),
         }
     }
+}
+
+/// Decode one instruction from `reader` at `cs:ip`.
+/// Returns `(text, bytes, next_ip)`.
+pub(crate) fn decode_one_raw<R: ByteReader>(
+    reader: &R,
+    cs: u16,
+    ip: u16,
+) -> (String, Vec<u8>, u16) {
+    let mut decoder = InstructionDecoder::new(reader, cs, ip);
+    let text = decoder.decode();
+    let next_ip = decoder.ip;
+    let start = InstructionDecoder::<R>::physical_address(cs, ip);
+    let end = InstructionDecoder::<R>::physical_address(cs, next_ip);
+    let bytes: Vec<u8> = (start..end).map(|a| reader.read_u8(a)).collect();
+    (text, bytes, next_ip)
 }

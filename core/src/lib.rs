@@ -6,6 +6,7 @@ pub mod bus;
 pub mod computer;
 pub mod cpu;
 pub mod devices;
+pub mod dis;
 pub mod disk;
 pub mod memory;
 pub mod scan_code;
@@ -47,6 +48,18 @@ pub(crate) fn byte_to_printable_char(v: u8) -> char {
 }
 
 pub type DeviceRef = Rc<RefCell<dyn Device>>;
+
+/// Abstraction over memory reads, used by the instruction decoder.
+/// Implemented by both `Bus` (emulator) and slice-based readers (disassembler).
+pub trait ByteReader {
+    fn read_u8(&self, addr: usize) -> u8;
+
+    fn read_u16(&self, addr: usize) -> u16 {
+        let lo = self.read_u8(addr) as u16;
+        let hi = self.read_u8(addr + 1) as u16;
+        (hi << 8) | lo
+    }
+}
 
 pub trait Device {
     fn as_any(&self) -> &dyn Any;

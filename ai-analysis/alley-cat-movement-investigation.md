@@ -7,6 +7,36 @@ the full code path from keyboard input through to the movement/scroll mechanism.
 
 ---
 
+## Disassembler
+
+The disassembly of `cat.exe` is checked in at [exe-analysis/cat.asm](../exe-analysis/cat.asm).
+
+To regenerate it after decoder changes or to add new labels/comments:
+
+```bash
+cargo run -p oxide86-disasm -- --config exe-analysis/cat.json exe-analysis/cat.exe > exe-analysis/cat.asm
+```
+
+The config file [exe-analysis/cat.json](../exe-analysis/cat.json) controls the disassembly:
+
+```json
+{
+  "loadSegment": "0EEC",
+  "entryPoints": {
+    "160F:XXXX": "label_name"
+  },
+  "comments": {
+    "160F:XXXX": "what this instruction does"
+  }
+}
+```
+
+**`loadSegment`** — set to `0EEC` so all CS:IP addresses in the output match the emulator's execution logs (CS = `160F`, not `0723`).
+
+To investigate a specific function, search the `.asm` for the CS:IP from the execution log directly — addresses will match exactly.
+
+---
+
 ## Runtime Memory Layout
 
 - CS = 0x160F (code segment)
