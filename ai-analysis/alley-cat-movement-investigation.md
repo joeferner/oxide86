@@ -22,16 +22,24 @@ The config file [exe-analysis/cat.json](../exe-analysis/cat.json) controls the d
 ```json
 {
   "loadSegment": "0EEC",
+  "dataSegment": "0EFC",
   "entryPoints": {
     "160F:XXXX": "label_name"
   },
   "comments": {
     "160F:XXXX": "what this instruction does"
+  },
+  "data": {
+    "0EFC:6AA0": { "type": "string", "label": "str_joystick_prompt" }
   }
 }
 ```
 
 **`loadSegment`** — set to `0EEC` so all CS:IP addresses in the output match the emulator's execution logs (CS = `160F`, not `0723`).
+
+**`dataSegment`** — set to `0EFC` (the DS value at runtime). Required for the disassembler to resolve `data` entries to physical addresses.
+
+**`data`** — map of `"SEG:OFF"` → `{ "type", "label" }` for annotating known data regions (strings, byte tables, etc.) with labels in the disassembly output.
 
 To investigate a specific function, search the `.asm` for the CS:IP from the execution log directly — addresses will match exactly.
 

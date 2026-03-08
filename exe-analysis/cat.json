@@ -1,7 +1,52 @@
 {
   "loadSegment": "0EEC",
   "dataSegment": "0EFC",
+  "entryPoints": {
+    "160F:0155": "main_loop",
+    "160F:08E5": "delay_frame_timer",
+    "160F:1200": "keyboard_timer_gate",
+    "160F:12C1": "keyboard_aggregator",
+    "160F:1338": "scroll_sync_check",
+    "160F:14B3": "int09_handler",
+    "160F:1580": "crt_horiz_scroll",
+    "160F:1835": "level_setup",
+    "160F:1B7A": "player_active_check",
+    "160F:546D": "main_movement"
+  },
+  "comments": {
+    "160F:015F": "call scroll_sync_check",
+    "160F:0176": "call keyboard_timer_gate (timer-gated, requires 2 INT 1A ticks)",
+    "160F:0179": "call delay_frame_timer",
+    "160F:018A": "test bit 0x03: call main_movement every 4th iteration",
+    "160F:0191": "call main_movement",
+
+    "160F:5534": "si=1 (player speed) — default",
+    "160F:5537": "cmp game_state [0x0004], 0",
+    "160F:553C": "jnz: if state!=0 keep si=1 (player mode)",
+    "160F:553E": "si=0 (attract mode speed)",
+    "160F:553F": "cmp player_active [0x1673], 0 — ROOT CAUSE: always 0 in attract mode",
+    "160F:5544": "jz: [0x1673]==0 → si stays 0 (attract mode, player input ignored)",
+    "160F:5549": "di = si",
+    "160F:554B": "di = si*2 (table index: 0=attract 3-tick threshold, 2=player threshold)",
+    "160F:5556": "ax = current INT 1A tick",
+    "160F:5558": "ax -= last_scroll_tick [0x5925] → elapsed ticks",
+    "160F:555C": "cmp elapsed vs threshold [di+0x59F2]: di=0→3 ticks (attract), di=2→player speed",
+    "160F:5560": "jnb: elapsed >= threshold → proceed with scroll",
+    "160F:5562": "ret: not enough time elapsed, skip this frame",
+
+    "160F:1B7A": "cmp game_state [0x0004], 0",
+    "160F:1B7F": "jnz: if state!=0 skip attract mode check",
+    "160F:1B81": "load player_active flag [0x1673]",
+    "160F:1B85": "cmp player_active, 0",
+    "160F:1B88": "jz: return immediately — [0x1673]==0, still in attract mode",
+
+    "160F:14B3": "IRQ1 handler: reads scan code from port 0x60, updates key state table",
+
+    "160F:1835": "level setup: initializes [0x1673]=0 (attract mode), [0x592A]=0x0500 (scroll counter)"
+  },
   "data": {
+    "0EFC:06A1": { "type": "bytes", "count": 22, "label": "scan_code_table" },
+    "0EFC:06B7": { "type": "bytes", "count": 22, "label": "key_state_table" },
     "0EFC:6AA0": { "type": "string", "label": "str_joystick_prompt" },
     "0EFC:6AC5": { "type": "string", "label": "str_skill_level" }
   }

@@ -27,11 +27,13 @@ struct Args {
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct DataSpec {
-    /// Data type: "string" (null-terminated ASCII), etc.
+    /// Data type: "string" (null-terminated ASCII), "bytes" (raw bytes), etc.
     #[serde(rename = "type")]
     data_type: String,
     /// Optional label to emit before this data region.
     label: Option<String>,
+    /// Number of bytes for "bytes" type. Required when type is "bytes".
+    count: Option<usize>,
 }
 
 #[derive(Deserialize)]
@@ -111,6 +113,12 @@ fn main() -> Result<()> {
             let linear = ((seg as usize) << 4) + off as usize;
             let data_type = match spec.data_type.as_str() {
                 "string" => DataType::String,
+                "bytes" => {
+                    let count = spec.count.with_context(|| {
+                        format!("'bytes' type at '{addr_str}' requires a 'count' field")
+                    })?;
+                    DataType::Bytes(count)
+                }
                 other => anyhow::bail!("unknown data type '{other}' at '{addr_str}'"),
             };
             let _ = (seg, off); // physical address used only for map key

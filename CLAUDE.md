@@ -62,11 +62,15 @@ cargo run -p oxide86-disasm -- --config target/myprogram.json target/myprogram.e
 ```json
 {
   "loadSegment": "0EEC",
+  "dataSegment": "0EFC",
   "entryPoints": {
     "160F:0000": "main"
   },
   "comments": {
     "160F:0042": "reads key from keyboard"
+  },
+  "data": {
+    "0EFC:6AA0": { "type": "string", "label": "str_joystick_prompt" }
   }
 }
 ```
@@ -76,8 +80,10 @@ All fields are optional.
 | Field | Description |
 |---|---|
 | `loadSegment` | Hex segment at which the EXE was loaded in the emulator. Fixes CS values so they match execution logs. |
+| `dataSegment` | Hex segment of the data segment (DS). Used to resolve `data` entries. |
 | `entryPoints` | Map of `"SEG:OFF"` → label name. Adds extra disassembly roots and gives them named labels. |
 | `comments` | Map of `"SEG:OFF"` → comment string. Appended as `; comment` on the instruction at that address. |
+| `data` | Map of `"SEG:OFF"` → `{ "type": "string"\|"bytes", "label": "name" }`. Annotates known data regions with labels and type hints. |
 
 ### Finding the load segment
 

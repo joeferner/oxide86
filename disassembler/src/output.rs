@@ -63,6 +63,29 @@ pub fn print_disassembly(image: &LoadedImage, dis: &Disassembly, data_segment: u
                     println!("    {seg:04X}:{off:04X}  {empty_bytes}  db \"{text}\"{null_suffix}");
                     addr = cursor;
                 }
+                DataType::Bytes(count) => {
+                    // Emit raw bytes in rows of 8
+                    const ROW: usize = 8;
+                    let mut cursor = addr;
+                    let end = (addr + count).min(dis.image_end);
+                    while cursor < end {
+                        let row_end = (cursor + ROW).min(end);
+                        let row_off = (cursor - addr) as u16;
+                        let row_seg = seg;
+                        let row_addr = off + row_off;
+                        let row_bytes: Vec<u8> = (cursor..row_end)
+                            .map(|a| image.data.get(a - base).copied().unwrap_or(0xFF))
+                            .collect();
+                        let byte_list: Vec<String> =
+                            row_bytes.iter().map(|b| format!("0x{b:02X}")).collect();
+                        println!(
+                            "    {row_seg:04X}:{row_addr:04X}                        db {}",
+                            byte_list.join(", ")
+                        );
+                        cursor = row_end;
+                    }
+                    addr = end;
+                }
             }
         } else if let Some(entry) = dis.instructions.get(&addr) {
             // Decoded instruction

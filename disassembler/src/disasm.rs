@@ -28,6 +28,8 @@ impl ByteReader for ImageReader<'_> {
 pub enum DataType {
     /// Null-terminated ASCII string.
     String,
+    /// Raw byte array of a fixed length.
+    Bytes(usize),
 }
 
 /// A data region declared in the config (not disassembled as code).
