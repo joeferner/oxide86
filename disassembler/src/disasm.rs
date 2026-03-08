@@ -23,6 +23,20 @@ impl ByteReader for ImageReader<'_> {
     }
 }
 
+/// Type of a data region declared in the config.
+#[derive(Debug, Clone)]
+pub enum DataType {
+    /// Null-terminated ASCII string.
+    String,
+}
+
+/// A data region declared in the config (not disassembled as code).
+#[derive(Debug, Clone)]
+pub struct DataRegion {
+    pub data_type: DataType,
+    pub label: Option<String>,
+}
+
 /// A decoded instruction at a specific address.
 pub struct DisasmEntry {
     pub cs: u16,
@@ -44,6 +58,8 @@ pub struct Disassembly {
     pub custom_labels: HashMap<usize, String>,
     /// User-supplied comments keyed by linear address.
     pub comments: HashMap<usize, String>,
+    /// User-declared data regions keyed by linear address.
+    pub data_regions: HashMap<usize, DataRegion>,
     /// First valid linear address (load_segment << 4).
     pub image_base: usize,
     /// One past the last valid linear address.
@@ -54,6 +70,7 @@ pub fn disassemble(
     image: &LoadedImage,
     entries: &[(u16, u16, Option<String>)],
     comments: HashMap<usize, String>,
+    data_regions: HashMap<usize, DataRegion>,
 ) -> Disassembly {
     let base = image.base_linear;
     let reader = ImageReader {
@@ -162,6 +179,7 @@ pub fn disassemble(
         entry_points,
         custom_labels,
         comments,
+        data_regions,
         image_base: base,
         image_end,
     }

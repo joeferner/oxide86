@@ -1,4 +1,4 @@
-use crate::disasm::Disassembly;
+use crate::disasm::{DataType, Disassembly};
 use crate::loader::LoadedImage;
 
 /// Format a sequence of bytes as space-separated hex, padded to `width` chars.
@@ -8,8 +8,9 @@ fn fmt_bytes(bytes: &[u8], width: usize) -> String {
     format!("{joined:<width$}")
 }
 
-pub fn print_disassembly(image: &LoadedImage, dis: &Disassembly) {
+pub fn print_disassembly(image: &LoadedImage, dis: &Disassembly, data_segment: u16) {
     let base = dis.image_base;
+    let data_base = (data_segment as usize) << 4;
     let mut addr = base;
 
     while addr < dis.image_end {
@@ -19,7 +20,51 @@ pub fn print_disassembly(image: &LoadedImage, dis: &Disassembly) {
             println!("{name}:");
         }
 
-        if let Some(entry) = dis.instructions.get(&addr) {
+        if let Some(region) = dis.data_regions.get(&addr) {
+            // Data region declared in config — render it as the appropriate type
+            // Display using data_segment so the address matches the runtime DS:off.
+            let seg = data_segment;
+            let off = addr.wrapping_sub(data_base) as u16;
+            if let Some(label) = &region.label {
+                println!("{label}:");
+            }
+            match region.data_type {
+                DataType::String => {
+                    // Collect bytes up to and including the null terminator
+                    let mut bytes: Vec<u8> = Vec::new();
+                    let mut cursor = addr;
+                    loop {
+                        let img_off = cursor - base;
+                        let b = image.data.get(img_off).copied().unwrap_or(0xFF);
+                        cursor += 1;
+                        if b == 0 {
+                            break;
+                        }
+                        bytes.push(b);
+                        if cursor >= dis.image_end {
+                            break;
+                        }
+                    }
+                    let text: String = bytes
+                        .iter()
+                        .map(|&b| {
+                            if b == b'"' {
+                                "\\\"".to_string()
+                            } else if !(0x20..0x7F).contains(&b) {
+                                format!("\\x{b:02X}")
+                            } else {
+                                (b as char).to_string()
+                            }
+                        })
+                        .collect();
+                    let has_null = cursor > addr + bytes.len();
+                    let null_suffix = if has_null { ",0" } else { "" };
+                    let empty_bytes = fmt_bytes(&[], 20);
+                    println!("    {seg:04X}:{off:04X}  {empty_bytes}  db \"{text}\"{null_suffix}");
+                    addr = cursor;
+                }
+            }
+        } else if let Some(entry) = dis.instructions.get(&addr) {
             // Decoded instruction
             let cs = entry.cs;
             let ip = entry.ip;
@@ -39,9 +84,12 @@ pub fn print_disassembly(image: &LoadedImage, dis: &Disassembly) {
             // Uncovered byte — emit as db
             let image_offset = addr - base;
             let b = image.data.get(image_offset).copied().unwrap_or(0xFF);
-            // Express as seg:off using entry_cs as the segment reference
-            let seg = image.entry_cs;
-            let off = addr.saturating_sub((seg as usize) << 4) as u16;
+            // Compute seg:off using data_segment so addresses match the runtime DS.
+            let (seg, off) = if addr >= data_base && addr.wrapping_sub(data_base) <= 0xFFFF {
+                (data_segment, addr.wrapping_sub(data_base) as u16)
+            } else {
+                (image.load_segment, (addr - base) as u16)
+            };
             let bytes_str = fmt_bytes(&[b], 20);
             let printable = if (0x20..0x7F).contains(&b) {
                 format!(" '{}'", b as char)

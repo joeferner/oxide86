@@ -8,6 +8,8 @@ use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
 
+use disasm::{DataRegion, DataType};
+
 #[derive(Parser)]
 #[command(
     name = "oxide86-disasm",
@@ -24,6 +26,16 @@ struct Args {
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
+struct DataSpec {
+    /// Data type: "string" (null-terminated ASCII), etc.
+    #[serde(rename = "type")]
+    data_type: String,
+    /// Optional label to emit before this data region.
+    label: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct Config {
     /// Map of "SEG:OFF" → label name
     #[serde(default)]
@@ -31,11 +43,19 @@ struct Config {
     /// Map of "SEG:OFF" → comment string shown next to the instruction
     #[serde(default)]
     comments: HashMap<String, String>,
+    /// Map of "SEG:OFF" → data region declaration
+    #[serde(default)]
+    data: HashMap<String, DataSpec>,
     /// Segment at which the EXE was loaded (hex string, e.g. "0EEC").
     /// Defaults to "0000". Set this to match the emulator's load address
     /// so that CS values in the output align with execution logs.
     #[serde(default)]
     load_segment: Option<String>,
+    /// Segment to use for displaying data addresses (hex string, e.g. "0EFC").
+    /// Defaults to loadSegment. Set this to the runtime DS value so that
+    /// data offsets in the output match what the emulator sees.
+    #[serde(default)]
+    data_segment: Option<String>,
 }
 
 fn parse_seg_off(s: &str) -> Result<(u16, u16)> {
@@ -55,8 +75,10 @@ fn main() -> Result<()> {
 
     // Parse config first so we have load_segment before loading the image
     let mut load_segment: u16 = 0x0000;
+    let mut data_segment: Option<u16> = None;
     let mut extra_entries: Vec<(u16, u16, Option<String>)> = Vec::new();
     let mut comments: HashMap<usize, String> = HashMap::new();
+    let mut data_regions: HashMap<usize, DataRegion> = HashMap::new();
 
     if let Some(config_path) = &args.config {
         let raw = std::fs::read_to_string(config_path)
@@ -67,6 +89,11 @@ fn main() -> Result<()> {
             load_segment = u16::from_str_radix(seg_str.trim_start_matches("0x"), 16)
                 .with_context(|| format!("invalid loadSegment '{seg_str}'"))?;
         }
+        if let Some(seg_str) = config.data_segment {
+            let ds = u16::from_str_radix(seg_str.trim_start_matches("0x"), 16)
+                .with_context(|| format!("invalid dataSegment '{seg_str}'"))?;
+            data_segment = Some(ds);
+        }
         for (addr_str, label) in config.entry_points {
             let (seg, off) = parse_seg_off(&addr_str)
                 .with_context(|| format!("invalid config entry point '{addr_str}'"))?;
@@ -75,8 +102,25 @@ fn main() -> Result<()> {
         for (addr_str, comment) in config.comments {
             let (seg, off) = parse_seg_off(&addr_str)
                 .with_context(|| format!("invalid config comment address '{addr_str}'"))?;
-            let linear = (seg as usize) << 4 | off as usize;
+            let linear = ((seg as usize) << 4) + off as usize;
             comments.insert(linear, comment);
+        }
+        for (addr_str, spec) in config.data {
+            let (seg, off) = parse_seg_off(&addr_str)
+                .with_context(|| format!("invalid config data address '{addr_str}'"))?;
+            let linear = ((seg as usize) << 4) + off as usize;
+            let data_type = match spec.data_type.as_str() {
+                "string" => DataType::String,
+                other => anyhow::bail!("unknown data type '{other}' at '{addr_str}'"),
+            };
+            let _ = (seg, off); // physical address used only for map key
+            data_regions.insert(
+                linear,
+                DataRegion {
+                    data_type,
+                    label: spec.label,
+                },
+            );
         }
     }
 
@@ -86,8 +130,9 @@ fn main() -> Result<()> {
     let mut entries: Vec<(u16, u16, Option<String>)> = vec![(image.entry_cs, image.entry_ip, None)];
     entries.extend(extra_entries);
 
-    let disassembly = disasm::disassemble(&image, &entries, comments);
-    output::print_disassembly(&image, &disassembly);
+    let disassembly = disasm::disassemble(&image, &entries, comments, data_regions);
+    let effective_data_segment = data_segment.unwrap_or(load_segment);
+    output::print_disassembly(&image, &disassembly, effective_data_segment);
 
     Ok(())
 }

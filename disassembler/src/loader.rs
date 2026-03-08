@@ -14,6 +14,8 @@ pub struct LoadedImage {
     pub data: Vec<u8>,
     /// Physical base address (load_segment << 4). image[0] maps to this linear address.
     pub base_linear: usize,
+    /// The segment at which the image was loaded (base_linear >> 4).
+    pub load_segment: u16,
     /// Entry segment (CS at entry).
     pub entry_cs: u16,
     /// Entry offset (IP at entry).
@@ -41,6 +43,7 @@ fn load_com(data: Vec<u8>) -> Result<LoadedImage> {
     Ok(LoadedImage {
         data: image,
         base_linear: 0,
+        load_segment: 0x0000,
         entry_cs: 0x0000,
         entry_ip: 0x0100,
         kind: ImageKind::Com,
@@ -114,6 +117,7 @@ fn load_exe(data: Vec<u8>, load_segment: u16) -> Result<LoadedImage> {
     Ok(LoadedImage {
         data: image,
         base_linear,
+        load_segment,
         entry_cs,
         entry_ip,
         kind: ImageKind::Exe,

@@ -1,3 +1,8 @@
 {
-    "loadSegment": "0EEC"
+  "loadSegment": "0EEC",
+  "dataSegment": "0EFC",
+  "data": {
+    "0EFC:6AA0": { "type": "string", "label": "str_joystick_prompt" },
+    "0EFC:6AC5": { "type": "string", "label": "str_skill_level" }
+  }
 }
