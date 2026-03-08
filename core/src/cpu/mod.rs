@@ -389,6 +389,7 @@ mod tests {
             video_card: Rc::new(RefCell::new(VideoCard::new(
                 VideoCardType::VGA,
                 video_buffer,
+                cpu_clock_speed,
             ))),
             pc_speaker: Box::new(NullPcSpeaker::new()),
         });

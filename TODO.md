@@ -24,7 +24,7 @@
 - [X] Command mode reset
 - [X] `edit autoexec.bat` failing with `Packed file is corrupted` (8086 has 20 address lines so addresses wrap at 1MB (0x100000))
 - [X] x86 Disassembler (ai-analysis/disassembler-plan.md)
-- [ ] Get Alley Cat working
+- [X] Get Alley Cat working (ai-analysis/alley-cat-movement-investigation.md and exe-analysis/cat.json)
 - [ ] Add EGA support
 - [ ] Add VGA support
 - [ ] CGA Composite mode

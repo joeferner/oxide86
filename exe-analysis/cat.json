@@ -3,15 +3,29 @@
   "dataSegment": "0EFC",
   "entryPoints": {
     "160F:0155": "main_loop",
+    "160F:04A0": "sub_16590",
     "160F:08E5": "delay_frame_timer",
+    "160F:0A86": "update_cat_y",
+    "160F:0FC9": "update_cat_x",
     "160F:1200": "keyboard_timer_gate",
     "160F:12C1": "keyboard_aggregator",
+    "160F:13D8": "vsync_check",
     "160F:1338": "scroll_sync_check",
     "160F:14B3": "int09_handler",
     "160F:1580": "crt_horiz_scroll",
     "160F:1835": "level_setup",
+    "160F:1922": "sub_17A12",
+    "160F:1936": "window_entry_check",
+    "160F:1AEA": "sub_17BDA",
+    "160F:1B05": "window_entry_validate",
     "160F:1B7A": "player_active_check",
-    "160F:546D": "main_movement"
+    "160F:2DFD": "lfsr_rand",
+    "160F:2E10": "lfsr_seed",
+    "160F:546D": "main_movement",
+    "160F:53B0": "attract_scroll",
+    "160F:5D0D": "attract_mode_setup",
+    "160F:5D54": "attract_mode_loop",
+    "160F:5DD4": "attract_cat_ai"
   },
   "comments": {
     "160F:015F": "call scroll_sync_check",
@@ -19,34 +33,69 @@
     "160F:0179": "call delay_frame_timer",
     "160F:018A": "test bit 0x03: call main_movement every 4th iteration",
     "160F:0191": "call main_movement",
+    "160F:0197": "call window_entry_check (every ~13 movement calls)",
 
-    "160F:5534": "si=1 (player speed) — default",
+    "160F:13D8": "reads port 0x3DA, tests bit 3 (vsync). ZF=1 when NOT in vsync. Emulator always returns 0x00 -> ZF always 1",
+
+    "160F:04AB": "call vsync_check; jnz: loop while IN vsync (wait for vsync end). Emulator: jnz never fires, falls through immediately",
+    "160F:0B8B": "call vsync_check; jnz 0x0B8B: loop while IN vsync (wait for vsync end). Emulator: falls through immediately",
+    "160F:0B90": "call vsync_check; jz 0x0B90: loop while NOT in vsync (wait for vsync start). BUG: emulator 0x3DA=0 -> infinite loop if reached",
+    "160F:1942": "call vsync_check; jnz 0x193c: skip window check if in vsync. Emulator: jnz never fires -> window check always runs (too fast but not blocked)",
+
+    "160F:195F": "cmp [0x057b], 0x60 -- cat must be at/above window level (Y <= 0x60)",
+    "160F:19C8": "mov [0x1670], 0x01 -- building-entry triggered",
+    "160F:1A26": "mov [0x1673], al -- set cat_building_floor from [0x1668] (target floor)",
+
+    "160F:1B30": "cmp [0x057b], 0x60; jnb: requires Y STRICTLY < 0x60 for window entry",
+
+    "160F:5522": "mov si, 3 -- default si=3 (fast mode, overrides below)",
+    "160F:5534": "mov si, 1 (player-speed candidate)",
     "160F:5537": "cmp game_state [0x0004], 0",
     "160F:553C": "jnz: if state!=0 keep si=1 (player mode)",
-    "160F:553E": "si=0 (attract mode speed)",
-    "160F:553F": "cmp player_active [0x1673], 0 — ROOT CAUSE: always 0 in attract mode",
-    "160F:5544": "jz: [0x1673]==0 → si stays 0 (attract mode, player input ignored)",
+    "160F:553E": "dec si -> si=0 (attract/ground mode when [0x1673]=0)",
+    "160F:553F": "cmp cat_building_floor [0x1673], 0 -- 0=cat on ground, non-zero=floor in building",
+    "160F:5544": "jz: [0x1673]==0 -> si stays 0 (cat on ground, auto-scroll; player input ignored by scroll)",
+    "160F:5546": "mov si, 2 (player in-building mode)",
     "160F:5549": "di = si",
-    "160F:554B": "di = si*2 (table index: 0=attract 3-tick threshold, 2=player threshold)",
+    "160F:554B": "di = si*2 (table index: 0=attract 3-tick, 4=player in-building speed)",
     "160F:5556": "ax = current INT 1A tick",
-    "160F:5558": "ax -= last_scroll_tick [0x5925] → elapsed ticks",
-    "160F:555C": "cmp elapsed vs threshold [di+0x59F2]: di=0→3 ticks (attract), di=2→player speed",
-    "160F:5560": "jnb: elapsed >= threshold → proceed with scroll",
+    "160F:5558": "ax -= last_scroll_tick [0x5925] -> elapsed ticks",
+    "160F:555C": "cmp elapsed vs threshold [di+0x59F2]: di=0->3 ticks (attract), di=4->player in-building speed",
+    "160F:5560": "jnb: elapsed >= threshold -> proceed with scroll",
     "160F:5562": "ret: not enough time elapsed, skip this frame",
+
+    "160F:5B28": "programs PIT channel 2 (port 0x42) for PC speaker sound -- NOT channel 0",
+
+    "160F:5D1F": "mov [0x057b], 0x60 -- attract-mode DEMO: place cat at window height",
+    "160F:5D54": "attract-mode loop: polls [0x0693] for any key press to exit",
+
+    "160F:5E1C": "call vsync_check (0x13D8); emulator always returns 0 -> ZF=1 -> always jumps to ret",
+    "160F:5E1F": "jz 0x5E2A: BUG - port 0x3DA always 0, so vsync-gated movement block is never executed",
+    "160F:5E2A": "ret -- attract_cat_ai always returns here (movement block skipped due to vsync bug)",
 
     "160F:1B7A": "cmp game_state [0x0004], 0",
     "160F:1B7F": "jnz: if state!=0 skip attract mode check",
-    "160F:1B81": "load player_active flag [0x1673]",
-    "160F:1B85": "cmp player_active, 0",
-    "160F:1B88": "jz: return immediately — [0x1673]==0, still in attract mode",
+    "160F:1B81": "load cat_building_floor [0x1673]",
+    "160F:1B85": "cmp cat_building_floor, 0",
+    "160F:1B88": "jz: return immediately -- [0x1673]==0, cat still in alley",
 
-    "160F:14B3": "IRQ1 handler: reads scan code from port 0x60, updates key state table",
+    "160F:14B3": "IRQ1 handler: reads scan code from port 0x60, updates key state table; increments [0x0693] on any keydown",
 
-    "160F:1835": "level setup: initializes [0x1673]=0 (attract mode), [0x592A]=0x0500 (scroll counter)"
+    "160F:1835": "level setup: initializes [0x1673]=0 (cat on ground), [0x592A]=0x0500 (scroll counter)",
+
+    "160F:2E10": "seed LFSR from PIT ch0 counter; fallback 0xFA59 if counter reads zero"
   },
   "data": {
+    "0EFC:057B": { "type": "bytes", "count": 1, "label": "cat_screen_y" },
+    "0EFC:0579": { "type": "bytes", "count": 1, "label": "cat_horiz_dir" },
+    "0EFC:0571": { "type": "bytes", "count": 1, "label": "cat_vert_dir_prev" },
+    "0EFC:0693": { "type": "bytes", "count": 1, "label": "keypress_counter" },
     "0EFC:06A1": { "type": "bytes", "count": 22, "label": "scan_code_table" },
     "0EFC:06B7": { "type": "bytes", "count": 22, "label": "key_state_table" },
+    "0EFC:1665": { "type": "bytes", "count": 1, "label": "window_entry_anim_counter" },
+    "0EFC:1668": { "type": "bytes", "count": 1, "label": "target_building_floor" },
+    "0EFC:1670": { "type": "bytes", "count": 1, "label": "building_entry_triggered" },
+    "0EFC:1673": { "type": "bytes", "count": 1, "label": "cat_building_floor" },
     "0EFC:6AA0": { "type": "string", "label": "str_joystick_prompt" },
     "0EFC:6AC5": { "type": "string", "label": "str_skill_level" }
   }

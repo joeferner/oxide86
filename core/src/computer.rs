@@ -49,6 +49,7 @@ impl Computer {
         let video_card = Rc::new(RefCell::new(VideoCard::new(
             config.video_card_type,
             config.video_buffer,
+            cpu_clock_speed,
         )));
         let mut computer = Self {
             cpu,

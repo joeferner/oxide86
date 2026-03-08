@@ -81,6 +81,10 @@ fn main() -> Result<()> {
     let mut extra_entries: Vec<(u16, u16, Option<String>)> = Vec::new();
     let mut comments: HashMap<usize, String> = HashMap::new();
     let mut data_regions: HashMap<usize, DataRegion> = HashMap::new();
+    // Keep original address strings for unused-key warnings
+    let mut entry_point_keys: Vec<(usize, String)> = Vec::new();
+    let mut comment_keys: Vec<(usize, String)> = Vec::new();
+    let mut data_keys: Vec<(usize, String)> = Vec::new();
 
     if let Some(config_path) = &args.config {
         let raw = std::fs::read_to_string(config_path)
@@ -99,12 +103,15 @@ fn main() -> Result<()> {
         for (addr_str, label) in config.entry_points {
             let (seg, off) = parse_seg_off(&addr_str)
                 .with_context(|| format!("invalid config entry point '{addr_str}'"))?;
+            let linear = ((seg as usize) << 4) + off as usize;
+            entry_point_keys.push((linear, addr_str.clone()));
             extra_entries.push((seg, off, Some(label)));
         }
         for (addr_str, comment) in config.comments {
             let (seg, off) = parse_seg_off(&addr_str)
                 .with_context(|| format!("invalid config comment address '{addr_str}'"))?;
             let linear = ((seg as usize) << 4) + off as usize;
+            comment_keys.push((linear, addr_str.clone()));
             comments.insert(linear, comment);
         }
         for (addr_str, spec) in config.data {
@@ -122,6 +129,7 @@ fn main() -> Result<()> {
                 other => anyhow::bail!("unknown data type '{other}' at '{addr_str}'"),
             };
             let _ = (seg, off); // physical address used only for map key
+            data_keys.push((linear, addr_str.clone()));
             data_regions.insert(
                 linear,
                 DataRegion {
@@ -140,6 +148,26 @@ fn main() -> Result<()> {
 
     let disassembly = disasm::disassemble(&image, &entries, comments, data_regions);
     let effective_data_segment = data_segment.unwrap_or(load_segment);
+
+    // Warn about config keys that didn't match any disassembled content.
+    for (linear, addr_str) in &entry_point_keys {
+        if !disassembly.instructions.contains_key(linear) {
+            eprintln!(
+                "warning: entryPoint '{addr_str}' did not produce any disassembled instructions"
+            );
+        }
+    }
+    for (linear, addr_str) in &comment_keys {
+        if !disassembly.instructions.contains_key(linear) {
+            eprintln!("warning: comment at '{addr_str}' does not match any instruction");
+        }
+    }
+    for (linear, addr_str) in &data_keys {
+        if *linear < disassembly.image_base || *linear >= disassembly.image_end {
+            eprintln!("warning: data entry '{addr_str}' is outside the image range");
+        }
+    }
+
     output::print_disassembly(&image, &disassembly, effective_data_segment);
 
     Ok(())

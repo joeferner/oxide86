@@ -46,10 +46,16 @@ pub(crate) struct ModeInfo {
     pub cols: u8,
 }
 
+/// CGA vertical refresh rate.
+const CGA_VSYNC_HZ: u64 = 60;
+/// Vsync active for roughly 1/12 of the frame (~8%).
+const CGA_VSYNC_DUTY_DIVISOR: u64 = 12;
+
 pub struct VideoCard {
     card_type: VideoCardType,
     buffer: Arc<RwLock<VideoBuffer>>,
     vram_size: usize,
+    cpu_clock_speed: u32,
     io_register: u8,
     color_select: u8,
     // EGA/VGA Attribute Controller registers (16 palette + 1 border color)
@@ -63,11 +69,16 @@ pub struct VideoCard {
 }
 
 impl VideoCard {
-    pub fn new(card_type: VideoCardType, buffer: Arc<RwLock<VideoBuffer>>) -> Self {
+    pub fn new(
+        card_type: VideoCardType,
+        buffer: Arc<RwLock<VideoBuffer>>,
+        cpu_clock_speed: u32,
+    ) -> Self {
         Self {
             card_type,
             buffer,
             vram_size: CGA_MEMORY_SIZE, // TODO change based on video card type
+            cpu_clock_speed,
             io_register: 0,
             color_select: 0,
             ac_registers: [0u8; 17],
@@ -162,7 +173,7 @@ impl Device for VideoCard {
         }
     }
 
-    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&self, port: u16, cycle_count: u32) -> Option<u8> {
         match self.card_type {
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: return 0xFF — no MDA card present
@@ -193,10 +204,15 @@ impl Device for VideoCard {
                     self.dac_read_pos.set((pos + 1) % (256 * 3));
                     Some(self.dac_registers[reg][component])
                 }
-                // Input Status Register 1: resets AC flip-flop to address mode
+                // Input Status Register 1: resets AC flip-flop to address mode.
+                // Bit 3: vertical retrace (vsync) active. Simulated at ~60Hz using cycle count.
                 0x3DA => {
                     self.ac_flip_flop.set(false);
-                    Some(0x00)
+                    let cycles_per_frame = self.cpu_clock_speed as u64 / CGA_VSYNC_HZ;
+                    let vsync_cycles = cycles_per_frame / CGA_VSYNC_DUTY_DIVISOR;
+                    let phase = cycle_count as u64 % cycles_per_frame;
+                    let in_vsync = phase < vsync_cycles;
+                    Some(if in_vsync { 0x08 } else { 0x00 })
                 }
                 _ => None,
             },
