@@ -19,6 +19,11 @@ pub const VIDEO_MODE_02H_COLOR_TEXT_80_X_25: u8 = 0x02;
 pub const VIDEO_MODE_03H_COLOR_TEXT_80_X_25: u8 = 0x03;
 pub const VIDEO_MODE_04H_CGA_320_X_200_4: u8 = 0x04;
 pub const VIDEO_MODE_06H_CGA_640_X_200_2: u8 = 0x06;
+pub const VIDEO_MODE_0DH_EGA_320_X_200_16: u8 = 0x0d;
+
+// EGA video memory constants (planar, at A000:0000)
+pub const EGA_MEMORY_START: usize = 0xA0000;
+pub const EGA_MEMORY_END: usize = 0xAFFFF;
 
 // CGA video memory constants
 pub const CGA_MEMORY_START: usize = 0xB8000;

@@ -5,11 +5,14 @@ use std::{
 };
 
 use crate::{
-    Device, byte_to_printable_char,
+    Device,
     video::{
-        CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, TEXT_MODE_COLS, TEXT_MODE_ROWS,
-        VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
-        VIDEO_MODE_04H_CGA_320_X_200_4, VIDEO_MODE_06H_CGA_640_X_200_2, VideoBuffer, VideoCardType,
+        CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, EGA_MEMORY_END, EGA_MEMORY_START,
+        EGA_PLANE_SIZE, TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MEMORY_SIZE,
+        VIDEO_MODE_0DH_EGA_320_X_200_16, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
+        VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
+        VIDEO_MODE_06H_CGA_640_X_200_2, VideoBuffer, VideoCardType,
+        font::{CHAR_HEIGHT_8, Cp437Font},
     },
 };
 
@@ -66,6 +69,15 @@ pub struct VideoCard {
     dac_registers: Vec<[u8; 3]>,
     dac_write_pos: usize, // index * 3 + color_component
     dac_read_pos: Cell<usize>,
+    // EGA/VGA Sequencer registers
+    sequencer_address: u8,
+    /// Map Mask register (sequencer index 0x02): bit N = enable write to plane N.
+    /// Default 0x0F = all 4 planes enabled.
+    sequencer_map_mask: u8,
+    // EGA/VGA Graphics Controller registers
+    gc_address: u8,
+    /// Read Map Select (GC register 0x04): which plane (0-3) the CPU reads from.
+    gc_read_map_select: u8,
 }
 
 impl VideoCard {
@@ -77,7 +89,10 @@ impl VideoCard {
         Self {
             card_type,
             buffer,
-            vram_size: CGA_MEMORY_SIZE, // TODO change based on video card type
+            vram_size: match card_type {
+                VideoCardType::EGA | VideoCardType::VGA => VIDEO_MEMORY_SIZE,
+                VideoCardType::CGA => CGA_MEMORY_SIZE,
+            },
             cpu_clock_speed,
             io_register: 0,
             color_select: 0,
@@ -87,6 +102,10 @@ impl VideoCard {
             dac_registers: vec![[0u8; 3]; 256],
             dac_write_pos: 0,
             dac_read_pos: Cell::new(0),
+            sequencer_address: 0,
+            sequencer_map_mask: 0x0F,
+            gc_address: 0,
+            gc_read_map_select: 0,
         }
     }
 
@@ -107,10 +126,6 @@ impl VideoCard {
     fn internal_write_u8(&mut self, addr: usize, val: u8) {
         if addr < self.vram_size {
             let mut buffer = self.buffer.write().unwrap();
-            log::debug!(
-                "Write: [0x{addr:04X}] = 0x{val:02X} '{}'",
-                byte_to_printable_char(val)
-            );
             buffer.write_vram(addr, val);
         }
     }
@@ -127,8 +142,46 @@ impl VideoCard {
             Some(ModeInfo { rows: 25, cols: 40 })
         } else if mode == VIDEO_MODE_06H_CGA_640_X_200_2 {
             Some(ModeInfo { rows: 25, cols: 80 })
+        } else if mode == VIDEO_MODE_0DH_EGA_320_X_200_16 {
+            Some(ModeInfo { rows: 25, cols: 40 })
         } else {
             None
+        }
+    }
+
+    /// Draw a character transparently into EGA planar VRAM.
+    ///
+    /// Foreground pixels (glyph bit = 1) are set to `fg_color` in all planes.
+    /// Background pixels (glyph bit = 0) are left unchanged (transparent).
+    ///
+    /// `char_row` and `char_col` are character-cell coordinates (40 cols × 25 rows).
+    pub(crate) fn ega_draw_char_transparent(
+        &self,
+        ch: u8,
+        char_row: u8,
+        char_col: u8,
+        fg_color: u8,
+    ) {
+        let font = Cp437Font::new();
+        let glyph = font.get_glyph_8(ch);
+        let mut buffer = self.buffer.write().unwrap();
+        for (r, &glyph_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
+            let pixel_y = char_row as usize * CHAR_HEIGHT_8 + r;
+            let byte_offset = pixel_y * 40 + char_col as usize;
+            for plane in 0..4u8 {
+                let plane_vram = plane as usize * EGA_PLANE_SIZE + byte_offset;
+                if plane_vram >= buffer.vram_len() {
+                    continue;
+                }
+                let plane_bit = (fg_color >> plane) & 1;
+                if plane_bit != 0 {
+                    let existing = buffer.read_vram(plane_vram);
+                    buffer.write_vram(plane_vram, existing | glyph_byte);
+                } else {
+                    let existing = buffer.read_vram(plane_vram);
+                    buffer.write_vram(plane_vram, existing & !glyph_byte);
+                }
+            }
         }
     }
 }
@@ -141,7 +194,10 @@ impl Device for VideoCard {
     fn reset(&mut self) {
         let mut buffer = self.buffer.write().unwrap();
         buffer.reset();
-        self.vram_size = CGA_MEMORY_SIZE; // TODO change based on video card type
+        self.vram_size = match self.card_type {
+            VideoCardType::EGA | VideoCardType::VGA => VIDEO_MEMORY_SIZE,
+            VideoCardType::CGA => CGA_MEMORY_SIZE,
+        };
         self.io_register = 0;
         self.color_select = 0;
         self.ac_registers = [0u8; 17];
@@ -150,23 +206,48 @@ impl Device for VideoCard {
         self.dac_registers = vec![[0u8; 3]; 256];
         self.dac_write_pos = 0;
         self.dac_read_pos.set(0);
+        self.sequencer_address = 0;
+        self.sequencer_map_mask = 0x0F;
+        self.gc_address = 0;
+        self.gc_read_map_select = 0;
     }
 
     fn memory_read_u8(&self, addr: usize, _cycle_count: u32) -> Option<u8> {
-        // Route to Video for memory-mapped ranges
         if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
             Some(self.internal_read_u8(offset))
+        } else if matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA)
+            && (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&addr)
+        {
+            let offset = addr - EGA_MEMORY_START;
+            if offset < EGA_PLANE_SIZE {
+                let plane_offset = self.gc_read_map_select as usize * EGA_PLANE_SIZE + offset;
+                Some(self.internal_read_u8(plane_offset))
+            } else {
+                Some(0xFF)
+            }
         } else {
             None
         }
     }
 
     fn memory_write_u8(&mut self, addr: usize, val: u8, _cycle_count: u32) -> bool {
-        // Route to Video for memory-mapped ranges
         if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
             self.internal_write_u8(offset, val);
+            true
+        } else if matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA)
+            && (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&addr)
+        {
+            let offset = addr - EGA_MEMORY_START;
+            if offset < EGA_PLANE_SIZE {
+                for plane in 0..4u8 {
+                    if (self.sequencer_map_mask >> plane) & 1 != 0 {
+                        let plane_offset = plane as usize * EGA_PLANE_SIZE + offset;
+                        self.internal_write_u8(plane_offset, val);
+                    }
+                }
+            }
             true
         } else {
             false
@@ -174,6 +255,7 @@ impl Device for VideoCard {
     }
 
     fn io_read_u8(&self, port: u16, cycle_count: u32) -> Option<u8> {
+        let is_ega_vga = matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA);
         match self.card_type {
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: return 0xFF — no MDA card present
@@ -194,10 +276,22 @@ impl Device for VideoCard {
                     Some(val)
                 }
                 CGA_COLOR_SELECT_ADDR => Some(self.color_select),
-                // AC data read (EGA/VGA)
-                0x3C1 => Some(self.ac_registers[(self.ac_address & 0x0F) as usize]),
-                // DAC data read (VGA)
-                0x3C9 => {
+                // Sequencer address/data read (EGA/VGA only)
+                0x3C4 if is_ega_vga => Some(self.sequencer_address),
+                0x3C5 if is_ega_vga => Some(match self.sequencer_address {
+                    0x02 => self.sequencer_map_mask,
+                    _ => 0,
+                }),
+                // AC data read (EGA/VGA only)
+                0x3C1 if is_ega_vga => Some(self.ac_registers[(self.ac_address & 0x0F) as usize]),
+                // Graphics Controller address/data read (EGA/VGA only)
+                0x3CE if is_ega_vga => Some(self.gc_address),
+                0x3CF if is_ega_vga => Some(match self.gc_address {
+                    0x04 => self.gc_read_map_select,
+                    _ => 0,
+                }),
+                // DAC data read (VGA only)
+                0x3C9 if is_ega_vga => {
                     let pos = self.dac_read_pos.get();
                     let reg = pos / 3;
                     let component = pos % 3;
@@ -220,6 +314,7 @@ impl Device for VideoCard {
     }
 
     fn io_write_u8(&mut self, port: u16, val: u8, _cycle_count: u32) -> bool {
+        let is_ega_vga = matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA);
         match self.card_type {
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: silently ignore — no MDA card present
@@ -273,8 +368,25 @@ impl Device for VideoCard {
                     }
                     true
                 }
-                // AC address/data write (EGA/VGA) — flip-flop toggles address vs data
-                0x3C0 => {
+                // Sequencer address register (EGA/VGA only)
+                0x3C4 if is_ega_vga => {
+                    self.sequencer_address = val;
+                    true
+                }
+                // Sequencer data register (EGA/VGA only)
+                0x3C5 if is_ega_vga => {
+                    match self.sequencer_address {
+                        0x02 => self.sequencer_map_mask = val,
+                        _ => log::warn!(
+                            "Unhandled sequencer register 0x{:02X} = 0x{:02X}",
+                            self.sequencer_address,
+                            val
+                        ),
+                    }
+                    true
+                }
+                // AC address/data write (EGA/VGA only) — flip-flop toggles address vs data
+                0x3C0 if is_ega_vga => {
                     if !self.ac_flip_flop.get() {
                         self.ac_address = val & 0x1F;
                         self.ac_flip_flop.set(true);
@@ -284,18 +396,34 @@ impl Device for VideoCard {
                     }
                     true
                 }
-                // DAC read index (VGA)
-                0x3C7 => {
+                // Graphics Controller address/data write (EGA/VGA only)
+                0x3CE if is_ega_vga => {
+                    self.gc_address = val;
+                    true
+                }
+                0x3CF if is_ega_vga => {
+                    match self.gc_address {
+                        0x04 => self.gc_read_map_select = val & 0x03,
+                        _ => log::warn!(
+                            "Unhandled GC register 0x{:02X} = 0x{:02X}",
+                            self.gc_address,
+                            val
+                        ),
+                    }
+                    true
+                }
+                // DAC read index (EGA/VGA only)
+                0x3C7 if is_ega_vga => {
                     self.dac_read_pos.set((val as usize) * 3);
                     true
                 }
-                // DAC write index (VGA)
-                0x3C8 => {
+                // DAC write index (EGA/VGA only)
+                0x3C8 if is_ega_vga => {
                     self.dac_write_pos = (val as usize) * 3;
                     true
                 }
-                // DAC data write (VGA) — cycles R, G, B
-                0x3C9 => {
+                // DAC data write (EGA/VGA only) — cycles R, G, B
+                0x3C9 if is_ega_vga => {
                     let reg = self.dac_write_pos / 3;
                     let component = self.dac_write_pos % 3;
                     self.dac_registers[reg][component] = val & 0x3F;

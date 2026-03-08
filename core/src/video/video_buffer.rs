@@ -5,10 +5,10 @@ use crate::video::palette::TextModePalette;
 use crate::video::renderer::{RenderTextArgs, dac_to_8bit, render_text};
 use crate::video::text::TextAttribute;
 use crate::video::{
-    DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_ROWS,
-    TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
-    VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
-    VIDEO_MODE_06H_CGA_640_X_200_2,
+    DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, EGA_PLANE_SIZE, TEXT_MODE_COLS,
+    TEXT_MODE_ROWS, TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE, VIDEO_MODE_0DH_EGA_320_X_200_16,
+    VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
+    VIDEO_MODE_04H_CGA_320_X_200_4, VIDEO_MODE_06H_CGA_640_X_200_2,
 };
 
 #[derive(PartialEq)]
@@ -150,6 +150,10 @@ impl VideoBuffer {
         self.dirty = true;
     }
 
+    pub(crate) fn vram_len(&self) -> usize {
+        self.vram.len()
+    }
+
     pub(crate) fn cursor_loc(&self) -> u16 {
         self.cursor_loc
     }
@@ -216,6 +220,7 @@ impl VideoBuffer {
         match self.mode {
             VIDEO_MODE_04H_CGA_320_X_200_4 => (320, 200),
             VIDEO_MODE_06H_CGA_640_X_200_2 => (640, 400),
+            VIDEO_MODE_0DH_EGA_320_X_200_16 => (320, 200),
             _ => (
                 (CHAR_WIDTH * TEXT_MODE_COLS) as u32,
                 (CHAR_HEIGHT * TEXT_MODE_ROWS) as u32,
@@ -246,6 +251,7 @@ impl VideoBuffer {
             }
             VIDEO_MODE_04H_CGA_320_X_200_4 => self.render_mode_04h_320x200x4(buf),
             VIDEO_MODE_06H_CGA_640_X_200_2 => self.render_mode_06h_640x200x2(buf),
+            VIDEO_MODE_0DH_EGA_320_X_200_16 => self.render_mode_0dh_320x200x16(buf),
             _ => self.render_text_mode(buf),
         }
     }
@@ -371,6 +377,39 @@ impl VideoBuffer {
                 buf[offset] = rgb[0];
                 buf[offset + 1] = rgb[1];
                 buf[offset + 2] = rgb[2];
+                buf[offset + 3] = 0xFF;
+            }
+        }
+    }
+
+    /// Render EGA 320x200 16-color graphics (mode 0Dh).
+    ///
+    /// EGA VRAM is planar: 4 planes, each EGA_PLANE_SIZE bytes, stored sequentially.
+    /// Each pixel is 4 bits (1 bit per plane). The pixel color index is:
+    ///   color = plane3_bit<<3 | plane2_bit<<2 | plane1_bit<<1 | plane0_bit
+    /// 40 bytes per row × 200 rows, 8 pixels per byte.
+    fn render_mode_0dh_320x200x16(&self, buf: &mut [u8]) {
+        const WIDTH: usize = 320;
+        const HEIGHT: usize = 200;
+
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let byte_offset = y * 40 + x / 8;
+                let bit_pos = 7 - (x % 8);
+
+                let mut color_index: usize = 0;
+                for plane in 0..4usize {
+                    let plane_byte = self.vram[plane * EGA_PLANE_SIZE + byte_offset];
+                    if (plane_byte >> bit_pos) & 1 != 0 {
+                        color_index |= 1 << plane;
+                    }
+                }
+
+                let dac = self.vga_dac_palette[color_index];
+                let offset = (y * WIDTH + x) * 4;
+                buf[offset] = dac_to_8bit(dac[0]);
+                buf[offset + 1] = dac_to_8bit(dac[1]);
+                buf[offset + 2] = dac_to_8bit(dac[2]);
                 buf[offset + 3] = 0xFF;
             }
         }

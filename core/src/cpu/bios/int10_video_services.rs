@@ -15,7 +15,8 @@ use crate::{
     },
     physical_address,
     video::{
-        CGA_MEMORY_START, TEXT_MODE_SIZE, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
+        CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, TEXT_MODE_SIZE,
+        VIDEO_MODE_0DH_EGA_320_X_200_16, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
         VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
         VIDEO_MODE_06H_CGA_640_X_200_2, VideoCardType,
         font::{CHAR_HEIGHT_8, Cp437Font},
@@ -100,6 +101,12 @@ impl Cpu {
                     // Clear both CGA interleaved banks (even rows at 0x0000, odd at 0x2000)
                     for i in 0..0x4000usize {
                         bus.memory_write_u8(CGA_MEMORY_START + i, 0);
+                    }
+                }
+                VIDEO_MODE_0DH_EGA_320_X_200_16 => {
+                    // Clear all 4 EGA planes (sequencer map mask defaults to 0x0F = all planes)
+                    for i in 0..EGA_PLANE_SIZE {
+                        bus.memory_write_u8(EGA_MEMORY_START + i, 0);
                     }
                 }
                 _ => {
@@ -704,6 +711,11 @@ impl Cpu {
                     // Graphics mode: draw character pixel-by-pixel into CGA framebuffer
                     let fg_color = (self.bx & 0xFF) as u8; // BL
                     self.draw_char_cga_graphics(bus, mode, ch, cursor.row, cursor.col, fg_color);
+                } else if mode == VIDEO_MODE_0DH_EGA_320_X_200_16 {
+                    // EGA planar graphics: draw character transparently into EGA planes
+                    let fg_color = (self.bx & 0xFF) as u8; // BL
+                    bus.video_card_mut()
+                        .ega_draw_char_transparent(ch, cursor.row, cursor.col, fg_color);
                 } else {
                     // Text mode: write character byte directly
                     let offset = (cursor.row as usize * columns as usize + cursor.col as usize) * 2;
