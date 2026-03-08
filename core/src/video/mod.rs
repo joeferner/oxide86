@@ -20,6 +20,7 @@ pub const VIDEO_MODE_03H_COLOR_TEXT_80_X_25: u8 = 0x03;
 pub const VIDEO_MODE_04H_CGA_320_X_200_4: u8 = 0x04;
 pub const VIDEO_MODE_06H_CGA_640_X_200_2: u8 = 0x06;
 pub const VIDEO_MODE_0DH_EGA_320_X_200_16: u8 = 0x0d;
+pub const VIDEO_MODE_10H_EGA_640_X_350_16: u8 = 0x10;
 
 // EGA video memory constants (planar, at A000:0000)
 pub const EGA_MEMORY_START: usize = 0xA0000;
@@ -30,10 +31,10 @@ pub const CGA_MEMORY_START: usize = 0xB8000;
 pub const CGA_MEMORY_END: usize = 0xBFFFF;
 pub const CGA_MEMORY_SIZE: usize = CGA_MEMORY_END - CGA_MEMORY_START + 1; // 32KB
 
-// EGA planar memory: 16KB per plane × 4 planes = 64KB total.
-// This supports two 320×200 display pages (8000 bytes each) plus tile storage at
-// offsets 0x2000+, which games like Indiana Jones use for background tiles.
-pub const EGA_PLANE_SIZE: usize = 0x4000; // 16KB per plane
+// EGA planar memory: 32KB per plane × 4 planes = 128KB total.
+// Mode 0Dh (320×200) uses 8000 bytes/plane; mode 10h (640×350) uses 28000 bytes/plane.
+// Tile storage at offsets 0x2000+ is preserved within the 32KB window.
+pub const EGA_PLANE_SIZE: usize = 0x8000; // 32KB per plane
 
 // Video RAM size: 64KB total — shared between EGA planar (4 × 16KB = 64KB)
 // and VGA mode 13h linear framebuffer (64000 bytes).

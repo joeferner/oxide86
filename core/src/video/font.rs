@@ -5,6 +5,7 @@
 
 pub const CHAR_WIDTH_8: usize = 8;
 pub const CHAR_HEIGHT_16: usize = 16;
+pub const CHAR_HEIGHT_14: usize = 14;
 pub const CHAR_HEIGHT_8: usize = 8;
 
 // Default to 8x16 VGA font

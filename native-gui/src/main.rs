@@ -218,7 +218,7 @@ fn run(cli: Cli) -> Result<()> {
                             "Cursor locked successfully - using DeviceEvent for mouse input"
                         );
                     } else {
-                        log::warn!(
+                        log::info!(
                             "Cursor lock not supported - using WindowEvent with manual tracking"
                         );
                         // Try confined mode as fallback to keep cursor in window

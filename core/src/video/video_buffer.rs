@@ -9,6 +9,7 @@ use crate::video::{
     TEXT_MODE_ROWS, TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE, VIDEO_MODE_0DH_EGA_320_X_200_16,
     VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
     VIDEO_MODE_04H_CGA_320_X_200_4, VIDEO_MODE_06H_CGA_640_X_200_2,
+    VIDEO_MODE_10H_EGA_640_X_350_16,
 };
 
 #[derive(PartialEq)]
@@ -221,6 +222,7 @@ impl VideoBuffer {
             VIDEO_MODE_04H_CGA_320_X_200_4 => (320, 200),
             VIDEO_MODE_06H_CGA_640_X_200_2 => (640, 400),
             VIDEO_MODE_0DH_EGA_320_X_200_16 => (320, 200),
+            VIDEO_MODE_10H_EGA_640_X_350_16 => (640, 350),
             _ => (
                 (CHAR_WIDTH * TEXT_MODE_COLS) as u32,
                 (CHAR_HEIGHT * TEXT_MODE_ROWS) as u32,
@@ -252,6 +254,7 @@ impl VideoBuffer {
             VIDEO_MODE_04H_CGA_320_X_200_4 => self.render_mode_04h_320x200x4(buf),
             VIDEO_MODE_06H_CGA_640_X_200_2 => self.render_mode_06h_640x200x2(buf),
             VIDEO_MODE_0DH_EGA_320_X_200_16 => self.render_mode_0dh_320x200x16(buf),
+            VIDEO_MODE_10H_EGA_640_X_350_16 => self.render_mode_10h_640x350x16(buf),
             _ => self.render_text_mode(buf),
         }
     }
@@ -395,6 +398,39 @@ impl VideoBuffer {
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
                 let byte_offset = y * 40 + x / 8;
+                let bit_pos = 7 - (x % 8);
+
+                let mut color_index: usize = 0;
+                for plane in 0..4usize {
+                    let plane_byte = self.vram[plane * EGA_PLANE_SIZE + byte_offset];
+                    if (plane_byte >> bit_pos) & 1 != 0 {
+                        color_index |= 1 << plane;
+                    }
+                }
+
+                let dac = self.vga_dac_palette[color_index];
+                let offset = (y * WIDTH + x) * 4;
+                buf[offset] = dac_to_8bit(dac[0]);
+                buf[offset + 1] = dac_to_8bit(dac[1]);
+                buf[offset + 2] = dac_to_8bit(dac[2]);
+                buf[offset + 3] = 0xFF;
+            }
+        }
+    }
+
+    /// Render EGA 640x350 16-color graphics (mode 10h).
+    ///
+    /// Same planar layout as mode 0Dh but 80 bytes per row × 350 rows.
+    /// Each pixel is 4 bits (1 bit per plane). The pixel color index is:
+    ///   color = plane3_bit<<3 | plane2_bit<<2 | plane1_bit<<1 | plane0_bit
+    fn render_mode_10h_640x350x16(&self, buf: &mut [u8]) {
+        const WIDTH: usize = 640;
+        const HEIGHT: usize = 350;
+        const BYTES_PER_ROW: usize = 80;
+
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let byte_offset = y * BYTES_PER_ROW + x / 8;
                 let bit_pos = 7 - (x % 8);
 
                 let mut color_index: usize = 0;

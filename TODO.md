@@ -26,6 +26,9 @@
 - [X] x86 Disassembler (ai-analysis/disassembler-plan.md)
 - [X] Get Alley Cat working (ai-analysis/alley-cat-movement-investigation.md and exe-analysis/cat.json)
 - [X] Add EGA support
+- [X] Add EGA high res 640x350 support
+- [ ] Test SimCity (1989)
+- [ ] Test The Colonel's Bequest (works but see strange white bars where the current selection is)
 - [ ] Add VGA support
 - [ ] CGA Composite mode
 - [ ] Add Joystick support

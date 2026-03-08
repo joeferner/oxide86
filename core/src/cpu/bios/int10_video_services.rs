@@ -18,8 +18,8 @@ use crate::{
         CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, TEXT_MODE_SIZE,
         VIDEO_MODE_0DH_EGA_320_X_200_16, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
         VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
-        VIDEO_MODE_06H_CGA_640_X_200_2, VideoCardType,
-        font::{CHAR_HEIGHT_8, Cp437Font},
+        VIDEO_MODE_06H_CGA_640_X_200_2, VIDEO_MODE_10H_EGA_640_X_350_16, VideoCardType,
+        font::{CHAR_HEIGHT_8, CHAR_HEIGHT_14, Cp437Font},
         video_calculate_linear_offset,
         video_card::{
             AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
@@ -103,7 +103,7 @@ impl Cpu {
                         bus.memory_write_u8(CGA_MEMORY_START + i, 0);
                     }
                 }
-                VIDEO_MODE_0DH_EGA_320_X_200_16 => {
+                VIDEO_MODE_0DH_EGA_320_X_200_16 | VIDEO_MODE_10H_EGA_640_X_350_16 => {
                     // Clear all 4 EGA planes (sequencer map mask defaults to 0x0F = all planes)
                     for i in 0..EGA_PLANE_SIZE {
                         bus.memory_write_u8(EGA_MEMORY_START + i, 0);
@@ -715,7 +715,12 @@ impl Cpu {
                     // EGA planar graphics: draw character transparently into EGA planes
                     let fg_color = (self.bx & 0xFF) as u8; // BL
                     bus.video_card_mut()
-                        .ega_draw_char_transparent(ch, cursor.row, cursor.col, fg_color);
+                        .ega_draw_char_transparent(ch, cursor.row, cursor.col, fg_color, 40, CHAR_HEIGHT_8);
+                } else if mode == VIDEO_MODE_10H_EGA_640_X_350_16 {
+                    // EGA 640x350 planar graphics: 80 bytes per row, 8x14 character cells
+                    let fg_color = (self.bx & 0xFF) as u8; // BL
+                    bus.video_card_mut()
+                        .ega_draw_char_transparent(ch, cursor.row, cursor.col, fg_color, 80, CHAR_HEIGHT_14);
                 } else {
                     // Text mode: write character byte directly
                     let offset = (cursor.row as usize * columns as usize + cursor.col as usize) * 2;

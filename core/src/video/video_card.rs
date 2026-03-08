@@ -11,7 +11,8 @@ use crate::{
         EGA_PLANE_SIZE, TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MEMORY_SIZE,
         VIDEO_MODE_0DH_EGA_320_X_200_16, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
         VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
-        VIDEO_MODE_06H_CGA_640_X_200_2, VideoBuffer, VideoCardType,
+        VIDEO_MODE_06H_CGA_640_X_200_2, VIDEO_MODE_10H_EGA_640_X_350_16, VideoBuffer,
+        VideoCardType,
         font::{CHAR_HEIGHT_8, Cp437Font},
     },
 };
@@ -144,6 +145,8 @@ impl VideoCard {
             Some(ModeInfo { rows: 25, cols: 80 })
         } else if mode == VIDEO_MODE_0DH_EGA_320_X_200_16 {
             Some(ModeInfo { rows: 25, cols: 40 })
+        } else if mode == VIDEO_MODE_10H_EGA_640_X_350_16 {
+            Some(ModeInfo { rows: 25, cols: 80 })
         } else {
             None
         }
@@ -154,33 +157,38 @@ impl VideoCard {
     /// Foreground pixels (glyph bit = 1) are set to `fg_color` in all planes.
     /// Background pixels (glyph bit = 0) are left unchanged (transparent).
     ///
-    /// `char_row` and `char_col` are character-cell coordinates (40 cols × 25 rows).
+    /// `char_row` and `char_col` are character-cell coordinates.
+    /// `bytes_per_row` is the number of bytes per pixel row (40 for mode 0Dh, 80 for mode 10h).
+    /// `char_height` is the character cell height in pixels (8 for mode 0Dh, 14 for mode 10h).
     pub(crate) fn ega_draw_char_transparent(
         &self,
         ch: u8,
         char_row: u8,
         char_col: u8,
         fg_color: u8,
+        bytes_per_row: usize,
+        char_height: usize,
     ) {
         let font = Cp437Font::new();
-        let glyph = font.get_glyph_8(ch);
+        let glyph = if char_height <= CHAR_HEIGHT_8 {
+            font.get_glyph_8(ch)
+        } else {
+            font.get_glyph_16(ch)
+        };
         let mut buffer = self.buffer.write().unwrap();
-        for (r, &glyph_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
-            let pixel_y = char_row as usize * CHAR_HEIGHT_8 + r;
-            let byte_offset = pixel_y * 40 + char_col as usize;
+        for (r, &glyph_byte) in glyph.iter().enumerate().take(char_height) {
+            let pixel_y = char_row as usize * char_height + r;
+            let byte_offset = pixel_y * bytes_per_row + char_col as usize;
             for plane in 0..4u8 {
                 let plane_vram = plane as usize * EGA_PLANE_SIZE + byte_offset;
                 if plane_vram >= buffer.vram_len() {
                     continue;
                 }
+                // Foreground pixels (glyph bit=1) → fg_color's plane bit.
+                // Background pixels (glyph bit=0) → 0 (black), matching real BIOS AH=0Eh behavior.
                 let plane_bit = (fg_color >> plane) & 1;
-                if plane_bit != 0 {
-                    let existing = buffer.read_vram(plane_vram);
-                    buffer.write_vram(plane_vram, existing | glyph_byte);
-                } else {
-                    let existing = buffer.read_vram(plane_vram);
-                    buffer.write_vram(plane_vram, existing & !glyph_byte);
-                }
+                let new_val = if plane_bit != 0 { glyph_byte } else { 0 };
+                buffer.write_vram(plane_vram, new_val);
             }
         }
     }
