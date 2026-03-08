@@ -18,7 +18,20 @@ pub(crate) struct DecodedInstruction {
 impl Cpu {
     pub(in crate::cpu) fn decode_instruction_with_regs(&self, bus: &Bus) -> DecodedInstruction {
         let mut decoder = InstructionDecoder::new(bus, self.cs, self.ip);
-        let text = decoder.decode();
+        let mut text = decoder.decode();
+
+        // Enrich INT instructions with AH subfunction and description
+        if text.starts_with("int 0x") {
+            let int_num = u8::from_str_radix(&text[6..8], 16).unwrap_or(0);
+            let ah = (self.ax >> 8) as u8;
+            if let Some((desc, show_ah)) = int_description(int_num, ah) {
+                if show_ah {
+                    text = format!("{text}     AH=0x{ah:02x} ; {desc}");
+                } else {
+                    text = format!("{text}     ; {desc}");
+                }
+            }
+        }
 
         let reg_values = decoder.format_input_registers(self);
         let mem_values = decoder.format_memory_values(self);
@@ -120,6 +133,122 @@ fn port_name(port: u16) -> Option<&'static str> {
         0x02FE => Some("COM2 MSR"),
         0x03E8 => Some("COM3 Data"),
         0x02E8 => Some("COM4 Data"),
+        _ => None,
+    }
+}
+
+/// Returns a description for a BIOS/DOS interrupt call.
+/// The bool indicates whether to display AH (true for multi-function interrupts).
+fn int_description(int_num: u8, ah: u8) -> Option<(&'static str, bool)> {
+    match int_num {
+        0x08 => Some(("timer interrupt", false)),
+        0x09 => Some(("keyboard interrupt", false)),
+        0x10 => {
+            let desc = match ah {
+                0x00 => "set video mode",
+                0x01 => "set cursor shape",
+                0x02 => "set cursor position",
+                0x03 => "get cursor position",
+                0x05 => "select active page",
+                0x06 => "scroll up",
+                0x07 => "scroll down",
+                0x08 => "read char/attr",
+                0x09 => "write char/attr",
+                0x0A => "write char",
+                0x0B => "set color palette",
+                0x0E => "teletype output",
+                0x0F => "get video mode",
+                0x10 => "palette registers",
+                0x11 => "character generator",
+                0x12 => "alternate function select",
+                0x15 => "return physical display params",
+                0x1A => "display combination code",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x11 => Some(("get equipment list", false)),
+        0x12 => Some(("get memory size", false)),
+        0x13 => {
+            let desc = match ah {
+                0x00 => "reset disk",
+                0x01 => "get disk status",
+                0x02 => "read sectors",
+                0x03 => "write sectors",
+                0x04 => "verify sectors",
+                0x08 => "get drive params",
+                0x15 => "get disk type",
+                0x16 => "detect disk change",
+                0x18 => "set DASD type",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x14 => {
+            let desc = match ah {
+                0x00 => "initialize serial port",
+                0x01 => "write char",
+                0x02 => "read char",
+                0x03 => "get status",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x15 => {
+            let desc = match ah {
+                0x10 => "TopView multi-DOS",
+                0x41 => "wait external event",
+                0x4F => "keyboard intercept",
+                0x88 => "get extended memory",
+                0x91 => "device interrupt complete",
+                0xC0 => "get system config",
+                0xC1 => "get EBDA segment",
+                0xC2 => "PS/2 mouse services",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x16 => {
+            let desc = match ah {
+                0x00 => "read char",
+                0x01 => "check keystroke",
+                0x02 => "get shift flags",
+                0x55 => "word TSR check",
+                0x92 => "get keyboard capabilities",
+                0xA2 => "122-key capability check",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x17 => {
+            let desc = match ah {
+                0x01 => "initialize printer",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x1A => {
+            let desc = match ah {
+                0x00 => "get system time",
+                0x01 => "set system time",
+                0x02 => "read RTC time",
+                0x03 => "set RTC time",
+                0x04 => "read RTC date",
+                0x05 => "set RTC date",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x21 => {
+            let desc = match ah {
+                0x02 => "write char",
+                0x09 => "write string",
+                0x4C => "exit",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x74 => Some(("PS/2 mouse interrupt", false)),
         _ => None,
     }
 }

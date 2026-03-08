@@ -87,6 +87,12 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 - :white_check_mark: MS-DOS 4.01
 - :white_check_mark: MS-DOS 5.0
 
+## Games
+
+- :white_check_mark: Alley Cat
+  ![Screenshot](docs/screenshots/alleycat.png)
+
+
 ## Resources
 - [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
 - [x86 Reference](https://www.felixcloutier.com/x86/)

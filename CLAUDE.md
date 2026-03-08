@@ -10,6 +10,7 @@ Intel x86 CPU emulator in Rust with native and WebAssembly support.
 - Instead of running cargo build or clippy run ./scripts/pre-commit.sh instead
 - logs are written to oxide86.log
 - when logging unimplemented features use log::warn!
+- when adding interrupt handlers or io device handling be sure to update decoder
 
 ## Testing
 
