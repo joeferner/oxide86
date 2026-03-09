@@ -916,7 +916,7 @@ fn step_emulator(
     // Always update the pixel buffer from the video buffer
     let (is_dirty, width, height) = {
         let vb = video_buffer.read().unwrap();
-        let (w, h) = vb.resolution();
+        let (w, h) = vb.mode().resolution();
         (vb.is_dirty(), w, h)
     };
     if is_dirty {

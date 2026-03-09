@@ -15,10 +15,7 @@ use crate::{
     },
     physical_address,
     video::{
-        CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, TEXT_MODE_SIZE,
-        VIDEO_MODE_0DH_EGA_320_X_200_16, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
-        VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
-        VIDEO_MODE_06H_CGA_640_X_200_2, VIDEO_MODE_10H_EGA_640_X_350_16, VideoCardType,
+        CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, Mode, TEXT_MODE_SIZE, VideoCardType,
         font::{CHAR_HEIGHT, CHAR_HEIGHT_8, CHAR_HEIGHT_14, Cp437Font},
         video_calculate_linear_offset,
         video_card::{
@@ -93,17 +90,17 @@ impl Cpu {
         // Clear the "Clear Memory" bit (Bit 7 of AL)
         // If Bit 7 is set, BIOS doesn't clear the screen memory
         let clear_screen_flag = (mode & 0x80) == 0;
-        let mode = mode & 0x7f;
+        let mode = Mode::from(mode & 0x7f);
 
         if clear_screen_flag {
             match mode {
-                VIDEO_MODE_04H_CGA_320_X_200_4 | VIDEO_MODE_06H_CGA_640_X_200_2 => {
+                Mode::M04Cga320x200x4 | Mode::M06Cga640x200x2 => {
                     // Clear both CGA interleaved banks (even rows at 0x0000, odd at 0x2000)
                     for i in 0..0x4000usize {
                         bus.memory_write_u8(CGA_MEMORY_START + i, 0);
                     }
                 }
-                VIDEO_MODE_0DH_EGA_320_X_200_16 | VIDEO_MODE_10H_EGA_640_X_350_16 => {
+                Mode::M0DEga320x200x16 | Mode::M10Ega640x350x16 => {
                     // Clear all 4 EGA planes (sequencer map mask defaults to 0x0F = all planes)
                     for i in 0..EGA_PLANE_SIZE {
                         bus.memory_write_u8(EGA_MEMORY_START + i, 0);
@@ -119,19 +116,19 @@ impl Cpu {
             }
         }
 
-        let mode_info = bus.video_card_mut().set_mode(mode);
+        let mode_info = bus.video_card_mut().set_mode(mode.clone());
 
         let mode_info = if let Some(mode_info) = mode_info {
             mode_info
         } else {
-            log::warn!("unsupported mode 0x{mode:02X}");
+            log::warn!("unsupported mode {mode}");
             return;
         };
 
         // Update BDA with new video mode settings
-        bda_set_video_mode(bus, mode);
+        bda_set_video_mode(bus, mode.as_u8());
 
-        bda_set_columns(bus, mode_info.cols);
+        bda_set_columns(bus, mode_info.cols as u8);
 
         // EGA/VGA rows-1 register: programs (e.g. Turbo Pascal, dBASE) read BDA[0x84] to get row count
         bda_set_rows(bus, (mode_info.rows - 1) as u8);
@@ -143,7 +140,7 @@ impl Cpu {
         set_cursor_pos(bus, 0, 0, 0);
 
         log::info!(
-            "INT 0x10 AH=0x00: Updated BDA for mode 0x{:02X} - cols={}, rows={}, page_size={}",
+            "INT 0x10 AH=0x00: Updated BDA for mode {} - cols={}, rows={}, page_size={}",
             mode,
             mode_info.cols,
             mode_info.rows,
@@ -174,14 +171,15 @@ impl Cpu {
         // to our CHAR_HEIGHT (16) before writing to the CRTC, matching real VGA
         // BIOS behavior: crtc_start = CH * CHAR_HEIGHT / 8,
         //                 crtc_end   = (CL + 1) * CHAR_HEIGHT / 8 - 1.
-        let (crtc_start, crtc_end) = if end_shape <= CHAR_HEIGHT_8 as u8 && CHAR_HEIGHT > CHAR_HEIGHT_8 {
-            let scale = CHAR_HEIGHT / CHAR_HEIGHT_8;
-            let s = start_shape as usize * scale;
-            let e = (end_shape as usize + 1) * scale - 1;
-            (s.min(CHAR_HEIGHT - 1) as u8, e.min(CHAR_HEIGHT - 1) as u8)
-        } else {
-            (start_shape, end_shape.min((CHAR_HEIGHT - 1) as u8))
-        };
+        let (crtc_start, crtc_end) =
+            if end_shape <= CHAR_HEIGHT_8 as u8 && CHAR_HEIGHT > CHAR_HEIGHT_8 {
+                let scale = CHAR_HEIGHT / CHAR_HEIGHT_8;
+                let s = start_shape as usize * scale;
+                let e = (end_shape as usize + 1) * scale - 1;
+                (s.min(CHAR_HEIGHT - 1) as u8, e.min(CHAR_HEIGHT - 1) as u8)
+            } else {
+                (start_shape, end_shape.min((CHAR_HEIGHT - 1) as u8))
+            };
         let crtc_start = crtc_start | (start_line & !0x1F); // preserve option bits
 
         // Set Cursor Start Scanline
@@ -340,7 +338,7 @@ impl Cpu {
         let cols = bda_get_columns(bus);
         let mode = bda_get_video_mode(bus);
 
-        if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
+        if matches!(mode, Mode::M02ColorText | Mode::M03Text) {
             scroll_up_advanced(
                 bus,
                 ScrollUp {
@@ -471,7 +469,7 @@ impl Cpu {
         let rows = bda_get_rows(bus) as usize;
         let mode = bda_get_video_mode(bus);
 
-        if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
+        if matches!(mode, Mode::M02ColorText | Mode::M03Text) {
             // Text mode: write to video memory
             for i in 0..count {
                 let pos = cursor.row as usize * cols + cursor.col as usize + (i as usize);
@@ -631,7 +629,7 @@ impl Cpu {
     fn draw_char_cga_graphics(
         &self,
         bus: &mut Bus,
-        mode: u8,
+        mode: Mode,
         ch: u8,
         row: u8,
         col: u8,
@@ -641,7 +639,7 @@ impl Cpu {
         let glyph = font.get_glyph_8(ch);
 
         match mode {
-            VIDEO_MODE_06H_CGA_640_X_200_2 => {
+            Mode::M06Cga640x200x2 => {
                 for (r, &row_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
                     let pixel_y = row as usize * CHAR_HEIGHT_8 + r;
                     let bank_offset = if pixel_y % 2 == 1 { 0x2000 } else { 0 };
@@ -650,7 +648,7 @@ impl Cpu {
                     bus.memory_write_u8(CGA_MEMORY_START + vram_offset, existing | row_byte);
                 }
             }
-            VIDEO_MODE_04H_CGA_320_X_200_4 => {
+            Mode::M04Cga320x200x4 => {
                 let fg_2bit = fg_color & 0x03;
                 for (r, &row_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
                     let pixel_y = row as usize * CHAR_HEIGHT_8 + r;
@@ -725,37 +723,49 @@ impl Cpu {
             ch => {
                 // Normal character - handle based on video mode
                 let mode = bda_get_video_mode(bus);
-                if mode == VIDEO_MODE_04H_CGA_320_X_200_4 || mode == VIDEO_MODE_06H_CGA_640_X_200_2
-                {
-                    // Graphics mode: draw character pixel-by-pixel into CGA framebuffer
-                    let fg_color = (self.bx & 0xFF) as u8; // BL
-                    self.draw_char_cga_graphics(bus, mode, ch, cursor.row, cursor.col, fg_color);
-                } else if mode == VIDEO_MODE_0DH_EGA_320_X_200_16 {
-                    // EGA planar graphics: draw character transparently into EGA planes
-                    let fg_color = (self.bx & 0xFF) as u8; // BL
-                    bus.video_card_mut().ega_draw_char_transparent(
-                        ch,
-                        cursor.row,
-                        cursor.col,
-                        fg_color,
-                        40,
-                        CHAR_HEIGHT_8,
-                    );
-                } else if mode == VIDEO_MODE_10H_EGA_640_X_350_16 {
-                    // EGA 640x350 planar graphics: 80 bytes per row, 8x14 character cells
-                    let fg_color = (self.bx & 0xFF) as u8; // BL
-                    bus.video_card_mut().ega_draw_char_transparent(
-                        ch,
-                        cursor.row,
-                        cursor.col,
-                        fg_color,
-                        80,
-                        CHAR_HEIGHT_14,
-                    );
-                } else {
-                    // Text mode: write character byte directly
-                    let offset = (cursor.row as usize * columns as usize + cursor.col as usize) * 2;
-                    bus.memory_write_u8(CGA_MEMORY_START + offset, ch);
+                match mode {
+                    Mode::M04Cga320x200x4 | Mode::M06Cga640x200x2 => {
+                        // Graphics mode: draw character pixel-by-pixel into CGA framebuffer
+                        let fg_color = (self.bx & 0xFF) as u8; // BL
+                        self.draw_char_cga_graphics(
+                            bus,
+                            mode.clone(),
+                            ch,
+                            cursor.row,
+                            cursor.col,
+                            fg_color,
+                        );
+                    }
+                    Mode::M0DEga320x200x16 => {
+                        // EGA planar graphics: draw character transparently into EGA planes
+                        let fg_color = (self.bx & 0xFF) as u8; // BL
+                        bus.video_card_mut().ega_draw_char_transparent(
+                            ch,
+                            cursor.row,
+                            cursor.col,
+                            fg_color,
+                            40,
+                            CHAR_HEIGHT_8,
+                        );
+                    }
+                    Mode::M10Ega640x350x16 => {
+                        // EGA 640x350 planar graphics: 80 bytes per row, 8x14 character cells
+                        let fg_color = (self.bx & 0xFF) as u8; // BL
+                        bus.video_card_mut().ega_draw_char_transparent(
+                            ch,
+                            cursor.row,
+                            cursor.col,
+                            fg_color,
+                            80,
+                            CHAR_HEIGHT_14,
+                        );
+                    }
+                    _ => {
+                        // Text mode: write character byte directly
+                        let offset =
+                            (cursor.row as usize * columns as usize + cursor.col as usize) * 2;
+                        bus.memory_write_u8(CGA_MEMORY_START + offset, ch);
+                    }
                 }
 
                 // Advance cursor
@@ -787,7 +797,7 @@ impl Cpu {
         let columns = bda_get_columns(bus);
         let page = bda_get_active_page(bus);
 
-        self.ax = (columns << 8) | (mode as u16);
+        self.ax = (columns << 8) | (mode.as_u8() as u16);
         self.bx = (self.bx & 0x00FF) | ((page as u16) << 8);
     }
 
@@ -1452,7 +1462,7 @@ impl Cpu {
 
         // Offset 04h: Current video mode
         let mode = bda_get_video_mode(bus);
-        bus.memory_write_u8(buffer_addr + 4, mode);
+        bus.memory_write_u8(buffer_addr + 4, mode.as_u8());
 
         // Offset 05h-06h: Number of columns
         let cols = bda_get_columns(bus);

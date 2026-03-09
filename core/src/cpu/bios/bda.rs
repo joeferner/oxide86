@@ -10,8 +10,7 @@ use crate::{
     },
     video::{
         DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_SIZE,
-        VIDEO_MODE_03H_COLOR_TEXT_80_X_25, video_buffer::CursorPosition,
-        video_card::VIDEO_CARD_CONTROL_ADDR,
+        mode::Mode, video_buffer::CursorPosition, video_card::VIDEO_CARD_CONTROL_ADDR,
     },
 };
 
@@ -143,10 +142,7 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     }
 
     // Video mode (0x0040:0049)
-    bus.memory_write_u8(
-        BDA_START + BDA_VIDEO_MODE,
-        VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
-    );
+    bus.memory_write_u8(BDA_START + BDA_VIDEO_MODE, Mode::M03Text.as_u8());
 
     // Screen columns (0x0040:004A)
     bus.memory_write_u16(BDA_START + BDA_SCREEN_COLUMNS, TEXT_MODE_COLS as u16);
@@ -294,8 +290,8 @@ pub(crate) fn bda_set_rows(bus: &mut Bus, rows: u8) {
     bus.memory_write_u8(BDA_START + BDA_EGA_ROWS, rows);
 }
 
-pub(crate) fn bda_get_video_mode(bus: &Bus) -> u8 {
-    bus.memory_read_u8(BDA_START + BDA_VIDEO_MODE)
+pub(crate) fn bda_get_video_mode(bus: &Bus) -> Mode {
+    bus.memory_read_u8(BDA_START + BDA_VIDEO_MODE).into()
 }
 
 pub(crate) fn bda_set_video_mode(bus: &mut Bus, mode: u8) {

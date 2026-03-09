@@ -5,11 +5,8 @@ use crate::video::palette::TextModePalette;
 use crate::video::renderer::{RenderTextArgs, dac_to_8bit, render_text};
 use crate::video::text::TextAttribute;
 use crate::video::{
-    DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, EGA_PLANE_SIZE, TEXT_MODE_COLS,
-    TEXT_MODE_ROWS, TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE, VIDEO_MODE_0DH_EGA_320_X_200_16,
-    VIDEO_MODE_02H_COLOR_TEXT_80_X_25, VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
-    VIDEO_MODE_04H_CGA_320_X_200_4, VIDEO_MODE_06H_CGA_640_X_200_2,
-    VIDEO_MODE_10H_EGA_640_X_350_16,
+    DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, EGA_PLANE_SIZE, Mode, TEXT_MODE_COLS,
+    TEXT_MODE_ROWS, TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE,
 };
 
 #[derive(PartialEq)]
@@ -34,7 +31,7 @@ impl fmt::Display for CursorPosition {
 }
 
 pub struct VideoBuffer {
-    mode: u8,
+    mode: Mode,
     text_columns: u8,
 
     /// Raw video RAM (64KB).
@@ -83,7 +80,7 @@ pub struct VideoBuffer {
 impl VideoBuffer {
     pub fn new() -> Self {
         let mut me = Self {
-            mode: VIDEO_MODE_03H_COLOR_TEXT_80_X_25,
+            mode: Mode::M03Text,
             text_columns: TEXT_MODE_COLS as u8,
             vram: vec![0; VIDEO_MEMORY_SIZE],
             cga_bg: 0,
@@ -104,7 +101,7 @@ impl VideoBuffer {
     }
 
     pub(crate) fn reset(&mut self) {
-        self.mode = VIDEO_MODE_03H_COLOR_TEXT_80_X_25;
+        self.mode = Mode::M03Text;
         self.cga_bg = 0;
         self.cga_intensity = false;
         self.cga_palette = false;
@@ -134,11 +131,11 @@ impl VideoBuffer {
         palette
     }
 
-    pub fn mode(&self) -> u8 {
-        self.mode
+    pub fn mode(&self) -> &Mode {
+        &self.mode
     }
 
-    pub fn set_mode(&mut self, mode: u8) {
+    pub fn set_mode(&mut self, mode: Mode) {
         self.mode = mode;
     }
 
@@ -225,26 +222,13 @@ impl VideoBuffer {
         self.dirty
     }
 
-    pub fn resolution(&self) -> (u32, u32) {
-        match self.mode {
-            VIDEO_MODE_04H_CGA_320_X_200_4 => (320, 200),
-            VIDEO_MODE_06H_CGA_640_X_200_2 => (640, 400),
-            VIDEO_MODE_0DH_EGA_320_X_200_16 => (320, 200),
-            VIDEO_MODE_10H_EGA_640_X_350_16 => (640, 350),
-            _ => (
-                (CHAR_WIDTH * TEXT_MODE_COLS) as u32,
-                (CHAR_HEIGHT * TEXT_MODE_ROWS) as u32,
-            ),
-        }
-    }
-
     pub fn render_and_clear_dirty(&mut self, buf: &mut [u8]) {
         self.render_into(buf);
         self.dirty = false;
     }
 
     pub fn render(&self) -> RenderResult {
-        let (width, height) = self.resolution();
+        let (width, height) = self.mode.resolution();
         let mut data = vec![0u8; width as usize * height as usize * 4];
         self.render_into(&mut data);
         RenderResult {
@@ -256,14 +240,12 @@ impl VideoBuffer {
 
     fn render_into(&self, buf: &mut [u8]) {
         match self.mode {
-            VIDEO_MODE_02H_COLOR_TEXT_80_X_25 | VIDEO_MODE_03H_COLOR_TEXT_80_X_25 => {
-                self.render_text_mode(buf)
-            }
-            VIDEO_MODE_04H_CGA_320_X_200_4 => self.render_mode_04h_320x200x4(buf),
-            VIDEO_MODE_06H_CGA_640_X_200_2 => self.render_mode_06h_640x200x2(buf),
-            VIDEO_MODE_0DH_EGA_320_X_200_16 => self.render_mode_0dh_320x200x16(buf),
-            VIDEO_MODE_10H_EGA_640_X_350_16 => self.render_mode_10h_640x350x16(buf),
-            _ => self.render_text_mode(buf),
+            Mode::M02ColorText | Mode::M03Text => self.render_text_mode(buf),
+            Mode::M04Cga320x200x4 => self.render_mode_04h_320x200x4(buf),
+            Mode::M06Cga640x200x2 => self.render_mode_06h_640x200x2(buf),
+            Mode::M0DEga320x200x16 => self.render_mode_0dh_320x200x16(buf),
+            Mode::M10Ega640x350x16 => self.render_mode_10h_640x350x16(buf),
+            Mode::Unknown(_) => self.render_text_mode(buf),
         }
     }
 

@@ -1,4 +1,5 @@
 pub mod font;
+pub mod mode;
 pub mod palette;
 pub mod renderer;
 pub mod text;
@@ -6,6 +7,7 @@ pub mod video_buffer;
 pub mod video_card;
 pub mod video_card_type;
 
+pub use mode::Mode;
 pub use video_buffer::VideoBuffer;
 pub use video_card::VideoCard;
 pub use video_card_type::VideoCardType;
@@ -14,13 +16,6 @@ use crate::{
     bus::Bus,
     video::video_card::{VIDEO_CARD_REG_CURSOR_LOC_HIGH, VIDEO_CARD_REG_CURSOR_LOC_LOW},
 };
-
-pub const VIDEO_MODE_02H_COLOR_TEXT_80_X_25: u8 = 0x02;
-pub const VIDEO_MODE_03H_COLOR_TEXT_80_X_25: u8 = 0x03;
-pub const VIDEO_MODE_04H_CGA_320_X_200_4: u8 = 0x04;
-pub const VIDEO_MODE_06H_CGA_640_X_200_2: u8 = 0x06;
-pub const VIDEO_MODE_0DH_EGA_320_X_200_16: u8 = 0x0d;
-pub const VIDEO_MODE_10H_EGA_640_X_350_16: u8 = 0x10;
 
 // EGA video memory constants (planar, at A000:0000)
 pub const EGA_MEMORY_START: usize = 0xA0000;

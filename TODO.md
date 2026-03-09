@@ -31,7 +31,6 @@
   - GC register 0x03 (Data Rotate / Function Select) — 0x00
   - GC register 0x05 (Graphics Mode) — 0x00, 0x02
   - GC register 0x08 (Bit Mask) — many different values
-- [ ] Create a Mode enum and include functions such as rows, cols, character height, character width, etc
 - [ ] Test SimCity (1989)
 - [ ] Add VGA support
 - [ ] CGA Composite mode

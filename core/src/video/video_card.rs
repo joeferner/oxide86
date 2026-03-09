@@ -8,12 +8,9 @@ use crate::{
     Device,
     video::{
         CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, EGA_MEMORY_END, EGA_MEMORY_START,
-        EGA_PLANE_SIZE, TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MEMORY_SIZE,
-        VIDEO_MODE_0DH_EGA_320_X_200_16, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
-        VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
-        VIDEO_MODE_06H_CGA_640_X_200_2, VIDEO_MODE_10H_EGA_640_X_350_16, VideoBuffer,
-        VideoCardType,
+        EGA_PLANE_SIZE, Mode, VIDEO_MEMORY_SIZE, VideoBuffer, VideoCardType,
         font::{CHAR_HEIGHT_8, Cp437Font},
+        mode::TextDimensions,
     },
 };
 
@@ -44,11 +41,6 @@ pub const DAC_WRITE_INDEX_PORT: u16 = 0x3C8;
 pub const DAC_DATA_PORT: u16 = 0x3C9;
 // Input Status Register 1 (resets AC flip-flop on read)
 pub const INPUT_STATUS_1_PORT: u16 = 0x3DA;
-
-pub(crate) struct ModeInfo {
-    pub rows: u8,
-    pub cols: u8,
-}
 
 /// CGA vertical refresh rate.
 const CGA_VSYNC_HZ: u64 = 60;
@@ -162,25 +154,11 @@ impl VideoCard {
         }
     }
 
-    pub(crate) fn set_mode(&mut self, mode: u8) -> Option<ModeInfo> {
-        log::info!("set mode: 0x{mode:02X}");
+    pub(crate) fn set_mode(&mut self, mode: Mode) -> Option<TextDimensions> {
+        log::info!("set mode: {mode}");
+        let dims = mode.get_text_dimensions();
         self.buffer.write().unwrap().set_mode(mode);
-        if mode == VIDEO_MODE_02H_COLOR_TEXT_80_X_25 || mode == VIDEO_MODE_03H_COLOR_TEXT_80_X_25 {
-            Some(ModeInfo {
-                rows: TEXT_MODE_ROWS as u8,
-                cols: TEXT_MODE_COLS as u8,
-            })
-        } else if mode == VIDEO_MODE_04H_CGA_320_X_200_4 {
-            Some(ModeInfo { rows: 25, cols: 40 })
-        } else if mode == VIDEO_MODE_06H_CGA_640_X_200_2 {
-            Some(ModeInfo { rows: 25, cols: 80 })
-        } else if mode == VIDEO_MODE_0DH_EGA_320_X_200_16 {
-            Some(ModeInfo { rows: 25, cols: 40 })
-        } else if mode == VIDEO_MODE_10H_EGA_640_X_350_16 {
-            Some(ModeInfo { rows: 25, cols: 80 })
-        } else {
-            None
-        }
+        dims
     }
 
     /// Draw a character transparently into EGA planar VRAM.

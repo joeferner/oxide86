@@ -10,8 +10,7 @@ use crossterm::{
     terminal,
 };
 use oxide86_core::video::{
-    TEXT_MODE_COLS, TEXT_MODE_ROWS, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
-    VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VideoBuffer,
+    Mode, TEXT_MODE_COLS, TEXT_MODE_ROWS, VideoBuffer,
     renderer::dac_to_8bit,
     text::{TextAttribute, cp437_to_unicode},
 };
@@ -35,9 +34,7 @@ pub(crate) fn draw_frame(
 
     // TODO use start address for scrolling
 
-    if buffer.mode() == VIDEO_MODE_02H_COLOR_TEXT_80_X_25
-        || buffer.mode() == VIDEO_MODE_03H_COLOR_TEXT_80_X_25
-    {
+    if matches!(buffer.mode(), Mode::M02ColorText | Mode::M03Text) {
         let (term_cols, term_rows) = terminal::size()?;
         if (term_cols as usize) < TEXT_MODE_COLS || (term_rows as usize) < TEXT_MODE_ROWS {
             video_cache.clear();
