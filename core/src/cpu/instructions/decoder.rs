@@ -413,7 +413,7 @@ impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
             };
 
             // Format as "display=value @seg:off(linear)"
-            let offset = address - ((segment as usize) << 4);
+            let offset = address.wrapping_sub((segment as usize) << 4);
             if mem_ref.is_word {
                 parts.push(format!(
                     "{}={:04X} @{:04X}:{:04X}({:05X})",

@@ -16,6 +16,37 @@ use crate::{
 };
 use anyhow::{Result, anyhow};
 
+/// Pre-assembled x86 stub loaded when a hard drive has no valid boot signature.
+/// Prints "Non-system disk or disk error", waits for a keypress, then halts.
+/// Assembled for load address 0x0000:0x7C00; message starts at offset 0x1C (SI=0x7C1C).
+#[rustfmt::skip]
+const NON_SYSTEM_DISK_STUB: &[u8] = &[
+    0xFA,                               // cli
+    0x31, 0xC0,                         // xor ax, ax
+    0x8E, 0xD8,                         // mov ds, ax
+    0x31, 0xDB,                         // xor bx, bx       (BH=0: video page 0)
+    0xBE, 0x1B, 0x7C,                   // mov si, 0x7C1B   (message offset)
+    0xB4, 0x0E,                         // mov ah, 0x0E     (BIOS TTY print)
+    // loop_start (0x0C):
+    0xAC,                               // lodsb
+    0x08, 0xC0,                         // or al, al
+    0x74, 0x04,                         // jz wait_key      (+4 -> 0x15)
+    0xCD, 0x10,                         // int 0x10
+    0xEB, 0xF7,                         // jmp loop_start   (-9 -> 0x0C)
+    // wait_key (0x15):
+    0x30, 0xE4,                         // xor ah, ah
+    0xCD, 0x16,                         // int 0x16         (wait for key)
+    0xCD, 0x19,                         // int 0x19         (bootstrap: try drives in boot order)
+    // message (0x1B):
+    b'N', b'o', b'n', b'-', b's', b'y', b's', b't', b'e', b'm', b' ',
+    b'd', b'i', b's', b'k', b' ', b'o', b'r', b' ', b'd', b'i', b's', b'k', b' ',
+    b'e', b'r', b'r', b'o', b'r', b'\r', b'\n',
+    b'R', b'e', b'p', b'l', b'a', b'c', b'e', b' ', b'a', b'n', b'd', b' ',
+    b'p', b'r', b'e', b's', b's', b' ', b'a', b'n', b'y', b' ', b'k', b'e', b'y', b' ',
+    b'w', b'h', b'e', b'n', b' ', b'r', b'e', b'a', b'd', b'y', b'\r', b'\n',
+    0x00,
+];
+
 pub struct ComputerConfig {
     pub cpu_type: CpuType,
     pub clock_speed: u32,
@@ -129,7 +160,19 @@ impl Computer {
         self.process_key_presses();
         self.cpu.step(&mut self.bus);
         if self.cpu.at_reset_vector() {
-            if let Some(drive) = self.boot_drive {
+            if self.cpu.take_bootstrap_request() {
+                // INT 19h: try floppy A: first, then fall back to the configured boot drive.
+                let floppy_a = DriveNumber::floppy_a();
+                if self.boot(floppy_a).is_ok() {
+                    log::info!("Bootstrap: booting from floppy A:");
+                    self.boot_drive = Some(floppy_a);
+                } else if let Some(drive) = self.boot_drive {
+                    log::info!("Bootstrap: no bootable floppy, retrying drive {}", drive.to_letter());
+                    if let Err(e) = self.boot(drive) {
+                        log::error!("Bootstrap reboot failed: {e}");
+                    }
+                }
+            } else if let Some(drive) = self.boot_drive {
                 log::info!("Rebooting from drive {}", drive.to_letter());
                 if let Err(e) = self.boot(drive) {
                     log::error!("Reboot failed: {e}");
@@ -211,20 +254,31 @@ impl Computer {
         }
 
         // Verify boot signature (0x55AA at offset 510-511)
-        // Some old "booter" games predate the convention and lack this signature; warn but continue.
-        if boot_sector[510] != 0x55 || boot_sector[511] != 0xAA {
-            log::warn!(
-                "Boot sector missing 0x55AA signature (got 0x{:02X}{:02X}); proceeding anyway",
-                boot_sector[511],
-                boot_sector[510]
-            );
-        }
+        // For hard drives, a missing signature means the disk is not bootable (not formatted/no OS).
+        // For floppies, some old "booter" games predate the convention, so we warn but continue.
+        let boot_data: &[u8] = if boot_sector[510] != 0x55 || boot_sector[511] != 0xAA {
+            if drive.is_floppy() {
+                log::warn!(
+                    "Boot sector missing 0x55AA signature (got 0x{:02X}{:02X}); proceeding anyway",
+                    boot_sector[511],
+                    boot_sector[510]
+                );
+                &boot_sector
+            } else {
+                log::warn!(
+                    "Hard drive boot sector missing 0x55AA signature; loading non-system disk stub"
+                );
+                NON_SYSTEM_DISK_STUB
+            }
+        } else {
+            &boot_sector
+        };
 
         // Load boot sector to 0x0000:0x7C00 (physical address 0x7C00)
         const BOOT_SEGMENT: u16 = 0x0000;
         const BOOT_OFFSET: u16 = 0x7C00;
         let boot_addr = physical_address(BOOT_SEGMENT, BOOT_OFFSET);
-        self.bus.load_at(boot_addr, &boot_sector)?;
+        self.bus.load_at(boot_addr, boot_data)?;
         self.cpu.reset(BOOT_SEGMENT, BOOT_OFFSET, Some(drive));
         self.boot_drive = Some(drive);
 

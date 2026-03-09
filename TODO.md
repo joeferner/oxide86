@@ -31,6 +31,7 @@
   - GC register 0x03 (Data Rotate / Function Select) — 0x00
   - GC register 0x05 (Graphics Mode) — 0x00, 0x02
   - GC register 0x08 (Bit Mask) — many different values
+- [ ] Get SvarDos working
 - [ ] Test SimCity (1989)
 - [ ] Add VGA support
 - [ ] CGA Composite mode

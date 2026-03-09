@@ -93,6 +93,10 @@ pub(crate) struct Cpu {
 
     /// if set to true, opcode execution will be logged as info level
     pub exec_logging_enabled: bool,
+
+    /// Set by INT 19h (bootstrap loader) to signal that the next reboot should
+    /// try drives in boot order rather than only the configured boot drive.
+    bootstrap_request: bool,
 }
 
 impl Cpu {
@@ -126,6 +130,7 @@ impl Cpu {
             wait_for_key_press: false,
             wait_for_key_press_patch_flags: false,
             exec_logging_enabled: false,
+            bootstrap_request: false,
         }
     }
 
@@ -336,6 +341,7 @@ impl Cpu {
             0x15 => self.handle_int15_miscellaneous(bus),
             0x16 => self.handle_int16_keyboard_services(bus),
             0x17 => self.handle_int17_printer_services(bus),
+            0x19 => self.handle_int19_bootstrap_loader(),
             0x1a => self.handle_int1a_time_services(bus),
             0x21 => self.handle_int21_dos_services(bus),
             0x74 => self.handle_int74_ps2_mouse_interrupt(bus),
@@ -347,12 +353,31 @@ impl Cpu {
         }
     }
 
+    /// INT 19h — Bootstrap loader.
+    /// Sets the bootstrap request flag and jumps to FFFF:0000 (reset vector) without IRET.
+    /// Computer::step() detects at_reset_vector() + take_bootstrap_request() and tries
+    /// drives in boot order (floppy first, then the configured boot drive).
+    fn handle_int19_bootstrap_loader(&mut self) {
+        log::debug!("INT 19h: bootstrap loader requested");
+        self.bootstrap_request = true;
+        // Jump to reset vector; step() will see CS != BIOS_CODE_SEGMENT and skip IRET.
+        self.cs = 0xFFFF;
+        self.ip = 0x0000;
+    }
+
     pub(crate) fn get_exit_code(&self) -> Option<u8> {
         self.exit_code
     }
 
     pub(crate) fn at_reset_vector(&self) -> bool {
         self.cs == 0xFFFF && self.ip == 0x0000
+    }
+
+    /// Returns true and clears the flag if INT 19h requested a bootstrap.
+    pub(crate) fn take_bootstrap_request(&mut self) -> bool {
+        let v = self.bootstrap_request;
+        self.bootstrap_request = false;
+        v
     }
 
     pub(crate) fn is_terminal_halt(&self) -> bool {
