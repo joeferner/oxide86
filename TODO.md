@@ -27,13 +27,18 @@
 - [X] Get Alley Cat working (ai-analysis/alley-cat-movement-investigation.md and exe-analysis/cat.json)
 - [X] Add EGA support
 - [X] Add EGA high res 640x350 support
+- [X] Test The Colonel's Bequest (works but see strange white bars where the current selection is)
+  - GC register 0x03 (Data Rotate / Function Select) — 0x00
+  - GC register 0x05 (Graphics Mode) — 0x00, 0x02
+  - GC register 0x08 (Bit Mask) — many different values
+- [ ] Create a Mode enum and include functions such as rows, cols, character height, character width, etc
 - [ ] Test SimCity (1989)
-- [ ] Test The Colonel's Bequest (works but see strange white bars where the current selection is)
 - [ ] Add VGA support
 - [ ] CGA Composite mode
 - [ ] Add Joystick support
 - [ ] Add AdLib support
   - [ ] CLI --sound-card=none/adlib option
+  - [ ] Test The Colonel's Bequest (install.exe select adlib)
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up

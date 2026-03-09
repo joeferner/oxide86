@@ -159,25 +159,33 @@ impl VideoBuffer {
         self.cursor_loc
     }
 
+    pub(crate) fn cursor_start_line(&self) -> u8 {
+        self.cursor_start_line
+    }
+
+    pub(crate) fn cursor_end_line(&self) -> u8 {
+        self.cursor_end_line
+    }
+
     pub(crate) fn set_cursor_loc(&mut self, loc: u16) {
         self.cursor_loc = loc;
         self.dirty = true;
     }
 
     pub(crate) fn set_cursor_start_line(&mut self, start_line: u8) {
-        log::info!("set_cursor_start_line {start_line}");
+        log::debug!("set_cursor_start_line {start_line}");
         self.cursor_start_line = start_line;
         self.dirty = true;
     }
 
     pub(crate) fn set_cursor_visible(&mut self, visible: bool) {
-        log::info!("set_cursor_visible {visible}");
+        log::debug!("set_cursor_visible {visible}");
         self.cursor_visible = visible;
         self.dirty = true;
     }
 
     pub(crate) fn set_cursor_end_line(&mut self, end_line: u8) {
-        log::info!("set_cursor_end_line {end_line}");
+        log::debug!("set_cursor_end_line {end_line}");
         self.cursor_end_line = end_line;
         self.dirty = true;
     }
@@ -305,21 +313,11 @@ impl VideoBuffer {
                     dac_to_8bit(fg_dac[2]),
                 ];
 
-                // Scale CGA-style cursor scan lines (0-7 range) to our CHAR_HEIGHT.
-                // Real VGA BIOSes do this translation: if end <= 7, the caller assumed
-                // 8-scanline CGA characters, so we scale proportionally.
-                let (start_scan, end_scan) = if self.cursor_end_line <= 7 && CHAR_HEIGHT > 8 {
-                    let scale = CHAR_HEIGHT / 8;
-                    let s = self.cursor_start_line as usize * scale;
-                    let e =
-                        (self.cursor_end_line as usize * scale + scale - 1).min(CHAR_HEIGHT - 1);
-                    (s, e)
-                } else {
-                    (
-                        self.cursor_start_line as usize,
-                        (self.cursor_end_line as usize).min(CHAR_HEIGHT - 1),
-                    )
-                };
+                // cursor_start_line and cursor_end_line are direct scan-line indices
+                // within the character cell (0-based). Use them as-is, clamped to the
+                // render height.
+                let start_scan = self.cursor_start_line as usize;
+                let end_scan = (self.cursor_end_line as usize).min(CHAR_HEIGHT - 1);
 
                 let char_x = cursor_col * CHAR_WIDTH;
                 let char_y = cursor_row * CHAR_HEIGHT;

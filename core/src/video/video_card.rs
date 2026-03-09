@@ -77,8 +77,22 @@ pub struct VideoCard {
     sequencer_map_mask: u8,
     // EGA/VGA Graphics Controller registers
     gc_address: u8,
+    /// Set/Reset (GC register 0x00): per-plane constant value (0xFF or 0x00) used when enabled.
+    gc_set_reset: u8,
+    /// Enable Set/Reset (GC register 0x01): per-plane enable for set/reset override.
+    gc_enable_set_reset: u8,
     /// Read Map Select (GC register 0x04): which plane (0-3) the CPU reads from.
     gc_read_map_select: u8,
+    /// Data Rotate / Function Select (GC register 0x03):
+    /// bits 2:0 = rotate count, bits 4:3 = ALU function (0=replace,1=AND,2=OR,3=XOR).
+    gc_data_rotate: u8,
+    gc_function_select: u8,
+    /// Graphics Mode (GC register 0x05): bits 1:0 = write mode, bit 3 = read mode.
+    gc_write_mode: u8,
+    /// Bit Mask (GC register 0x08): bit N=1 means CPU data bit N passes through to VRAM.
+    gc_bit_mask: u8,
+    /// CPU read latches: one byte per plane, loaded on every EGA CPU read.
+    gc_latches: Cell<[u8; 4]>,
 }
 
 impl VideoCard {
@@ -106,7 +120,14 @@ impl VideoCard {
             sequencer_address: 0,
             sequencer_map_mask: 0x0F,
             gc_address: 0,
+            gc_set_reset: 0,
+            gc_enable_set_reset: 0,
             gc_read_map_select: 0,
+            gc_data_rotate: 0,
+            gc_function_select: 0,
+            gc_write_mode: 0,
+            gc_bit_mask: 0xFF,
+            gc_latches: Cell::new([0u8; 4]),
         }
     }
 
@@ -128,6 +149,16 @@ impl VideoCard {
         if addr < self.vram_size {
             let mut buffer = self.buffer.write().unwrap();
             buffer.write_vram(addr, val);
+        }
+    }
+
+    /// Apply GC ALU function (gc_function_select) between src and latch.
+    fn apply_gc_alu(&self, src: u8, latch: u8) -> u8 {
+        match self.gc_function_select {
+            1 => src & latch,
+            2 => src | latch,
+            3 => src ^ latch,
+            _ => src, // 0 = replace
         }
     }
 
@@ -217,7 +248,14 @@ impl Device for VideoCard {
         self.sequencer_address = 0;
         self.sequencer_map_mask = 0x0F;
         self.gc_address = 0;
+        self.gc_set_reset = 0;
+        self.gc_enable_set_reset = 0;
         self.gc_read_map_select = 0;
+        self.gc_data_rotate = 0;
+        self.gc_function_select = 0;
+        self.gc_write_mode = 0;
+        self.gc_bit_mask = 0xFF;
+        self.gc_latches.set([0u8; 4]);
     }
 
     fn memory_read_u8(&self, addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -229,8 +267,15 @@ impl Device for VideoCard {
         {
             let offset = addr - EGA_MEMORY_START;
             if offset < EGA_PLANE_SIZE {
-                let plane_offset = self.gc_read_map_select as usize * EGA_PLANE_SIZE + offset;
-                Some(self.internal_read_u8(plane_offset))
+                // Load latches from all 4 planes on every CPU read (hardware behaviour).
+                let latches = [
+                    self.internal_read_u8(offset),
+                    self.internal_read_u8(EGA_PLANE_SIZE + offset),
+                    self.internal_read_u8(2 * EGA_PLANE_SIZE + offset),
+                    self.internal_read_u8(3 * EGA_PLANE_SIZE + offset),
+                ];
+                self.gc_latches.set(latches);
+                Some(latches[self.gc_read_map_select as usize])
             } else {
                 Some(0xFF)
             }
@@ -249,11 +294,56 @@ impl Device for VideoCard {
         {
             let offset = addr - EGA_MEMORY_START;
             if offset < EGA_PLANE_SIZE {
-                for plane in 0..4u8 {
-                    if (self.sequencer_map_mask >> plane) & 1 != 0 {
-                        let plane_offset = plane as usize * EGA_PLANE_SIZE + offset;
-                        self.internal_write_u8(plane_offset, val);
+                let latches = self.gc_latches.get();
+                // Rotate CPU data right by gc_data_rotate bits (write modes 0 and 3).
+                let rotated = val.rotate_right(self.gc_data_rotate as u32);
+
+                #[allow(clippy::needless_range_loop)]
+                for plane in 0..4usize {
+                    if (self.sequencer_map_mask >> plane) & 1 == 0 {
+                        continue;
                     }
+                    let latch = latches[plane];
+                    let plane_offset = plane * EGA_PLANE_SIZE + offset;
+
+                    let final_val = match self.gc_write_mode {
+                        1 => {
+                            // Mode 1: copy latch directly, no ALU or bit mask.
+                            latch
+                        }
+                        2 => {
+                            // Mode 2: CPU bits 3:0 are a 4-bit color; expand plane bit to 0x00/0xFF.
+                            let src = if (val >> plane) & 1 != 0 { 0xFF } else { 0x00 };
+                            let after_alu = self.apply_gc_alu(src, latch);
+                            (after_alu & self.gc_bit_mask) | (latch & !self.gc_bit_mask)
+                        }
+                        // Mode 3 (VGA): AND rotated data with gc_bit_mask to form per-bit mask,
+                        // then write set/reset value through that mask.
+                        3 => {
+                            let src = if (self.gc_set_reset >> plane) & 1 != 0 {
+                                0xFF
+                            } else {
+                                0x00
+                            };
+                            let effective_mask = self.gc_bit_mask & rotated;
+                            (src & effective_mask) | (latch & !effective_mask)
+                        }
+                        // Mode 0 (default): set/reset or rotated data → ALU → bit mask.
+                        _ => {
+                            let src = if (self.gc_enable_set_reset >> plane) & 1 != 0 {
+                                if (self.gc_set_reset >> plane) & 1 != 0 {
+                                    0xFF
+                                } else {
+                                    0x00
+                                }
+                            } else {
+                                rotated
+                            };
+                            let after_alu = self.apply_gc_alu(src, latch);
+                            (after_alu & self.gc_bit_mask) | (latch & !self.gc_bit_mask)
+                        }
+                    };
+                    self.internal_write_u8(plane_offset, final_val);
                 }
             }
             true
@@ -271,6 +361,8 @@ impl Device for VideoCard {
                 VIDEO_CARD_DATA_ADDR => {
                     let buffer = self.buffer.read().unwrap();
                     let val = match self.io_register {
+                        VIDEO_CARD_REG_CURSOR_START_LINE => buffer.cursor_start_line(),
+                        VIDEO_CARD_REG_CURSOR_END_LINE => buffer.cursor_end_line(),
                         VIDEO_CARD_REG_CURSOR_LOC_HIGH => (buffer.cursor_loc() >> 8) as u8,
                         VIDEO_CARD_REG_CURSOR_LOC_LOW => (buffer.cursor_loc() & 0xFF) as u8,
                         VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
@@ -295,7 +387,12 @@ impl Device for VideoCard {
                 // Graphics Controller address/data read (EGA/VGA only)
                 0x3CE if is_ega_vga => Some(self.gc_address),
                 0x3CF if is_ega_vga => Some(match self.gc_address {
+                    0x00 => self.gc_set_reset,
+                    0x01 => self.gc_enable_set_reset,
+                    0x03 => self.gc_data_rotate | (self.gc_function_select << 3),
                     0x04 => self.gc_read_map_select,
+                    0x05 => self.gc_write_mode,
+                    0x08 => self.gc_bit_mask,
                     _ => 0,
                 }),
                 // DAC data read (VGA only)
@@ -345,10 +442,18 @@ impl Device for VideoCard {
                     let mut buffer = self.buffer.write().unwrap();
                     match self.io_register {
                         VIDEO_CARD_REG_CURSOR_START_LINE => {
-                            buffer.set_cursor_visible((val & 0x20) == 0);
-                            buffer.set_cursor_start_line(val & 0x1F);
+                            let visible = (val & 0x20) == 0;
+                            let start = val & 0x1F;
+                            log::debug!(
+                                "CRTC reg 0x0A: cursor start={} visible={}",
+                                start,
+                                visible
+                            );
+                            buffer.set_cursor_visible(visible);
+                            buffer.set_cursor_start_line(start);
                         }
                         VIDEO_CARD_REG_CURSOR_END_LINE => {
+                            log::debug!("CRTC reg 0x0B: cursor end={}", val);
                             buffer.set_cursor_end_line(val);
                         }
                         VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
@@ -411,7 +516,18 @@ impl Device for VideoCard {
                 }
                 0x3CF if is_ega_vga => {
                     match self.gc_address {
+                        0x00 => self.gc_set_reset = val & 0x0F,
+                        0x01 => self.gc_enable_set_reset = val & 0x0F,
+                        0x03 => {
+                            self.gc_data_rotate = val & 0x07;
+                            self.gc_function_select = (val >> 3) & 0x03;
+                        }
                         0x04 => self.gc_read_map_select = val & 0x03,
+                        0x05 => {
+                            self.gc_write_mode = val & 0x03;
+                            // bit 3 = read mode; not yet used
+                        }
+                        0x08 => self.gc_bit_mask = val,
                         _ => log::warn!(
                             "Unhandled GC register 0x{:02X} = 0x{:02X}",
                             self.gc_address,

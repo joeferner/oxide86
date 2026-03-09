@@ -144,14 +144,19 @@ impl Computer {
     }
 
     pub fn reset(&mut self) {
-        self.bus.reset();
         if let Some((data, segment, offset)) = self.loaded_program.clone() {
+            self.bus.reset();
             let physical_addr = physical_address(segment, offset);
             if let Err(e) = self.bus.load_at(physical_addr, &data) {
                 log::error!("Failed to reload program on reset: {e}");
             }
             self.cpu.reset(segment, offset, None);
+        } else if let Some(drive) = self.boot_drive {
+            if let Err(e) = self.boot(drive) {
+                log::error!("Reset boot failed: {e}");
+            }
         } else {
+            self.bus.reset();
             self.cpu.reset(0xffff, 0x0000, None);
         }
     }

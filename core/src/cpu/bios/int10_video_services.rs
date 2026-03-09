@@ -19,7 +19,7 @@ use crate::{
         VIDEO_MODE_0DH_EGA_320_X_200_16, VIDEO_MODE_02H_COLOR_TEXT_80_X_25,
         VIDEO_MODE_03H_COLOR_TEXT_80_X_25, VIDEO_MODE_04H_CGA_320_X_200_4,
         VIDEO_MODE_06H_CGA_640_X_200_2, VIDEO_MODE_10H_EGA_640_X_350_16, VideoCardType,
-        font::{CHAR_HEIGHT_8, CHAR_HEIGHT_14, Cp437Font},
+        font::{CHAR_HEIGHT, CHAR_HEIGHT_8, CHAR_HEIGHT_14, Cp437Font},
         video_calculate_linear_offset,
         video_card::{
             AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
@@ -162,23 +162,42 @@ impl Cpu {
 
         // CH bit 5 = cursor disable (hidden). Standard CGA/EGA/VGA behavior.
         let visible = (start_line & 0x20) == 0;
+        let start_shape = start_line & 0x1F;
+        let end_shape = end_line & 0x1F;
 
-        // Store cursor shape in BDA
+        // Store original (unscaled) cursor shape in BDA so AH=03h returns the
+        // values the program originally set.
         bda_set_cursor_start_line(bus, start_line);
         bda_set_cursor_end_line(bus, end_line);
 
+        // Programs targeting CGA (8 scan-line chars) use values 0-7. Scale them
+        // to our CHAR_HEIGHT (16) before writing to the CRTC, matching real VGA
+        // BIOS behavior: crtc_start = CH * CHAR_HEIGHT / 8,
+        //                 crtc_end   = (CL + 1) * CHAR_HEIGHT / 8 - 1.
+        let (crtc_start, crtc_end) = if end_shape <= CHAR_HEIGHT_8 as u8 && CHAR_HEIGHT > CHAR_HEIGHT_8 {
+            let scale = CHAR_HEIGHT / CHAR_HEIGHT_8;
+            let s = start_shape as usize * scale;
+            let e = (end_shape as usize + 1) * scale - 1;
+            (s.min(CHAR_HEIGHT - 1) as u8, e.min(CHAR_HEIGHT - 1) as u8)
+        } else {
+            (start_shape, end_shape.min((CHAR_HEIGHT - 1) as u8))
+        };
+        let crtc_start = crtc_start | (start_line & !0x1F); // preserve option bits
+
         // Set Cursor Start Scanline
         bus.io_write_u8(VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_REG_CURSOR_START_LINE);
-        bus.io_write_u8(VIDEO_CARD_DATA_ADDR, start_line);
+        bus.io_write_u8(VIDEO_CARD_DATA_ADDR, crtc_start);
 
         // Set Cursor End Scanline
         bus.io_write_u8(VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_REG_CURSOR_END_LINE);
-        bus.io_write_u8(VIDEO_CARD_DATA_ADDR, end_line);
+        bus.io_write_u8(VIDEO_CARD_DATA_ADDR, crtc_end);
 
         log::debug!(
-            "INT 0x10/AH=0x01: cursor shape CH=0x{:02X} CL=0x{:02X} visible={}",
+            "INT 0x10/AH=0x01: cursor shape CH=0x{:02X} CL=0x{:02X} -> crtc {}/{} visible={}",
             start_line,
             end_line,
+            crtc_start,
+            crtc_end,
             visible
         );
     }
@@ -714,13 +733,25 @@ impl Cpu {
                 } else if mode == VIDEO_MODE_0DH_EGA_320_X_200_16 {
                     // EGA planar graphics: draw character transparently into EGA planes
                     let fg_color = (self.bx & 0xFF) as u8; // BL
-                    bus.video_card_mut()
-                        .ega_draw_char_transparent(ch, cursor.row, cursor.col, fg_color, 40, CHAR_HEIGHT_8);
+                    bus.video_card_mut().ega_draw_char_transparent(
+                        ch,
+                        cursor.row,
+                        cursor.col,
+                        fg_color,
+                        40,
+                        CHAR_HEIGHT_8,
+                    );
                 } else if mode == VIDEO_MODE_10H_EGA_640_X_350_16 {
                     // EGA 640x350 planar graphics: 80 bytes per row, 8x14 character cells
                     let fg_color = (self.bx & 0xFF) as u8; // BL
-                    bus.video_card_mut()
-                        .ega_draw_char_transparent(ch, cursor.row, cursor.col, fg_color, 80, CHAR_HEIGHT_14);
+                    bus.video_card_mut().ega_draw_char_transparent(
+                        ch,
+                        cursor.row,
+                        cursor.col,
+                        fg_color,
+                        80,
+                        CHAR_HEIGHT_14,
+                    );
                 } else {
                     // Text mode: write character byte directly
                     let offset = (cursor.row as usize * columns as usize + cursor.col as usize) * 2;
