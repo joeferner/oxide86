@@ -75,4 +75,8 @@ pub struct CommonCli {
     /// Device to attach to COM4 (e.g., "mouse")
     #[arg(long = "com4", value_name = "DEVICE")]
     pub com4_device: Option<String>,
+
+    /// Enable joystick/gamepad input on the game port (0x201). Uses the first connected gamepad.
+    #[arg(long = "joystick")]
+    pub joystick: bool,
 }

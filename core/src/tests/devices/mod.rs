@@ -1,3 +1,4 @@
+pub(crate) mod game_port;
 pub(crate) mod keyboard;
 pub(crate) mod mock_com_device;
 pub(crate) mod mouse;

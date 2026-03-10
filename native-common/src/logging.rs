@@ -23,6 +23,24 @@ pub fn setup_logging() -> Result<()> {
             .filter_module("oxide86_native", log::LevelFilter::Info);
     }
 
+    // Capture panics into the log before the default handler prints to stderr
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        let msg = if let Some(s) = info.payload().downcast_ref::<&str>() {
+            s.to_string()
+        } else if let Some(s) = info.payload().downcast_ref::<String>() {
+            s.clone()
+        } else {
+            "unknown panic payload".to_string()
+        };
+        let location = info
+            .location()
+            .map(|l| format!(" ({}:{})", l.file(), l.line()))
+            .unwrap_or_default();
+        log::error!("PANIC{}: {}", location, msg);
+        default_hook(info);
+    }));
+
     builder
         .format(|buf, record| {
             let now = chrono::Local::now();

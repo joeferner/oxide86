@@ -357,6 +357,7 @@ impl Device for VideoCard {
                     };
                     Some(val)
                 }
+                CGA_MODE_CTRL_ADDR => Some(self.cga_mode_ctrl),
                 CGA_COLOR_SELECT_ADDR => Some(self.color_select),
                 // Sequencer address/data read (EGA/VGA only)
                 0x3C4 if is_ega_vga => Some(self.sequencer_address),
@@ -408,6 +409,27 @@ impl Device for VideoCard {
                 MDA_CRTC_CONTROL_ADDR | MDA_CRTC_DATA_ADDR => true,
                 CGA_MODE_CTRL_ADDR => {
                     self.cga_mode_ctrl = val;
+                    // Derive the CGA rendering mode from the hardware register bits:
+                    //   bit 1 = graphics mode enable
+                    //   bit 4 = high-resolution (640x200) mode
+                    //   bit 0 = 80-column (text mode only)
+                    let mode = if val & 0x02 != 0 {
+                        if val & 0x10 != 0 {
+                            Mode::M06Cga640x200x2
+                        } else {
+                            Mode::M04Cga320x200x4
+                        }
+                    } else if val & 0x01 != 0 {
+                        Mode::M03Text
+                    } else {
+                        Mode::M02ColorText
+                    };
+                    log::info!(
+                        "CGA mode control register 0x3D8 = 0x{:02X} → mode {}",
+                        val,
+                        mode
+                    );
+                    self.buffer.write().unwrap().set_mode(mode);
                     true
                 }
                 CGA_COLOR_SELECT_ADDR => {

@@ -1,6 +1,7 @@
 pub mod cli;
 pub mod clock;
 pub mod disk;
+pub mod gilrs_joystick;
 pub mod logging;
 pub mod rodio_pc_speaker;
 pub mod throttle;
@@ -22,7 +23,8 @@ use oxide86_core::{
 };
 
 use crate::{
-    cli::CommonCli, clock::NativeClock, disk::FileDiskBackend, rodio_pc_speaker::RodioPcSpeaker,
+    cli::CommonCli, clock::NativeClock, disk::FileDiskBackend, gilrs_joystick::GilrsJoystick,
+    rodio_pc_speaker::RodioPcSpeaker,
 };
 use rodio::{DeviceSinkBuilder, MixerDeviceSink};
 
@@ -48,7 +50,7 @@ pub fn create_computer(
     cli: &CommonCli,
     video_buffer: Arc<RwLock<VideoBuffer>>,
     serial_mouse: Option<Arc<RwLock<SerialMouse>>>,
-) -> Result<(Computer, Option<MixerDeviceSink>)> {
+) -> Result<(Computer, Option<MixerDeviceSink>, Option<GilrsJoystick>)> {
     let cpu_type = if let Some(cpu_type) = CpuType::parse(&cli.cpu_type) {
         cpu_type
     } else {
@@ -159,7 +161,13 @@ pub fn create_computer(
         log::info!("Boot sector loaded at 0x0000:0x7C00");
     }
 
-    Ok((computer, sink))
+    let gilrs_joystick = if cli.joystick {
+        GilrsJoystick::new()
+    } else {
+        None
+    };
+
+    Ok((computer, sink, gilrs_joystick))
 }
 
 fn create_com_device(

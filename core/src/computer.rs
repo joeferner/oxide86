@@ -1,6 +1,7 @@
 use std::sync::{Arc, RwLock};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
+use crate::devices::game_port::GamePortDevice;
 use crate::devices::pc_speaker::PcSpeaker;
 use crate::devices::uart::ComPortDevice;
 use crate::{
@@ -383,6 +384,10 @@ impl Computer {
 
     pub fn wait_for_key_press(&self) -> bool {
         self.cpu.wait_for_key_press()
+    }
+
+    pub fn joystick_mut(&self) -> std::cell::RefMut<'_, GamePortDevice> {
+        self.bus.game_port_mut()
     }
 
     pub fn set_com_port_device(

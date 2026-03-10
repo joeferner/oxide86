@@ -10,6 +10,7 @@ use crate::{
     cpu::bios::bios_reset,
     devices::{
         floppy_disk_controller::FloppyDiskController,
+        game_port::GamePortDevice,
         hard_disk_controller::HardDiskController,
         keyboard_controller::KeyboardController,
         pc_speaker::PcSpeaker,
@@ -40,6 +41,7 @@ pub(crate) struct Bus {
     devices: Vec<DeviceRef>,
     floppy_controller: Rc<RefCell<FloppyDiskController>>,
     hard_disk_controller: Rc<RefCell<HardDiskController>>,
+    game_port: Rc<RefCell<GamePortDevice>>,
     pic: Rc<RefCell<Pic>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     uart: Rc<RefCell<Uart>>,
@@ -66,6 +68,7 @@ impl Bus {
         let floppy_controller = Rc::new(RefCell::new(FloppyDiskController::new()));
         let hard_disk_controller =
             Rc::new(RefCell::new(HardDiskController::new(config.hard_disks)));
+        let game_port = Rc::new(RefCell::new(GamePortDevice::new(config.cpu_clock_speed)));
         let mut devices: Vec<DeviceRef> = vec![
             pic.clone(),
             pit,
@@ -74,6 +77,7 @@ impl Bus {
             floppy_controller.clone(),
             hard_disk_controller.clone(),
             config.video_card.clone(),
+            game_port.clone(),
         ];
         let rtc = if let Some(clock) = config.clock {
             let rtc = Rc::new(RefCell::new(Rtc::new(clock)));
@@ -87,6 +91,7 @@ impl Bus {
             devices,
             floppy_controller,
             hard_disk_controller,
+            game_port,
             pic,
             keyboard_controller,
             uart,
@@ -150,6 +155,10 @@ impl Bus {
 
     pub(crate) fn floppy_controller_mut(&self) -> RefMut<'_, FloppyDiskController> {
         self.floppy_controller.borrow_mut()
+    }
+
+    pub(crate) fn game_port_mut(&self) -> RefMut<'_, GamePortDevice> {
+        self.game_port.borrow_mut()
     }
 
     pub(crate) fn add_device<T: Device + 'static>(&mut self, device: T) {

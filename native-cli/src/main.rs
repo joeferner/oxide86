@@ -72,7 +72,7 @@ fn main() -> Result<()> {
     } else {
         None
     };
-    let (mut computer, audio_sink) =
+    let (mut computer, audio_sink, mut gilrs_joystick) =
         create_computer(&cli.common, video_buffer.clone(), mouse.clone())?;
 
     let mut stdout = std::io::stdout();
@@ -98,6 +98,9 @@ fn main() -> Result<()> {
 
     let mut quit_from_command_mode = false;
     while computer.get_exit_code().is_none() && !quit_from_command_mode {
+        if let Some(ref mut js) = gilrs_joystick {
+            js.poll(&mut computer.joystick_mut());
+        }
         if !computer.wait_for_key_press() {
             for _ in 0..BATCH_SIZE {
                 computer.step();

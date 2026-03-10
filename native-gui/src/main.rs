@@ -104,7 +104,7 @@ fn run(cli: Cli) -> Result<()> {
     };
 
     // Initialize computer
-    let (mut computer, audio_sink) =
+    let (mut computer, audio_sink, mut gilrs_joystick) =
         create_computer(&cli.common, video_buffer.clone(), serial_mouse.clone())?;
 
     // Initialize egui
@@ -265,10 +265,9 @@ fn run(cli: Cli) -> Result<()> {
                     }
                     WindowEvent::RedrawRequested => {
                         // Poll joystick for gamepad events if enabled
-                        // TODO
-                        // if let Some(ref mut js) = gilrs_joystick {
-                        //     js.poll();
-                        // }
+                        if let Some(ref mut js) = gilrs_joystick {
+                            js.poll(&mut computer.joystick_mut());
+                        }
 
                         // Reset throttle when resuming from pause to avoid burst catch-up
                         if was_paused && !app_state.is_paused {

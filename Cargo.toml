@@ -18,6 +18,7 @@ walkdir = "2.5"
 image = "0.25"
 test-log = "0.2"
 chrono = "0.4"
+gilrs = "0.11"
 rodio = "0.22"
 
 [workspace.lints.clippy]
