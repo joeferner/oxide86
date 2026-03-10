@@ -17,6 +17,7 @@ use crate::{
 // CGA/EGA/VGA CRTC ports
 pub const VIDEO_CARD_CONTROL_ADDR: u16 = 0x03D4;
 pub const VIDEO_CARD_DATA_ADDR: u16 = 0x03D5;
+pub const CGA_MODE_CTRL_ADDR: u16 = 0x03D8;
 pub const CGA_COLOR_SELECT_ADDR: u16 = 0x03D9;
 
 // MDA CRTC ports (same 6845 chip but different address; none of our card types are MDA)
@@ -53,6 +54,7 @@ pub struct VideoCard {
     vram_size: usize,
     cpu_clock_speed: u32,
     io_register: u8,
+    cga_mode_ctrl: u8,
     color_select: u8,
     // EGA/VGA Attribute Controller registers (16 palette + 1 border color)
     ac_registers: [u8; 17],
@@ -102,6 +104,7 @@ impl VideoCard {
             },
             cpu_clock_speed,
             io_register: 0,
+            cga_mode_ctrl: 0,
             color_select: 0,
             ac_registers: [0u8; 17],
             ac_address: 0,
@@ -216,6 +219,7 @@ impl Device for VideoCard {
             VideoCardType::CGA => CGA_MEMORY_SIZE,
         };
         self.io_register = 0;
+        self.cga_mode_ctrl = 0;
         self.color_select = 0;
         self.ac_registers = [0u8; 17];
         self.ac_address = 0;
@@ -402,6 +406,10 @@ impl Device for VideoCard {
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: silently ignore — no MDA card present
                 MDA_CRTC_CONTROL_ADDR | MDA_CRTC_DATA_ADDR => true,
+                CGA_MODE_CTRL_ADDR => {
+                    self.cga_mode_ctrl = val;
+                    true
+                }
                 CGA_COLOR_SELECT_ADDR => {
                     self.color_select = val;
                     let mut buffer = self.buffer.write().unwrap();
@@ -451,6 +459,8 @@ impl Device for VideoCard {
                             let new_cursor_loc = (buffer.cursor_loc() & 0xff00) | val as u16;
                             buffer.set_cursor_loc(new_cursor_loc);
                         }
+                        // CRTC timing registers (horizontal/vertical) — not needed by emulator
+                        0x00..=0x09 => {}
                         _ => log::warn!(
                             "invalid IO Register: 0x{:04X} (val: 0x{:02X})",
                             self.io_register,

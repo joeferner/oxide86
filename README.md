@@ -86,6 +86,7 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 - :white_check_mark: MS-DOS 3.31
 - :white_check_mark: MS-DOS 4.01
 - :white_check_mark: MS-DOS 5.0
+- :white_check_mark: SvarDOS 20250427
 
 ## Games
 
