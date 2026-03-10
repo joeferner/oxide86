@@ -50,3 +50,4 @@
 - [ ] Check code coverage of instructions
 - [ ] remove functions from bus to get internal devices unless really needed
 - [ ] check all #[allow(dead_code)]
+- [ ] Support external bios (see ai-analysis/bios-options.md)
