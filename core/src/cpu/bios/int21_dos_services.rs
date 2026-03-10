@@ -6,6 +6,9 @@ use crate::{
 
 impl Cpu {
     pub(in crate::cpu) fn handle_int21_dos_services(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(500);
+        // Enable interrupts during DOS services (DOS runs with IF=1)
+        self.set_flag(cpu_flag::INTERRUPT, true);
         let function = (self.ax >> 8) as u8; // Get AH directly
         match function {
             0x02 => self.int21_write_char(bus),

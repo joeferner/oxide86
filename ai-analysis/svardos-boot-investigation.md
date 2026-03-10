@@ -232,36 +232,68 @@ returns, `patch_flags_and_iret` restores the caller's IF=0 from the saved
 stack frame. Result: BDA[0x46C] never advances and the `option_key` loop runs
 forever.
 
-### Proposed Fix
+### Implemented Fix
 
-Add a `take_timer_irq` method to `Pic` that consumes only the pending timer
-IRQ (without disturbing other pending IRQs). Call it from
-`handle_int1a_time_services` after `set_flag(IF, true)`:
+Two changes were made:
+
+**1. CPU cycles added to every Rust BIOS handler** (`core/src/cpu/bios/int*.rs`)
+
+Each handler calls `bus.increment_cycle_count(N)` on entry to simulate the
+real BIOS handler's execution time (150–1000 cycles depending on complexity).
+This ensures the emulated cycle count accurately reflects wall-clock time even
+when many BIOS calls are made in a tight loop.
+
+**2. Timer IRQ inline-dispatch in `Cpu::step()` (`core/src/cpu/mod.rs`)**
+
+After every Rust BIOS handler runs, before `patch_flags_and_iret`, if the
+handler set IF=1 (STI equivalent), a pending timer IRQ is inline-dispatched
+provided `IVT[0x08]` still points to the BIOS handler:
 
 ```rust
-// In Pic:
-pub(crate) fn take_timer_irq(&mut self, cycle_count: u32) -> bool {
-    let bit = 1u8 << PIT_IRQ_LINE;
-    let masked = self.mask & bit != 0;
-    let in_service = self.in_service & bit != 0;
-    if !masked && !in_service && self.pit.borrow_mut().take_pending_timer_irq(cycle_count) {
-        self.in_service |= bit;
-        return true;
+if self.get_flag(cpu_flag::INTERRUPT) {
+    let timer_ivt_seg =
+        bus.memory_read_u16(PIT_CPU_IRQ as usize * 4 + 2);
+    if timer_ivt_seg == BIOS_CODE_SEGMENT
+        && bus.pic_mut().take_timer_irq(bus.cycle_count())
+    {
+        self.step_bios_int(bus, PIT_CPU_IRQ);
     }
-    false
-}
-
-// In handle_int1a_time_services, after set_flag(IF, true):
-if bus.pic_mut().take_timer_irq(bus.cycle_count()) {
-    bda_increment_timer_counter(bus);
-    bus.io_write_u8(PIC_IO_PORT_COMMAND, PIC_COMMAND_EOI);
 }
 ```
 
-This is consistent with real hardware: the PIT's cycle-count check ensures a
-tick is only delivered if enough emulated time has actually elapsed (same
-rate limit as on real hardware). The fix does not unconditionally advance the
-counter — it only delivers a tick when the PIT says one is due.
+`Pic::take_timer_irq` (added to `core/src/devices/pic.rs`) checks and
+consumes only the timer IRQ (IRQ0), leaving keyboard/serial/mouse IRQs
+untouched:
+
+```rust
+pub(crate) fn take_timer_irq(&mut self, cycle_count: u32) -> bool {
+    let bit = 1u8 << PIT_IRQ_LINE;
+    if self.mask & bit != 0 { return false; }
+    if self.in_service & bit != 0 { return false; }
+    if !self.pit.borrow_mut().take_pending_timer_irq(cycle_count) { return false; }
+    self.in_service |= bit;
+    true
+}
+```
+
+**Why this works for SvardOS:**
+
+- `option_key` calls `int 0x16 AH=01` and `int 0x1a AH=00` in a tight loop
+  with IF=0 in user code.
+- Both handlers set `self.set_flag(INTERRUPT, true)` internally (STI
+  equivalent), and the cycle cost advances `bus.cycle_count()`.
+- After each handler, `step()` checks: is `IVT[0x08]` still the BIOS? Is a
+  timer tick due? If yes, `handle_int08_timer_interrupt` runs inline,
+  incrementing `BDA[0x46C]` and sending EOI.
+- `patch_flags_and_iret` restores the caller's IF=0 — but the BDA counter
+  has advanced. After 36 ticks the `option_key` timeout expires.
+
+**Why the `irq_chain` test is not broken:**
+
+When a guest OS installs its own INT 08h handler (IVT[0x08] → guest CS ≠
+`BIOS_CODE_SEGMENT`), the inline dispatch is skipped and the timer IRQ is NOT
+consumed. It is delivered normally through `take_irq()` at the next `step()`
+boundary once the caller's IF is restored.
 
 ## Why the PIC/PIT Appears Not to Fire (in the Log)
 

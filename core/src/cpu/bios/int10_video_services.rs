@@ -12,6 +12,7 @@ use crate::{
             bda_set_cursor_start_line, bda_set_display_combination_code, bda_set_rows,
             bda_set_video_mode, bda_set_video_page_offset, bda_set_video_page_size,
         },
+        cpu_flag,
     },
     physical_address,
     video::{
@@ -46,6 +47,9 @@ impl Cpu {
     /// INT 0x10 - Video Services
     /// AH register contains the function number
     pub(in crate::cpu) fn handle_int10_video_services(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(500);
+        // Enable interrupts during video services (AT-class BIOS behaviour)
+        self.set_flag(cpu_flag::INTERRUPT, true);
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {

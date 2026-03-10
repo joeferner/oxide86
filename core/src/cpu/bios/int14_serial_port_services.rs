@@ -11,6 +11,7 @@ impl Cpu {
     /// AH register contains the function number
     /// DX register contains the port number (0=COM1, 1=COM2, 2=COM3, 3=COM4)
     pub(in crate::cpu) fn handle_int14_serial_port_services(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(200);
         let function = (self.ax >> 8) as u8; // Get AH
         let port = self.dx as u8; // DX contains port number
 

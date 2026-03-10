@@ -31,6 +31,7 @@ impl Cpu {
     /// timer IRQs (INT 0x08) can still fire. This is important for programs that
     /// depend on the BDA timer counter advancing during disk benchmarks.
     pub(in crate::cpu) fn handle_int13_disk_services(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(1000);
         // Enable interrupts during disk operations (AT-class BIOS behavior)
         // This allows timer IRQs to fire even during extended disk operations
         self.set_flag(cpu_flag::INTERRUPT, true);

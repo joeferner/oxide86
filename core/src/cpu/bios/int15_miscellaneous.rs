@@ -14,6 +14,7 @@ impl Cpu {
     /// INT 0x15 - Miscellaneous System Services
     /// AH register contains the function number
     pub(in crate::cpu) fn handle_int15_miscellaneous(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(200);
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {

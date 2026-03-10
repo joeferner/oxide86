@@ -22,6 +22,7 @@ impl Cpu {
     /// timer IRQs (INT 0x08) can fire. This is important for programs that poll
     /// the system time in a tight loop waiting for it to change.
     pub(in crate::cpu) fn handle_int1a_time_services(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(300);
         // Enable interrupts during time services (allows timer IRQs to fire)
         self.set_flag(cpu_flag::INTERRUPT, true);
 

@@ -27,6 +27,7 @@ impl Cpu {
     /// Programs with custom INT 09h handlers will replace this via the IVT and handle
     /// keyboard input directly by reading port 0x60.
     pub(in crate::cpu) fn handle_int09_keyboard_hardware_interrupt(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(300);
         // Acknowledge interrupt to PIC so it can fire again
         bus.io_write_u8(PIC_IO_PORT_COMMAND, PIC_COMMAND_EOI);
 

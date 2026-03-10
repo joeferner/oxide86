@@ -21,6 +21,7 @@ impl Cpu {
     /// jumping to the handler.  step() detects the CS change and skips the
     /// normal IRET, letting the trampoline's subsequent invocation clean up.
     pub(in crate::cpu) fn handle_int74_ps2_mouse_interrupt(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(200);
         // Acknowledge both PICs so IRQ12 can fire again.
         bus.io_write_u8(PIC2_IO_PORT_COMMAND, PIC_COMMAND_EOI);
         bus.io_write_u8(PIC_IO_PORT_COMMAND, PIC_COMMAND_EOI);

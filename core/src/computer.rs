@@ -167,7 +167,10 @@ impl Computer {
                     log::info!("Bootstrap: booting from floppy A:");
                     self.boot_drive = Some(floppy_a);
                 } else if let Some(drive) = self.boot_drive {
-                    log::info!("Bootstrap: no bootable floppy, retrying drive {}", drive.to_letter());
+                    log::info!(
+                        "Bootstrap: no bootable floppy, retrying drive {}",
+                        drive.to_letter()
+                    );
                     if let Err(e) = self.boot(drive) {
                         log::error!("Bootstrap reboot failed: {e}");
                     }

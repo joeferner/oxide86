@@ -5,6 +5,7 @@ impl Cpu {
     /// AH register contains the function number
     /// DX register contains the printer number (0=LPT1, 1=LPT2, 2=LPT3)
     pub(in crate::cpu) fn handle_int17_printer_services(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(200);
         let function = (self.ax >> 8) as u8; // Get AH
         let printer = self.dx as u8; // DX contains printer number
 

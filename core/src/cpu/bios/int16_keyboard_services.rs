@@ -17,6 +17,7 @@ impl Cpu {
     /// This is important for programs that poll keyboard status in tight loops with
     /// interrupts disabled, or block waiting for input via AH=00h.
     pub(in crate::cpu) fn handle_int16_keyboard_services(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(300);
         // Enable interrupts during keyboard operations (AT-class BIOS behavior)
         // This allows keyboard and timer IRQs to fire even when programs poll with IF=0
         self.set_flag(cpu_flag::INTERRUPT, true);

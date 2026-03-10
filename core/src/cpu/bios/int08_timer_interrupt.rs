@@ -12,6 +12,7 @@ impl Cpu {
     /// increments the BDA timer tick counter and sends an End-Of-Interrupt
     /// to the PIC so subsequent timer IRQs can be delivered.
     pub(in crate::cpu) fn handle_int08_timer_interrupt(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(150);
         bda_increment_timer_counter(bus);
         bus.io_write_u8(PIC_IO_PORT_COMMAND, PIC_COMMAND_EOI);
     }

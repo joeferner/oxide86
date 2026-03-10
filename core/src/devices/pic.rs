@@ -77,6 +77,27 @@ impl Pic {
         self.in_service & (1u8 << KEYBOARD_IRQ_LINE) != 0
     }
 
+    /// Check and consume a pending timer (IRQ0) interrupt.
+    ///
+    /// Unlike `take_irq`, this only considers the PIT and does not consume any
+    /// other pending IRQ. Used by the BIOS inline-dispatch path in `step()` to
+    /// allow the timer to advance even when caller code runs with IF=0, without
+    /// accidentally consuming keyboard or serial IRQs.
+    pub(crate) fn take_timer_irq(&mut self, cycle_count: u32) -> bool {
+        let bit = 1u8 << PIT_IRQ_LINE;
+        if self.mask & bit != 0 {
+            return false;
+        }
+        if self.in_service & bit != 0 {
+            return false;
+        }
+        if !self.pit.borrow_mut().take_pending_timer_irq(cycle_count) {
+            return false;
+        }
+        self.in_service |= bit;
+        true
+    }
+
     pub(crate) fn take_irq(&mut self, cycle_count: u32) -> Option<u8> {
         // PIT (IRQ0)
         {

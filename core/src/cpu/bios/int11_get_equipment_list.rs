@@ -9,6 +9,7 @@ impl Cpu {
     /// Input: None
     /// Output: AX = equipment list word
     pub(in crate::cpu) fn handle_int11_get_equipment_list(&mut self, bus: &mut Bus) {
+        bus.increment_cycle_count(100);
         let equipment = bda_get_equipment_list(bus);
         self.ax = equipment;
     }

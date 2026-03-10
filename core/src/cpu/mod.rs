@@ -222,6 +222,24 @@ impl Cpu {
             if self.cs != BIOS_CODE_SEGMENT {
                 return;
             }
+            // If the BIOS handler enabled interrupts (STI equivalent), check for a
+            // pending timer IRQ before IRET — mirrors real BIOS behaviour where the
+            // CPU can receive IRQs at instruction boundaries inside a handler with IF=1.
+            // This is critical when caller code runs with IF=0 (e.g. Verify386 clears
+            // IF and the caller never restores it) but the BIOS service handler does STI.
+            //
+            // We only inline-dispatch the timer IRQ here, and only when IVT[0x08] still
+            // points to our BIOS handler. If a guest OS has installed its own INT 08h
+            // handler the IRQ is left pending and delivered normally once IF is restored.
+            if self.get_flag(cpu_flag::INTERRUPT) {
+                let timer_ivt_seg =
+                    bus.memory_read_u16(crate::devices::pic::PIT_CPU_IRQ as usize * 4 + 2);
+                if timer_ivt_seg == BIOS_CODE_SEGMENT
+                    && bus.pic_mut().take_timer_irq(bus.cycle_count())
+                {
+                    self.step_bios_int(bus, crate::devices::pic::PIT_CPU_IRQ);
+                }
+            }
             self.patch_flags_and_iret(bus);
             return;
         }
@@ -355,7 +373,11 @@ impl Cpu {
         self.ip = 0;
         // On 8086, bits 12-15 of FLAGS are physically pulled high (always 1).
         // On 286+, bits 12-15 are 0 after reset.
-        self.flags = if self.cpu_type == CpuType::I8086 { 0xF002 } else { 0x0002 };
+        self.flags = if self.cpu_type == CpuType::I8086 {
+            0xF002
+        } else {
+            0x0002
+        };
         self.halted = false;
         self.exit_code = None;
         self.segment_override = None;
