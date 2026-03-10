@@ -31,7 +31,7 @@
   - GC register 0x03 (Data Rotate / Function Select) — 0x00
   - GC register 0x05 (Graphics Mode) — 0x00, 0x02
   - GC register 0x08 (Bit Mask) — many different values
-- [ ] Get SvarDos working (see ai-analysis/svardos-boot-investigation.md)
+- [X] Get SvarDos working (see ai-analysis/svardos-boot-investigation.md)
 - [ ] Test SimCity (1989)
 - [ ] Add VGA support
 - [ ] CGA Composite mode
@@ -42,6 +42,7 @@
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
+- [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
 - [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code

@@ -203,6 +203,13 @@ impl Cpu {
             }
         }
 
+        // If halted, wait for an interrupt to wake us — do not execute instructions.
+        // Advance cycles so the PIT timer can fire and eventually deliver an IRQ.
+        if self.halted {
+            bus.increment_cycle_count(timing::cycles::HLT);
+            return;
+        }
+
         // service any bios routines
         if self.cs == BIOS_CODE_SEGMENT {
             if self.ip > 0xff {
@@ -313,6 +320,7 @@ impl Cpu {
                 self.get_flag(cpu_flag::OVERFLOW) as u8,
             );
         }
+        self.halted = false;
         self.push(self.flags, bus);
         self.push(self.cs, bus);
         self.push(self.ip, bus);
