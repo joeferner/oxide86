@@ -232,6 +232,7 @@ fn run(cli: Cli) -> Result<()> {
                 match event {
                     WindowEvent::CloseRequested => {
                         log::info!("Window close requested");
+                        computer.log_cpu_state();
                         // use sink down here to make sure it doesn't get dropped
                         if let Some(audio_sink) = &app_state.audio_sink {
                             audio_sink.lock().unwrap().log_on_drop(false);

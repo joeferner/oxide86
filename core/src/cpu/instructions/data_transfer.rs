@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, CpuType, timing},
+    cpu::{Cpu, CpuType, cpu_flag, timing},
     physical_address,
 };
 
@@ -506,11 +506,26 @@ impl Cpu {
 
     /// POPF - Pop Flags Register (opcode 9D)
     /// Pops a word from the stack into the FLAGS register
-    /// On 8086: only bits 0-11 can be modified, bit 1 is always 1
+    /// 8086: bits 12-15 are physically pulled high and cannot be cleared
+    /// 286 real mode: bits 12-15 (IOPL, NT) cannot be set by POPF (remain 0)
+    /// 386+ real mode: IOPL (bits 12-13) and NT (bit 14) are freely settable
     pub(in crate::cpu) fn popf(&mut self, bus: &mut Bus) {
         let value = self.pop(bus);
-        // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
-        self.flags = (value & 0x0FFF) | 0x0002;
+        let old_if = self.get_flag(cpu_flag::INTERRUPT);
+        self.flags = match self.cpu_type {
+            CpuType::I8086 => (value & 0x0FFF) | 0xF002, // bits 12-15 always 1 on 8086
+            CpuType::I80286 => (value & 0x0FFF) | 0x0002, // bits 12-15 always 0 in 286 real mode
+            _ => (value & 0x7FFF) | 0x0002, // 386+: IOPL/NT settable, bit 15 reserved 0
+        };
+        let new_if = self.get_flag(cpu_flag::INTERRUPT);
+        if self.exec_logging_enabled && old_if != new_if {
+            log::info!(
+                "POPF: IF {} -> {} (FLAGS={:04X})",
+                old_if as u8,
+                new_if as u8,
+                value
+            );
+        }
 
         // POPF: 8 cycles
         bus.increment_cycle_count(timing::cycles::POPF)

@@ -437,4 +437,8 @@ impl Computer {
     pub fn is_terminal_halt(&self) -> bool {
         self.cpu.is_terminal_halt()
     }
+
+    pub fn log_cpu_state(&self) {
+        self.cpu.log_state();
+    }
 }

@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, cpu_flag, timing},
+    cpu::{Cpu, CpuType, cpu_flag, timing},
     physical_address,
 };
 
@@ -30,10 +30,27 @@ impl Cpu {
         let new_cs = self.pop(bus);
         let new_flags = self.pop(bus);
 
+        let old_if = self.get_flag(cpu_flag::INTERRUPT);
+        let new_if = (new_flags & cpu_flag::INTERRUPT) != 0;
+
         self.ip = new_ip;
         self.cs = new_cs;
-        // 8086 behavior: only allow bits 0-11 to be modified, force bit 1 to 1
-        self.flags = (new_flags & 0x0FFF) | 0x0002;
+        self.flags = match self.cpu_type {
+            CpuType::I8086 => (new_flags & 0x0FFF) | 0xF002,
+            CpuType::I80286 => (new_flags & 0x0FFF) | 0x0002,
+            _ => (new_flags & 0x7FFF) | 0x0002,
+        };
+
+        if self.exec_logging_enabled && old_if != new_if {
+            log::info!(
+                "IRET: IF {} -> {} (FLAGS={:04X}) -> {:04X}:{:04X}",
+                old_if as u8,
+                new_if as u8,
+                new_flags,
+                new_cs,
+                new_ip
+            );
+        }
 
         // IRET: 24 cycles
         bus.increment_cycle_count(timing::cycles::IRET)

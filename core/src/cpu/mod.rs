@@ -152,6 +152,47 @@ impl Cpu {
         (self.flags & flag) != 0
     }
 
+    /// Log the current CPU state (registers, flags, etc.)
+    pub(crate) fn log_state(&self) {
+        let ax = self.ax;
+        let bx = self.bx;
+        let cx = self.cx;
+        let dx = self.dx;
+        log::info!("CPU State ({}):", self.cpu_type);
+        log::info!("  AX={ax:04X}  BX={bx:04X}  CX={cx:04X}  DX={dx:04X}",);
+        log::info!(
+            "  SI={:04X}  DI={:04X}  SP={:04X}  BP={:04X}",
+            self.si,
+            self.di,
+            self.sp,
+            self.bp
+        );
+        log::info!(
+            "  CS={:04X}  DS={:04X}  SS={:04X}  ES={:04X}  FS={:04X}  GS={:04X}",
+            self.cs,
+            self.ds,
+            self.ss,
+            self.es,
+            self.fs,
+            self.gs
+        );
+        log::info!("  IP={:04X}", self.ip);
+        log::info!(
+            "  Flags={:04X}  CF={} PF={} AF={} ZF={} SF={} TF={} IF={} DF={} OF={}",
+            self.flags,
+            self.get_flag(cpu_flag::CARRY) as u8,
+            self.get_flag(cpu_flag::PARITY) as u8,
+            self.get_flag(cpu_flag::AUXILIARY) as u8,
+            self.get_flag(cpu_flag::ZERO) as u8,
+            self.get_flag(cpu_flag::SIGN) as u8,
+            self.get_flag(cpu_flag::TRAP) as u8,
+            self.get_flag(cpu_flag::INTERRUPT) as u8,
+            self.get_flag(cpu_flag::DIRECTION) as u8,
+            self.get_flag(cpu_flag::OVERFLOW) as u8,
+        );
+        log::info!("  halted={}  exit_code={:?}", self.halted, self.exit_code);
+    }
+
     pub(crate) fn step(&mut self, bus: &mut Bus) {
         // service any interrupts coming from the PIC
         if self.get_flag(cpu_flag::INTERRUPT) {
@@ -239,6 +280,21 @@ impl Cpu {
     /// Dispatch an interrupt: push FLAGS/CS/IP, clear IF/TF, load CS:IP from IVT.
     /// Common mechanism for INT instructions and hardware IRQs.
     fn dispatch_interrupt(&mut self, bus: &mut Bus, int_num: u8) {
+        if self.exec_logging_enabled {
+            log::info!(
+                "pushing flags={:04X}  CF={} PF={} AF={} ZF={} SF={} TF={} IF={} DF={} OF={}",
+                self.flags,
+                self.get_flag(cpu_flag::CARRY) as u8,
+                self.get_flag(cpu_flag::PARITY) as u8,
+                self.get_flag(cpu_flag::AUXILIARY) as u8,
+                self.get_flag(cpu_flag::ZERO) as u8,
+                self.get_flag(cpu_flag::SIGN) as u8,
+                self.get_flag(cpu_flag::TRAP) as u8,
+                self.get_flag(cpu_flag::INTERRUPT) as u8,
+                self.get_flag(cpu_flag::DIRECTION) as u8,
+                self.get_flag(cpu_flag::OVERFLOW) as u8,
+            );
+        }
         self.push(self.flags, bus);
         self.push(self.cs, bus);
         self.push(self.ip, bus);
@@ -297,7 +353,9 @@ impl Cpu {
         self.fs = 0;
         self.gs = 0;
         self.ip = 0;
-        self.flags = 0x0002; // Reserved bit always set
+        // On 8086, bits 12-15 of FLAGS are physically pulled high (always 1).
+        // On 286+, bits 12-15 are 0 after reset.
+        self.flags = if self.cpu_type == CpuType::I8086 { 0xF002 } else { 0x0002 };
         self.halted = false;
         self.exit_code = None;
         self.segment_override = None;
@@ -330,6 +388,9 @@ impl Cpu {
     }
 
     fn step_bios_int(&mut self, bus: &mut Bus, irq: u8) {
+        if self.exec_logging_enabled {
+            log::info!("running internal bios interrupt code 0x{irq:02X}");
+        }
         match irq {
             0x08 => self.handle_int08_timer_interrupt(bus),
             0x09 => self.handle_int09_keyboard_hardware_interrupt(bus),

@@ -413,6 +413,9 @@ impl Cpu {
 
     /// CLI - Clear Interrupt Flag (opcode 0xFA)
     pub(in crate::cpu) fn cli(&mut self, bus: &mut Bus) {
+        if self.exec_logging_enabled && self.get_flag(cpu_flag::INTERRUPT) {
+            log::info!("CLI: IF 1 -> 0 at {:04X}:{:04X}", self.cs, self.ip);
+        }
         self.set_flag(cpu_flag::INTERRUPT, false);
 
         // CLI: 2 cycles
@@ -421,6 +424,9 @@ impl Cpu {
 
     /// STI - Set Interrupt Flag (opcode 0xFB)
     pub(in crate::cpu) fn sti(&mut self, bus: &mut Bus) {
+        if self.exec_logging_enabled && !self.get_flag(cpu_flag::INTERRUPT) {
+            log::info!("STI: IF 0 -> 1 at {:04X}:{:04X}", self.cs, self.ip);
+        }
         self.set_flag(cpu_flag::INTERRUPT, true);
 
         // STI: 2 cycles
