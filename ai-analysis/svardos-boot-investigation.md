@@ -180,12 +180,88 @@ cpu_init10:
 | Option | Effect |
 |--------|--------|
 | Run emulator as **`CpuType::I8086`** | `push sp` uses post-decrement (8086 behavior), `Verify386` takes `jne` branch, `popf` never executes, IF stays 1 — **confirmed working** |
-| Run emulator as **`CpuType::I80286`** or higher | Both `Verify386` calls clear IF; the second (`cpu_init`) is never followed by `sti` before `get_boot_options` — **hangs** |
+| Run emulator as **`CpuType::I80286`** or higher | Both `Verify386` calls clear IF; the second (`cpu_init`) is never followed by `sti` before `get_boot_options` — **hangs in emulator, works on real 286 hardware** |
 
-This is a **bug in SvardOS/DR-DOS** (`Verify386` should preserve IF, or each
-callsite should restore it with `sti`). The emulator's `popf` implementation is
-correct — on a real 286 in real mode, `popf` with IF=0 in the value does clear
-IF. SvardOS would exhibit the same hang on real 286 hardware.
+SvardOS works correctly on real 286 hardware. The hang is therefore **not a
+SvardOS bug** — it exposes a behavioural gap in the emulator's INT 0x1A
+implementation. See the next section.
+
+## Emulator Behavioural Gap: INT 0x1A Not Delivering Timer Ticks with IF=0
+
+### What Real Hardware Does
+
+On a real 286, `Verify386` clears IF. When `option_key` subsequently calls
+`int 0x1a AH=00h` to read the tick counter:
+
+1. The `int 0x1a` instruction pushes FLAGS (IF=0), CS, IP; clears IF; jumps to
+   the BIOS ROM handler.
+2. The ROM handler immediately executes `sti` — an actual x86 instruction.
+   IF becomes 1.
+3. The handler reads BDA[0x46C] via additional x86 instructions.
+4. **Between those x86 instructions**, with IF=1, any pending timer IRQ fires
+   normally: the CPU delivers INT 08h → increments BDA[0x46C] → `iret` →
+   handler continues.
+5. Handler returns the updated counter. `iret` restores IF=0 for the caller.
+
+So even though the `option_key` loop runs with IF=0, the timer counter still
+advances — one tick can be delivered on each INT 0x1A call that happens to
+coincide with a PIT edge.
+
+### What the Emulator Does
+
+The emulator handles INT 0x1A as a single Rust function call
+(`handle_int1a_time_services` in `core/src/cpu/bios/int1a_time_services.rs`):
+
+```rust
+pub(in crate::cpu) fn handle_int1a_time_services(&mut self, bus: &mut Bus) {
+    // Tries to model the BIOS sti, but...
+    self.set_flag(cpu_flag::INTERRUPT, true);
+    // BDA is read in the same Rust call — take_irq() never runs between these.
+    let function = (self.ax >> 8) as u8;
+    match function {
+        0x00 => self.int1a_get_system_time(bus),  // reads stale BDA[0x46C]
+        ...
+    }
+}
+```
+
+`take_irq()` is only called at the top of `cpu::step()`, not inside BIOS
+handlers. Setting IF=1 mid-handler has no effect because no instruction
+boundary exists between the `set_flag` and the BDA read. After the handler
+returns, `patch_flags_and_iret` restores the caller's IF=0 from the saved
+stack frame. Result: BDA[0x46C] never advances and the `option_key` loop runs
+forever.
+
+### Proposed Fix
+
+Add a `take_timer_irq` method to `Pic` that consumes only the pending timer
+IRQ (without disturbing other pending IRQs). Call it from
+`handle_int1a_time_services` after `set_flag(IF, true)`:
+
+```rust
+// In Pic:
+pub(crate) fn take_timer_irq(&mut self, cycle_count: u32) -> bool {
+    let bit = 1u8 << PIT_IRQ_LINE;
+    let masked = self.mask & bit != 0;
+    let in_service = self.in_service & bit != 0;
+    if !masked && !in_service && self.pit.borrow_mut().take_pending_timer_irq(cycle_count) {
+        self.in_service |= bit;
+        return true;
+    }
+    false
+}
+
+// In handle_int1a_time_services, after set_flag(IF, true):
+if bus.pic_mut().take_timer_irq(bus.cycle_count()) {
+    bda_increment_timer_counter(bus);
+    bus.io_write_u8(PIC_IO_PORT_COMMAND, PIC_COMMAND_EOI);
+}
+```
+
+This is consistent with real hardware: the PIT's cycle-count check ensures a
+tick is only delivered if enough emulated time has actually elapsed (same
+rate limit as on real hardware). The fix does not unconditionally advance the
+counter — it only delivers a tick when the PIT says one is due.
 
 ## Why the PIC/PIT Appears Not to Fire (in the Log)
 
