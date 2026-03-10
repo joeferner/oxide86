@@ -21,6 +21,7 @@ impl Cpu {
             0x10 => self.int15_top_view_multi_dos(),
             0x41 => self.int15_wait_external_event(),
             0x4F => self.int15_keyboard_intercept(),
+            0x53 => self.int15_apm_not_present(),
             0x88 => self.int15_get_extended_memory(bus),
             0x91 => self.int15_device_interrupt_complete(),
             0xC0 => self.int15_get_system_config(),
@@ -96,6 +97,18 @@ impl Cpu {
     /// post-interrupt processing. Not supported on standard AT-class hardware.
     fn int15_device_interrupt_complete(&mut self) {
         // Not supported on this system; caller should check CF and continue regardless
+        self.set_flag(cpu_flag::CARRY, true);
+    }
+
+    /// INT 15h AH=53h - APM (Advanced Power Management) Interface
+    ///
+    /// Output:
+    ///   CF = 1, AH = 86h (function not supported)
+    ///
+    /// APM is not present in this emulation; programs that check for APM
+    /// should gracefully fall back to non-APM operation.
+    fn int15_apm_not_present(&mut self) {
+        self.ax = (self.ax & 0x00FF) | 0x8600; // AH = 0x86 (function not supported)
         self.set_flag(cpu_flag::CARRY, true);
     }
 
