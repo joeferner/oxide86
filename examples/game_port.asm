@@ -1,9 +1,6 @@
-[CPU 8086]
-org 0x0100              ; .COM file
-
 ; Game port demo.
 ; Reads joystick axis positions and button states and displays them live.
-; Exits when any joystick button is pressed.
+; Exits when any key is pressed.
 ;
 ; Game port I/O (port 0x201):
 ;   Write: fire one-shot timing circuit for all four axes.
@@ -19,6 +16,9 @@ org 0x0100              ; .COM file
 ; Axis reading technique:
 ;   Write to 0x201, then count loop iterations until the timing bit clears.
 ;   Higher counts = higher resistance = joystick pushed further from center.
+
+[CPU 8086]
+org 0x0100              ; .COM file
 
 GAME_PORT equ 0x201
 
@@ -103,15 +103,16 @@ main_loop:
     int 0x10
     call show_buttons
 
-    ; Exit when any button is pressed (any of bits 4-7 is 0)
-    mov al, [port_val]
-    and al, 0xF0
-    cmp al, 0xF0
-    jne exit
+    ; Exit when any key is pressed
+    call check_exit
 
     jmp main_loop
 
 exit:
+    ; Consume the key from the buffer
+    mov ah, 0x00
+    int 0x16
+
     ; Restore cursor
     mov ah, 0x01
     mov cx, 0x0607
@@ -255,6 +256,16 @@ show_buttons:
     ret
 
 ; -----------------------------------------------------------------------
+; check_exit: check if a key is waiting; if so jump to exit.
+; Uses INT 16h AH=01h (peek, non-blocking). ZF=0 means key available.
+; -----------------------------------------------------------------------
+check_exit:
+    mov ah, 0x01
+    int 0x16
+    jnz exit
+    ret
+
+; -----------------------------------------------------------------------
 ; print_dec: print AX as a 5-digit decimal number. Clobbers AX, BX, DX.
 ; -----------------------------------------------------------------------
 print_dec:
@@ -295,7 +306,7 @@ print_dec:
 ; -----------------------------------------------------------------------
 ; Data
 ; -----------------------------------------------------------------------
-title_msg  db 'Game port demo - press any joystick button to exit', 13, 10, '$'
+title_msg  db 'Game port demo - press any key to exit', 13, 10, '$'
 lbl_x1     db 'J1 X: $'
 lbl_y1     db '    Y: $'
 lbl_x2     db 'J2 X: $'

@@ -405,12 +405,17 @@ impl Cpu {
             // Some boot loaders expect this, others set up their own stack
             self.ss = 0x0000;
             self.sp = 0x7C00;
+            self.current_psp = 0x0000;
         } else {
             // Initialize other segments to reasonable defaults
             self.ds = segment;
             self.es = segment;
             self.ss = segment;
             self.sp = 0xFFFE; // Stack grows down from top of segment
+            // For a direct COM load, the PSP is at segment:0x0000.
+            // Memory there is zero-initialized, so the INT 22h terminate vector
+            // at PSP+0x0A reads as 0x0000:0x0000, causing int21_exit to halt.
+            self.current_psp = segment;
         }
 
         // Enable interrupts - DOS programs expect IF=1 (inherited from DOS environment)

@@ -1118,10 +1118,12 @@ impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
             0xA6 => "cmpsb".to_string(),
             0xA7 => "cmpsw".to_string(),
             0xA8 => {
+                self.mark_reg_input("al");
                 let imm = self.fetch_byte();
                 format!("test al, 0x{:02x}", imm)
             }
             0xA9 => {
+                self.mark_reg_input("ax");
                 let imm = self.fetch_word();
                 format!("test ax, 0x{:04x}", imm)
             }
@@ -1305,8 +1307,14 @@ impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
             }
 
             // IN/OUT with DX
-            0xEC => "in al, dx".to_string(),
-            0xED => "in ax, dx".to_string(),
+            0xEC => {
+                self.mark_reg_input("dx");
+                "in al, dx".to_string()
+            }
+            0xED => {
+                self.mark_reg_input("dx");
+                "in ax, dx".to_string()
+            }
             0xEE => {
                 self.mark_reg_input("al");
                 self.mark_reg_input("dx");
