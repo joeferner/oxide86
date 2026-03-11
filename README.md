@@ -92,6 +92,8 @@ oxide86-disktools -- copy -i test.img my-files/* ::/
 
 - :white_check_mark: Alley Cat
   ![Screenshot](docs/screenshots/alleycat.png)
+- :white_check_mark: Kings Quest I
+  ![Screenshot](docs/screenshots/kq1.png)
 
 
 ## Resources

@@ -33,14 +33,15 @@
   - GC register 0x08 (Bit Mask) — many different values
 - [X] Get SvarDos working (see ai-analysis/svardos-boot-investigation.md)
 - [X] Add Game Port/Joystick support (see ai-analysis/joystick-implementation.md)
-- [ ] Test King's Quest I
+- [X] Test King's Quest I
+- [ ] Add AdLib support
+  - [ ] CLI --sound-card=none/adlib option
+  - [ ] Test AdLib JukeBox
+  - [ ] Test The Colonel's Bequest (install.exe select adlib)
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Test SimCity (1989)
 - [ ] Add VGA support
 - [ ] CGA Composite mode
-- [ ] Add AdLib support
-  - [ ] CLI --sound-card=none/adlib option
-  - [ ] Test The Colonel's Bequest (install.exe select adlib)
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
