@@ -4,6 +4,7 @@ pub mod disk;
 pub mod gilrs_joystick;
 pub mod logging;
 pub mod rodio_pc_speaker;
+pub mod rodio_sound_card;
 pub mod throttle;
 
 use std::sync::{Arc, RwLock};
@@ -13,6 +14,8 @@ use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
     devices::{
+        SoundCardType,
+        adlib::Adlib,
         pc_speaker::{NullPcSpeaker, PcSpeaker},
         serial_mouse::SerialMouse,
         uart::ComPortDevice,
@@ -24,7 +27,7 @@ use oxide86_core::{
 
 use crate::{
     cli::CommonCli, clock::NativeClock, disk::FileDiskBackend, gilrs_joystick::GilrsJoystick,
-    rodio_pc_speaker::RodioPcSpeaker,
+    rodio_pc_speaker::RodioPcSpeaker, rodio_sound_card::RodioSoundCard,
 };
 use rodio::{DeviceSinkBuilder, MixerDeviceSink};
 
@@ -78,9 +81,11 @@ pub fn create_computer(
         }
     };
 
+    let cpu_freq = (cli.speed * 1_000_000.0) as u64;
+
     let mut computer = Computer::new(ComputerConfig {
         cpu_type,
-        clock_speed: (cli.speed * 1_000_000.0) as u32,
+        clock_speed: cpu_freq as u32,
         memory_size: parse_memory(&cli.memory)?,
         clock: Box::new(NativeClock::new()),
         hard_disks,
@@ -88,6 +93,25 @@ pub fn create_computer(
         video_buffer,
         pc_speaker,
     });
+
+    if let Some(sound_card_type) = SoundCardType::parse(&cli.sound_card) {
+        match sound_card_type {
+            SoundCardType::None => {}
+            SoundCardType::AdLib => {
+                let adlib = Adlib::new(cpu_freq);
+                if let Some(sink) = &sink {
+                    sink.mixer().add(RodioSoundCard::new(adlib.consumer()));
+                }
+                computer.add_device(adlib);
+            }
+        }
+    } else {
+        return Err(anyhow!(
+            "Could not parse sound card type: {}",
+            cli.sound_card
+        ));
+    }
+
     if cli.exec_log {
         computer.set_exec_logging_enabled(true);
     }

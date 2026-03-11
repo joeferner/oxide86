@@ -22,6 +22,7 @@ impl Cpu {
             0x41 => self.int15_wait_external_event(),
             0x4F => self.int15_keyboard_intercept(),
             0x53 => self.int15_apm_not_present(),
+            0x87 => self.int15_move_extended_memory(bus),
             0x88 => self.int15_get_extended_memory(bus),
             0x91 => self.int15_device_interrupt_complete(),
             0xC0 => self.int15_get_system_config(),
@@ -110,6 +111,67 @@ impl Cpu {
     fn int15_apm_not_present(&mut self) {
         self.ax = (self.ax & 0x00FF) | 0x8600; // AH = 0x86 (function not supported)
         self.set_flag(cpu_flag::CARRY, true);
+    }
+
+    /// INT 15h AH=87h - Move Extended Memory Block
+    ///
+    /// Copies a block of memory between conventional and extended memory using a
+    /// descriptor table. On real hardware this temporarily enters protected mode;
+    /// here we simply resolve the addresses from the descriptor table and memcpy.
+    ///
+    /// Input:
+    ///   AH = 87h
+    ///   CX = number of words to copy
+    ///   ES:SI = pointer to 48-byte descriptor table (6 × 8-byte entries):
+    ///     Entry 0 (offset  0): Null descriptor
+    ///     Entry 1 (offset  8): GDT self-descriptor
+    ///     Entry 2 (offset 16): Source descriptor  (base at bytes 2-4)
+    ///     Entry 3 (offset 24): Destination descriptor (base at bytes 2-4)
+    ///     Entry 4 (offset 32): BIOS code descriptor
+    ///     Entry 5 (offset 40): BIOS stack descriptor
+    ///
+    /// Descriptor base address format (286-style, 3 bytes):
+    ///   byte 2 = base[7:0], byte 3 = base[15:8], byte 4 = base[23:16]
+    ///
+    /// Output:
+    ///   AH = 0, CF = 0 on success
+    fn int15_move_extended_memory(&mut self, bus: &mut Bus) {
+        let word_count = self.cx as usize;
+        let table_phys = ((self.es as usize) << 4) + self.si as usize;
+
+        // Read 24-bit base from descriptor entry at given table offset.
+        // The descriptor table itself is in conventional memory, so use read_u8.
+        let read_base = |bus: &Bus, entry_offset: usize| -> usize {
+            let lo = bus.memory_read_u8(table_phys + entry_offset + 2) as usize;
+            let mid = bus.memory_read_u8(table_phys + entry_offset + 3) as usize;
+            let hi = bus.memory_read_u8(table_phys + entry_offset + 4) as usize;
+            lo | (mid << 8) | (hi << 16)
+        };
+
+        let src_base = read_base(bus, 16); // Entry 2
+        let dst_base = read_base(bus, 24); // Entry 3
+
+        log::debug!(
+            "INT 15h AH=87h: Move {} words from 0x{:06X} to 0x{:06X}",
+            word_count,
+            src_base,
+            dst_base
+        );
+
+        // Copy word_count * 2 bytes. Addresses may be above 1 MB (extended
+        // memory). bus.memory_read_u8 / memory_write_u8 go straight to Memory
+        // for addresses outside the MMIO range, which covers all of extended memory.
+        let byte_count = word_count * 2;
+        // Read all source bytes first to handle overlapping moves correctly
+        let buf: Vec<u8> = (0..byte_count)
+            .map(|i| bus.memory_read_u8(src_base + i))
+            .collect();
+        for (i, byte) in buf.into_iter().enumerate() {
+            bus.memory_write_u8(dst_base + i, byte);
+        }
+
+        self.ax &= 0x00FF; // AH = 0 (success)
+        self.set_flag(cpu_flag::CARRY, false);
     }
 
     /// INT 15h AH=88h - Get Extended Memory Size

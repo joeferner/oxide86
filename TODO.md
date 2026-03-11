@@ -35,7 +35,7 @@
 - [X] Add Game Port/Joystick support (see ai-analysis/joystick-implementation.md)
 - [X] Test King's Quest I
 - [ ] Add AdLib support
-  - [ ] CLI --sound-card=none/adlib option
+  - [X] CLI --sound-card=none/adlib option
   - [ ] Test AdLib JukeBox
   - [ ] Test The Colonel's Bequest (install.exe select adlib)
 - [ ] Test MS Flight Simulator 1.05

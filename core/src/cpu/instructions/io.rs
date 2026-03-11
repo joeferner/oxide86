@@ -1,4 +1,4 @@
-use crate::{bus::Bus, cpu::Cpu};
+use crate::{bus::Bus, cpu::{Cpu, timing}};
 
 impl Cpu {
     /// OUT imm8, AL (0xE6)
@@ -6,6 +6,7 @@ impl Cpu {
     pub(in crate::cpu) fn out_imm8_al(&mut self, bus: &mut Bus) {
         let port = self.fetch_byte(bus) as u16;
         let value = (self.ax & 0xFF) as u8;
+        bus.increment_cycle_count(timing::cycles::OUT_IMM);
         bus.io_write_u8(port, value);
     }
 
@@ -13,6 +14,7 @@ impl Cpu {
     /// Read byte from immediate 8-bit port address to AL
     pub(in crate::cpu) fn in_al_imm8(&mut self, bus: &mut Bus) {
         let port = self.fetch_byte(bus) as u16;
+        bus.increment_cycle_count(timing::cycles::IN_IMM);
         let value = bus.io_read_u8(port);
 
         // Set AL (low byte of AX)
@@ -23,6 +25,7 @@ impl Cpu {
     /// Read byte from port address in DX to AL
     pub(in crate::cpu) fn in_al_dx(&mut self, bus: &mut Bus) {
         let port = self.dx;
+        bus.increment_cycle_count(timing::cycles::IN_DX);
         let value = bus.io_read_u8(port);
 
         // Set AL (low byte of AX)
@@ -34,6 +37,7 @@ impl Cpu {
     pub(in crate::cpu) fn out_dx_al(&mut self, bus: &mut Bus) {
         let port = self.dx;
         let value = (self.ax & 0xFF) as u8;
+        bus.increment_cycle_count(timing::cycles::OUT_DX);
         bus.io_write_u8(port, value);
     }
 }

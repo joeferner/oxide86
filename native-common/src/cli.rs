@@ -31,6 +31,10 @@ pub struct CommonCli {
     #[arg(long = "video-card", default_value = "vga")]
     pub video_card: String,
 
+    /// Sound card type to emulate (none, adlib)
+    #[arg(long = "sound-card", default_value = "adlib")]
+    pub sound_card: String,
+
     /// Enable execution logging (logs each instruction to oxide86.log)
     #[arg(long = "exec-log")]
     pub exec_log: bool,
