@@ -405,6 +405,7 @@ impl Cpu {
                     },
                     40,
                     CHAR_HEIGHT_8,
+                    attr & 0x0F,
                 );
             }
             Mode::M10Ega640x350x16 => {
@@ -418,6 +419,7 @@ impl Cpu {
                     },
                     80,
                     CHAR_HEIGHT_14,
+                    attr & 0x0F,
                 );
             }
             _ => {
@@ -510,6 +512,7 @@ impl Cpu {
                     },
                     40,
                     CHAR_HEIGHT_8,
+                    attr & 0x0F,
                 );
             }
             Mode::M10Ega640x350x16 => {
@@ -523,6 +526,7 @@ impl Cpu {
                     },
                     80,
                     CHAR_HEIGHT_14,
+                    attr & 0x0F,
                 );
             }
             _ => {
@@ -809,13 +813,23 @@ impl Cpu {
             Mode::M0DEga320x200x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_8);
                 bus.video_card_mut().ega_draw_glyph_transparent(
-                    &glyph, row, col, fg_color, 40, CHAR_HEIGHT_8,
+                    &glyph,
+                    row,
+                    col,
+                    fg_color,
+                    40,
+                    CHAR_HEIGHT_8,
                 );
             }
             Mode::M10Ega640x350x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_14);
                 bus.video_card_mut().ega_draw_glyph_transparent(
-                    &glyph, row, col, fg_color, 80, CHAR_HEIGHT_14,
+                    &glyph,
+                    row,
+                    col,
+                    fg_color,
+                    80,
+                    CHAR_HEIGHT_14,
                 );
             }
             _ => {

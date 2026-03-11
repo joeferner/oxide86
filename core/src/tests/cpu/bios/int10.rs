@@ -210,6 +210,24 @@ pub(crate) fn ega_scroll_down_window() {
     );
 }
 
+/// INT 10h / AH=06h+07h - EGA scroll clear respects fill color (regression test)
+/// Clears the top half to white via AH=06h and the bottom half to bright blue via AH=07h,
+/// asserts the visual output, then verifies VRAM plane values match the requested colors.
+#[test_log::test]
+pub(crate) fn ega_scroll_clear_color() {
+    let name = "cpu/bios/int10/ega_scroll_clear_color";
+    run_test(
+        name,
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run(); // runs until INT 16h key wait
+            assert_screen(name, video_buffer);
+            computer.push_key_press(0x1C); // Enter
+            computer.run(); // VRAM checks then exits
+        },
+    );
+}
+
 /// INT 10h / AH=FEh - Get Video Buffer
 /// Sets ES=0xB800, calls the function, and verifies ES is unchanged
 /// and DI=0 (no virtual buffer redirection active).

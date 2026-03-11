@@ -337,12 +337,13 @@ impl VideoCard {
     /// Scroll up a rectangular window in EGA planar VRAM.
     ///
     /// Coordinates are in character cells. `lines == 0` clears the window.
-    /// Cleared/blank rows are filled with 0 (black) in all planes.
+    /// Cleared/blank rows are filled with `fill_color` (EGA color 0-15) in all planes.
     pub(crate) fn ega_scroll_up_window(
         &self,
         w: ScrollWindow,
         bytes_per_row: usize,
         char_height: usize,
+        fill_color: u8,
     ) {
         let ScrollWindow {
             lines,
@@ -351,6 +352,24 @@ impl VideoCard {
             bottom,
             right,
         } = w;
+        let fill_bytes: [u8; 4] = [
+            if fill_color & 1 != 0 { 0xFF } else { 0x00 },
+            if (fill_color >> 1) & 1 != 0 {
+                0xFF
+            } else {
+                0x00
+            },
+            if (fill_color >> 2) & 1 != 0 {
+                0xFF
+            } else {
+                0x00
+            },
+            if (fill_color >> 3) & 1 != 0 {
+                0xFF
+            } else {
+                0x00
+            },
+        ];
         let mut buffer = self.buffer.write().unwrap();
         if lines == 0 {
             for char_row in top..=bottom {
@@ -359,10 +378,10 @@ impl VideoCard {
                     let row_start = pixel_y * bytes_per_row;
                     for col in left..=right {
                         let byte_off = row_start + col as usize;
-                        for plane in 0..4usize {
+                        for (plane, &fill_byte) in fill_bytes.iter().enumerate() {
                             let vram_off = plane * EGA_PLANE_SIZE + byte_off;
                             if vram_off < buffer.vram_len() {
-                                buffer.write_vram(vram_off, 0);
+                                buffer.write_vram(vram_off, fill_byte);
                             }
                         }
                     }
@@ -388,10 +407,10 @@ impl VideoCard {
                                 }
                             }
                         } else {
-                            for plane in 0..4usize {
+                            for (plane, &fill_byte) in fill_bytes.iter().enumerate() {
                                 let dv = plane * EGA_PLANE_SIZE + dest_off;
                                 if dv < buffer.vram_len() {
-                                    buffer.write_vram(dv, 0);
+                                    buffer.write_vram(dv, fill_byte);
                                 }
                             }
                         }
@@ -404,12 +423,13 @@ impl VideoCard {
     /// Scroll down a rectangular window in EGA planar VRAM.
     ///
     /// Coordinates are in character cells. `lines == 0` clears the window.
-    /// Cleared/blank rows are filled with 0 (black) in all planes.
+    /// Cleared/blank rows are filled with `fill_color` (EGA color 0-15) in all planes.
     pub(crate) fn ega_scroll_down_window(
         &self,
         w: ScrollWindow,
         bytes_per_row: usize,
         char_height: usize,
+        fill_color: u8,
     ) {
         let ScrollWindow {
             lines,
@@ -418,6 +438,24 @@ impl VideoCard {
             bottom,
             right,
         } = w;
+        let fill_bytes: [u8; 4] = [
+            if fill_color & 1 != 0 { 0xFF } else { 0x00 },
+            if (fill_color >> 1) & 1 != 0 {
+                0xFF
+            } else {
+                0x00
+            },
+            if (fill_color >> 2) & 1 != 0 {
+                0xFF
+            } else {
+                0x00
+            },
+            if (fill_color >> 3) & 1 != 0 {
+                0xFF
+            } else {
+                0x00
+            },
+        ];
         let mut buffer = self.buffer.write().unwrap();
         if lines == 0 {
             for char_row in top..=bottom {
@@ -426,10 +464,10 @@ impl VideoCard {
                     let row_start = pixel_y * bytes_per_row;
                     for col in left..=right {
                         let byte_off = row_start + col as usize;
-                        for plane in 0..4usize {
+                        for (plane, &fill_byte) in fill_bytes.iter().enumerate() {
                             let vram_off = plane * EGA_PLANE_SIZE + byte_off;
                             if vram_off < buffer.vram_len() {
-                                buffer.write_vram(vram_off, 0);
+                                buffer.write_vram(vram_off, fill_byte);
                             }
                         }
                     }
@@ -455,10 +493,10 @@ impl VideoCard {
                                 }
                             }
                         } else {
-                            for plane in 0..4usize {
+                            for (plane, &fill_byte) in fill_bytes.iter().enumerate() {
                                 let dv = plane * EGA_PLANE_SIZE + dest_off;
                                 if dv < buffer.vram_len() {
-                                    buffer.write_vram(dv, 0);
+                                    buffer.write_vram(dv, fill_byte);
                                 }
                             }
                         }
@@ -468,10 +506,10 @@ impl VideoCard {
         }
     }
 
-    /// Draw a character transparently into EGA planar VRAM.
+    /// Draw a character into EGA planar VRAM.
     ///
     /// Foreground pixels (glyph bit = 1) are set to `fg_color` in all planes.
-    /// Background pixels (glyph bit = 0) are left unchanged (transparent).
+    /// Background pixels (glyph bit = 0) are set to 0 (black).
     ///
     /// `char_row` and `char_col` are character-cell coordinates.
     /// `bytes_per_row` is the number of bytes per pixel row (40 for mode 0Dh, 80 for mode 10h).
@@ -491,7 +529,14 @@ impl VideoCard {
         } else {
             font.get_glyph_16(ch)
         };
-        self.ega_draw_glyph_transparent(glyph, char_row, char_col, fg_color, bytes_per_row, char_height);
+        self.ega_draw_glyph_transparent(
+            glyph,
+            char_row,
+            char_col,
+            fg_color,
+            bytes_per_row,
+            char_height,
+        );
     }
 
     /// Draw a pre-fetched glyph into EGA planar VRAM.
