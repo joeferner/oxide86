@@ -610,7 +610,7 @@ impl Cpu {
             for i in 0..count {
                 let col = cursor.col as usize + (i as usize) % cols;
                 let row = cursor.row as usize + (i as usize) / cols;
-                if row >= rows {
+                if row > rows {
                     break;
                 }
                 self.draw_char_graphics(bus, ch, row as u8, col as u8, fg_color, draw_mode);
