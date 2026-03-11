@@ -22,6 +22,9 @@ const VGA_FONT_8X16: &[u8] = include_bytes!("IBM_VGA_8x16.bin");
 /// Each character is 8 bytes, one byte per row, MSB is leftmost pixel
 const CGA_FONT_8X8: &[u8] = include_bytes!("IBM_VGA_8x8.bin");
 
+/// Public re-export of the raw 8x8 font bytes for BIOS ROM mapping.
+pub const CGA_FONT_8X8_DATA: &[u8] = CGA_FONT_8X8;
+
 /// CP437 font wrapper around embedded BIOS fonts
 #[derive(Clone)]
 pub(crate) struct Cp437Font {

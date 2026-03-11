@@ -491,6 +491,22 @@ impl VideoCard {
         } else {
             font.get_glyph_16(ch)
         };
+        self.ega_draw_glyph_transparent(glyph, char_row, char_col, fg_color, bytes_per_row, char_height);
+    }
+
+    /// Draw a pre-fetched glyph into EGA planar VRAM.
+    ///
+    /// Foreground pixels (glyph bit = 1) are set to `fg_color` in all planes.
+    /// Background pixels (glyph bit = 0) are set to 0 (black).
+    pub(crate) fn ega_draw_glyph_transparent(
+        &self,
+        glyph: &[u8],
+        char_row: u8,
+        char_col: u8,
+        fg_color: u8,
+        bytes_per_row: usize,
+        char_height: usize,
+    ) {
         let mut buffer = self.buffer.write().unwrap();
         for (r, &glyph_byte) in glyph.iter().enumerate().take(char_height) {
             let pixel_y = char_row as usize * char_height + r;
@@ -500,8 +516,6 @@ impl VideoCard {
                 if plane_vram >= buffer.vram_len() {
                     continue;
                 }
-                // Foreground pixels (glyph bit=1) → fg_color's plane bit.
-                // Background pixels (glyph bit=0) → 0 (black), matching real BIOS AH=0Eh behavior.
                 let plane_bit = (fg_color >> plane) & 1;
                 let new_val = if plane_bit != 0 { glyph_byte } else { 0 };
                 buffer.write_vram(plane_vram, new_val);

@@ -1,3 +1,4 @@
+use super::int43_font_services::fetch_glyph_int43h;
 use crate::{
     bus::Bus,
     byte_to_printable_char,
@@ -805,7 +806,24 @@ impl Cpu {
                     bus.memory_write_u8(CGA_MEMORY_START + vram_base + 1, new1);
                 }
             }
-            _ => {}
+            Mode::M0DEga320x200x16 => {
+                let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_8);
+                bus.video_card_mut().ega_draw_glyph_transparent(
+                    &glyph, row, col, fg_color, 40, CHAR_HEIGHT_8,
+                );
+            }
+            Mode::M10Ega640x350x16 => {
+                let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_14);
+                bus.video_card_mut().ega_draw_glyph_transparent(
+                    &glyph, row, col, fg_color, 80, CHAR_HEIGHT_14,
+                );
+            }
+            _ => {
+                log::warn!(
+                    "unhandled draw char 0x{ch:02X}('{}')",
+                    byte_to_printable_char(ch)
+                );
+            }
         }
     }
 
