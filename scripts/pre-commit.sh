@@ -9,7 +9,7 @@ cargo build --all
 cargo fmt
 cargo clippy --all -- -D warnings
 ./wasm/scripts/build.sh
-cargo test --all
+./scripts/run-tests.sh
 
 if command -v docker &> /dev/null; then
     echo ""

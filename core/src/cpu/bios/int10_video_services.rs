@@ -22,8 +22,8 @@ use crate::{
         video_card::{
             AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
             DAC_DATA_PORT, DAC_READ_INDEX_PORT, DAC_WRITE_INDEX_PORT, INPUT_STATUS_1_PORT,
-            VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_DATA_ADDR, VIDEO_CARD_REG_CURSOR_END_LINE,
-            VIDEO_CARD_REG_CURSOR_START_LINE,
+            ScrollWindow, VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_DATA_ADDR,
+            VIDEO_CARD_REG_CURSOR_END_LINE, VIDEO_CARD_REG_CURSOR_START_LINE,
         },
         video_set_cursor_pos,
     },
@@ -42,6 +42,14 @@ const FONT_8X8_SEGMENT: u16 = 0xF000;
 const FONT_8X8_OFFSET: u16 = 0xC000; // F000:C000
 #[allow(dead_code)]
 const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
+
+#[derive(Clone, Copy)]
+enum GraphicsDrawMode {
+    Opaque,
+    Xor,
+    XorInverted,
+    Transparent,
+}
 
 impl Cpu {
     /// INT 0x10 - Video Services
@@ -343,22 +351,77 @@ impl Cpu {
         let cols = bda_get_columns(bus);
         let mode = bda_get_video_mode(bus);
 
-        if matches!(mode, Mode::M02ColorText | Mode::M03Text) {
-            scroll_up_advanced(
-                bus,
-                ScrollUp {
-                    lines,
-                    attr,
-                    top,
-                    left,
-                    bottom,
-                    right,
+        match mode {
+            Mode::M02ColorText | Mode::M03Text => {
+                bus.video_card_mut().scroll_text_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    cols as u8,
                     rows,
-                    cols: cols as u8,
-                },
-            );
-        } else {
-            todo!("video mode scroll");
+                    attr,
+                    false,
+                );
+            }
+            Mode::M04Cga320x200x4 => {
+                bus.video_card_mut().cga_scroll_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    2,
+                    false,
+                );
+            }
+            Mode::M06Cga640x200x2 => {
+                bus.video_card_mut().cga_scroll_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    1,
+                    false,
+                );
+            }
+            Mode::M0DEga320x200x16 => {
+                bus.video_card_mut().ega_scroll_up_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    40,
+                    CHAR_HEIGHT_8,
+                );
+            }
+            Mode::M10Ega640x350x16 => {
+                bus.video_card_mut().ega_scroll_up_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    80,
+                    CHAR_HEIGHT_14,
+                );
+            }
+            _ => {
+                log::warn!("INT 10h AH=06h: scroll up not implemented for mode {mode}");
+            }
         }
     }
 
@@ -392,49 +455,77 @@ impl Cpu {
             right
         );
 
-        // Clamp to valid range (real BIOS behavior: clip out-of-range coords)
-        let right = right.min((cols - 1) as u8);
-        let bottom = bottom.min(rows); // rows is already last valid row index from BDA
-        if top > bottom || left > right {
-            return;
-        }
-
-        // TODO
-        // if bus.video().is_graphics_mode() {
-        //     bus.video_mut()
-        //         .scroll_down_window(lines, top, left, bottom, right, attr);
-        //     return;
-        // }
-
-        if lines == 0 {
-            // Clear entire window
-            for row in top..=bottom {
-                for col in left..=right {
-                    let offset = (row as usize * cols as usize + col as usize) * 2;
-                    bus.memory_write_u8(CGA_MEMORY_START + offset, b' ');
-                    bus.memory_write_u8(CGA_MEMORY_START + offset + 1, attr);
-                }
+        let mode = bda_get_video_mode(bus);
+        match mode {
+            Mode::M02ColorText | Mode::M03Text => {
+                bus.video_card_mut().scroll_text_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    cols as u8,
+                    rows,
+                    attr,
+                    true,
+                );
             }
-        } else {
-            // Scroll down by 'lines' rows (process bottom to top)
-            for row in (top..=bottom).rev() {
-                for col in left..=right {
-                    let dest_offset = (row as usize * cols as usize + col as usize) * 2;
-
-                    if row >= top + lines {
-                        // Copy from above - read from video buffer, not memory
-                        let src_row = row - lines;
-                        let src_offset = (src_row as usize * cols as usize + col as usize) * 2;
-                        let ch = bus.memory_read_u8(CGA_MEMORY_START + src_offset);
-                        let at = bus.memory_read_u8(CGA_MEMORY_START + src_offset + 1);
-                        bus.memory_write_u8(CGA_MEMORY_START + dest_offset, ch);
-                        bus.memory_write_u8(CGA_MEMORY_START + dest_offset + 1, at);
-                    } else {
-                        // Fill with blanks
-                        bus.memory_write_u8(CGA_MEMORY_START + dest_offset, b' ');
-                        bus.memory_write_u8(CGA_MEMORY_START + dest_offset + 1, attr);
-                    }
-                }
+            Mode::M04Cga320x200x4 => {
+                bus.video_card_mut().cga_scroll_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    2,
+                    true,
+                );
+            }
+            Mode::M06Cga640x200x2 => {
+                bus.video_card_mut().cga_scroll_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    1,
+                    true,
+                );
+            }
+            Mode::M0DEga320x200x16 => {
+                bus.video_card_mut().ega_scroll_down_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    40,
+                    CHAR_HEIGHT_8,
+                );
+            }
+            Mode::M10Ega640x350x16 => {
+                bus.video_card_mut().ega_scroll_down_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    80,
+                    CHAR_HEIGHT_14,
+                );
+            }
+            _ => {
+                log::warn!("INT 10h AH=07h: scroll down not implemented for mode {mode}");
             }
         }
     }
@@ -486,44 +577,43 @@ impl Cpu {
                 bus.memory_write_u8(CGA_MEMORY_START + offset + 1, attr);
             }
         } else {
-            todo!("Graphics mode: Write Character and Attribute at Cursor")
-            // // Graphics mode: draw character pixel-by-pixel
-            // // IBM CGA BIOS behavior:
-            // // - BL bit 7 = 1: XOR mode
-            // // - BL bit 7 = 0: Normal mode
-            // // - When BOTH char bit 7 AND attr bit 7 are set: invert glyph for inverse effect
-            // let fg_color = attr & 0x0F; // Lower 4 bits = color index
-            // let xor_mode = (attr & 0x80) != 0; // Bit 7 = XOR mode
-            // let invert_glyph = (ch & 0x80) != 0 && xor_mode; // Invert if both bits set
+            // Graphics mode: draw character pixel-by-pixel
+            // IBM CGA BIOS behavior:
+            // - BL bit 7 = 1: XOR mode
+            // - BL bit 7 = 0: Normal (opaque) mode
+            // - When ch bit 7 is set AND XOR mode: invert glyph
+            let fg_color = attr & 0x0F; // Lower 4 bits = color index
+            let xor_mode = (attr & 0x80) != 0; // Bit 7 = XOR mode
+            let invert_glyph = (ch & 0x80) != 0 && xor_mode;
 
-            // log::debug!(
-            //     "INT 0x10 AH=0x09: char=0x{:02X} attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
-            //     ch,
-            //     attr,
-            //     xor_mode,
-            //     invert_glyph,
-            //     fg_color,
-            //     count,
-            //     cursor.row,
-            //     cursor.col
-            // );
+            log::debug!(
+                "INT 0x10 AH=0x09: char=0x{:02X} attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
+                ch,
+                attr,
+                xor_mode,
+                invert_glyph,
+                fg_color,
+                count,
+                cursor.row,
+                cursor.col
+            );
 
-            // for i in 0..count {
-            //     let col = cursor.col + (i as usize) % cols;
-            //     let row = cursor.row + (i as usize) / cols;
-            //     if row >= rows {
-            //         break;
-            //     }
-            //     // Determine draw mode based on attribute and character bits
-            //     let draw_mode = if invert_glyph {
-            //         GraphicsDrawMode::XorInverted
-            //     } else if xor_mode {
-            //         GraphicsDrawMode::Xor
-            //     } else {
-            //         GraphicsDrawMode::Opaque
-            //     };
-            //     self.draw_char_graphics(bus, ch, row, col, fg_color, draw_mode);
-            // }
+            let draw_mode = if invert_glyph {
+                GraphicsDrawMode::XorInverted
+            } else if xor_mode {
+                GraphicsDrawMode::Xor
+            } else {
+                GraphicsDrawMode::Opaque
+            };
+
+            for i in 0..count {
+                let col = cursor.col as usize + (i as usize) % cols;
+                let row = cursor.row as usize + (i as usize) / cols;
+                if row >= rows {
+                    break;
+                }
+                self.draw_char_graphics(bus, ch, row as u8, col as u8, fg_color, draw_mode);
+            }
         }
         // Cursor position is NOT updated by this function
     }
@@ -623,14 +713,27 @@ impl Cpu {
         }
     }
 
+    /// Dispatch a graphics-mode character draw to the appropriate CGA helper.
+    fn draw_char_graphics(
+        &self,
+        bus: &mut Bus,
+        ch: u8,
+        row: u8,
+        col: u8,
+        fg_color: u8,
+        draw_mode: GraphicsDrawMode,
+    ) {
+        let mode = bda_get_video_mode(bus);
+        self.draw_char_cga_graphics(bus, mode, ch, row, col, fg_color, draw_mode);
+    }
+
     /// Draw a character pixel-by-pixel into CGA graphics VRAM.
     ///
-    /// Uses the 8x8 CGA font. Draws in transparent mode: foreground pixels are
-    /// OR'd into the framebuffer; background pixels are left unchanged.
-    ///
+    /// Uses the 8x8 CGA font.
     /// CGA memory is interleaved: even scan lines at offset 0x0000, odd at 0x2000.
     /// Mode 06h: 1bpp, 80 bytes/row, glyph byte maps directly to pixel bits.
     /// Mode 04h: 2bpp, 80 bytes/row, each glyph bit expands to a 2-bit color index.
+    #[allow(clippy::too_many_arguments)]
     fn draw_char_cga_graphics(
         &self,
         bus: &mut Bus,
@@ -639,6 +742,7 @@ impl Cpu {
         row: u8,
         col: u8,
         fg_color: u8,
+        draw_mode: GraphicsDrawMode,
     ) {
         let font = Cp437Font::new();
         let glyph = font.get_glyph_8(ch);
@@ -650,7 +754,13 @@ impl Cpu {
                     let bank_offset = if pixel_y % 2 == 1 { 0x2000 } else { 0 };
                     let vram_offset = bank_offset + (pixel_y / 2) * 80 + col as usize;
                     let existing = bus.memory_read_u8(CGA_MEMORY_START + vram_offset);
-                    bus.memory_write_u8(CGA_MEMORY_START + vram_offset, existing | row_byte);
+                    let new_val = match draw_mode {
+                        GraphicsDrawMode::Opaque => row_byte,
+                        GraphicsDrawMode::Xor => existing ^ row_byte,
+                        GraphicsDrawMode::XorInverted => existing ^ !row_byte,
+                        GraphicsDrawMode::Transparent => existing | row_byte,
+                    };
+                    bus.memory_write_u8(CGA_MEMORY_START + vram_offset, new_val);
                 }
             }
             Mode::M04Cga320x200x4 => {
@@ -661,24 +771,37 @@ impl Cpu {
                     // Each char is 8 pixels wide = 2 bytes at 2bpp
                     let vram_base = bank_offset + (pixel_y / 2) * 80 + col as usize * 2;
 
+                    // Optionally invert glyph for XorInverted mode
+                    let glyph_byte = match draw_mode {
+                        GraphicsDrawMode::XorInverted => !row_byte,
+                        _ => row_byte,
+                    };
+
                     // Expand glyph bits to 2bpp: bits 7-4 → byte0, bits 3-0 → byte1
                     let mut byte0 = 0u8;
                     let mut byte1 = 0u8;
                     for bit in 0..4usize {
-                        if (row_byte & (0x80 >> bit)) != 0 {
+                        if (glyph_byte & (0x80 >> bit)) != 0 {
                             byte0 |= fg_2bit << ((3 - bit) * 2);
                         }
                     }
                     for bit in 4..8usize {
-                        if (row_byte & (0x80 >> bit)) != 0 {
+                        if (glyph_byte & (0x80 >> bit)) != 0 {
                             byte1 |= fg_2bit << ((7 - bit) * 2);
                         }
                     }
 
                     let existing0 = bus.memory_read_u8(CGA_MEMORY_START + vram_base);
                     let existing1 = bus.memory_read_u8(CGA_MEMORY_START + vram_base + 1);
-                    bus.memory_write_u8(CGA_MEMORY_START + vram_base, existing0 | byte0);
-                    bus.memory_write_u8(CGA_MEMORY_START + vram_base + 1, existing1 | byte1);
+                    let (new0, new1) = match draw_mode {
+                        GraphicsDrawMode::Opaque => (byte0, byte1),
+                        GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted => {
+                            (existing0 ^ byte0, existing1 ^ byte1)
+                        }
+                        GraphicsDrawMode::Transparent => (existing0 | byte0, existing1 | byte1),
+                    };
+                    bus.memory_write_u8(CGA_MEMORY_START + vram_base, new0);
+                    bus.memory_write_u8(CGA_MEMORY_START + vram_base + 1, new1);
                 }
             }
             _ => {}
@@ -739,6 +862,7 @@ impl Cpu {
                             cursor.row,
                             cursor.col,
                             fg_color,
+                            GraphicsDrawMode::Transparent,
                         );
                     }
                     Mode::M0DEga320x200x16 => {
@@ -1662,80 +1786,20 @@ fn set_cursor_pos(bus: &mut Bus, page: u8, row: u8, col: u8) {
     }
 }
 
-struct ScrollUp {
-    /// number of lines to scroll (0 = clear entire window)
-    pub lines: u8,
-    /// attribute for blank lines
-    pub attr: u8,
-    /// row of upper-left corner of window
-    pub top: u8,
-    /// column of upper-left corner
-    pub left: u8,
-    /// row of lower-right corner
-    pub bottom: u8,
-    /// column of lower-right corner
-    pub right: u8,
-    /// total number of rows in the video
-    pub rows: u8,
-    /// total number of columns in the video
-    pub cols: u8,
-}
-
-fn scroll_up_advanced(bus: &mut Bus, options: ScrollUp) {
-    // Clamp to valid range (real BIOS behavior: clip out-of-range coords)
-    let right = options.right.min(options.cols - 1);
-    let bottom = options.bottom.min(options.rows); // rows is already last valid row index from BDA
-    if options.top > bottom || options.left > right {
-        return;
-    }
-
-    if options.lines == 0 {
-        // Clear entire window
-        for row in options.top..=bottom {
-            for col in options.left..=right {
-                let offset = (row as usize * options.cols as usize + col as usize) * 2;
-                bus.memory_write_u8(CGA_MEMORY_START + offset, b' ');
-                bus.memory_write_u8(CGA_MEMORY_START + offset + 1, options.attr);
-            }
-        }
-    } else {
-        // Scroll up by 'lines' rows
-        for row in options.top..=bottom {
-            for col in options.left..=right {
-                let dest_offset = (row as usize * options.cols as usize + col as usize) * 2;
-                let src_row = row + options.lines;
-
-                if src_row <= bottom {
-                    // Copy from below - read from video buffer, not memory
-                    let src_offset = (src_row as usize * options.cols as usize + col as usize) * 2;
-                    let ch = bus.memory_read_u8(CGA_MEMORY_START + src_offset);
-                    let at = bus.memory_read_u8(CGA_MEMORY_START + src_offset + 1);
-                    bus.memory_write_u8(CGA_MEMORY_START + dest_offset, ch);
-                    bus.memory_write_u8(CGA_MEMORY_START + dest_offset + 1, at);
-                } else {
-                    // Fill with blanks
-                    bus.memory_write_u8(CGA_MEMORY_START + dest_offset, b' ');
-                    bus.memory_write_u8(CGA_MEMORY_START + dest_offset + 1, options.attr);
-                }
-            }
-        }
-    }
-}
-
 fn scroll_up(bus: &mut Bus, lines: u8) {
     let rows = bda_get_rows(bus);
-    let cols = bda_get_columns(bus);
-    scroll_up_advanced(
-        bus,
-        ScrollUp {
+    let cols = bda_get_columns(bus) as u8;
+    bus.video_card_mut().scroll_text_window(
+        ScrollWindow {
             lines,
-            attr: 0x07,
             top: 0,
             left: 0,
             bottom: rows,
-            right: cols as u8,
-            rows,
-            cols: cols as u8,
+            right: cols.saturating_sub(1),
         },
+        cols,
+        rows,
+        0x07,
+        false,
     );
 }

@@ -48,6 +48,16 @@ const CGA_VSYNC_HZ: u64 = 60;
 /// Vsync active for roughly 1/12 of the frame (~8%).
 const CGA_VSYNC_DUTY_DIVISOR: u64 = 12;
 
+/// Window parameters shared by all BIOS scroll operations.
+pub(crate) struct ScrollWindow {
+    /// Number of lines to scroll (0 = clear entire window).
+    pub lines: u8,
+    pub top: u8,
+    pub left: u8,
+    pub bottom: u8,
+    pub right: u8,
+}
+
 pub struct VideoCard {
     card_type: VideoCardType,
     buffer: Arc<RwLock<VideoBuffer>>,
@@ -162,6 +172,300 @@ impl VideoCard {
         let dims = mode.get_text_dimensions();
         self.buffer.write().unwrap().set_mode(mode);
         dims
+    }
+
+    /// Scroll up or down a rectangular window in text-mode VRAM.
+    ///
+    /// Coordinates are in character cells. `lines == 0` clears the window.
+    /// Blank rows are filled with space (0x20) and `attr`. `cols` is the total
+    /// screen width used for offset calculation and coordinate clamping.
+    pub(crate) fn scroll_text_window(
+        &mut self,
+        w: ScrollWindow,
+        cols: u8,
+        rows: u8,
+        attr: u8,
+        scroll_down: bool,
+    ) {
+        let ScrollWindow {
+            lines,
+            top,
+            left,
+            bottom,
+            right,
+        } = w;
+        let right = right.min(cols.saturating_sub(1));
+        let bottom = bottom.min(rows);
+        if top > bottom || left > right {
+            return;
+        }
+        let stride = cols as usize;
+        if lines == 0 {
+            for row in top..=bottom {
+                for col in left..=right {
+                    let off = (row as usize * stride + col as usize) * 2;
+                    self.internal_write_u8(off, b' ');
+                    self.internal_write_u8(off + 1, attr);
+                }
+            }
+        } else if scroll_down {
+            for row in (top..=bottom).rev() {
+                for col in left..=right {
+                    let dest = (row as usize * stride + col as usize) * 2;
+                    if row >= top + lines {
+                        let src = ((row - lines) as usize * stride + col as usize) * 2;
+                        let ch = self.internal_read_u8(src);
+                        let at = self.internal_read_u8(src + 1);
+                        self.internal_write_u8(dest, ch);
+                        self.internal_write_u8(dest + 1, at);
+                    } else {
+                        self.internal_write_u8(dest, b' ');
+                        self.internal_write_u8(dest + 1, attr);
+                    }
+                }
+            }
+        } else {
+            for row in top..=bottom {
+                for col in left..=right {
+                    let dest = (row as usize * stride + col as usize) * 2;
+                    let src_row = row + lines;
+                    if src_row <= bottom {
+                        let src = (src_row as usize * stride + col as usize) * 2;
+                        let ch = self.internal_read_u8(src);
+                        let at = self.internal_read_u8(src + 1);
+                        self.internal_write_u8(dest, ch);
+                        self.internal_write_u8(dest + 1, at);
+                    } else {
+                        self.internal_write_u8(dest, b' ');
+                        self.internal_write_u8(dest + 1, attr);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scroll up or down a rectangular window in CGA interleaved VRAM.
+    ///
+    /// Coordinates are in character cells. `lines == 0` clears the window.
+    /// `bytes_per_col` is 1 for mode 06h (1bpp) and 2 for mode 04h (2bpp).
+    /// Blank rows are cleared to 0.
+    pub(crate) fn cga_scroll_window(
+        &mut self,
+        w: ScrollWindow,
+        bytes_per_col: usize,
+        scroll_down: bool,
+    ) {
+        let ScrollWindow {
+            lines,
+            top,
+            left,
+            bottom,
+            right,
+        } = w;
+        if lines == 0 {
+            for char_row in top..=bottom {
+                for pr in 0..CHAR_HEIGHT_8 {
+                    let pixel_y = char_row as usize * CHAR_HEIGHT_8 + pr;
+                    let bank = if pixel_y % 2 == 1 { 0x2000 } else { 0 };
+                    let row_start = bank + (pixel_y / 2) * 80;
+                    for col in left..=right {
+                        let byte_start = row_start + col as usize * bytes_per_col;
+                        for b in 0..bytes_per_col {
+                            self.internal_write_u8(byte_start + b, 0);
+                        }
+                    }
+                }
+            }
+            return;
+        }
+
+        if scroll_down {
+            for char_row in (top..=bottom).rev() {
+                for pr in 0..CHAR_HEIGHT_8 {
+                    let dest_pixel_y = char_row as usize * CHAR_HEIGHT_8 + pr;
+                    let dest_bank = if dest_pixel_y % 2 == 1 { 0x2000 } else { 0 };
+                    let dest_row_start = dest_bank + (dest_pixel_y / 2) * 80;
+                    for col in left..=right {
+                        let dest_byte_start = dest_row_start + col as usize * bytes_per_col;
+                        if char_row >= top + lines {
+                            let src_char_row = char_row - lines;
+                            let src_pixel_y = src_char_row as usize * CHAR_HEIGHT_8 + pr;
+                            let src_bank = if src_pixel_y % 2 == 1 { 0x2000 } else { 0 };
+                            let src_row_start = src_bank + (src_pixel_y / 2) * 80;
+                            let src_byte_start = src_row_start + col as usize * bytes_per_col;
+                            for b in 0..bytes_per_col {
+                                let v = self.internal_read_u8(src_byte_start + b);
+                                self.internal_write_u8(dest_byte_start + b, v);
+                            }
+                        } else {
+                            for b in 0..bytes_per_col {
+                                self.internal_write_u8(dest_byte_start + b, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            for char_row in top..=bottom {
+                let src_char_row = char_row + lines;
+                for pr in 0..CHAR_HEIGHT_8 {
+                    let dest_pixel_y = char_row as usize * CHAR_HEIGHT_8 + pr;
+                    let dest_bank = if dest_pixel_y % 2 == 1 { 0x2000 } else { 0 };
+                    let dest_row_start = dest_bank + (dest_pixel_y / 2) * 80;
+                    for col in left..=right {
+                        let dest_byte_start = dest_row_start + col as usize * bytes_per_col;
+                        if src_char_row <= bottom {
+                            let src_pixel_y = src_char_row as usize * CHAR_HEIGHT_8 + pr;
+                            let src_bank = if src_pixel_y % 2 == 1 { 0x2000 } else { 0 };
+                            let src_row_start = src_bank + (src_pixel_y / 2) * 80;
+                            let src_byte_start = src_row_start + col as usize * bytes_per_col;
+                            for b in 0..bytes_per_col {
+                                let v = self.internal_read_u8(src_byte_start + b);
+                                self.internal_write_u8(dest_byte_start + b, v);
+                            }
+                        } else {
+                            for b in 0..bytes_per_col {
+                                self.internal_write_u8(dest_byte_start + b, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scroll up a rectangular window in EGA planar VRAM.
+    ///
+    /// Coordinates are in character cells. `lines == 0` clears the window.
+    /// Cleared/blank rows are filled with 0 (black) in all planes.
+    pub(crate) fn ega_scroll_up_window(
+        &self,
+        w: ScrollWindow,
+        bytes_per_row: usize,
+        char_height: usize,
+    ) {
+        let ScrollWindow {
+            lines,
+            top,
+            left,
+            bottom,
+            right,
+        } = w;
+        let mut buffer = self.buffer.write().unwrap();
+        if lines == 0 {
+            for char_row in top..=bottom {
+                for pr in 0..char_height {
+                    let pixel_y = char_row as usize * char_height + pr;
+                    let row_start = pixel_y * bytes_per_row;
+                    for col in left..=right {
+                        let byte_off = row_start + col as usize;
+                        for plane in 0..4usize {
+                            let vram_off = plane * EGA_PLANE_SIZE + byte_off;
+                            if vram_off < buffer.vram_len() {
+                                buffer.write_vram(vram_off, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            for char_row in top..=bottom {
+                let src_char_row = char_row + lines;
+                for pr in 0..char_height {
+                    let dest_pixel_y = char_row as usize * char_height + pr;
+                    let dest_row_start = dest_pixel_y * bytes_per_row;
+                    for col in left..=right {
+                        let dest_off = dest_row_start + col as usize;
+                        if src_char_row <= bottom {
+                            let src_pixel_y = src_char_row as usize * char_height + pr;
+                            let src_off = src_pixel_y * bytes_per_row + col as usize;
+                            for plane in 0..4usize {
+                                let sv = plane * EGA_PLANE_SIZE + src_off;
+                                let dv = plane * EGA_PLANE_SIZE + dest_off;
+                                if sv < buffer.vram_len() && dv < buffer.vram_len() {
+                                    let v = buffer.read_vram(sv);
+                                    buffer.write_vram(dv, v);
+                                }
+                            }
+                        } else {
+                            for plane in 0..4usize {
+                                let dv = plane * EGA_PLANE_SIZE + dest_off;
+                                if dv < buffer.vram_len() {
+                                    buffer.write_vram(dv, 0);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scroll down a rectangular window in EGA planar VRAM.
+    ///
+    /// Coordinates are in character cells. `lines == 0` clears the window.
+    /// Cleared/blank rows are filled with 0 (black) in all planes.
+    pub(crate) fn ega_scroll_down_window(
+        &self,
+        w: ScrollWindow,
+        bytes_per_row: usize,
+        char_height: usize,
+    ) {
+        let ScrollWindow {
+            lines,
+            top,
+            left,
+            bottom,
+            right,
+        } = w;
+        let mut buffer = self.buffer.write().unwrap();
+        if lines == 0 {
+            for char_row in top..=bottom {
+                for pr in 0..char_height {
+                    let pixel_y = char_row as usize * char_height + pr;
+                    let row_start = pixel_y * bytes_per_row;
+                    for col in left..=right {
+                        let byte_off = row_start + col as usize;
+                        for plane in 0..4usize {
+                            let vram_off = plane * EGA_PLANE_SIZE + byte_off;
+                            if vram_off < buffer.vram_len() {
+                                buffer.write_vram(vram_off, 0);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            for char_row in (top..=bottom).rev() {
+                for pr in 0..char_height {
+                    let dest_pixel_y = char_row as usize * char_height + pr;
+                    let dest_row_start = dest_pixel_y * bytes_per_row;
+                    for col in left..=right {
+                        let dest_off = dest_row_start + col as usize;
+                        if char_row >= top + lines {
+                            let src_char_row = char_row - lines;
+                            let src_pixel_y = src_char_row as usize * char_height + pr;
+                            let src_off = src_pixel_y * bytes_per_row + col as usize;
+                            for plane in 0..4usize {
+                                let sv = plane * EGA_PLANE_SIZE + src_off;
+                                let dv = plane * EGA_PLANE_SIZE + dest_off;
+                                if sv < buffer.vram_len() && dv < buffer.vram_len() {
+                                    let v = buffer.read_vram(sv);
+                                    buffer.write_vram(dv, v);
+                                }
+                            }
+                        } else {
+                            for plane in 0..4usize {
+                                let dv = plane * EGA_PLANE_SIZE + dest_off;
+                                if dv < buffer.vram_len() {
+                                    buffer.write_vram(dv, 0);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Draw a character transparently into EGA planar VRAM.

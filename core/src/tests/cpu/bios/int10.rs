@@ -165,6 +165,51 @@ pub(crate) fn display_combination_code() {
     );
 }
 
+/// INT 10h / AH=06h + AH=07h - Scroll in CGA graphics mode 4 (320x200 4-color)
+/// Tests cga_scroll_window in both directions:
+///   - Scroll up: writes 0xAA to char row 1, scrolls up 1 line, verifies row 0 = 0xAA and row 1 cleared.
+///   - Scroll down: writes 0xBB to char row 0, scrolls down 1 line, verifies row 1 = 0xBB and row 0 cleared.
+#[test_log::test]
+pub(crate) fn cga_scroll_window() {
+    let name = "cpu/bios/int10/cga_scroll_window";
+    run_test(name, create_computer(), |computer, video_buffer| {
+        computer.run();
+        assert_screen(name, video_buffer);
+    });
+}
+
+/// INT 10h / AH=06h - Scroll Up in EGA graphics mode 0x0D (320x200 16-color)
+/// Tests ega_scroll_up_window: writes 0xAA to char row 1 in EGA VRAM, scrolls up 1 line,
+/// verifies row 0 = 0xAA and row 1 is cleared to black.
+#[test_log::test]
+pub(crate) fn ega_scroll_up_window() {
+    let name = "cpu/bios/int10/ega_scroll_up_window";
+    run_test(
+        name,
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen(name, video_buffer);
+        },
+    );
+}
+
+/// INT 10h / AH=07h - Scroll Down in EGA graphics mode 0x0D (320x200 16-color)
+/// Tests ega_scroll_down_window: writes 0xBB to char row 0 in EGA VRAM, scrolls down 1 line,
+/// verifies row 1 = 0xBB and row 0 is cleared to black.
+#[test_log::test]
+pub(crate) fn ega_scroll_down_window() {
+    let name = "cpu/bios/int10/ega_scroll_down_window";
+    run_test(
+        name,
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen(name, video_buffer);
+        },
+    );
+}
+
 /// INT 10h / AH=FEh - Get Video Buffer
 /// Sets ES=0xB800, calls the function, and verifies ES is unchanged
 /// and DI=0 (no virtual buffer redirection active).
@@ -177,4 +222,19 @@ pub(crate) fn get_video_buffer() {
             computer.run();
         },
     );
+}
+
+/// INT 10h / AH=09h - Write Character and Attribute at Cursor (Graphics Mode)
+/// Sets CGA mode 04h, writes characters with opaque and XOR draw modes. Asserts
+/// the screen while in graphics mode, then sends a key to continue. The program
+/// verifies VRAM contents and resets to text mode before exiting.
+#[test_log::test]
+pub(crate) fn write_char_graphics() {
+    let name = "cpu/bios/int10/write_char_graphics";
+    run_test(name, create_computer(), |computer, video_buffer| {
+        computer.run(); // runs until INT 16h wait for key
+        assert_screen(name, video_buffer);
+        computer.push_key_press(0x1C); // Enter
+        computer.run(); // VRAM checks then exits
+    });
 }
