@@ -587,8 +587,9 @@ impl Cpu {
             let invert_glyph = (ch & 0x80) != 0 && xor_mode;
 
             log::debug!(
-                "INT 0x10 AH=0x09: char=0x{:02X} attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
+                "INT 0x10 AH=0x09: char=0x{:02X}('{}') attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
                 ch,
+                byte_to_printable_char(ch),
                 attr,
                 xor_mode,
                 invert_glyph,

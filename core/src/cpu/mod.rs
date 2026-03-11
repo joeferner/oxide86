@@ -198,6 +198,24 @@ impl Cpu {
         if self.get_flag(cpu_flag::INTERRUPT) {
             let irq = bus.pic_mut().take_irq(bus.cycle_count());
             if let Some(irq) = irq {
+                let ivt_addr = (irq as usize) * 4;
+                let ivt_off = bus.memory_read_u16(ivt_addr);
+                let ivt_seg = bus.memory_read_u16(ivt_addr + 2);
+                if irq != 0x08 {
+                    log::debug!(
+                        "CPU: dispatching IRQ 0x{irq:02X} -> {:04X}:{:04X} (cycle={})",
+                        ivt_seg,
+                        ivt_off,
+                        bus.cycle_count()
+                    );
+                } else {
+                    log::trace!(
+                        "CPU: dispatching IRQ 0x{irq:02X} -> {:04X}:{:04X} (cycle={})",
+                        ivt_seg,
+                        ivt_off,
+                        bus.cycle_count()
+                    );
+                }
                 self.dispatch_interrupt(bus, irq);
                 return;
             }
@@ -447,6 +465,12 @@ impl Cpu {
             0x1a => self.handle_int1a_time_services(bus),
             0x21 => self.handle_int21_dos_services(bus),
             0x74 => self.handle_int74_ps2_mouse_interrupt(bus),
+            // Default INT 1Ch handler (user timer tick): no-op, just IRET.
+            0x1C => {}
+            // INT 1Ch IRET trampoline — the chained INT 1Ch handler returned here.
+            // Nothing to do; step() will call patch_flags_and_iret to IRET
+            // back to wherever INT 08h originally interrupted.
+            0xF5 => {}
             // PS/2 mouse callback RETF trampoline — the application's handler
             // returned here.  Nothing to do; step() will call patch_flags_and_iret
             // to IRET back to wherever INT 74h originally interrupted.

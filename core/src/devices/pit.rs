@@ -113,7 +113,14 @@ impl Pit {
 
     fn update_speaker(&mut self) {
         if self.speaker_active() {
-            self.pc_speaker.enable(self.ch2_freq());
+            let freq = self.ch2_freq();
+            if freq <= 20_000.0 {
+                self.pc_speaker.enable(freq);
+            } else {
+                // Above audible range: real speaker membrane can't respond,
+                // so it produces no sound (effectively DC).
+                self.pc_speaker.disable();
+            }
         } else {
             self.pc_speaker.disable();
         }
@@ -124,6 +131,10 @@ impl Pit {
         let elapsed = cycle_count.wrapping_sub(self.last_irq_0_cycle_count);
         if elapsed >= self.cycles_per_irq {
             self.last_irq_0_cycle_count = cycle_count;
+            log::trace!(
+                "PIT: timer IRQ fired (cycle_count={cycle_count} cycles_per_irq={})",
+                self.cycles_per_irq
+            );
             true
         } else {
             false
@@ -230,12 +241,26 @@ impl Device for Pit {
             PIT_CHANNEL_1 => true,
             PIT_CHANNEL_2 => {
                 if let Some(divisor) = self.ch2.write(val) {
+                    log::debug!(
+                        "PIT: ch2 divisor={divisor} freq={:.1}Hz",
+                        PIT_FREQUENCY_HZ as f32
+                            / if divisor == 0 {
+                                PIT_DIVISOR
+                            } else {
+                                divisor as u64
+                            } as f32
+                    );
                     self.ch2.divisor = divisor;
                     self.update_speaker();
                 }
                 true
             }
             PORT_B => {
+                log::debug!(
+                    "PIT: port B write 0x{val:02X} (gate={} speaker={})",
+                    val & 1,
+                    (val >> 1) & 1
+                );
                 self.port_b = val;
                 self.update_speaker();
                 true

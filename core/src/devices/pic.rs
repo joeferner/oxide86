@@ -208,6 +208,10 @@ impl Device for Pic {
                         // Clear the highest-priority in-service bit (non-specific EOI)
                         if self.in_service != 0 {
                             let lowest_bit = self.in_service & self.in_service.wrapping_neg();
+                            log::trace!(
+                                "PIC: EOI clears in_service bit 0x{lowest_bit:02X} (was 0x{:02X})",
+                                self.in_service
+                            );
                             self.in_service &= !lowest_bit;
                         }
                     }
@@ -216,6 +220,7 @@ impl Device for Pic {
                 true
             }
             PIC_IO_PORT_MASK => {
+                log::debug!("PIC: mask set to 0x{val:02X}");
                 self.mask = val;
                 true
             }
