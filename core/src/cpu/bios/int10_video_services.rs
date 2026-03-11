@@ -22,8 +22,8 @@ use crate::{
         video_calculate_linear_offset,
         video_card::{
             AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
-            DAC_DATA_PORT, DAC_READ_INDEX_PORT, DAC_WRITE_INDEX_PORT, INPUT_STATUS_1_PORT,
-            ScrollWindow, VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_DATA_ADDR,
+            CGA_COLOR_SELECT_ADDR, DAC_DATA_PORT, DAC_READ_INDEX_PORT, DAC_WRITE_INDEX_PORT,
+            INPUT_STATUS_1_PORT, ScrollWindow, VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_DATA_ADDR,
             VIDEO_CARD_REG_CURSOR_END_LINE, VIDEO_CARD_REG_CURSOR_START_LINE,
         },
         video_set_cursor_pos,
@@ -138,6 +138,16 @@ impl Cpu {
             log::warn!("unsupported mode {mode}");
             return;
         };
+
+        // Initialize the CGA color select register (0x3D9) to match real IBM BIOS behavior.
+        // Many CGA programs (e.g. AdLib Jukebox) rely on the BIOS to set this after a mode
+        // change and never write to it directly. Real IBM BIOS sets 0x30 for mode 4:
+        // palette 1 (cyan/magenta/white, bit 5) with high intensity (bit 4).
+        if let Mode::M04Cga320x200x4 = mode {
+            let color_select = 0x30u8;
+            bda_set_crt_palette(bus, color_select);
+            bus.io_write_u8(CGA_COLOR_SELECT_ADDR, color_select);
+        }
 
         // Update BDA with new video mode settings
         bda_set_video_mode(bus, mode.as_u8());

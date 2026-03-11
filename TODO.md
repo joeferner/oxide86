@@ -36,7 +36,7 @@
 - [X] Test King's Quest I
 - [ ] Add AdLib support
   - [X] CLI --sound-card=none/adlib option
-  - [ ] Test AdLib JukeBox
+  - [X] Test AdLib JukeBox
   - [ ] Test The Colonel's Bequest (install.exe select adlib)
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Test SimCity (1989)

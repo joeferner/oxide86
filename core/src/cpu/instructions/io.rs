@@ -1,4 +1,7 @@
-use crate::{bus::Bus, cpu::{Cpu, timing}};
+use crate::{
+    bus::Bus,
+    cpu::{Cpu, timing},
+};
 
 impl Cpu {
     /// OUT imm8, AL (0xE6)
