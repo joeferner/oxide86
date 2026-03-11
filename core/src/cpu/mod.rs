@@ -229,6 +229,12 @@ impl Cpu {
             if self.cs != BIOS_CODE_SEGMENT {
                 return;
             }
+            // Terminal halt (e.g. INT 21h AH=4Ch with no parent): skip IRET so that
+            // IF=0 (set by int21_exit) is preserved and no pending IRQ can wake the
+            // CPU and resume execution in the terminated program.
+            if self.halted {
+                return;
+            }
             // If the BIOS handler enabled interrupts (STI equivalent), check for a
             // pending timer IRQ before IRET — mirrors real BIOS behaviour where the
             // CPU can receive IRQs at instruction boundaries inside a handler with IF=1.

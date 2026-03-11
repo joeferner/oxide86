@@ -191,6 +191,7 @@ impl Computer {
     }
 
     pub fn reset(&mut self) {
+        self.key_presses.clear();
         if let Some((data, segment, offset)) = self.loaded_program.clone() {
             self.bus.reset();
             let physical_addr = physical_address(segment, offset);

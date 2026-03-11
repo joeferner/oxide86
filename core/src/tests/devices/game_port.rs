@@ -10,7 +10,9 @@ pub(crate) fn game_port_test() {
             // Y1=200: needs ~17600 cycles at 8 MHz — well above a single IN latency.
             computer.joystick_mut().set_axes(0, 200, 128, 128);
             // Button 1 pressed (bit 4 = 0), button 2 released (bit 5 = 1).
-            computer.joystick_mut().set_buttons(true, false, false, false);
+            computer
+                .joystick_mut()
+                .set_buttons(true, false, false, false);
             computer.run();
         },
     );

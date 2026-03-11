@@ -32,7 +32,7 @@
   - GC register 0x05 (Graphics Mode) — 0x00, 0x02
   - GC register 0x08 (Bit Mask) — many different values
 - [X] Get SvarDos working (see ai-analysis/svardos-boot-investigation.md)
-- [ ] Add Game Port/Joystick support (see ai-analysis/joystick-implementation.md)
+- [X] Add Game Port/Joystick support (see ai-analysis/joystick-implementation.md)
 - [ ] Test King's Quest I
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Test SimCity (1989)
