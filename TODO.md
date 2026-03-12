@@ -40,9 +40,10 @@
   - [X] Test The Colonel's Bequest (install.exe select adlib)
 - [X] Change io_read_u8 to &mut self. Many of the implementations need to modify internal state on change requiring Cell which after changing this we can remove
 - [X] Improve performance (see ai-analysis/perf-analysis-2026-03-11.md)
+- [ ] Add VGA support
+- [ ] Test Battle Chess
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Test SimCity (1989)
-- [ ] Add VGA support
 - [ ] CGA Composite mode
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
