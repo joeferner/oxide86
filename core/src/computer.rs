@@ -363,6 +363,7 @@ impl Computer {
                 let mut keyboard_controller = self.bus.keyboard_controller_mut();
                 keyboard_controller.key_press(scan_code);
             }
+            self.bus.notify_irq_pending();
             self.cpu.key_press(&mut self.bus);
         }
     }

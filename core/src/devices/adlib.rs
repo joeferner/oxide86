@@ -128,9 +128,7 @@ impl Adlib {
 
         // Compute when the next sample will be due so the bus can skip calling
         // us until then, avoiding per-instruction overhead when n_out == 0.
-        let cycles_until_next =
-            (self.cpu_freq - self.cycle_acc + ADLIB_SAMPLE_RATE as u64 - 1)
-                / ADLIB_SAMPLE_RATE as u64;
+        let cycles_until_next = (self.cpu_freq - self.cycle_acc).div_ceil(ADLIB_SAMPLE_RATE as u64);
         self.next_sample_cycle = self.last_cycle_count.wrapping_add(cycles_until_next as u32);
 
         for _ in 0..n_out {

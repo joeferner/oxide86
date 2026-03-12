@@ -41,6 +41,11 @@ const COM1_IRQ_LINE: u8 = 4;
 /// IRQ12 occupies bit 4 of PIC2 (PIC2 handles IRQ8–IRQ15, so IRQ12 = bit 4)
 const PS2_MOUSE_PIC2_BIT: u8 = 4;
 
+/// Non-PIT devices are only polled every this many take_irq() calls.
+/// They do not require cycle-accurate timing; keyboard/UART/mouse latency
+/// of ~100 instructions (~20 µs at 4.77 MHz) is imperceptible.
+const NON_PIT_POLL_INTERVAL: u8 = 100;
+
 pub(crate) struct Pic {
     pit: Rc<RefCell<Pit>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
@@ -54,6 +59,10 @@ pub(crate) struct Pic {
     // PIC2 (slave) state — handles IRQ8–IRQ15 (PS/2 mouse is IRQ12)
     pic2_mask: u8,
     pic2_in_service: u8,
+
+    /// Throttle counter for non-PIT IRQ polling. Incremented each take_irq()
+    /// call; non-PIT devices only checked when it reaches NON_PIT_POLL_INTERVAL.
+    non_pit_skip: u8,
 }
 
 impl Pic {
@@ -70,7 +79,15 @@ impl Pic {
             in_service: 0,
             pic2_mask: 0,
             pic2_in_service: 0,
+            non_pit_skip: 0,
         }
+    }
+
+    /// Signal that a non-PIT device has a pending IRQ, triggering an immediate
+    /// check on the next take_irq() call rather than waiting up to
+    /// NON_PIT_POLL_INTERVAL instructions.
+    pub(crate) fn notify_pending(&mut self) {
+        self.non_pit_skip = NON_PIT_POLL_INTERVAL - 1;
     }
 
     pub(crate) fn is_keyboard_irq_in_service(&self) -> bool {
@@ -99,7 +116,7 @@ impl Pic {
     }
 
     pub(crate) fn take_irq(&mut self, cycle_count: u32) -> Option<u8> {
-        // PIT (IRQ0)
+        // PIT (IRQ0) — checked every instruction; timer accuracy is visible to software.
         {
             let bit = 1u8 << PIT_IRQ_LINE;
             let masked = self.mask & bit != 0;
@@ -110,6 +127,19 @@ impl Pic {
                 return Some(PIT_CPU_IRQ);
             }
         }
+
+        // Non-PIT devices (keyboard, UART, mouse) are polled every
+        // NON_PIT_POLL_INTERVAL instructions. notify_pending() sets the
+        // counter to NON_PIT_POLL_INTERVAL - 1 so the next call checks
+        // immediately for keyboard/mouse events.
+        self.non_pit_skip += 1;
+        if self.non_pit_skip < NON_PIT_POLL_INTERVAL {
+            return None;
+        }
+        // Prime the counter so any early return (IRQ delivered) causes a re-scan
+        // on the very next instruction, draining all pending devices before backing off.
+        // Only a full scan that finds nothing resets to 0 (see end of function).
+        self.non_pit_skip = NON_PIT_POLL_INTERVAL - 1;
 
         // Keyboard (IRQ1)
         {
@@ -168,6 +198,8 @@ impl Pic {
             }
         }
 
+        // Full scan found nothing — back off to the normal polling interval.
+        self.non_pit_skip = 0;
         None
     }
 }
@@ -182,6 +214,7 @@ impl Device for Pic {
         self.in_service = 0;
         self.pic2_mask = 0;
         self.pic2_in_service = 0;
+        self.non_pit_skip = 0;
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {

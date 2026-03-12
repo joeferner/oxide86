@@ -22,7 +22,8 @@ use crate::{
     },
     disk::Disk,
     memory::Memory,
-    video::VideoCard, wrapping_ge,
+    video::VideoCard,
+    wrapping_ge,
 };
 
 const MEMORY_MAPPED_IO_START: usize = 0xA0000;
@@ -114,10 +115,10 @@ impl Bus {
 
     pub(crate) fn increment_cycle_count(&mut self, cycles: u32) {
         self.cycle_count = self.cycle_count.wrapping_add(cycles);
-        if let Some(sc) = &self.sound_card {
-            if wrapping_ge(self.cycle_count, sc.borrow().next_sample_cycle()) {
-                sc.borrow_mut().advance_to_cycle(self.cycle_count);
-            }
+        if let Some(sc) = &self.sound_card
+            && wrapping_ge(self.cycle_count, sc.borrow().next_sample_cycle())
+        {
+            sc.borrow_mut().advance_to_cycle(self.cycle_count);
         }
     }
 
@@ -127,6 +128,12 @@ impl Bus {
 
     pub(crate) fn pic_mut(&self) -> RefMut<'_, Pic> {
         self.pic.borrow_mut()
+    }
+
+    /// Notify the PIC that a non-PIT device has a pending IRQ, so it will be
+    /// checked on the next CPU step rather than after the polling interval.
+    pub(crate) fn notify_irq_pending(&self) {
+        self.pic.borrow_mut().notify_pending();
     }
 
     pub(crate) fn uart_mut(&self) -> RefMut<'_, Uart> {
@@ -290,6 +297,7 @@ impl Bus {
         self.keyboard_controller
             .borrow_mut()
             .push_mouse_bytes(&[byte0, byte1, byte2]);
+        self.notify_irq_pending();
     }
 }
 
