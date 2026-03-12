@@ -102,7 +102,7 @@ pub fn create_computer(
                 if let Some(sink) = &sink {
                     sink.mixer().add(RodioSoundCard::new(adlib.consumer()));
                 }
-                computer.add_device(adlib);
+                computer.add_sound_card(adlib);
             }
         }
     } else {

@@ -1,5 +1,7 @@
 use std::{
+    cell::RefCell,
     collections::VecDeque,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 
@@ -49,6 +51,9 @@ impl PcmRingBuffer {
     pub fn drain_into(&self, buf: &mut [f32]) -> usize {
         let mut guard = self.inner.lock().unwrap();
         let available = guard.len().min(buf.len());
+        if available == 0 && !buf.is_empty() {
+            log::warn!("PCM buffer underrun: needed {} samples, had 0", buf.len());
+        }
         for slot in buf[..available].iter_mut() {
             *slot = guard.pop_front().unwrap();
         }
@@ -56,6 +61,16 @@ impl PcmRingBuffer {
         available
     }
 }
+
+/// Trait for sound card devices that need regular cycle-accurate advancement.
+///
+/// The bus calls `advance_to_cycle` on every `increment_cycle_count`, giving
+/// the sound card a steady timing stream regardless of IO port activity.
+pub trait SoundCard {
+    fn advance_to_cycle(&self, cycle_count: u32);
+}
+
+pub type SoundCardRef = Rc<RefCell<dyn SoundCard>>;
 
 /// Which sound card to emulate. Parsed from the `--sound-card` / `sound_card` config option.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -105,6 +105,10 @@ impl Computer {
         self.bus.add_device(device);
     }
 
+    pub fn add_sound_card<T: Device + crate::devices::SoundCard + 'static>(&mut self, device: T) {
+        self.bus.add_sound_card(device);
+    }
+
     /// Insert or eject the floppy disk for the given drive. Returns the previous disk if any.
     /// Pass `None` to eject; the CMOS drive-type register is only updated on insert.
     pub fn set_floppy_disk(

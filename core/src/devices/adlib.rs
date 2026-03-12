@@ -3,7 +3,7 @@ use std::{any::Any, cell::RefCell};
 use crate::{
     Device,
     devices::{
-        PcmRingBuffer,
+        PcmRingBuffer, SoundCard,
         nuked_opl3::{self, Opl3Chip},
     },
 };
@@ -173,6 +173,12 @@ impl Adlib {
             g.samples_since_log = 0;
         }
         g.pending_flush.clear();
+    }
+}
+
+impl SoundCard for Adlib {
+    fn advance_to_cycle(&self, cycle_count: u32) {
+        self.advance_to_cycle(cycle_count);
     }
 }
 

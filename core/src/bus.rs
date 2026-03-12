@@ -9,6 +9,7 @@ use crate::{
     Device, DeviceRef,
     cpu::bios::bios_reset,
     devices::{
+        SoundCard, SoundCardRef,
         floppy_disk_controller::FloppyDiskController,
         game_port::GamePortDevice,
         hard_disk_controller::HardDiskController,
@@ -47,6 +48,7 @@ pub(crate) struct Bus {
     uart: Rc<RefCell<Uart>>,
     rtc: Option<Rc<RefCell<Rtc>>>,
     video_card: Rc<RefCell<VideoCard>>,
+    sound_card: Option<SoundCardRef>,
 
     /// Cycle count to accurately track CPU cycles
     cycle_count: u32,
@@ -96,6 +98,7 @@ impl Bus {
             keyboard_controller,
             uart,
             video_card: config.video_card,
+            sound_card: None,
             cycle_count: 0,
             rtc,
         }
@@ -111,6 +114,9 @@ impl Bus {
 
     pub(crate) fn increment_cycle_count(&mut self, cycles: u32) {
         self.cycle_count = self.cycle_count.wrapping_add(cycles);
+        if let Some(sc) = &self.sound_card {
+            sc.borrow().advance_to_cycle(self.cycle_count);
+        }
     }
 
     pub(crate) fn cycle_count(&self) -> u32 {
@@ -164,6 +170,12 @@ impl Bus {
     pub(crate) fn add_device<T: Device + 'static>(&mut self, device: T) {
         let rc = Rc::new(RefCell::new(device));
         self.devices.push(rc);
+    }
+
+    pub(crate) fn add_sound_card<T: Device + SoundCard + 'static>(&mut self, device: T) {
+        let rc = Rc::new(RefCell::new(device));
+        self.devices.push(rc.clone());
+        self.sound_card = Some(rc);
     }
 
     pub(crate) fn memory_read_u8(&self, addr: usize) -> u8 {

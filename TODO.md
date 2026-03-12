@@ -38,6 +38,7 @@
   - [X] CLI --sound-card=none/adlib option
   - [X] Test AdLib JukeBox
   - [ ] Test The Colonel's Bequest (install.exe select adlib)
+- [ ] Change io_read_u8 to &mut self. Many of the implementations need to modify internal state on change requiring Cell
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Test SimCity (1989)
 - [ ] Add VGA support
@@ -49,7 +50,6 @@
 - [ ] Add mounted drive support
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
 - [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code
-- [ ] Change io_read_u8 to &mut self. Many of the implementations need to modify internal state on change requiring Cell
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions
 - [ ] remove functions from bus to get internal devices unless really needed
