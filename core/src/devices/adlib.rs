@@ -43,6 +43,7 @@ pub struct Adlib {
     status: u8,
     cycle_acc: u64,
     last_cycle_count: u32,
+    next_sample_cycle: u32,
     pending_flush: Vec<f32>,
     overflow_count: u64,
     samples_since_log: u64,
@@ -69,6 +70,7 @@ impl Adlib {
             status: 0,
             cycle_acc: 0,
             last_cycle_count: 0,
+            next_sample_cycle: (cpu_freq / ADLIB_SAMPLE_RATE as u64) as u32,
             pending_flush: Vec::with_capacity(FLUSH_SIZE * 2),
             overflow_count: 0,
             samples_since_log: 0,
@@ -124,6 +126,13 @@ impl Adlib {
         let n_out = self.cycle_acc / self.cpu_freq;
         self.cycle_acc %= self.cpu_freq;
 
+        // Compute when the next sample will be due so the bus can skip calling
+        // us until then, avoiding per-instruction overhead when n_out == 0.
+        let cycles_until_next =
+            (self.cpu_freq - self.cycle_acc + ADLIB_SAMPLE_RATE as u64 - 1)
+                / ADLIB_SAMPLE_RATE as u64;
+        self.next_sample_cycle = self.last_cycle_count.wrapping_add(cycles_until_next as u32);
+
         for _ in 0..n_out {
             let mut buf = [0i16; 2];
             nuked_opl3::generate_resampled(&mut self.chip, &mut buf);
@@ -168,6 +177,10 @@ impl Adlib {
 impl SoundCard for Adlib {
     fn advance_to_cycle(&mut self, cycle_count: u32) {
         self.advance_to_cycle(cycle_count);
+    }
+
+    fn next_sample_cycle(&self) -> u32 {
+        self.next_sample_cycle
     }
 }
 
@@ -240,6 +253,7 @@ impl Device for Adlib {
         self.status = 0;
         self.cycle_acc = 0;
         self.last_cycle_count = 0;
+        self.next_sample_cycle = (self.cpu_freq / ADLIB_SAMPLE_RATE as u64) as u32;
         self.consumer.inner.lock().unwrap().clear();
     }
 }

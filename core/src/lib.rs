@@ -30,6 +30,15 @@ pub(crate) fn physical_address(segment: u16, offset: u16) -> usize {
     (((segment as usize) << 4) + (offset as usize)) & 0xFFFFF
 }
 
+/// Returns `true` if `a` has reached or passed `b` in wrapping u32 arithmetic.
+///
+/// Uses the standard wrapping-subtraction trick: the difference `a - b` is
+/// interpreted as a signed distance; if it is in `[0, 2^31)` then `a >= b`.
+/// This is correct as long as `a` and `b` are always within 2^31 of each other.
+pub(crate) fn wrapping_ge(a: u32, b: u32) -> bool {
+    a.wrapping_sub(b) < 0x8000_0000
+}
+
 pub fn parse_hex_or_dec(s: &str) -> Result<u16> {
     if let Some(hex) = s.strip_prefix("0x") {
         u16::from_str_radix(hex, 16).with_context(|| format!("Invalid hex value: {}", s))
@@ -71,4 +80,63 @@ pub trait Device {
 
     fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8>;
     fn io_write_u8(&mut self, port: u16, val: u8, cycle_count: u32) -> bool;
+}
+
+#[cfg(test)]
+mod test {
+    mod wrapping_ge_tests {
+        use super::super::wrapping_ge;
+
+        #[test]
+        fn equal_values() {
+            assert!(wrapping_ge(0, 0));
+            assert!(wrapping_ge(100, 100));
+            assert!(wrapping_ge(u32::MAX, u32::MAX));
+        }
+
+        #[test]
+        fn a_ahead_of_b() {
+            assert!(wrapping_ge(108, 0));
+            assert!(wrapping_ge(200, 100));
+        }
+
+        #[test]
+        fn a_behind_b() {
+            assert!(!wrapping_ge(0, 108));
+            assert!(!wrapping_ge(100, 200));
+        }
+
+        #[test]
+        fn a_just_wrapped_b_has_not() {
+            // a wrapped to near 0, b is still near u32::MAX
+            let b = u32::MAX - 50;
+            let a = 50u32; // a is 101 ahead of b in wrapping arithmetic
+            assert!(wrapping_ge(a, b));
+        }
+
+        #[test]
+        fn a_has_not_wrapped_b_just_did() {
+            // b wrapped to near 0, a is still near u32::MAX
+            let a = u32::MAX - 50;
+            let b = 50u32;
+            assert!(!wrapping_ge(a, b));
+        }
+
+        #[test]
+        fn exactly_at_midpoint_boundary() {
+            // distance of exactly 2^31 is treated as "behind" (not >=)
+            let a = 0u32;
+            let b = 0x8000_0000u32;
+            assert!(!wrapping_ge(a, b));
+
+            // one less than midpoint is still "behind"
+            let b2 = 0x7FFF_FFFFu32;
+            assert!(!wrapping_ge(a, b2));
+
+            // a ahead by exactly 2^31 - 1 of b — wrapping_sub gives 0x7FFF_FFFF < 0x8000_0000
+            let a3 = 0x7FFF_FFFFu32;
+            let b3 = 0u32;
+            assert!(wrapping_ge(a3, b3));
+        }
+    }
 }

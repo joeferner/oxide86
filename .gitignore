@@ -12,3 +12,5 @@ screen_output.png
 *_actual.png
 flamegraph.svg
 perf.data
+perf.data.old
+perf.data.txt

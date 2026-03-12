@@ -22,7 +22,7 @@ use crate::{
     },
     disk::Disk,
     memory::Memory,
-    video::VideoCard,
+    video::VideoCard, wrapping_ge,
 };
 
 const MEMORY_MAPPED_IO_START: usize = 0xA0000;
@@ -115,7 +115,9 @@ impl Bus {
     pub(crate) fn increment_cycle_count(&mut self, cycles: u32) {
         self.cycle_count = self.cycle_count.wrapping_add(cycles);
         if let Some(sc) = &self.sound_card {
-            sc.borrow_mut().advance_to_cycle(self.cycle_count);
+            if wrapping_ge(self.cycle_count, sc.borrow().next_sample_cycle()) {
+                sc.borrow_mut().advance_to_cycle(self.cycle_count);
+            }
         }
     }
 
