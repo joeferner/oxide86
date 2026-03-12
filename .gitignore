@@ -10,3 +10,5 @@ exe-analysis/*.com
 *.img
 screen_output.png
 *_actual.png
+flamegraph.svg
+perf.data
