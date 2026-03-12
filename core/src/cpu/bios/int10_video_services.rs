@@ -17,7 +17,8 @@ use crate::{
     },
     physical_address,
     video::{
-        CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, Mode, TEXT_MODE_SIZE, VideoCardType,
+        CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, Mode, TEXT_MODE_SIZE,
+        VGA_MODE_13_FRAMEBUFFER_SIZE, VideoCardType,
         font::{CHAR_HEIGHT, CHAR_HEIGHT_8, CHAR_HEIGHT_14, Cp437Font},
         video_calculate_linear_offset,
         video_card::{
@@ -117,6 +118,13 @@ impl Cpu {
                 Mode::M0DEga320x200x16 | Mode::M10Ega640x350x16 => {
                     // Clear all 4 EGA planes (sequencer map mask defaults to 0x0F = all planes)
                     for i in 0..EGA_PLANE_SIZE {
+                        bus.memory_write_u8(EGA_MEMORY_START + i, 0);
+                    }
+                }
+                Mode::M13Vga320x200x256 => {
+                    // Set mode first so writes bypass EGA plane logic
+                    bus.video_card_mut().set_mode(mode.clone());
+                    for i in 0..VGA_MODE_13_FRAMEBUFFER_SIZE {
                         bus.memory_write_u8(EGA_MEMORY_START + i, 0);
                     }
                 }

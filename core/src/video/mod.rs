@@ -35,6 +35,11 @@ pub const EGA_PLANE_SIZE: usize = 0x8000; // 32KB per plane
 // and VGA mode 13h linear framebuffer (64000 bytes).
 pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 64KB
 
+// VGA mode 13h: 320×200 = 64000 bytes linear framebuffer at A000:0000
+pub const VGA_MODE_13_WIDTH: usize = 320;
+pub const VGA_MODE_13_HEIGHT: usize = 200;
+pub const VGA_MODE_13_FRAMEBUFFER_SIZE: usize = VGA_MODE_13_WIDTH * VGA_MODE_13_HEIGHT;
+
 pub const TEXT_MODE_COLS: usize = 80;
 pub const TEXT_MODE_ROWS: usize = 25;
 pub const TEXT_MODE_BYTES_PER_CHAR: usize = 2;

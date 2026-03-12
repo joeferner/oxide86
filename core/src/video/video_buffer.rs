@@ -6,7 +6,7 @@ use crate::video::renderer::{RenderTextArgs, dac_to_8bit, render_text};
 use crate::video::text::TextAttribute;
 use crate::video::{
     DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, EGA_PLANE_SIZE, Mode, TEXT_MODE_COLS,
-    TEXT_MODE_ROWS, TEXT_MODE_SIZE, VIDEO_MEMORY_SIZE,
+    TEXT_MODE_ROWS, TEXT_MODE_SIZE, VGA_MODE_13_HEIGHT, VGA_MODE_13_WIDTH, VIDEO_MEMORY_SIZE,
 };
 
 #[derive(PartialEq)]
@@ -211,6 +211,11 @@ impl VideoBuffer {
         &self.vga_dac_palette
     }
 
+    pub(crate) fn set_dac_color(&mut self, index: usize, r: u8, g: u8, b: u8) {
+        self.vga_dac_palette[index] = [r, g, b];
+        self.dirty = true;
+    }
+
     pub(crate) fn set_cga_color_select(&mut self, bg: usize, intensity: bool, palette: bool) {
         self.cga_bg = bg;
         self.cga_intensity = intensity;
@@ -245,6 +250,7 @@ impl VideoBuffer {
             Mode::M06Cga640x200x2 => self.render_mode_06h_640x200x2(buf),
             Mode::M0DEga320x200x16 => self.render_mode_0dh_320x200x16(buf),
             Mode::M10Ega640x350x16 => self.render_mode_10h_640x350x16(buf),
+            Mode::M13Vga320x200x256 => self.render_mode_13h_320x200x256(buf),
             Mode::Unknown(_) => self.render_text_mode(buf),
         }
     }
@@ -423,6 +429,24 @@ impl VideoBuffer {
 
                 let dac = self.vga_dac_palette[color_index];
                 let offset = (y * WIDTH + x) * 4;
+                buf[offset] = dac_to_8bit(dac[0]);
+                buf[offset + 1] = dac_to_8bit(dac[1]);
+                buf[offset + 2] = dac_to_8bit(dac[2]);
+                buf[offset + 3] = 0xFF;
+            }
+        }
+    }
+
+    /// Render VGA 320x200 256-color graphics (mode 13h).
+    ///
+    /// Linear framebuffer: vram[0..VGA_MODE_13_FRAMEBUFFER_SIZE], 1 byte per pixel (palette index).
+    /// Each index is looked up in the VGA DAC palette to produce an RGB value.
+    fn render_mode_13h_320x200x256(&self, buf: &mut [u8]) {
+        for y in 0..VGA_MODE_13_HEIGHT {
+            for x in 0..VGA_MODE_13_WIDTH {
+                let color_index = self.vram[y * VGA_MODE_13_WIDTH + x] as usize;
+                let dac = self.vga_dac_palette[color_index];
+                let offset = (y * VGA_MODE_13_WIDTH + x) * 4;
                 buf[offset] = dac_to_8bit(dac[0]);
                 buf[offset + 1] = dac_to_8bit(dac[1]);
                 buf[offset + 2] = dac_to_8bit(dac[2]);

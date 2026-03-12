@@ -1,3 +1,5 @@
+use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH};
+use crate::video::{TEXT_MODE_COLS, TEXT_MODE_ROWS, VGA_MODE_13_HEIGHT, VGA_MODE_13_WIDTH};
 use core::fmt;
 
 pub struct TextDimensions {
@@ -13,6 +15,7 @@ pub enum Mode {
     M06Cga640x200x2,
     M0DEga320x200x16,
     M10Ega640x350x16,
+    M13Vga320x200x256,
     Unknown(u8),
 }
 
@@ -25,18 +28,18 @@ impl Mode {
             Mode::M06Cga640x200x2 => 0x06,
             Mode::M0DEga320x200x16 => 0x0d,
             Mode::M10Ega640x350x16 => 0x10,
+            Mode::M13Vga320x200x256 => 0x13,
             Mode::Unknown(v) => *v,
         }
     }
 
     pub fn resolution(&self) -> (u32, u32) {
-        use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH};
-        use crate::video::{TEXT_MODE_COLS, TEXT_MODE_ROWS};
         match self {
             Mode::M04Cga320x200x4 => (320, 200),
             Mode::M06Cga640x200x2 => (640, 400),
             Mode::M0DEga320x200x16 => (320, 200),
             Mode::M10Ega640x350x16 => (640, 350),
+            Mode::M13Vga320x200x256 => (VGA_MODE_13_WIDTH as u32, VGA_MODE_13_HEIGHT as u32),
             _ => (
                 (CHAR_WIDTH * TEXT_MODE_COLS) as u32,
                 (CHAR_HEIGHT * TEXT_MODE_ROWS) as u32,
@@ -52,6 +55,7 @@ impl Mode {
             Mode::M06Cga640x200x2 => Some(TextDimensions { rows: 25, cols: 80 }),
             Mode::M0DEga320x200x16 => Some(TextDimensions { rows: 25, cols: 40 }),
             Mode::M10Ega640x350x16 => Some(TextDimensions { rows: 25, cols: 80 }),
+            Mode::M13Vga320x200x256 => Some(TextDimensions { rows: 25, cols: 40 }),
             Mode::Unknown(_) => None,
         }
     }
@@ -66,6 +70,7 @@ impl From<u8> for Mode {
             0x06 => Mode::M06Cga640x200x2,
             0x0d => Mode::M0DEga320x200x16,
             0x10 => Mode::M10Ega640x350x16,
+            0x13 => Mode::M13Vga320x200x256,
             v => Mode::Unknown(v),
         }
     }

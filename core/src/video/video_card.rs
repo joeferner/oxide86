@@ -7,7 +7,8 @@ use crate::{
     Device,
     video::{
         CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, EGA_MEMORY_END, EGA_MEMORY_START,
-        EGA_PLANE_SIZE, Mode, VIDEO_MEMORY_SIZE, VideoBuffer, VideoCardType,
+        EGA_PLANE_SIZE, Mode, VGA_MODE_13_FRAMEBUFFER_SIZE, VIDEO_MEMORY_SIZE, VideoBuffer,
+        VideoCardType,
         font::{CHAR_HEIGHT_8, Cp437Font},
         mode::TextDimensions,
     },
@@ -610,7 +611,18 @@ impl Device for VideoCard {
             && (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&addr)
         {
             let offset = addr - EGA_MEMORY_START;
-            if offset < EGA_PLANE_SIZE {
+            let is_mode_13 = {
+                let buf = self.buffer.read().unwrap();
+                matches!(buf.mode(), Mode::M13Vga320x200x256)
+            };
+            if is_mode_13 {
+                // Linear framebuffer: direct byte read
+                if offset < VGA_MODE_13_FRAMEBUFFER_SIZE {
+                    Some(self.internal_read_u8(offset))
+                } else {
+                    Some(0xFF)
+                }
+            } else if offset < EGA_PLANE_SIZE {
                 // Load latches from all 4 planes on every CPU read (hardware behaviour).
                 let latches = [
                     self.internal_read_u8(offset),
@@ -637,6 +649,17 @@ impl Device for VideoCard {
             && (EGA_MEMORY_START..=EGA_MEMORY_END).contains(&addr)
         {
             let offset = addr - EGA_MEMORY_START;
+            let is_mode_13 = {
+                let buf = self.buffer.read().unwrap();
+                matches!(buf.mode(), Mode::M13Vga320x200x256)
+            };
+            if is_mode_13 {
+                // Linear framebuffer: direct byte write
+                if offset < VGA_MODE_13_FRAMEBUFFER_SIZE {
+                    self.internal_write_u8(offset, val);
+                }
+                return true;
+            }
             if offset < EGA_PLANE_SIZE {
                 let latches = self.gc_latches;
                 // Rotate CPU data right by gc_data_rotate bits (write modes 0 and 3).
@@ -924,6 +947,12 @@ impl Device for VideoCard {
                     let component = self.dac_write_pos % 3;
                     self.dac_registers[reg][component] = val & 0x3F;
                     self.dac_write_pos = (self.dac_write_pos + 1) % (256 * 3);
+                    // Sync completed entry to video buffer palette used by the renderer
+                    let entry = self.dac_registers[reg];
+                    self.buffer
+                        .write()
+                        .unwrap()
+                        .set_dac_color(reg, entry[0], entry[1], entry[2]);
                     true
                 }
                 _ => false,
