@@ -1,5 +1,5 @@
 use oxide86_core::devices::pc_speaker::PcSpeaker;
-use rodio::{MixerDeviceSink, Player, Source};
+use rodio::{MixerDeviceSink, Source};
 use std::{
     num::NonZero,
     sync::{
@@ -68,22 +68,13 @@ impl Source for ContinuousSquareWave {
 
 pub(crate) struct RodioPcSpeaker {
     freq_bits: Arc<AtomicU32>,
-    // Keep player alive so the source keeps running.
-    _player: Player,
 }
 
 impl RodioPcSpeaker {
     pub(crate) fn new(sink: &MixerDeviceSink) -> Self {
         let freq_bits = Arc::new(AtomicU32::new(0));
-        let source = ContinuousSquareWave::new(Arc::clone(&freq_bits));
-        let player = Player::connect_new(sink.mixer());
-        player.append(source);
-        player.play();
-
-        Self {
-            freq_bits,
-            _player: player,
-        }
+        sink.mixer().add(ContinuousSquareWave::new(Arc::clone(&freq_bits)));
+        Self { freq_bits }
     }
 }
 
