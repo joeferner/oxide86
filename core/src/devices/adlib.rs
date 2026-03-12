@@ -223,7 +223,10 @@ impl Device for Adlib {
                             }
                         }
                     }
-                    _ => nuked_opl3::write_reg(&mut self.chip, addr as u16, val),
+                    _ => {
+                        log::debug!("[AdLib] reg write: addr=0x{addr:02X} val=0x{val:02X}");
+                        nuked_opl3::write_reg(&mut self.chip, addr as u16, val);
+                    }
                 }
                 true
             }
