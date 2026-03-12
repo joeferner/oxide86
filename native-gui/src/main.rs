@@ -893,7 +893,8 @@ fn step_emulator(
         let current_cycles = computer.get_cycle_count();
         let frame_target = throttle
             .target_cycles()
-            .min(current_cycles + max_cycles_per_frame);
+            .min(current_cycles + max_cycles_per_frame)
+            .max(current_cycles + 1000);
 
         while computer.get_cycle_count() < frame_target {
             computer.step();
