@@ -93,7 +93,7 @@ impl Device for Rtc {
         // floppy_types is battery-backed CMOS RAM — preserved across resets
     }
 
-    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
@@ -101,7 +101,7 @@ impl Device for Rtc {
         false
     }
 
-    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
         if port != RTC_IO_PORT_DATA {
             return None;
         }

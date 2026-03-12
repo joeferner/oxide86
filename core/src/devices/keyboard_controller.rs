@@ -1,4 +1,4 @@
-use std::{any::Any, cell::Cell};
+use std::any::Any;
 
 use crate::Device;
 
@@ -23,12 +23,12 @@ pub(crate) struct KeyboardController {
     /// Set when a key scan code has been loaded; cleared by take_pending_key().
     pending_key: bool,
     /// Output Buffer Full (keyboard side) — cleared when port 0x60 is read.
-    obf: Cell<bool>,
+    obf: bool,
 
     // PS/2 auxiliary port (mouse)
     aux_buf: Vec<u8>,
-    /// Read cursor into aux_buf; Cell<> so io_read_u8 (&self) can advance it.
-    aux_read_pos: Cell<usize>,
+    /// Read cursor into aux_buf.
+    aux_read_pos: usize,
     /// Pending IRQ12 — set when bytes are pushed; cleared by take_pending_mouse().
     pending_mouse: bool,
     /// Auxiliary port enabled (8042 commands 0xA7/0xA8 on port 0x64).
@@ -40,9 +40,9 @@ impl KeyboardController {
         Self {
             scan_code: 0,
             pending_key: false,
-            obf: Cell::new(false),
+            obf: false,
             aux_buf: Vec::new(),
-            aux_read_pos: Cell::new(0),
+            aux_read_pos: 0,
             pending_mouse: false,
             aux_enabled: false,
         }
@@ -51,7 +51,7 @@ impl KeyboardController {
     pub(crate) fn key_press(&mut self, scan_code: u8) {
         self.scan_code = scan_code;
         self.pending_key = true;
-        self.obf.set(true);
+        self.obf = true;
     }
 
     pub(crate) fn take_pending_key(&mut self) -> bool {
@@ -63,7 +63,7 @@ impl KeyboardController {
     /// Returns true if a keyboard scan code is waiting at port 0x60.
     /// Used by Computer to gate queuing of the next key press.
     pub(crate) fn output_buffer_full(&self) -> bool {
-        self.obf.get()
+        self.obf
     }
 
     // ── PS/2 auxiliary (mouse) port ──────────────────────────────────────────
@@ -83,10 +83,10 @@ impl KeyboardController {
             return;
         }
         // Compact any already-consumed prefix before appending.
-        let pos = self.aux_read_pos.get();
+        let pos = self.aux_read_pos;
         if pos > 0 {
             self.aux_buf.drain(..pos);
-            self.aux_read_pos.set(0);
+            self.aux_read_pos = 0;
         }
         self.aux_buf.extend_from_slice(bytes);
         self.pending_mouse = true;
@@ -101,15 +101,15 @@ impl KeyboardController {
 
     /// Read one byte from the auxiliary buffer (&mut path, used by INT 74h handler).
     pub(crate) fn aux_read(&mut self) -> Option<u8> {
-        let pos = self.aux_read_pos.get();
+        let pos = self.aux_read_pos;
         if pos < self.aux_buf.len() {
             let byte = self.aux_buf[pos];
             let new_pos = pos + 1;
             if new_pos == self.aux_buf.len() {
                 self.aux_buf.clear();
-                self.aux_read_pos.set(0);
+                self.aux_read_pos = 0;
             } else {
-                self.aux_read_pos.set(new_pos);
+                self.aux_read_pos = new_pos;
             }
             Some(byte)
         } else {
@@ -125,7 +125,7 @@ impl KeyboardController {
     /// Reset the auxiliary port state (called on PS/2 mouse reset command).
     pub(crate) fn reset_aux(&mut self) {
         self.aux_buf.clear();
-        self.aux_read_pos.set(0);
+        self.aux_read_pos = 0;
         self.pending_mouse = false;
     }
 }
@@ -138,14 +138,14 @@ impl Device for KeyboardController {
     fn reset(&mut self) {
         self.scan_code = 0;
         self.pending_key = false;
-        self.obf.set(false);
+        self.obf = false;
         self.aux_buf.clear();
-        self.aux_read_pos.set(0);
+        self.aux_read_pos = 0;
         self.pending_mouse = false;
         self.aux_enabled = false;
     }
 
-    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
@@ -153,7 +153,7 @@ impl Device for KeyboardController {
         false
     }
 
-    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
         match port {
             KEYBOARD_IO_PORT_DATA => {
                 // On real 8042 hardware OBF and AUXOBF share a single output
@@ -163,14 +163,14 @@ impl Device for KeyboardController {
                 // (i.e. INT 09h was dispatched), return that and don't touch
                 // the aux buffer.  This prevents INT 09h from consuming a
                 // mouse-packet byte when both arrive close together.
-                if self.obf.get() {
-                    self.obf.set(false);
+                if self.obf {
+                    self.obf = false;
                     Some(self.scan_code)
                 } else {
-                    let pos = self.aux_read_pos.get();
+                    let pos = self.aux_read_pos;
                     if pos < self.aux_buf.len() {
                         let byte = self.aux_buf[pos];
-                        self.aux_read_pos.set(pos + 1);
+                        self.aux_read_pos = pos + 1;
                         Some(byte)
                     } else {
                         Some(self.scan_code)
@@ -178,9 +178,9 @@ impl Device for KeyboardController {
                 }
             }
             KEYBOARD_IO_PORT_STATUS => {
-                let aux_has_data = self.aux_read_pos.get() < self.aux_buf.len();
+                let aux_has_data = self.aux_read_pos < self.aux_buf.len();
                 let mut status = STATUS_SYSTEM;
-                if self.obf.get() || aux_has_data {
+                if self.obf || aux_has_data {
                     status |= STATUS_OBF;
                 }
                 if aux_has_data {

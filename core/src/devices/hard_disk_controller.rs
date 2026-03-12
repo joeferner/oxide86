@@ -1,4 +1,4 @@
-use std::{any::Any, cell::RefCell};
+use std::any::Any;
 
 use crate::{
     Device,
@@ -64,7 +64,7 @@ pub(crate) struct HardDiskController {
     /// Error register – updated by each command
     error: u8,
     /// ATA PIO state machine
-    phase: RefCell<HdcPhase>,
+    phase: HdcPhase,
     /// SRST (software reset) flag – asserted via device-control register bit 2
     srst: bool,
 }
@@ -79,7 +79,7 @@ impl HardDiskController {
             cylinder_high: 0,
             drive_head: 0,
             error: 0,
-            phase: RefCell::new(HdcPhase::Idle),
+            phase: HdcPhase::Idle,
             srst: false,
         }
     }
@@ -95,7 +95,7 @@ impl HardDiskController {
         if self.srst {
             return HDC_STATUS_BSY;
         }
-        match &*self.phase.borrow() {
+        match &self.phase {
             HdcPhase::Idle => {
                 if self.error != 0 {
                     HDC_STATUS_DRDY | HDC_STATUS_ERR
@@ -163,7 +163,7 @@ impl HardDiskController {
 
                 match result {
                     Some(Ok(data)) => {
-                        *self.phase.borrow_mut() = HdcPhase::ReadData { data, index: 0 };
+                        self.phase = HdcPhase::ReadData { data, index: 0 };
                         self.error = 0;
                     }
                     Some(Err(e)) => {
@@ -219,7 +219,7 @@ impl HardDiskController {
                 }
 
                 self.error = 0;
-                *self.phase.borrow_mut() = HdcPhase::WriteData {
+                self.phase = HdcPhase::WriteData {
                     cylinder: cylinder as u8,
                     head,
                     sector,
@@ -232,7 +232,7 @@ impl HardDiskController {
             HDC_CMD_IDENTIFY => {
                 if drive_index < self.disks.len() {
                     let data = self.build_identify(drive_index);
-                    *self.phase.borrow_mut() = HdcPhase::ReadData { data, index: 0 };
+                    self.phase = HdcPhase::ReadData { data, index: 0 };
                     self.error = 0;
                 } else {
                     // No disk attached — ABRT so the caller can detect absent drive
@@ -259,12 +259,12 @@ impl Device for HardDiskController {
     }
 
     fn reset(&mut self) {
-        *self.phase.borrow_mut() = HdcPhase::Idle;
+        self.phase = HdcPhase::Idle;
         self.error = 0;
         self.srst = false;
     }
 
-    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
@@ -272,7 +272,7 @@ impl Device for HardDiskController {
         false
     }
 
-    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
         match port {
             HDC_ERROR => Some(self.error),
             HDC_SECTOR_COUNT => Some(self.sector_count),
@@ -283,7 +283,7 @@ impl Device for HardDiskController {
             // Status and alt-status return the same value
             HDC_COMMAND | HDC_DEVICE_CONTROL => Some(self.status()),
             HDC_DATA => {
-                let current = std::mem::replace(&mut *self.phase.borrow_mut(), HdcPhase::Idle);
+                let current = std::mem::replace(&mut self.phase, HdcPhase::Idle);
                 let (byte, next) = match current {
                     HdcPhase::ReadData { data, index } => {
                         let b = data.get(index).copied().unwrap_or(0xFF);
@@ -302,7 +302,7 @@ impl Device for HardDiskController {
                     }
                     other => (0xFF, other),
                 };
-                *self.phase.borrow_mut() = next;
+                self.phase = next;
                 Some(byte)
             }
             _ => None,
@@ -344,7 +344,7 @@ impl Device for HardDiskController {
                 if srst && !self.srst {
                     // Asserting software reset: halt controller
                     self.srst = true;
-                    *self.phase.borrow_mut() = HdcPhase::Idle;
+                    self.phase = HdcPhase::Idle;
                 } else if !srst && self.srst {
                     // Releasing software reset: controller returns to ready state
                     self.srst = false;
@@ -353,7 +353,7 @@ impl Device for HardDiskController {
                 true
             }
             HDC_DATA => {
-                let current = std::mem::replace(&mut *self.phase.borrow_mut(), HdcPhase::Idle);
+                let current = std::mem::replace(&mut self.phase, HdcPhase::Idle);
                 let next = match current {
                     HdcPhase::WriteData {
                         cylinder,
@@ -395,7 +395,7 @@ impl Device for HardDiskController {
                     }
                     other => other,
                 };
-                *self.phase.borrow_mut() = next;
+                self.phase = next;
                 true
             }
             _ => false,

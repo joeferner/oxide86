@@ -1,5 +1,4 @@
 use std::any::Any;
-use std::cell::Cell;
 
 use crate::{Device, devices::pc_speaker::PcSpeaker};
 
@@ -23,9 +22,9 @@ struct Channel {
     /// 1=lo only, 2=hi only, 3=lo/hi
     access_mode: u8,
     /// Latched counter value from a counter-latch command.
-    latched: Cell<Option<u16>>,
+    latched: Option<u16>,
     /// True when the high byte of the latch should be returned next.
-    latch_read_high: Cell<bool>,
+    latch_read_high: bool,
 }
 
 impl Default for Channel {
@@ -35,8 +34,8 @@ impl Default for Channel {
             expect_low: true,
             latch_buf: 0,
             access_mode: 3,
-            latched: Cell::new(None),
-            latch_read_high: Cell::new(false),
+            latched: None,
+            latch_read_high: false,
         }
     }
 }
@@ -149,8 +148,8 @@ impl Pit {
                 if access == 0 {
                     // Counter latch command: capture current counter value.
                     let count = self.counter_value_ch0(cycle_count);
-                    self.ch0.latched.set(Some(count));
-                    self.ch0.latch_read_high.set(false);
+                    self.ch0.latched = Some(count);
+                    self.ch0.latch_read_high = false;
                 } else {
                     self.ch0.access_mode = access;
                     self.ch0.expect_low = access == 3;
@@ -180,7 +179,7 @@ impl Device for Pit {
         self.pc_speaker.disable();
     }
 
-    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
@@ -188,20 +187,20 @@ impl Device for Pit {
         false
     }
 
-    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
         match port {
             PIT_CHANNEL_0 => {
-                if let Some(count) = self.ch0.latched.get() {
-                    let high = self.ch0.latch_read_high.get();
+                if let Some(count) = self.ch0.latched {
+                    let high = self.ch0.latch_read_high;
                     let byte = if high {
                         (count >> 8) as u8
                     } else {
                         count as u8
                     };
-                    self.ch0.latch_read_high.set(!high);
+                    self.ch0.latch_read_high = !high;
                     if high {
-                        self.ch0.latched.set(None);
-                        self.ch0.latch_read_high.set(false);
+                        self.ch0.latched = None;
+                        self.ch0.latch_read_high = false;
                     }
                     Some(byte)
                 } else {

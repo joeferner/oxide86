@@ -66,9 +66,9 @@ pub trait Device {
 
     fn reset(&mut self);
 
-    fn memory_read_u8(&self, addr: usize, cycle_count: u32) -> Option<u8>;
+    fn memory_read_u8(&mut self, addr: usize, cycle_count: u32) -> Option<u8>;
     fn memory_write_u8(&mut self, addr: usize, val: u8, cycle_count: u32) -> bool;
 
-    fn io_read_u8(&self, port: u16, cycle_count: u32) -> Option<u8>;
+    fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8>;
     fn io_write_u8(&mut self, port: u16, val: u8, cycle_count: u32) -> bool;
 }

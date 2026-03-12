@@ -80,7 +80,7 @@ impl Device for GamePortDevice {
         self.one_shot_fired = false;
     }
 
-    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
@@ -88,7 +88,7 @@ impl Device for GamePortDevice {
         false
     }
 
-    fn io_read_u8(&self, port: u16, cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8> {
         if port != GAME_PORT {
             return None;
         }
@@ -131,7 +131,7 @@ mod tests {
 
     #[test]
     fn test_buttons_released_by_default() {
-        let js = make();
+        let mut js = make();
         // No reset yet, timing bits all 0; buttons all released = bits 4-7 high
         let status = js.io_read_u8(GAME_PORT, 0).unwrap();
         assert_eq!(status & 0xF0, 0xF0, "all buttons should be released");

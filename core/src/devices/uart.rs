@@ -1,6 +1,5 @@
 use std::{
     any::Any,
-    cell::Cell,
     sync::{Arc, RwLock},
 };
 
@@ -40,15 +39,15 @@ pub const LSR_TEMT: u8 = 0x40;
 pub const LSR_TIMEOUT: u8 = 0x80;
 
 struct Port {
-    dll: u8,               // Divisor Latch Low  (offset 0, DLAB=1)
-    dlm: u8,               // Divisor Latch High (offset 1, DLAB=1)
-    ier: u8,               // Interrupt Enable   (offset 1, DLAB=0)
-    lcr: u8,               // Line Control       (offset 3)
-    mcr: u8,               // Modem Control      (offset 4)
-    lsr: Cell<u8>, // Line Status        (offset 5) — Cell for interior mutability in io_read_u8
-    msr: u8,       // Modem Status       (offset 6)
-    rbr: Cell<u8>, // Receive Buffer     (offset 0, DLAB=0, read) — Cell for interior mutability
-    thr: Cell<Option<u8>>, // Buffered TX byte when device wasn't ready; None means THR is empty
+    dll: u8,         // Divisor Latch Low  (offset 0, DLAB=1)
+    dlm: u8,         // Divisor Latch High (offset 1, DLAB=1)
+    ier: u8,         // Interrupt Enable   (offset 1, DLAB=0)
+    lcr: u8,         // Line Control       (offset 3)
+    mcr: u8,         // Modem Control      (offset 4)
+    lsr: u8,         // Line Status        (offset 5)
+    msr: u8,         // Modem Status       (offset 6)
+    rbr: u8,         // Receive Buffer     (offset 0, DLAB=0, read)
+    thr: Option<u8>, // Buffered TX byte when device wasn't ready; None means THR is empty
     device: Option<Arc<RwLock<dyn ComPortDevice>>>,
 }
 
@@ -59,10 +58,10 @@ impl Port {
         self.ier = 0x00; // all interrupts disabled
         self.lcr = 0x03; // 8-N-1, DLAB=0
         self.mcr = 0x00;
-        self.lsr.set(LSR_THRE | LSR_TEMT); // transmitter ready
+        self.lsr = LSR_THRE | LSR_TEMT; // transmitter ready
         self.msr = 0x00;
-        self.rbr.set(0x00);
-        self.thr.set(None);
+        self.rbr = 0x00;
+        self.thr = None;
         if let Some(device) = &self.device {
             device.write().unwrap().reset();
         }
@@ -71,36 +70,36 @@ impl Port {
     /// Retry sending a buffered THR byte to the device. If the device now accepts
     /// it, clears the buffer and restores THRE + TEMT so the BIOS polling loop
     /// can proceed. Called on every LSR read so THRE tracks device readiness.
-    fn flush_tx(&self) {
-        let Some(byte) = self.thr.get() else { return };
+    fn flush_tx(&mut self) {
+        let Some(byte) = self.thr else { return };
         let Some(ref dev) = self.device else {
             // No device attached: discard the byte and unblock THRE.
-            self.thr.set(None);
-            self.lsr.set(self.lsr.get() | LSR_THRE | LSR_TEMT);
+            self.thr = None;
+            self.lsr |= LSR_THRE | LSR_TEMT;
             return;
         };
         if let Ok(mut guard) = dev.write()
             && guard.write(byte)
         {
-            self.thr.set(None);
-            self.lsr.set(self.lsr.get() | LSR_THRE | LSR_TEMT);
+            self.thr = None;
+            self.lsr |= LSR_THRE | LSR_TEMT;
         }
     }
 
     /// Poll the attached device for an incoming byte and update RBR + LSR.DR.
     /// Called before any read of RBR (offset 0) or LSR (offset 5) so the BIOS
     /// sees an up-to-date Data-Ready bit.
-    fn poll_rx(&self) {
+    fn poll_rx(&mut self) {
         // Don't overwrite an unread byte already sitting in RBR.
-        if self.lsr.get() & LSR_DR != 0 {
+        if self.lsr & LSR_DR != 0 {
             return;
         }
         let Some(ref dev) = self.device else { return };
         if let Ok(mut guard) = dev.write()
             && let Some(byte) = guard.read()
         {
-            self.rbr.set(byte);
-            self.lsr.set(self.lsr.get() | LSR_DR); // set DR (Data Ready)
+            self.rbr = byte;
+            self.lsr |= LSR_DR; // set DR (Data Ready)
         }
     }
 }
@@ -113,10 +112,10 @@ impl Default for Port {
             ier: 0x00, // all interrupts disabled
             lcr: 0x03, // 8-N-1, DLAB=0
             mcr: 0x00,
-            lsr: Cell::new(LSR_THRE | LSR_TEMT), // transmitter ready
+            lsr: LSR_THRE | LSR_TEMT, // transmitter ready
             msr: 0x00,
-            rbr: Cell::new(0x00),
-            thr: Cell::new(None),
+            rbr: 0x00,
+            thr: None,
             device: None,
         }
     }
@@ -213,7 +212,7 @@ impl Device for Uart {
         }
     }
 
-    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
@@ -221,9 +220,9 @@ impl Device for Uart {
         false
     }
 
-    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
         let (idx, offset) = port_index(port)?;
-        let p = &self.ports[idx];
+        let p = &mut self.ports[idx];
         let dlab = p.lcr & 0x80 != 0;
         let val = match offset {
             0 => {
@@ -232,8 +231,8 @@ impl Device for Uart {
                 } else {
                     // RBR read: poll device first, then return buffered byte and clear DR
                     p.poll_rx();
-                    let byte = p.rbr.get();
-                    p.lsr.set(p.lsr.get() & !LSR_DR); // clear DR — byte consumed
+                    let byte = p.rbr;
+                    p.lsr &= !LSR_DR; // clear DR — byte consumed
                     byte
                 }
             }
@@ -250,7 +249,7 @@ impl Device for Uart {
                 // LSR read: flush any buffered TX byte (updates THRE) then poll for RX
                 p.flush_tx();
                 p.poll_rx();
-                p.lsr.get()
+                p.lsr
             }
             6 => p.msr,
             _ => return None,
@@ -278,8 +277,8 @@ impl Device for Uart {
                         true // no device: silently discard
                     };
                     if !accepted {
-                        p.thr.set(Some(val));
-                        p.lsr.set(p.lsr.get() & !(LSR_THRE | LSR_TEMT));
+                        p.thr = Some(val);
+                        p.lsr &= !(LSR_THRE | LSR_TEMT);
                     }
                 }
             }
@@ -303,7 +302,7 @@ impl Device for Uart {
                     }
                 }
             }
-            5 => p.lsr.set(val),
+            5 => p.lsr = val,
             6 => p.msr = val,
             _ => return false,
         }

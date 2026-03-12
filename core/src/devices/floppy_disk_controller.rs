@@ -1,7 +1,4 @@
-use std::{
-    any::Any,
-    cell::{Cell, RefCell},
-};
+use std::any::Any;
 
 use crate::{
     Device,
@@ -94,9 +91,9 @@ pub(crate) struct FloppyDiskController {
     selected_drive: u8,
     /// Per-drive disk change line (mirrors DIR bit 7). Set to true when a disk is inserted or
     /// swapped; automatically cleared when the OS reads DIR via port 0x3F7.
-    changeline: [Cell<bool>; 2],
+    changeline: [bool; 2],
     /// NEC 765 command state machine
-    phase: RefCell<FdcPhase>,
+    phase: FdcPhase,
     /// True while the nRESET bit (DOR bit 2) is asserted low (controller held in reset)
     in_reset: bool,
     /// Pending interrupt result from RECALIBRATE or reset recovery: (ST0, PCN).
@@ -109,8 +106,8 @@ impl FloppyDiskController {
         Self {
             drives: [None, None],
             selected_drive: 0,
-            changeline: [Cell::new(false), Cell::new(false)],
-            phase: RefCell::new(FdcPhase::Idle),
+            changeline: [false, false],
+            phase: FdcPhase::Idle,
             in_reset: false,
             pending_interrupt: None,
         }
@@ -131,7 +128,7 @@ impl FloppyDiskController {
         assert!(idx < 2, "floppy drive index out of range");
         let prev = self.drives[idx].take();
         self.drives[idx] = disk;
-        self.changeline[idx].set(true);
+        self.changeline[idx] = true;
         prev
     }
 
@@ -159,7 +156,7 @@ impl FloppyDiskController {
         if self.in_reset {
             return 0x00;
         }
-        match &*self.phase.borrow() {
+        match &self.phase {
             FdcPhase::Idle => FDC_MSR_RQM,
             FdcPhase::Command { .. } => FDC_MSR_RQM | FDC_MSR_CB,
             FdcPhase::Execution { .. } => FDC_MSR_RQM | FDC_MSR_DIO | FDC_MSR_NDM | FDC_MSR_CB,
@@ -376,12 +373,12 @@ impl Device for FloppyDiskController {
     }
 
     fn reset(&mut self) {
-        *self.phase.borrow_mut() = FdcPhase::Idle;
+        self.phase = FdcPhase::Idle;
         self.in_reset = false;
         self.pending_interrupt = None;
     }
 
-    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
@@ -389,11 +386,11 @@ impl Device for FloppyDiskController {
         false
     }
 
-    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
         match port {
             FDC_MSR => Some(self.msr()),
             FDC_DATA => {
-                let current = std::mem::replace(&mut *self.phase.borrow_mut(), FdcPhase::Idle);
+                let current = std::mem::replace(&mut self.phase, FdcPhase::Idle);
                 let (byte, next) = match current {
                     FdcPhase::Execution {
                         data,
@@ -452,13 +449,13 @@ impl Device for FloppyDiskController {
                     }
                     other => (0xFF, other),
                 };
-                *self.phase.borrow_mut() = next;
+                self.phase = next;
                 Some(byte)
             }
             FDC_DIR => {
-                let cell = self.changeline.get(self.selected_drive as usize)?;
-                let changed = cell.get();
-                cell.set(false);
+                let idx = self.selected_drive as usize;
+                let changed = *self.changeline.get(idx)?;
+                self.changeline[idx] = false;
                 Some(if changed { FDC_DIR_DISK_CHANGE } else { 0x00 })
             }
             _ => None,
@@ -473,7 +470,7 @@ impl Device for FloppyDiskController {
                 if !reset_released {
                     // Asserting reset: freeze controller, discard any in-progress state
                     self.in_reset = true;
-                    *self.phase.borrow_mut() = FdcPhase::Idle;
+                    self.phase = FdcPhase::Idle;
                     self.pending_interrupt = None;
                 } else if self.in_reset {
                     // De-asserting reset: controller comes out of reset ready for commands
@@ -484,7 +481,7 @@ impl Device for FloppyDiskController {
                 true
             }
             FDC_DATA => {
-                let current = std::mem::replace(&mut *self.phase.borrow_mut(), FdcPhase::Idle);
+                let current = std::mem::replace(&mut self.phase, FdcPhase::Idle);
                 let next = match current {
                     FdcPhase::Idle => {
                         let cmd_code = val & 0x1F;
@@ -589,7 +586,7 @@ impl Device for FloppyDiskController {
                     // Ignore writes during read execution or result phases
                     other => other,
                 };
-                *self.phase.borrow_mut() = next;
+                self.phase = next;
                 true
             }
             _ => false,

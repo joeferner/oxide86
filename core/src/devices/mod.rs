@@ -67,7 +67,7 @@ impl PcmRingBuffer {
 /// The bus calls `advance_to_cycle` on every `increment_cycle_count`, giving
 /// the sound card a steady timing stream regardless of IO port activity.
 pub trait SoundCard {
-    fn advance_to_cycle(&self, cycle_count: u32);
+    fn advance_to_cycle(&mut self, cycle_count: u32);
 }
 
 pub type SoundCardRef = Rc<RefCell<dyn SoundCard>>;

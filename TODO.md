@@ -34,11 +34,11 @@
 - [X] Get SvarDos working (see ai-analysis/svardos-boot-investigation.md)
 - [X] Add Game Port/Joystick support (see ai-analysis/joystick-implementation.md)
 - [X] Test King's Quest I
-- [ ] Add AdLib support
+- [X] Add AdLib support
   - [X] CLI --sound-card=none/adlib option
   - [X] Test AdLib JukeBox
-  - [ ] Test The Colonel's Bequest (install.exe select adlib)
-- [ ] Change io_read_u8 to &mut self. Many of the implementations need to modify internal state on change requiring Cell
+  - [X] Test The Colonel's Bequest (install.exe select adlib)
+- [X] Change io_read_u8 to &mut self. Many of the implementations need to modify internal state on change requiring Cell which after changing this we can remove
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Test SimCity (1989)
 - [ ] Add VGA support

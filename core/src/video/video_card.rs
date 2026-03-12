@@ -1,6 +1,5 @@
 use std::{
     any::Any,
-    cell::Cell,
     sync::{Arc, RwLock},
 };
 
@@ -69,11 +68,11 @@ pub struct VideoCard {
     // EGA/VGA Attribute Controller registers (16 palette + 1 border color)
     ac_registers: [u8; 17],
     ac_address: u8,
-    ac_flip_flop: Cell<bool>, // false = address mode, true = data mode
+    ac_flip_flop: bool, // false = address mode, true = data mode
     // VGA DAC registers (256 entries, each RGB 0-63)
     dac_registers: Vec<[u8; 3]>,
     dac_write_pos: usize, // index * 3 + color_component
-    dac_read_pos: Cell<usize>,
+    dac_read_pos: usize,
     // EGA/VGA Sequencer registers
     sequencer_address: u8,
     /// Map Mask register (sequencer index 0x02): bit N = enable write to plane N.
@@ -96,7 +95,7 @@ pub struct VideoCard {
     /// Bit Mask (GC register 0x08): bit N=1 means CPU data bit N passes through to VRAM.
     gc_bit_mask: u8,
     /// CPU read latches: one byte per plane, loaded on every EGA CPU read.
-    gc_latches: Cell<[u8; 4]>,
+    gc_latches: [u8; 4],
 }
 
 impl VideoCard {
@@ -118,10 +117,10 @@ impl VideoCard {
             color_select: 0,
             ac_registers: [0u8; 17],
             ac_address: 0,
-            ac_flip_flop: Cell::new(false),
+            ac_flip_flop: false,
             dac_registers: vec![[0u8; 3]; 256],
             dac_write_pos: 0,
-            dac_read_pos: Cell::new(0),
+            dac_read_pos: 0,
             sequencer_address: 0,
             sequencer_map_mask: 0x0F,
             gc_address: 0,
@@ -132,7 +131,7 @@ impl VideoCard {
             gc_function_select: 0,
             gc_write_mode: 0,
             gc_bit_mask: 0xFF,
-            gc_latches: Cell::new([0u8; 4]),
+            gc_latches: [0u8; 4],
         }
     }
 
@@ -586,10 +585,10 @@ impl Device for VideoCard {
         self.color_select = 0;
         self.ac_registers = [0u8; 17];
         self.ac_address = 0;
-        self.ac_flip_flop.set(false);
+        self.ac_flip_flop = false;
         self.dac_registers = vec![[0u8; 3]; 256];
         self.dac_write_pos = 0;
-        self.dac_read_pos.set(0);
+        self.dac_read_pos = 0;
         self.sequencer_address = 0;
         self.sequencer_map_mask = 0x0F;
         self.gc_address = 0;
@@ -600,10 +599,10 @@ impl Device for VideoCard {
         self.gc_function_select = 0;
         self.gc_write_mode = 0;
         self.gc_bit_mask = 0xFF;
-        self.gc_latches.set([0u8; 4]);
+        self.gc_latches = [0u8; 4];
     }
 
-    fn memory_read_u8(&self, addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, addr: usize, _cycle_count: u32) -> Option<u8> {
         if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
             Some(self.internal_read_u8(offset))
@@ -619,7 +618,7 @@ impl Device for VideoCard {
                     self.internal_read_u8(2 * EGA_PLANE_SIZE + offset),
                     self.internal_read_u8(3 * EGA_PLANE_SIZE + offset),
                 ];
-                self.gc_latches.set(latches);
+                self.gc_latches = latches;
                 Some(latches[self.gc_read_map_select as usize])
             } else {
                 Some(0xFF)
@@ -639,7 +638,7 @@ impl Device for VideoCard {
         {
             let offset = addr - EGA_MEMORY_START;
             if offset < EGA_PLANE_SIZE {
-                let latches = self.gc_latches.get();
+                let latches = self.gc_latches;
                 // Rotate CPU data right by gc_data_rotate bits (write modes 0 and 3).
                 let rotated = val.rotate_right(self.gc_data_rotate as u32);
 
@@ -697,7 +696,7 @@ impl Device for VideoCard {
         }
     }
 
-    fn io_read_u8(&self, port: u16, cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8> {
         let is_ega_vga = matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA);
         match self.card_type {
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
@@ -743,16 +742,16 @@ impl Device for VideoCard {
                 }),
                 // DAC data read (VGA only)
                 0x3C9 if is_ega_vga => {
-                    let pos = self.dac_read_pos.get();
+                    let pos = self.dac_read_pos;
                     let reg = pos / 3;
                     let component = pos % 3;
-                    self.dac_read_pos.set((pos + 1) % (256 * 3));
+                    self.dac_read_pos = (pos + 1) % (256 * 3);
                     Some(self.dac_registers[reg][component])
                 }
                 // Input Status Register 1: resets AC flip-flop to address mode.
                 // Bit 3: vertical retrace (vsync) active. Simulated at ~60Hz using cycle count.
                 0x3DA => {
-                    self.ac_flip_flop.set(false);
+                    self.ac_flip_flop = false;
                     let cycles_per_frame = self.cpu_clock_speed as u64 / CGA_VSYNC_HZ;
                     let vsync_cycles = cycles_per_frame / CGA_VSYNC_DUTY_DIVISOR;
                     let phase = cycle_count as u64 % cycles_per_frame;
@@ -873,12 +872,12 @@ impl Device for VideoCard {
                 }
                 // AC address/data write (EGA/VGA only) — flip-flop toggles address vs data
                 0x3C0 if is_ega_vga => {
-                    if !self.ac_flip_flop.get() {
+                    if !self.ac_flip_flop {
                         self.ac_address = val & 0x1F;
-                        self.ac_flip_flop.set(true);
+                        self.ac_flip_flop = true;
                     } else {
                         self.ac_registers[(self.ac_address & 0x0F) as usize] = val;
-                        self.ac_flip_flop.set(false);
+                        self.ac_flip_flop = false;
                     }
                     true
                 }
@@ -911,7 +910,7 @@ impl Device for VideoCard {
                 }
                 // DAC read index (EGA/VGA only)
                 0x3C7 if is_ega_vga => {
-                    self.dac_read_pos.set((val as usize) * 3);
+                    self.dac_read_pos = (val as usize) * 3;
                     true
                 }
                 // DAC write index (EGA/VGA only)

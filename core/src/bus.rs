@@ -115,7 +115,7 @@ impl Bus {
     pub(crate) fn increment_cycle_count(&mut self, cycles: u32) {
         self.cycle_count = self.cycle_count.wrapping_add(cycles);
         if let Some(sc) = &self.sound_card {
-            sc.borrow().advance_to_cycle(self.cycle_count);
+            sc.borrow_mut().advance_to_cycle(self.cycle_count);
         }
     }
 
@@ -181,7 +181,7 @@ impl Bus {
     pub(crate) fn memory_read_u8(&self, addr: usize) -> u8 {
         if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
             for device in &self.devices {
-                if let Some(val) = device.borrow().memory_read_u8(addr, self.cycle_count) {
+                if let Some(val) = device.borrow_mut().memory_read_u8(addr, self.cycle_count) {
                     return val;
                 }
             }
@@ -224,7 +224,7 @@ impl Bus {
 
     pub(crate) fn io_read_u8(&self, port: u16) -> u8 {
         for device in &self.devices {
-            if let Some(val) = device.borrow().io_read_u8(port, self.cycle_count) {
+            if let Some(val) = device.borrow_mut().io_read_u8(port, self.cycle_count) {
                 return val;
             }
         }

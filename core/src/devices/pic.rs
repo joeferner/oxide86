@@ -184,7 +184,7 @@ impl Device for Pic {
         self.pic2_in_service = 0;
     }
 
-    fn memory_read_u8(&self, _addr: usize, _cycle_count: u32) -> Option<u8> {
+    fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
         None
     }
 
@@ -192,7 +192,7 @@ impl Device for Pic {
         false
     }
 
-    fn io_read_u8(&self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
         match port {
             PIC_IO_PORT_MASK => Some(self.mask),
             PIC2_IO_PORT_MASK => Some(self.pic2_mask),
