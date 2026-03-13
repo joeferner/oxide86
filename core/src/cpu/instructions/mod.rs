@@ -157,11 +157,34 @@ impl Cpu {
             // POP 16-bit register (58-5F)
             0x58..=0x5F => self.pop_reg16(opcode, bus),
 
-            // PUSHA - Push All General Registers (60)
-            0x60 => self.pusha(bus),
+            // PUSHA - Push All General Registers (60) - 286+
+            0x60 => {
+                if self.cpu_type.is_286_or_later() {
+                    self.pusha(bus);
+                } else {
+                    log::warn!("PUSHA (0x60) not supported on {:?}", self.cpu_type);
+                }
+            }
 
-            // POPA - Pop All General Registers (61)
-            0x61 => self.popa(bus),
+            // POPA - Pop All General Registers (61) - 286+
+            0x61 => {
+                if self.cpu_type.is_286_or_later() {
+                    self.popa(bus);
+                } else {
+                    log::warn!("POPA (0x61) not supported on {:?}", self.cpu_type);
+                }
+            }
+
+            // BOUND - Check Array Index Against Bounds (62) - 286+
+            0x62 => {
+                if self.cpu_type.is_286_or_later() {
+                    if self.bound(bus) {
+                        self.dispatch_interrupt(bus, 5);
+                    }
+                } else {
+                    log::warn!("BOUND (0x62) not supported on {:?}", self.cpu_type);
+                }
+            }
 
             // FS: segment override prefix (64) - 80386+
             0x64 => {
@@ -170,11 +193,56 @@ impl Cpu {
                 self.segment_override = None;
             }
 
-            // PUSH immediate (68: imm16, 6A: imm8 sign-extended)
-            0x68 | 0x6A => self.push_imm(opcode, bus),
+            // PUSH immediate (68: imm16, 6A: imm8 sign-extended) - 286+
+            0x68 | 0x6A => {
+                if self.cpu_type.is_286_or_later() {
+                    self.push_imm(opcode, bus);
+                } else {
+                    log::warn!(
+                        "PUSH imm ({:#04X}) not supported on {:?}",
+                        opcode,
+                        self.cpu_type
+                    );
+                }
+            }
 
-            // INS - Input String from Port (6C-6D)
-            0x6C..=0x6D => self.ins(opcode, bus),
+            // IMUL - Signed Multiply with Immediate (69: imm16, 6B: imm8 sign-extended) - 286+
+            0x69 => {
+                if self.cpu_type.is_286_or_later() {
+                    self.imul_imm16(bus);
+                } else {
+                    log::warn!("IMUL imm16 (0x69) not supported on {:?}", self.cpu_type);
+                }
+            }
+            0x6B => {
+                if self.cpu_type.is_286_or_later() {
+                    self.imul_imm8(bus);
+                } else {
+                    log::warn!("IMUL imm8 (0x6B) not supported on {:?}", self.cpu_type);
+                }
+            }
+
+            // INS - Input String from Port (6C-6D) - 286+
+            0x6C..=0x6D => {
+                if self.cpu_type.is_286_or_later() {
+                    self.ins(opcode, bus);
+                } else {
+                    log::warn!("INS ({:#04X}) not supported on {:?}", opcode, self.cpu_type);
+                }
+            }
+
+            // OUTS - Output String to Port (6E-6F) - 286+
+            0x6E..=0x6F => {
+                if self.cpu_type.is_286_or_later() {
+                    self.outs(opcode, bus);
+                } else {
+                    log::warn!(
+                        "OUTS ({:#04X}) not supported on {:?}",
+                        opcode,
+                        self.cpu_type
+                    );
+                }
+            }
 
             // Conditional jumps (70-7F)
             0x70..=0x7F => self.jmp_conditional(opcode, bus),
@@ -253,8 +321,18 @@ impl Cpu {
             // MOV immediate to register (B0-BF)
             0xB0..=0xBF => self.mov_imm_to_reg(opcode, bus),
 
-            // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 80186+
-            0xC0..=0xC1 => self.shift_rotate_group(opcode, bus),
+            // Shift/Rotate Group 2 with immediate (C0: 8-bit, C1: 16-bit) - 286+
+            0xC0..=0xC1 => {
+                if self.cpu_type.is_286_or_later() {
+                    self.shift_rotate_group(opcode, bus);
+                } else {
+                    log::warn!(
+                        "Shift/rotate by immediate ({:#04X}) not supported on {:?}",
+                        opcode,
+                        self.cpu_type
+                    );
+                }
+            }
 
             // RET with optional pop (C2: with imm16, C3: without)
             0xC2..=0xC3 => self.ret(opcode, bus),
@@ -268,8 +346,23 @@ impl Cpu {
             // MOV immediate to r/m (C6: 8-bit, C7: 16-bit)
             0xC6..=0xC7 => self.mov_imm_to_rm(opcode, bus),
 
-            // ENTER - Make Stack Frame (C8, 80186+)
-            0xC8 => self.enter(bus),
+            // ENTER - Make Stack Frame (C8) - 286+
+            0xC8 => {
+                if self.cpu_type.is_286_or_later() {
+                    self.enter(bus);
+                } else {
+                    log::warn!("ENTER (0xC8) not supported on {:?}", self.cpu_type);
+                }
+            }
+
+            // LEAVE - High Level Procedure Exit (C9) - 286+
+            0xC9 => {
+                if self.cpu_type.is_286_or_later() {
+                    self.leave(bus);
+                } else {
+                    log::warn!("LEAVE (0xC9) not supported on {:?}", self.cpu_type);
+                }
+            }
 
             // RET far (CA: with imm16, CB: without)
             0xCA..=0xCB => self.retf(opcode, bus),
@@ -334,6 +427,9 @@ impl Cpu {
 
             // IN AL, DX (EC)
             0xEC => self.in_al_dx(bus),
+
+            // IN AX, DX (ED)
+            0xED => self.in_ax_dx(bus),
 
             // LOCK prefix (F0)
             // Asserts LOCK# signal for atomic memory operations; no-op in single-processor emulator

@@ -46,6 +46,12 @@ impl CpuType {
         }
     }
 
+    /// Returns true if this CPU supports 286+ instructions (PUSHA/POPA, BOUND,
+    /// PUSH imm, IMUL 3-op, INS/OUTS, ENTER/LEAVE, shift/rotate by immediate).
+    pub(crate) fn is_286_or_later(&self) -> bool {
+        !matches!(self, Self::I8086)
+    }
+
     // TODO
     // Check if this CPU supports 32-bit instructions
     // pub(crate) fn supports_32bit(&self) -> bool {

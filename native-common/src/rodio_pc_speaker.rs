@@ -39,7 +39,11 @@ impl Iterator for ContinuousSquareWave {
             return Some(0.0);
         }
 
-        let sample = if self.phase < 0.5 { AMPLITUDE } else { -AMPLITUDE };
+        let sample = if self.phase < 0.5 {
+            AMPLITUDE
+        } else {
+            -AMPLITUDE
+        };
         self.phase += freq / SAMPLE_RATE as f32;
         if self.phase >= 1.0 {
             self.phase -= 1.0;
@@ -73,7 +77,8 @@ pub(crate) struct RodioPcSpeaker {
 impl RodioPcSpeaker {
     pub(crate) fn new(sink: &MixerDeviceSink) -> Self {
         let freq_bits = Arc::new(AtomicU32::new(0));
-        sink.mixer().add(ContinuousSquareWave::new(Arc::clone(&freq_bits)));
+        sink.mixer()
+            .add(ContinuousSquareWave::new(Arc::clone(&freq_bits)));
         Self { freq_bits }
     }
 }

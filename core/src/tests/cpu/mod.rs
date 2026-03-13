@@ -15,6 +15,17 @@ pub(crate) fn op8086() {
 }
 
 #[test_log::test]
+pub(crate) fn op286() {
+    run_test(
+        "cpu/op286",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn irq_chain() {
     run_test(
         "cpu/irq_chain",

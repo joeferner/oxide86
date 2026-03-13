@@ -494,4 +494,55 @@ impl Cpu {
             }
         }
     }
+
+    /// OUTS - Output String to Port (opcodes 6E-6F)
+    /// 6E: OUTSB - Output byte from DS:SI to port DX
+    /// 6F: OUTSW - Output word from DS:SI to port DX
+    ///
+    /// Writes data from DS:SI to I/O port DX, then increments/decrements SI based on DF.
+    pub(in crate::cpu) fn outs(&mut self, opcode: u8, bus: &mut Bus) {
+        let is_word = opcode & 0x01 != 0;
+
+        // Handle repeat prefix
+        if self.repeat_prefix.is_some() {
+            while self.cx != 0 {
+                self.outs_once(is_word, bus);
+                self.cx = self.cx.wrapping_sub(1);
+            }
+        } else {
+            self.outs_once(is_word, bus);
+        }
+    }
+
+    fn outs_once(&mut self, is_word: bool, bus: &mut Bus) {
+        let port = self.dx;
+
+        if is_word {
+            // OUTSW - Output word
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let addr = physical_address(src_seg, self.si);
+            let value = bus.memory_read_u16(addr);
+            bus.io_write_u16(port, value);
+
+            // Update SI based on direction flag
+            if self.get_flag(cpu_flag::DIRECTION) {
+                self.si = self.si.wrapping_sub(2);
+            } else {
+                self.si = self.si.wrapping_add(2);
+            }
+        } else {
+            // OUTSB - Output byte
+            let src_seg = self.segment_override.unwrap_or(self.ds);
+            let addr = physical_address(src_seg, self.si);
+            let value = bus.memory_read_u8(addr);
+            bus.io_write_u8(port, value);
+
+            // Update SI based on direction flag
+            if self.get_flag(cpu_flag::DIRECTION) {
+                self.si = self.si.wrapping_sub(1);
+            } else {
+                self.si = self.si.wrapping_add(1);
+            }
+        }
+    }
 }

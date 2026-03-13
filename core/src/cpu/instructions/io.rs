@@ -43,4 +43,12 @@ impl Cpu {
         bus.increment_cycle_count(timing::cycles::OUT_DX);
         bus.io_write_u8(port, value);
     }
+
+    /// IN AX, DX (0xED)
+    /// Read word from port address in DX to AX
+    pub(in crate::cpu) fn in_ax_dx(&mut self, bus: &mut Bus) {
+        let port = self.dx;
+        bus.increment_cycle_count(timing::cycles::IN_DX);
+        self.ax = bus.io_read_u16(port);
+    }
 }

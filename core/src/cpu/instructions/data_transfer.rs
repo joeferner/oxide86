@@ -614,6 +614,38 @@ impl Cpu {
                 + timing::calculate_ea_cycles(mode, rm, self.segment_override.is_some())
         });
     }
+
+    /// BOUND - Check Array Index Against Bounds (opcode 0x62)
+    /// Checks if a signed register value is within bounds stored in bus
+    /// If index < lower_bound or index > upper_bound, triggers INT 5
+    /// 80186+ instruction
+    pub(in crate::cpu) fn bound(&mut self, bus: &mut Bus) -> bool {
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, _rm, addr, _seg) = self.decode_modrm(modrm, bus);
+
+        // BOUND only works with bus operands
+        if mode == 0b11 {
+            panic!("BOUND cannot use register operand");
+        }
+
+        // Get the index value from register (signed)
+        let index = self.get_reg16(reg) as i16;
+
+        // Read lower and upper bounds from bus (two consecutive signed words)
+        let lower_bound = bus.memory_read_u16(addr) as i16;
+        let upper_bound = bus.memory_read_u16(addr + 2) as i16;
+
+        // Check if index is out of bounds
+        if index < lower_bound || index > upper_bound {
+            // Out of bounds - caller should trigger INT 5
+            bus.increment_cycle_count(timing::cycles::BOUND_OUT); // 48-51 cycles
+            return true;
+        }
+
+        // Within bounds - no exception
+        bus.increment_cycle_count(timing::cycles::BOUND_IN); // 33-35 cycles
+        false
+    }
 }
 
 #[cfg(test)]

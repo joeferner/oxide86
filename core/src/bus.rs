@@ -247,7 +247,15 @@ impl Bus {
     }
 
     pub(crate) fn io_read_u16(&self, port: u16) -> u16 {
-        todo!("IoBus read_u16 {port}");
+        let lo = self.io_read_u8(port);
+        let hi = self.io_read_u8(port + 1);
+        u16::from_le_bytes([lo, hi])
+    }
+
+    pub(crate) fn io_write_u16(&mut self, port: u16, val: u16) {
+        let [lo, hi] = val.to_le_bytes();
+        self.io_write_u8(port, lo);
+        self.io_write_u8(port + 1, hi);
     }
 
     pub(crate) fn io_write_u8(&mut self, port: u16, val: u8) {

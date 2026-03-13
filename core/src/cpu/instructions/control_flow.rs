@@ -363,6 +363,17 @@ impl Cpu {
         });
     }
 
+    /// LEAVE - High Level Procedure Exit (opcode C9, 80186+)
+    /// Tears down the stack frame created by ENTER.
+    /// Equivalent to: MOV SP, BP / POP BP
+    pub(in crate::cpu) fn leave(&mut self, bus: &mut Bus) {
+        // Restore SP to frame pointer, then pop caller's BP
+        self.sp = self.bp;
+        self.bp = self.pop(bus);
+
+        bus.increment_cycle_count(timing::cycles::LEAVE);
+    }
+
     /// INT 3 - Breakpoint Interrupt (opcode CC)
     /// Single-byte interrupt for breakpoints
     pub(in crate::cpu) fn int3(&mut self, bus: &mut Bus) {

@@ -42,6 +42,7 @@
 - [X] Improve performance (see ai-analysis/perf-analysis-2026-03-11.md)
 - [X] Add VGA support
 - [X] Test Battle Chess
+- [X] Support 286 instructions
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Test SimCity (1989)
 - [ ] CGA Composite mode
