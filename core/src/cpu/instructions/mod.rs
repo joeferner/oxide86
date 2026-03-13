@@ -419,6 +419,9 @@ impl Cpu {
             // OUT DX, AL (EE)
             0xEE => self.out_dx_al(bus),
 
+            // OUT DX, AX (EF)
+            0xEF => self.out_dx_ax(bus),
+
             // JMP far (EA)
             0xEA => self.jmp_far(bus),
 

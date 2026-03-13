@@ -51,4 +51,13 @@ impl Cpu {
         bus.increment_cycle_count(timing::cycles::IN_DX);
         self.ax = bus.io_read_u16(port);
     }
+
+    /// OUT DX, AX (0xEF)
+    /// Write word from AX to port address in DX
+    pub(in crate::cpu) fn out_dx_ax(&mut self, bus: &mut Bus) {
+        let port = self.dx;
+        let value = self.ax;
+        bus.increment_cycle_count(timing::cycles::OUT_DX);
+        bus.io_write_u16(port, value);
+    }
 }
