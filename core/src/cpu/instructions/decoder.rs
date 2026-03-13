@@ -9,9 +9,12 @@ pub(crate) struct DecodedInstruction {
     pub text: String,
     /// Raw bytes that make up this instruction
     pub bytes: Vec<u8>,
-    /// Formatted string of input register values (e.g., "AX=1234 CX=5678")
-    pub reg_values: String,
-    /// Formatted string of memory values (e.g., "[0x24bc]=1234 [bx+4]=5678")
+    /// Which registers are relevant to this instruction (used as input or output)
+    pub uses_ax: bool,
+    pub uses_bx: bool,
+    pub uses_cx: bool,
+    pub uses_dx: bool,
+    /// Formatted string of memory values (e.g., "[0x24bc]=1234 [bx+4]=5678"), pre-execution
     pub mem_values: String,
 }
 
@@ -34,7 +37,6 @@ impl Cpu {
             }
         }
 
-        let reg_values = decoder.format_input_registers(self);
         let mem_values = decoder.format_memory_values(self);
 
         // Collect the raw bytes consumed during decoding
@@ -47,7 +49,10 @@ impl Cpu {
         DecodedInstruction {
             text,
             bytes,
-            reg_values,
+            uses_ax: decoder.uses_ax,
+            uses_bx: decoder.uses_bx,
+            uses_cx: decoder.uses_cx,
+            uses_dx: decoder.uses_dx,
             mem_values,
         }
     }
@@ -292,23 +297,6 @@ impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
             "dx" | "dl" | "dh" => self.uses_dx = true,
             _ => {}
         }
-    }
-
-    fn format_input_registers(&self, cpu: &Cpu) -> String {
-        let mut parts = Vec::new();
-        if self.uses_ax {
-            parts.push(format!("AX={:04X}", cpu.ax));
-        }
-        if self.uses_bx {
-            parts.push(format!("BX={:04X}", cpu.bx));
-        }
-        if self.uses_cx {
-            parts.push(format!("CX={:04X}", cpu.cx));
-        }
-        if self.uses_dx {
-            parts.push(format!("DX={:04X}", cpu.dx));
-        }
-        parts.join(" ")
     }
 
     fn format_memory_values(&self, cpu: &Cpu) -> String {
@@ -671,7 +659,8 @@ impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
     }
 
     fn decode_arith_imm_rm(&mut self, w: bool, sign_extend: bool) -> String {
-        let (reg, _rm, rm_str) = self.decode_modrm(w);
+        let (reg, rm, rm_str) = self.decode_modrm(w);
+        self.mark_rm_input(rm, w);
 
         let mnemonic = match reg {
             0 => "add",
@@ -707,7 +696,8 @@ impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
         let count_in_cl = (opcode >> 1) & 1;
         let use_imm = (0xC0..=0xC1).contains(&opcode);
 
-        let (reg, _rm, rm_str) = self.decode_modrm(w == 1);
+        let (reg, rm, rm_str) = self.decode_modrm(w == 1);
+        self.mark_rm_input(rm, w == 1);
 
         let mnemonic = match reg {
             0 => "rol",
@@ -725,6 +715,7 @@ impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
             let count = self.fetch_byte();
             format!("0x{:02x}", count)
         } else if count_in_cl == 1 {
+            self.mark_reg_input("cx");
             "cl".to_string()
         } else {
             "1".to_string()
@@ -734,11 +725,12 @@ impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
     }
 
     fn decode_group3(&mut self, w: bool) -> String {
-        let (reg, _rm, rm_str) = self.decode_modrm(w);
+        let (reg, rm, rm_str) = self.decode_modrm(w);
 
         match reg {
             0 | 1 => {
                 // TEST with immediate
+                self.mark_rm_input(rm, w);
                 let imm_str = if w {
                     let imm = self.fetch_word();
                     format!("0x{:04x}", imm)

@@ -275,13 +275,35 @@ impl Cpu {
             return;
         }
 
-        if self.exec_logging_enabled {
-            let decoded = self.decode_instruction_with_regs(bus);
+        let pre_decoded = if self.exec_logging_enabled {
+            Some(self.decode_instruction_with_regs(bus))
+        } else {
+            None
+        };
+
+        self.exec_instruction(bus);
+
+        if let Some(decoded) = pre_decoded {
+            // Format register values from post-execution CPU state
+            let mut reg_parts: Vec<String> = Vec::new();
+            if decoded.uses_ax {
+                reg_parts.push(format!("AX={:04X}", self.ax));
+            }
+            if decoded.uses_bx {
+                reg_parts.push(format!("BX={:04X}", self.bx));
+            }
+            if decoded.uses_cx {
+                reg_parts.push(format!("CX={:04X}", self.cx));
+            }
+            if decoded.uses_dx {
+                reg_parts.push(format!("DX={:04X}", self.dx));
+            }
+            let reg_values = reg_parts.join(" ");
 
             // Combine register and memory values for logging
             let mut values = String::new();
-            if !decoded.reg_values.is_empty() {
-                values.push_str(&decoded.reg_values);
+            if !reg_values.is_empty() {
+                values.push_str(&reg_values);
             }
             if !decoded.mem_values.is_empty() {
                 if !values.is_empty() {
@@ -305,8 +327,6 @@ impl Cpu {
                 .trim()
             );
         }
-
-        self.exec_instruction(bus);
     }
 
     pub(crate) fn wait_for_key_press(&self) -> bool {

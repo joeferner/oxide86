@@ -79,6 +79,7 @@ impl SerialMouse {
         if !self.initialized {
             return;
         }
+        log::debug!("push motion dx:{dx}, dy:{dy}");
         self.accumulated_x += dx;
         self.accumulated_y += dy;
         if self.accumulated_x.abs() >= self.motion_threshold as i16
@@ -97,6 +98,7 @@ impl SerialMouse {
             return;
         }
         if left != self.left_button || right != self.right_button {
+            log::debug!("button changed left:{left}, right:{right}");
             self.left_button = left;
             self.right_button = right;
             self.irq_pending = true;
@@ -116,7 +118,7 @@ impl SerialMouse {
         self.accumulated_y = 0;
         self.data_pending = false;
         log::debug!(
-            "SerialMouse: queued packet {:02X} {:02X} {:02X}",
+            "queued packet {:02X} {:02X} {:02X}",
             packet[0],
             packet[1],
             packet[2]
