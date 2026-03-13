@@ -233,6 +233,12 @@ fn run(cli: Cli) -> Result<()> {
                     WindowEvent::CloseRequested => {
                         log::info!("Window close requested");
                         computer.log_cpu_state();
+                        if let Some(asm) = computer.get_reverse_engineer_asm() {
+                            match std::fs::write("oxide86.asm", &asm) {
+                                Ok(()) => log::info!("Reverse engineer output written to oxide86.asm"),
+                                Err(e) => log::error!("Failed to write oxide86.asm: {e}"),
+                            }
+                        }
                         // use sink down here to make sure it doesn't get dropped
                         if let Some(audio_sink) = &app_state.audio_sink {
                             audio_sink.lock().unwrap().log_on_drop(false);
@@ -287,6 +293,15 @@ fn run(cli: Cli) -> Result<()> {
                         // Handle halt: show notification and exit exclusive mode
                         if halted && !app_state.halted {
                             app_state.halted = true;
+                            if let Some(asm) = computer.get_reverse_engineer_asm() {
+                                match std::fs::write("oxide86.asm", &asm) {
+                                    Ok(()) => {
+                                        log::info!("Reverse engineer output written to oxide86.asm")
+                                    }
+                                    Err(e) => log::error!("Failed to write oxide86.asm: {e}"),
+                                }
+                                computer.set_reverse_engineer_enabled(false);
+                            }
                             app_state.notification = Some(Notification::new(
                                 "Program terminated. Close window to exit.".to_string(),
                                 NotificationType::Success,
@@ -624,6 +639,7 @@ fn process_egui_frame(
     // Update menu states before rendering
     app_state.menu.update_debug_states(
         computer.exec_logging_enabled(),
+        computer.reverse_engineer_enabled(),
         app_state.is_paused,
         app_state.show_performance_overlay,
     );
@@ -959,6 +975,26 @@ fn handle_debug_action(
         }
         MenuAction::ToggleExecutionLogging => {
             computer.set_exec_logging_enabled(!computer.exec_logging_enabled());
+        }
+        MenuAction::ToggleReverseEngineer => {
+            let was_enabled = computer.reverse_engineer_enabled();
+            if was_enabled && let Some(asm) = computer.get_reverse_engineer_asm() {
+                match std::fs::write("oxide86.asm", &asm) {
+                    Ok(()) => {
+                        log::info!("Reverse engineer output written to oxide86.asm");
+                        app_state.notification = Some(Notification::new(
+                            "Saved oxide86.asm".to_string(),
+                            NotificationType::Success,
+                        ));
+                    }
+                    Err(e) => log::error!("Failed to write oxide86.asm: {e}"),
+                }
+            }
+            computer.set_reverse_engineer_enabled(!was_enabled);
+            log::info!(
+                "Reverse engineering {}",
+                if computer.reverse_engineer_enabled() { "enabled" } else { "disabled" }
+            );
         }
         MenuAction::TogglePause => {
             app_state.is_paused = !app_state.is_paused;

@@ -83,4 +83,8 @@ pub struct CommonCli {
     /// Enable joystick/gamepad input on the game port (0x201). Uses the first connected gamepad.
     #[arg(long = "joystick")]
     pub joystick: bool,
+
+    /// Enable reverse engineering mode; writes oxide86.asm on exit
+    #[arg(long = "reverse-engineer")]
+    pub reverse_engineer: bool,
 }

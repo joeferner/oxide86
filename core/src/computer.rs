@@ -13,6 +13,7 @@ use crate::{
     disk::{Disk, DiskError, DriveNumber},
     memory::Memory,
     physical_address,
+    reverse_engineer::ReverseEngineer,
     video::{VideoBuffer, VideoCard, VideoCardType},
 };
 use anyhow::{Result, anyhow};
@@ -426,6 +427,25 @@ impl Computer {
         }
         let (seg, off, _mask) = crate::cpu::bios::bda::bda_get_ps2_mouse_handler(&self.bus);
         seg != 0 || off != 0
+    }
+
+    pub fn set_reverse_engineer_enabled(&mut self, enabled: bool) {
+        if enabled {
+            self.cpu.reverse_engineer = Some(ReverseEngineer::new());
+        } else {
+            self.cpu.reverse_engineer = None;
+        }
+    }
+
+    pub fn reverse_engineer_enabled(&self) -> bool {
+        self.cpu.reverse_engineer.is_some()
+    }
+
+    pub fn get_reverse_engineer_asm(&self) -> Option<String> {
+        self.cpu
+            .reverse_engineer
+            .as_ref()
+            .map(|re| re.to_asm_string())
     }
 
     pub fn set_exec_logging_enabled(&mut self, enabled: bool) {

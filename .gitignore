@@ -14,3 +14,4 @@ flamegraph.svg
 perf.data
 perf.data.old
 perf.data.txt
+/oxide86.asm
