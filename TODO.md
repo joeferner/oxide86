@@ -43,8 +43,8 @@
 - [X] Add VGA support
 - [X] Test Battle Chess
 - [X] Support 286 instructions
-- [ ] Test MS Flight Simulator 1.05
 - [ ] Test SimCity (1989)
+- [ ] Test MS Flight Simulator 1.05
 - [ ] CGA Composite mode
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
@@ -52,6 +52,7 @@
 - [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
+  - [ ] Test Fractint Version 15.x and below
 - [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions

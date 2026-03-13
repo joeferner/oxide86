@@ -1025,6 +1025,7 @@ impl Cpu {
                 let _ = bus.io_read_u8(INPUT_STATUS_1_PORT); // reset AC flip-flop to address mode
                 bus.io_write_u8(AC_ADDR_DATA_PORT, register);
                 bus.io_write_u8(AC_ADDR_DATA_PORT, value);
+                bus.io_write_u8(AC_ADDR_DATA_PORT, 0x20); // re-enable video (set PAS bit)
                 log::debug!(
                     "INT 10h/AH=10h/AL=00h: Set AC register {} = {}",
                     register,
@@ -1047,6 +1048,10 @@ impl Cpu {
                     bus.io_write_u8(AC_ADDR_DATA_PORT, value);
                 }
                 let border = bus.memory_read_u8(table_addr + 16);
+                // Set border (AC register 0x11 = overscan)
+                bus.io_write_u8(AC_ADDR_DATA_PORT, 0x11);
+                bus.io_write_u8(AC_ADDR_DATA_PORT, border);
+                bus.io_write_u8(AC_ADDR_DATA_PORT, 0x20); // re-enable video (set PAS bit)
                 log::debug!(
                     "INT 10h/AH=10h/AL=02h: Set all AC palette registers, border={}",
                     border
@@ -1066,6 +1071,7 @@ impl Cpu {
                     mode_ctrl & !0x08
                 };
                 bus.io_write_u8(AC_ADDR_DATA_PORT, new_mode);
+                bus.io_write_u8(AC_ADDR_DATA_PORT, 0x20); // re-enable video (set PAS bit)
                 log::debug!(
                     "INT 10h/AH=10h/AL=03h: {} mode",
                     if blink_enabled { "blink" } else { "intensity" }

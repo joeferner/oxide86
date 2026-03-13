@@ -11,6 +11,7 @@ use crate::{
         VideoCardType,
         font::{CHAR_HEIGHT_8, Cp437Font},
         mode::TextDimensions,
+        palette::{TextModePalette, VGA_DEFAULT_DAC_PALETTE},
     },
 };
 
@@ -105,6 +106,17 @@ impl VideoCard {
         buffer: Arc<RwLock<VideoBuffer>>,
         cpu_clock_speed: u32,
     ) -> Self {
+        let dac_registers = match card_type {
+            VideoCardType::VGA => VGA_DEFAULT_DAC_PALETTE.to_vec(),
+            VideoCardType::EGA => {
+                let mut regs = vec![[0u8; 3]; 256];
+                for (i, entry) in regs.iter_mut().enumerate().take(16) {
+                    *entry = TextModePalette::get_dac_color(i as u8);
+                }
+                regs
+            }
+            VideoCardType::CGA => vec![[0u8; 3]; 256],
+        };
         Self {
             card_type,
             buffer,
@@ -119,7 +131,7 @@ impl VideoCard {
             ac_registers: [0u8; 17],
             ac_address: 0,
             ac_flip_flop: false,
-            dac_registers: vec![[0u8; 3]; 256],
+            dac_registers,
             dac_write_pos: 0,
             dac_read_pos: 0,
             sequencer_address: 0,
@@ -170,7 +182,26 @@ impl VideoCard {
     pub(crate) fn set_mode(&mut self, mode: Mode) -> Option<TextDimensions> {
         log::info!("set mode: {mode}");
         let dims = mode.get_text_dimensions();
-        self.buffer.write().unwrap().set_mode(mode);
+        let mut buffer = self.buffer.write().unwrap();
+        buffer.set_mode(mode);
+        // Re-initialize DAC registers with the default palette for this card type so
+        // programs that read them back (e.g. via INT 10h/AL=0x17) get correct values.
+        match self.card_type {
+            VideoCardType::VGA => {
+                for (i, &entry) in VGA_DEFAULT_DAC_PALETTE.iter().enumerate() {
+                    self.dac_registers[i] = entry;
+                    buffer.set_dac_color(i, entry[0], entry[1], entry[2]);
+                }
+            }
+            VideoCardType::EGA => {
+                for (i, entry) in self.dac_registers.iter_mut().enumerate().take(16) {
+                    let [r, g, b] = TextModePalette::get_dac_color(i as u8);
+                    *entry = [r, g, b];
+                    buffer.set_dac_color(i, r, g, b);
+                }
+            }
+            VideoCardType::CGA => {}
+        }
         dims
     }
 
@@ -587,7 +618,22 @@ impl Device for VideoCard {
         self.ac_registers = [0u8; 17];
         self.ac_address = 0;
         self.ac_flip_flop = false;
-        self.dac_registers = vec![[0u8; 3]; 256];
+        match self.card_type {
+            VideoCardType::VGA => self.dac_registers.copy_from_slice(&VGA_DEFAULT_DAC_PALETTE),
+            VideoCardType::EGA => {
+                for (i, entry) in self.dac_registers.iter_mut().enumerate().take(16) {
+                    *entry = TextModePalette::get_dac_color(i as u8);
+                }
+                for entry in self.dac_registers[16..].iter_mut() {
+                    *entry = [0u8; 3];
+                }
+            }
+            VideoCardType::CGA => {
+                for entry in self.dac_registers.iter_mut() {
+                    *entry = [0u8; 3];
+                }
+            }
+        }
         self.dac_write_pos = 0;
         self.dac_read_pos = 0;
         self.sequencer_address = 0;
