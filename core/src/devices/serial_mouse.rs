@@ -15,6 +15,18 @@
 //! - RB = right button (1=pressed)
 //! - X7,X6 = high 2 bits of X delta (sign extension)
 //! - Y7,Y6 = high 2 bits of Y delta (sign extension)
+//!
+//! # Packet generation
+//!
+//! Packets are generated lazily: `push_motion` and `push_buttons` only accumulate
+//! state and assert `irq_pending`. The actual 3-byte packet is built the first time
+//! `read` is called with an empty receive buffer. This ensures that all motion
+//! accumulated between IRQ firings is captured in a single packet rather than many
+//! small ones, which is more faithful to a real serial mouse sending at 1200 baud.
+//!
+//! After each byte is returned from `read`, `irq_pending` is re-armed while bytes
+//! remain in the buffer, so the driver's interrupt handler can drain a full packet
+//! without stalling.
 
 use std::collections::VecDeque;
 
@@ -32,8 +44,12 @@ pub struct SerialMouse {
     dtr: bool,
     /// Bytes waiting to be read by the UART.
     rx_buf: VecDeque<u8>,
-    /// Set when new data is pushed to rx_buf; cleared by take_irq().
+    /// Asserted by IRQ mechanism; cleared by take_irq() and re-armed by read() while
+    /// bytes remain in rx_buf.
     irq_pending: bool,
+    /// True when motion or button state has changed and a packet has not yet been sent.
+    /// Set by push_motion/push_buttons; cleared when a packet is generated in read().
+    data_pending: bool,
 }
 
 impl SerialMouse {
@@ -48,6 +64,7 @@ impl SerialMouse {
             dtr: false,
             rx_buf: VecDeque::new(),
             irq_pending: false,
+            data_pending: false,
         }
     }
 
@@ -55,9 +72,9 @@ impl SerialMouse {
         self.initialized
     }
 
-    /// Push accumulated mouse motion to the device. Generates a packet when the
-    /// motion threshold is exceeded. No-op until the driver initializes the port
-    /// via DTR toggle.
+    /// Push accumulated mouse motion to the device. Signals an IRQ when the motion
+    /// threshold is exceeded. The packet is generated lazily on the next `read` call.
+    /// No-op until the driver initializes the port via DTR toggle.
     pub fn push_motion(&mut self, dx: i16, dy: i16) {
         if !self.initialized {
             return;
@@ -67,12 +84,14 @@ impl SerialMouse {
         if self.accumulated_x.abs() >= self.motion_threshold as i16
             || self.accumulated_y.abs() >= self.motion_threshold as i16
         {
-            self.flush_packet();
+            self.irq_pending = true;
+            self.data_pending = true;
         }
     }
 
-    /// Update button state. Generates a packet immediately if the state changed.
-    /// No-op until the driver initializes the port via DTR toggle.
+    /// Update button state. Signals an IRQ if the state changed. The packet is
+    /// generated lazily on the next `read` call. No-op until the driver initializes
+    /// the port via DTR toggle.
     pub fn push_buttons(&mut self, left: bool, right: bool) {
         if !self.initialized {
             return;
@@ -80,7 +99,8 @@ impl SerialMouse {
         if left != self.left_button || right != self.right_button {
             self.left_button = left;
             self.right_button = right;
-            self.flush_packet();
+            self.irq_pending = true;
+            self.data_pending = true;
         }
     }
 
@@ -94,6 +114,7 @@ impl SerialMouse {
         );
         self.accumulated_x = 0;
         self.accumulated_y = 0;
+        self.data_pending = false;
         log::debug!(
             "SerialMouse: queued packet {:02X} {:02X} {:02X}",
             packet[0],
@@ -103,7 +124,6 @@ impl SerialMouse {
         for byte in packet {
             self.rx_buf.push_back(byte);
         }
-        self.irq_pending = true;
     }
 }
 
@@ -117,10 +137,22 @@ impl ComPortDevice for SerialMouse {
         self.right_button = false;
         self.rx_buf.clear();
         self.irq_pending = false;
+        self.data_pending = false;
     }
 
+    /// Return the next byte from the receive buffer.
+    ///
+    /// If the buffer is empty and a packet is pending, the packet is generated now
+    /// (lazy generation). After returning a byte, `irq_pending` is re-armed while
+    /// bytes remain, so the interrupt handler can drain a complete 3-byte packet.
     fn read(&mut self) -> Option<u8> {
-        self.rx_buf.pop_front()
+        if self.rx_buf.is_empty() && self.data_pending {
+            self.flush_packet();
+        }
+        let byte = self.rx_buf.pop_front();
+        // Re-arm the IRQ so the driver keeps reading until the buffer is drained.
+        self.irq_pending = !self.rx_buf.is_empty();
+        byte
     }
 
     fn write(&mut self, _value: u8) -> bool {
@@ -147,6 +179,7 @@ impl ComPortDevice for SerialMouse {
             self.accumulated_y = 0;
             self.left_button = false;
             self.right_button = false;
+            self.data_pending = false;
             self.rx_buf.clear();
             self.rx_buf.push_back(b'M');
             self.irq_pending = true;
@@ -156,6 +189,7 @@ impl ComPortDevice for SerialMouse {
             self.initialized = false;
             self.rx_buf.clear();
             self.irq_pending = false;
+            self.data_pending = false;
         }
     }
 }
@@ -166,16 +200,16 @@ impl ComPortDevice for SerialMouse {
 ///
 /// * `left` - Left button pressed
 /// * `right` - Right button pressed
-/// * `dx` - X delta (will be clamped to -32..+31)
-/// * `dy` - Y delta (will be clamped to -32..+31)
+/// * `dx` - X delta (will be clamped to -128..+127)
+/// * `dy` - Y delta (will be clamped to -128..+127)
 ///
 /// # Returns
 ///
 /// A 3-byte array containing the packet
 fn generate_ms_mouse_packet(left: bool, right: bool, dx: i16, dy: i16) -> [u8; 3] {
-    // Clamp deltas to -32..+31 range (6-bit signed)
-    let dx = dx.clamp(-32, 31) as i8;
-    let dy = dy.clamp(-32, 31) as i8;
+    // Clamp deltas to -128..+127 range (8-bit signed: 2 high bits in byte 0 + 6 low bits in bytes 1-2)
+    let dx = dx.clamp(-128, 127) as i8;
+    let dy = dy.clamp(-128, 127) as i8;
 
     // Extract high bits for byte 1
     let x_hi = ((dx >> 6) & 0x03) as u8;
@@ -223,9 +257,57 @@ mod tests {
         assert_eq!(packet[1], 10); // X delta
         assert_eq!(packet[2], 5); // Y delta
 
-        // Negative movement (6-bit signed: -1 = 0x3F)
+        // Negative movement (-1 = 0xFF: high bits 0x03 in byte 0, low bits 0x3F in bytes 1-2)
         let packet = generate_ms_mouse_packet(false, false, -1, -1);
-        assert_eq!(packet[1], 0x3F); // X delta (lower 6 bits)
-        assert_eq!(packet[2], 0x3F); // Y delta (lower 6 bits)
+        assert_eq!(packet[0] & 0x03, 0x03); // X high bits = 0b11 (sign)
+        assert_eq!(packet[0] & 0x0C, 0x0C); // Y high bits = 0b11 (sign)
+        assert_eq!(packet[1], 0x3F); // X delta lower 6 bits
+        assert_eq!(packet[2], 0x3F); // Y delta lower 6 bits
+
+        // Large positive movement (127 = 0x7F: high bits 0x01, low bits 0x3F)
+        let packet = generate_ms_mouse_packet(false, false, 127, 0);
+        assert_eq!(packet[0] & 0x03, 0x01); // X high bits = 0b01
+        assert_eq!(packet[1], 0x3F); // X lower 6 bits
+        assert_eq!(packet[2], 0x00);
+
+        // Large negative movement (-128 = 0x80: high bits 0x02, low bits 0x00)
+        let packet = generate_ms_mouse_packet(false, false, -128, 0);
+        assert_eq!(packet[0] & 0x03, 0x02); // X high bits = 0b10
+        assert_eq!(packet[1], 0x00); // X lower 6 bits
+    }
+
+    #[test]
+    fn test_lazy_packet_generation() {
+        let mut mouse = SerialMouse::new();
+        let lines = crate::devices::uart::ModemControlLines {
+            dtr: true,
+            rts: false,
+            out1: false,
+            out2: false,
+            loopback: false,
+        };
+        mouse.modem_control_changed(lines);
+        // Drain 'M' identification byte
+        assert_eq!(mouse.read(), Some(b'M'));
+
+        // Accumulate motion across multiple push_motion calls
+        mouse.push_motion(10, 0);
+        mouse.push_motion(15, 0);
+        mouse.push_motion(5, 3);
+        assert!(mouse.take_irq()); // IRQ should be pending
+
+        // Packet is generated lazily on first read
+        let b1 = mouse.read().expect("byte 1");
+        assert_eq!(b1 & 0x40, 0x40); // sync bit
+        assert_eq!(b1 & 0x03, 0x00); // x_hi = 0 (30 fits in 6 bits)
+        assert!(mouse.irq_pending); // re-armed for bytes 2 and 3
+
+        let b2 = mouse.read().expect("byte 2");
+        assert_eq!(b2, 30); // accumulated x = 10+15+5 = 30
+        assert!(mouse.irq_pending);
+
+        let b3 = mouse.read().expect("byte 3");
+        assert_eq!(b3, 3); // accumulated y = 3
+        assert!(!mouse.irq_pending); // buffer drained
     }
 }

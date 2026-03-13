@@ -1,4 +1,10 @@
-/// Wayland + xrdp workaround: detect if MouseMotion reports absolute positions instead of deltas
+/// Wayland + xrdp workaround: detect if MouseMotion reports absolute positions instead of deltas.
+///
+/// When absolute positioning is detected (xrdp/Wayland bug), consecutive event differences are
+/// screen-pixel deltas (typically 1–5 px/event). Scale them up so the virtual mouse speed feels
+/// comparable to a real serial mouse at ~800 DPI.
+const ABSOLUTE_MODE_SENSITIVITY: f64 = 1.0;
+
 pub(crate) struct MouseMotionState {
     absolute_mode: bool,
     absolute_mode_detected: bool,
@@ -18,13 +24,12 @@ impl MouseMotionState {
 
     pub(crate) fn process_motion(&mut self, delta: (f64, f64)) -> (f64, f64) {
         if !self.absolute_mode_detected {
-            // Detection phase: check if these look like absolute positions
-            let looks_absolute = (delta.0 > 100.0 && delta.1 > 100.0)
-                || (delta.0 > 0.0
-                    && delta.1 > 0.0
-                    && delta.0 < 10000.0
-                    && delta.1 < 10000.0
-                    && (delta.0.abs() > 50.0 || delta.1.abs() > 50.0));
+            // Detection phase: check if these look like absolute positions.
+            // xrdp/Wayland absolute mode sends screen coordinates (e.g. 960, 540 for a
+            // 1920x1080 screen). Both axes will be > 100 for any reasonable cursor position.
+            // We only use the conservative check (both > 100) to avoid false positives from
+            // fast relative-mode mouse events where one axis can exceed 50.
+            let looks_absolute = delta.0 > 100.0 && delta.1 > 100.0;
 
             if looks_absolute {
                 self.absolute_mode = true;
@@ -57,7 +62,10 @@ impl MouseMotionState {
 
             self.last_absolute_x = Some(delta.0);
             self.last_absolute_y = Some(delta.1);
-            actual_delta
+            (
+                actual_delta.0 * ABSOLUTE_MODE_SENSITIVITY,
+                actual_delta.1 * ABSOLUTE_MODE_SENSITIVITY,
+            )
         } else {
             delta
         }

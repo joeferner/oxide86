@@ -120,6 +120,8 @@ main_loop:
     and ah, 0x3F        ; keep low 6 bits
     or al, ah           ; AL = 8-bit signed X delta
     cbw                 ; AX = sign-extended 16-bit X delta
+    mov cl, 3
+    sar ax, cl          ; scale down by 8 to match MOUSE.COM default sensitivity
 
     ; cur_col += X, clamped to [0, SCREEN_COLS-1]
     mov bl, [cur_col]
@@ -145,6 +147,8 @@ main_loop:
     and ah, 0x3F        ; keep low 6 bits
     or al, ah           ; AL = 8-bit signed Y delta
     cbw                 ; AX = sign-extended 16-bit Y delta
+    mov cl, 3
+    sar ax, cl          ; scale down by 8 to match MOUSE.COM default sensitivity
 
     ; cur_row += Y, clamped to [1, SCREEN_ROWS-1] (row 0 reserved for title)
     mov bl, [cur_row]
