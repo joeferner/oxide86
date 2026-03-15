@@ -71,3 +71,8 @@ pub(crate) fn mode_10h_ega_640x350x16() {
         make_computer!(video_card_type: VideoCardType::EGA),
     );
 }
+
+#[test_log::test]
+pub(crate) fn cga_composite_trans() {
+    run_assert_screen_key_press_run_test("video/cga_composite/trans", create_computer());
+}

@@ -47,6 +47,9 @@ pub struct VideoBuffer {
     cga_intensity: bool,
     /// Palette select (bit 5 of port 0x3D9). false = green/red/brown, true = cyan/magenta/white.
     cga_palette: bool,
+    /// Composite (colorburst) output enabled (bit 3 of port 0x3D8).
+    /// When true and mode is M06Cga640x200x2, renders NTSC artifact colors instead of B&W.
+    cga_composite: bool,
 
     font: Cp437Font,
     /// VGA DAC palette registers (256 entries, each with 6-bit RGB components)
@@ -86,6 +89,7 @@ impl VideoBuffer {
             cga_bg: 0,
             cga_intensity: false,
             cga_palette: false,
+            cga_composite: false,
             font: Cp437Font::new(),
             vga_dac_palette: Self::default_vga_dac_palette(),
             blink_enabled: false,
@@ -105,6 +109,7 @@ impl VideoBuffer {
         self.cga_bg = 0;
         self.cga_intensity = false;
         self.cga_palette = false;
+        self.cga_composite = false;
         self.text_columns = TEXT_MODE_COLS as u8;
         self.font = Cp437Font::new();
         self.vga_dac_palette = Self::default_vga_dac_palette();
@@ -223,6 +228,11 @@ impl VideoBuffer {
         self.dirty = true;
     }
 
+    pub(crate) fn set_cga_composite(&mut self, enabled: bool) {
+        self.cga_composite = enabled;
+        self.dirty = true;
+    }
+
     pub fn is_dirty(&self) -> bool {
         self.dirty
     }
@@ -247,7 +257,13 @@ impl VideoBuffer {
         match self.mode {
             Mode::M02ColorText | Mode::M03Text => self.render_text_mode(buf),
             Mode::M04Cga320x200x4 => self.render_mode_04h_320x200x4(buf),
-            Mode::M06Cga640x200x2 => self.render_mode_06h_640x200x2(buf),
+            Mode::M06Cga640x200x2 => {
+                if self.cga_composite {
+                    self.render_mode_06h_composite(buf)
+                } else {
+                    self.render_mode_06h_640x200x2(buf)
+                }
+            }
             Mode::M0DEga320x200x16 => self.render_mode_0dh_320x200x16(buf),
             Mode::M10Ega640x350x16 => self.render_mode_10h_640x350x16(buf),
             Mode::M13Vga320x200x256 => self.render_mode_13h_320x200x256(buf),
@@ -451,6 +467,103 @@ impl VideoBuffer {
                 buf[offset + 1] = dac_to_8bit(dac[1]);
                 buf[offset + 2] = dac_to_8bit(dac[2]);
                 buf[offset + 3] = 0xFF;
+            }
+        }
+    }
+
+    /// Render CGA 640x200 mode 06h in composite (colorburst) mode.
+    ///
+    /// Every 4 consecutive 1-bit pixels form a nibble (MSB = leftmost pixel). That nibble
+    /// indexes into a 16-color NTSC artifact color palette, producing colors beyond B&W.
+    /// `cga_palette` (bit 5 of port 0x3D9) selects the phase: false = phase 0, true = phase 1
+    /// (equivalent to a 1-pixel shift, i.e. 90° NTSC colorburst phase rotation).
+    /// Output is 640×400 (scanlines doubled) matching the non-composite mode 06h resolution.
+    fn render_mode_06h_composite(&self, buf: &mut [u8]) {
+        const SRC_WIDTH: usize = 640;
+        const OUT_WIDTH: usize = 640;
+        const SRC_HEIGHT: usize = 200;
+
+        // CGA composite artifact color palettes (16 entries, RGB).
+        //
+        // Each 4-pixel group forms a nibble (MSB = leftmost pixel). The nibble's chroma
+        // vector angle determines the hue; the NTSC color subcarrier runs at 4× the CGA
+        // pixel clock, so each pixel is 90° of a color cycle. Bit 5 of port 0x3D9 inverts
+        // the colorburst phase (180° = 2 pixel-positions), which maps nibble n to nibble
+        // rotate_left_2(n) in the base palette:
+        //   PHASE1[n] = PHASE0[((n << 2) | (n >> 2)) & 0xF]
+        //
+        // Colors are NTSC-derived (not EGA digital). Calibrated so that:
+        //   PHASE0[3]  (225°, 2px) = brown/orange   — complement of blue
+        //   PHASE0[12] (45°,  2px) = blue            — used by trans flag with PHASE1
+        //   PHASE0[11] (270°, 3px) = light pink      — used by trans flag with PHASE1
+        //   PHASE0[14] (90°,  3px) = light cyan      — complement of pink
+        const PHASE0: [[u8; 3]; 16] = [
+            [0,   0,   0  ], // 0  black         (0px, no chroma)
+            [85,  0,   0  ], // 1  dark red       (1px, 270° = red direction)
+            [0,   85,  0  ], // 2  dark green     (1px, 180°)
+            [170, 85,  0  ], // 3  brown/orange   (2px, 225°) ← PHASE1 blue complement
+            [0,   85,  85 ], // 4  dark cyan      (1px, 90°)
+            [128, 128, 128], // 5  gray           (2px, no chroma)
+            [0,   170, 0  ], // 6  green          (2px, 135°)
+            [170, 200, 85 ], // 7  yellow-green   (3px, 180°)
+            [85,  0,   170], // 8  dark purple    (1px, 0°)
+            [170, 0,   170], // 9  magenta        (2px, 315°)
+            [128, 128, 128], // 10 gray           (2px, no chroma)
+            [255, 133, 240], // 11 light pink     (3px, 270°) ← PHASE1 trans pink  #FF85F0
+            [0,   159, 253], // 12 blue           (2px, 45°)  ← PHASE1 trans blue  #009FFD
+            [200, 100, 255], // 13 light purple   (3px, 0°)
+            [85,  255, 200], // 14 light cyan     (3px, 90°)  ← PHASE1 pink complement
+            [255, 255, 255], // 15 white          (4px, no chroma)
+        ];
+        // PHASE1[n] = PHASE0[rotate_left_2(n)] — 180° subcarrier inversion.
+        // Precomputed: rotate_left_2(n) = ((n << 2) | (n >> 2)) & 0xF
+        const PHASE1: [[u8; 3]; 16] = [
+            PHASE0[0],  // 0  → 0
+            PHASE0[4],  // 1  → 4
+            PHASE0[8],  // 2  → 8
+            PHASE0[12], // 3  → 12 = blue   ← trans blue  ✓
+            PHASE0[1],  // 4  → 1
+            PHASE0[5],  // 5  → 5  (gray, fixed point)
+            PHASE0[9],  // 6  → 9
+            PHASE0[13], // 7  → 13
+            PHASE0[2],  // 8  → 2
+            PHASE0[6],  // 9  → 6
+            PHASE0[10], // 10 → 10 (gray, fixed point)
+            PHASE0[14], // 11 → 14
+            PHASE0[3],  // 12 → 3
+            PHASE0[7],  // 13 → 7
+            PHASE0[11], // 14 → 11 = pink   ← trans pink ✓
+            PHASE0[15], // 15 → 15 (white, fixed point)
+        ];
+
+        let palette = if self.cga_palette { &PHASE1 } else { &PHASE0 };
+
+        for y in 0..SRC_HEIGHT {
+            let bank_offset = if y % 2 == 1 { 0x2000 } else { 0 };
+            let row_base = bank_offset + (y / 2) * 80;
+
+            for group in 0..(SRC_WIDTH / 4) {
+                // Collect 4 consecutive pixels into a nibble (MSB = leftmost)
+                let mut nibble: usize = 0;
+                for bit in 0..4 {
+                    let x = group * 4 + bit;
+                    let byte_val = self.vram[row_base + x / 8];
+                    let pixel = (byte_val >> (7 - (x % 8))) & 1;
+                    nibble = (nibble << 1) | pixel as usize;
+                }
+                let rgb = palette[nibble];
+
+                // Write 4 pixels across, doubled vertically for CRT aspect ratio
+                for bit in 0..4 {
+                    let x = group * 4 + bit;
+                    for dy in 0..2 {
+                        let offset = ((y * 2 + dy) * OUT_WIDTH + x) * 4;
+                        buf[offset]     = rgb[0];
+                        buf[offset + 1] = rgb[1];
+                        buf[offset + 2] = rgb[2];
+                        buf[offset + 3] = 0xFF;
+                    }
+                }
             }
         }
     }

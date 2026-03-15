@@ -842,6 +842,7 @@ impl Device for VideoCard {
                     self.cga_mode_ctrl = val;
                     // Derive the CGA rendering mode from the hardware register bits:
                     //   bit 1 = graphics mode enable
+                    //   bit 3 = colorburst enable (composite output)
                     //   bit 4 = high-resolution (640x200) mode
                     //   bit 0 = 80-column (text mode only)
                     let mode = if val & 0x02 != 0 {
@@ -855,12 +856,16 @@ impl Device for VideoCard {
                     } else {
                         Mode::M02ColorText
                     };
+                    let composite = (val & 0x08) != 0;
                     log::info!(
-                        "CGA mode control register 0x3D8 = 0x{:02X} → mode {}",
+                        "CGA mode control register 0x3D8 = 0x{:02X} → mode {}, composite={}",
                         val,
-                        mode
+                        mode,
+                        composite
                     );
-                    self.buffer.write().unwrap().set_mode(mode);
+                    let mut buffer = self.buffer.write().unwrap();
+                    buffer.set_mode(mode);
+                    buffer.set_cga_composite(composite);
                     true
                 }
                 CGA_COLOR_SELECT_ADDR => {

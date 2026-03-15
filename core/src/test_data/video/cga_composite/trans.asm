@@ -40,9 +40,19 @@ call drawbar
 mov ax,0x3333
 call drawbar
 
-; Hang
-killme:
-	jmp killme
+; Wait for keypress
+mov ah, 0x00
+int 0x16
+
+; Return to text mode
+mov ah, 0x00
+mov al, 0x03
+int 0x10
+
+; Exit
+mov ah, 0x4C
+mov al, 0x00
+int 0x21
 ; Draw bar routine
 drawbar:
 	sub di,2000h

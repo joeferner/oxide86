@@ -45,10 +45,10 @@
 - [X] Support 286 instructions
 - [X] Create reverse engineering mode (see ai-analysis/reverse-engineer-plan.md)
 - [X] Test SimCity (1989)
-- [ ] Test MS Flight Simulator 1.05
-- [ ] CGA Composite mode
+- [ ] CGA Composite mode (see ai-analysis/cga-composite-plan.md)
   - [ ] see https://github.com/MobyGamer/CGACompatibilityTester
   - [ ] see CT.EXE https://www.vogons.org/viewtopic.php?t=96231
+- [ ] Test MS Flight Simulator 1.05
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
