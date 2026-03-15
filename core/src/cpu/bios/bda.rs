@@ -290,6 +290,14 @@ pub(crate) fn bda_set_rows(bus: &mut Bus, rows: u8) {
     bus.memory_write_u8(BDA_START + BDA_EGA_ROWS, rows);
 }
 
+pub(crate) fn bda_get_char_height(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_EGA_CHAR_HEIGHT)
+}
+
+pub(crate) fn bda_set_char_height(bus: &mut Bus, height: u8) {
+    bus.memory_write_u8(BDA_START + BDA_EGA_CHAR_HEIGHT, height);
+}
+
 pub(crate) fn bda_get_video_mode(bus: &Bus) -> Mode {
     bus.memory_read_u8(BDA_START + BDA_VIDEO_MODE).into()
 }

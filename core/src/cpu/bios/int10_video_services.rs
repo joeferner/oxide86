@@ -4,14 +4,18 @@ use crate::{
     byte_to_printable_char,
     cpu::{
         Cpu,
-        bios::bda::{
-            bda_get_active_page, bda_get_columns, bda_get_crt_controller_port_address,
-            bda_get_crt_palette, bda_get_cursor_end_line, bda_get_cursor_pos,
-            bda_get_cursor_start_line, bda_get_display_combination_code, bda_get_rows,
-            bda_get_video_mode, bda_get_video_page_size, bda_set_active_page, bda_set_columns,
-            bda_set_crt_palette, bda_set_cursor_end_line, bda_set_cursor_pos,
-            bda_set_cursor_start_line, bda_set_display_combination_code, bda_set_rows,
-            bda_set_video_mode, bda_set_video_page_offset, bda_set_video_page_size,
+        bios::{
+            BIOS_CGA_FONT_OFFSET, BIOS_EGA_FONT_OFFSET,
+            bda::{
+                bda_get_active_page, bda_get_char_height, bda_get_columns,
+                bda_get_crt_controller_port_address, bda_get_crt_palette, bda_get_cursor_end_line,
+                bda_get_cursor_pos, bda_get_cursor_start_line, bda_get_display_combination_code,
+                bda_get_rows, bda_get_video_mode, bda_get_video_page_size, bda_set_active_page,
+                bda_set_char_height, bda_set_columns, bda_set_crt_palette, bda_set_cursor_end_line,
+                bda_set_cursor_pos, bda_set_cursor_start_line, bda_set_display_combination_code,
+                bda_set_rows, bda_set_video_mode, bda_set_video_page_offset,
+                bda_set_video_page_size,
+            },
         },
         cpu_flag,
     },
@@ -39,6 +43,9 @@ const FONT_8X16_SEGMENT: u16 = 0xF000;
 const FONT_8X16_OFFSET: u16 = 0xB000; // F000:B000
 #[allow(dead_code)]
 const FONT_8X16_ADDR: usize = 0xFB000; // Physical address, ends at 0xFC000
+
+const FONT_8X14_SEGMENT: u16 = 0xF000;
+const FONT_8X14_OFFSET: u16 = 0xC800; // F000:C800 — matches BIOS_EGA_FONT_ADDR/BIOS_EGA_FONT_OFFSET
 
 const FONT_8X8_SEGMENT: u16 = 0xF000;
 const FONT_8X8_OFFSET: u16 = 0xC000; // F000:C000 — matches BIOS_CGA_FONT_ADDR/BIOS_CGA_FONT_OFFSET
@@ -156,6 +163,17 @@ impl Cpu {
             bda_set_crt_palette(bus, color_select);
             bus.io_write_u8(CGA_COLOR_SELECT_ADDR, color_select);
         }
+
+        // Update INT 43h and BDA char height to match this mode's character cell.
+        // Programs use INT 43h to locate font bitmaps for custom text rendering,
+        // and read BDA[0x85] (via AH=11h/AL=30h/BH=01h) to get bytes-per-character.
+        let (int43_offset, int43_segment, char_height) = match mode {
+            Mode::M10Ega640x350x16 => (BIOS_EGA_FONT_OFFSET, 0xF000u16, 14u8),
+            _ => (BIOS_CGA_FONT_OFFSET, 0xF000u16, 8u8),
+        };
+        bus.memory_write_u16(0x010C, int43_offset);
+        bus.memory_write_u16(0x010E, int43_segment);
+        bda_set_char_height(bus, char_height);
 
         // Update BDA with new video mode settings
         bda_set_video_mode(bus, mode.as_u8());
@@ -1321,31 +1339,24 @@ impl Cpu {
                 }
             }
             0x01 => {
-                // INT 43h pointer (8x14/8x16 graphics characters)
-                // Read INT 43h vector from IVT
+                // INT 43h pointer — return current IVT vector and BDA char height
                 let int_43_offset = bus.memory_read_u16(0x43 * 4);
                 let int_43_segment = bus.memory_read_u16(0x43 * 4 + 2);
-                // If not set, default to our ROM 8x16 font
-                if int_43_segment == 0xF000 && int_43_offset < 0x100 {
-                    // Not initialized, use ROM font
-                    (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
-                } else {
-                    (int_43_segment, int_43_offset, 16, 25)
-                }
+                let height = bda_get_char_height(bus) as u16;
+                let height = if height == 0 { 16 } else { height };
+                (int_43_segment, int_43_offset, height, 25)
             }
             0x02 => {
                 // ROM 8x14 character font pointer
-                // We don't have a real 8x14 font, return 8x16 instead
-                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+                (FONT_8X14_SEGMENT, FONT_8X14_OFFSET, 14, 25)
             }
             0x03 | 0x04 => {
                 // ROM 8x8 double-dot font pointer (both regular and top half)
                 (FONT_8X8_SEGMENT, FONT_8X8_OFFSET, 8, 25)
             }
             0x05 => {
-                // ROM 9x14 alphanumeric alternate
-                // We don't have a 9x14 font, return 8x16 instead
-                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+                // ROM 9x14 alphanumeric alternate — use our 8x14 font
+                (FONT_8X14_SEGMENT, FONT_8X14_OFFSET, 14, 25)
             }
             0x06 => {
                 // ROM 8x16 font

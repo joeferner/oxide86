@@ -1,12 +1,15 @@
 use crate::{
+    Computer,
     bus::Bus,
-    cpu::{bios::BIOS_CODE_SEGMENT, instructions::{decoder, RepeatPrefix}},
     cpu::instructions::decoder::Operand,
+    cpu::{
+        bios::BIOS_CODE_SEGMENT,
+        instructions::{RepeatPrefix, decoder},
+    },
     dis::classify_instruction_flow,
     disk::DriveNumber,
     physical_address,
     reverse_engineer::ReverseEngineer,
-    Computer,
 };
 
 pub mod bios;
@@ -113,19 +116,45 @@ struct CpuBusComputer<'a> {
 }
 
 impl Computer for CpuBusComputer<'_> {
-    fn ax(&self) -> u16 { self.cpu.ax }
-    fn bx(&self) -> u16 { self.cpu.bx }
-    fn cx(&self) -> u16 { self.cpu.cx }
-    fn dx(&self) -> u16 { self.cpu.dx }
-    fn sp(&self) -> u16 { self.cpu.sp }
-    fn bp(&self) -> u16 { self.cpu.bp }
-    fn si(&self) -> u16 { self.cpu.si }
-    fn di(&self) -> u16 { self.cpu.di }
-    fn cs(&self) -> u16 { self.cpu.cs }
-    fn ds(&self) -> u16 { self.cpu.ds }
-    fn ss(&self) -> u16 { self.cpu.ss }
-    fn es(&self) -> u16 { self.cpu.es }
-    fn read_u8(&self, phys: u32) -> u8 { self.bus.memory_read_u8(phys as usize) }
+    fn ax(&self) -> u16 {
+        self.cpu.ax
+    }
+    fn bx(&self) -> u16 {
+        self.cpu.bx
+    }
+    fn cx(&self) -> u16 {
+        self.cpu.cx
+    }
+    fn dx(&self) -> u16 {
+        self.cpu.dx
+    }
+    fn sp(&self) -> u16 {
+        self.cpu.sp
+    }
+    fn bp(&self) -> u16 {
+        self.cpu.bp
+    }
+    fn si(&self) -> u16 {
+        self.cpu.si
+    }
+    fn di(&self) -> u16 {
+        self.cpu.di
+    }
+    fn cs(&self) -> u16 {
+        self.cpu.cs
+    }
+    fn ds(&self) -> u16 {
+        self.cpu.ds
+    }
+    fn ss(&self) -> u16 {
+        self.cpu.ss
+    }
+    fn es(&self) -> u16 {
+        self.cpu.es
+    }
+    fn read_u8(&self, phys: u32) -> u8 {
+        self.bus.memory_read_u8(phys as usize)
+    }
 }
 
 impl Cpu {
@@ -317,7 +346,11 @@ impl Cpu {
         // Decode after execution so register annotations reflect post-exec state.
         // Instruction bytes at pre_cs:pre_ip are still in memory (code is not modified).
         let decoded = if self.exec_logging_enabled || self.reverse_engineer.is_some() {
-            Some(decoder::decode(&CpuBusComputer { cpu: self, bus }, pre_cs, pre_ip))
+            Some(decoder::decode(
+                &CpuBusComputer { cpu: self, bus },
+                pre_cs,
+                pre_ip,
+            ))
         } else {
             None
         };
@@ -327,7 +360,9 @@ impl Cpu {
             let code_start = physical_address(pre_cs, pre_ip);
             let code_end = physical_address(self.cs, self.ip);
 
-            let explicit_addrs: Vec<usize> = instr.operands.iter()
+            let explicit_addrs: Vec<usize> = instr
+                .operands
+                .iter()
                 .filter_map(|op| match op {
                     Operand::Mem8 { mem, .. } | Operand::Mem16 { mem, .. } => {
                         Some(mem.phys() as usize)
@@ -350,10 +385,10 @@ impl Cpu {
             re.record_instruction(instr, &flow, data_refs);
         }
 
-        if self.exec_logging_enabled {
-            if let Some(ref instr) = decoded {
-                log::info!("{}", instr.format_line());
-            }
+        if self.exec_logging_enabled
+            && let Some(ref instr) = decoded
+        {
+            log::info!("{}", instr.format_line());
         }
     }
 

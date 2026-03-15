@@ -85,6 +85,38 @@ pub(crate) fn mode_0dh_ega_320x200x16() {
     );
 }
 
+/// Tests INT 10h/AH=11h/AL=30h font info queries and direct EGA VRAM glyph rendering,
+/// mirroring the technique SimCity uses for menu text (BH=02h ROM 8x14 path).
+#[test_log::test]
+pub(crate) fn font_direct_render() {
+    let name = "video/font_direct_render";
+    run_test(
+        name,
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen(name, video_buffer);
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
+pub(crate) fn print_chars_8x14() {
+    let name = "video/print_chars_8x14";
+    run_test(
+        name,
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen(name, video_buffer);
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
 #[test_log::test]
 pub(crate) fn mode_10h_ega_640x350x16() {
     let name = "video/mode_10h_ega_640x350x16";

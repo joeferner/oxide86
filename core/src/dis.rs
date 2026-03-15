@@ -40,19 +40,45 @@ struct ByteReaderComputer<'a, R> {
 }
 
 impl<R: ByteReader> Computer for ByteReaderComputer<'_, R> {
-    fn ax(&self) -> u16 { 0 }
-    fn bx(&self) -> u16 { 0 }
-    fn cx(&self) -> u16 { 0 }
-    fn dx(&self) -> u16 { 0 }
-    fn sp(&self) -> u16 { 0 }
-    fn bp(&self) -> u16 { 0 }
-    fn si(&self) -> u16 { 0 }
-    fn di(&self) -> u16 { 0 }
-    fn cs(&self) -> u16 { 0 }
-    fn ds(&self) -> u16 { 0 }
-    fn ss(&self) -> u16 { 0 }
-    fn es(&self) -> u16 { 0 }
-    fn read_u8(&self, phys: u32) -> u8 { self.reader.read_u8(phys as usize) }
+    fn ax(&self) -> u16 {
+        0
+    }
+    fn bx(&self) -> u16 {
+        0
+    }
+    fn cx(&self) -> u16 {
+        0
+    }
+    fn dx(&self) -> u16 {
+        0
+    }
+    fn sp(&self) -> u16 {
+        0
+    }
+    fn bp(&self) -> u16 {
+        0
+    }
+    fn si(&self) -> u16 {
+        0
+    }
+    fn di(&self) -> u16 {
+        0
+    }
+    fn cs(&self) -> u16 {
+        0
+    }
+    fn ds(&self) -> u16 {
+        0
+    }
+    fn ss(&self) -> u16 {
+        0
+    }
+    fn es(&self) -> u16 {
+        0
+    }
+    fn read_u8(&self, phys: u32) -> u8 {
+        self.reader.read_u8(phys as usize)
+    }
 }
 
 /// Decode a single instruction at `cs:ip` using `reader`.
@@ -62,7 +88,12 @@ pub fn disasm_one(reader: &impl ByteReader, cs: u16, ip: u16) -> DisasmResult {
     let next_ip = ip.wrapping_add(instr.bytes.len() as u16);
     let flow = classify_instruction_flow(&instr);
     let text = asm_text(&instr);
-    DisasmResult { text, bytes: instr.bytes, next_ip, flow }
+    DisasmResult {
+        text,
+        bytes: instr.bytes,
+        next_ip,
+        flow,
+    }
 }
 
 /// Classify the control-flow kind of a decoded instruction.
@@ -79,7 +110,7 @@ pub fn classify_instruction_flow(instr: &Instruction) -> FlowKind {
 
         Mnemonic::JmpFar => {
             if let (Some(Operand::Imm16(seg)), Some(Operand::Imm16(off))) =
-                (instr.operands.get(0), instr.operands.get(1))
+                (instr.operands.first(), instr.operands.get(1))
             {
                 FlowKind::JumpFar(*seg, *off)
             } else {
@@ -94,7 +125,7 @@ pub fn classify_instruction_flow(instr: &Instruction) -> FlowKind {
 
         Mnemonic::CallFar => {
             if let (Some(Operand::Imm16(seg)), Some(Operand::Imm16(off))) =
-                (instr.operands.get(0), instr.operands.get(1))
+                (instr.operands.first(), instr.operands.get(1))
             {
                 FlowKind::CallFar(*seg, *off)
             } else {

@@ -43,8 +43,8 @@
 - [X] Add VGA support
 - [X] Test Battle Chess
 - [X] Support 286 instructions
-- [ ] Create reverse engineering mode (see ai-analysis/reverse-engineer-plan.md)
-- [ ] Test SimCity (1989)
+- [X] Create reverse engineering mode (see ai-analysis/reverse-engineer-plan.md)
+- [X] Test SimCity (1989)
 - [ ] Test MS Flight Simulator 1.05
 - [ ] CGA Composite mode
 - [ ] Add extended memory/A20 line support

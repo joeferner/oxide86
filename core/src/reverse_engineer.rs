@@ -61,7 +61,12 @@ impl ReverseEngineer {
         }
     }
 
-    pub fn record_instruction(&mut self, instr: &Instruction, flow: &FlowKind, data_refs: Vec<usize>) {
+    pub fn record_instruction(
+        &mut self,
+        instr: &Instruction,
+        flow: &FlowKind,
+        data_refs: Vec<usize>,
+    ) {
         let cs = instr.segment;
         let ip = instr.offset;
         let addr = physical_address(cs, ip);
@@ -71,14 +76,16 @@ impl ReverseEngineer {
         }
 
         // First-seen wins for instruction text/bytes (deduplicates loops)
-        self.instructions.entry(addr).or_insert_with(|| ReverseEntry {
-            cs,
-            ip,
-            bytes: instr.bytes.clone(),
-            mnemonic: instr.mnemonic.clone(),
-            operands: instr.operands.clone(),
-            data_refs,
-        });
+        self.instructions
+            .entry(addr)
+            .or_insert_with(|| ReverseEntry {
+                cs,
+                ip,
+                bytes: instr.bytes.clone(),
+                mnemonic: instr.mnemonic.clone(),
+                operands: instr.operands.clone(),
+                data_refs,
+            });
 
         // Record control-flow targets using current CS for near transfers
         match flow {
@@ -155,7 +162,9 @@ impl ReverseEngineer {
             let comment = if entry.data_refs.is_empty() {
                 String::new()
             } else {
-                let refs = entry.data_refs.iter()
+                let refs = entry
+                    .data_refs
+                    .iter()
                     .map(|&a| phys_to_label.get(&a).map(|s| s.as_str()).unwrap_or("?"))
                     .collect::<Vec<_>>()
                     .join(", ");

@@ -235,7 +235,9 @@ fn run(cli: Cli) -> Result<()> {
                         computer.log_cpu_state();
                         if let Some(asm) = computer.get_reverse_engineer_asm() {
                             match std::fs::write("oxide86.asm", &asm) {
-                                Ok(()) => log::info!("Reverse engineer output written to oxide86.asm"),
+                                Ok(()) => {
+                                    log::info!("Reverse engineer output written to oxide86.asm")
+                                }
                                 Err(e) => log::error!("Failed to write oxide86.asm: {e}"),
                             }
                         }
@@ -993,7 +995,11 @@ fn handle_debug_action(
             computer.set_reverse_engineer_enabled(!was_enabled);
             log::info!(
                 "Reverse engineering {}",
-                if computer.reverse_engineer_enabled() { "enabled" } else { "disabled" }
+                if computer.reverse_engineer_enabled() {
+                    "enabled"
+                } else {
+                    "disabled"
+                }
             );
         }
         MenuAction::TogglePause => {

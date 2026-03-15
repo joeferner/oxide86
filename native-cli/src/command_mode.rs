@@ -81,7 +81,9 @@ pub(crate) fn run_command_mode(computer: &mut Computer, stdout: &mut Stdout) -> 
                             let was_enabled = computer.reverse_engineer_enabled();
                             if was_enabled && let Some(asm) = computer.get_reverse_engineer_asm() {
                                 match std::fs::write("oxide86.asm", &asm) {
-                                    Ok(()) => log::info!("Reverse engineer output written to oxide86.asm"),
+                                    Ok(()) => {
+                                        log::info!("Reverse engineer output written to oxide86.asm")
+                                    }
                                     Err(e) => log::error!("Failed to write oxide86.asm: {e}"),
                                 }
                             }
