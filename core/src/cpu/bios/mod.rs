@@ -27,9 +27,15 @@ pub const BIOS_CODE_SEGMENT: u16 = 0xF000;
 pub const INT15_SYSTEM_CONFIG_SEGMENT: u16 = 0xF000;
 pub const INT15_SYSTEM_CONFIG_OFFSET: u16 = 0xE000;
 
-/// Physical address of the IBM 8x8 CGA font in the BIOS ROM area (F000:FA6E).
-/// This is the classic IBM PC BIOS location used by games to copy glyph data.
-pub const BIOS_CGA_FONT_ADDR: usize = 0xFFA6E;
+/// Physical address of the IBM 8x8 CGA font in the BIOS ROM area (F000:C000).
+/// Placed at F000:C000 so all 256 characters (256*8 = 2048 bytes) fit within the
+/// 16-bit offset range without wrapping (C000 + 0x800 = C800 < 0x10000). The
+/// classic IBM BIOS location F000:FA6E causes characters above ~0xB2 to overflow
+/// the 16-bit offset, producing wrong physical addresses when programs index into
+/// the font table via ES:BP + char*8.
+pub const BIOS_CGA_FONT_ADDR: usize = 0xFC000;
+/// Segment offset of the 8x8 font within F000.
+pub const BIOS_CGA_FONT_OFFSET: u16 = 0xC000;
 
 pub(crate) fn bios_reset(bus: &mut Bus) {
     bios_interrupt_handlers_reset(bus);
@@ -38,17 +44,17 @@ pub(crate) fn bios_reset(bus: &mut Bus) {
     bios_font_reset(bus);
 }
 
-/// Writes the IBM 8x8 CGA font into the BIOS ROM area at F000:FA6E and sets
-/// INT 43h / INT 1Fh vectors to point to it, matching real IBM PC BIOS behaviour.
+/// Writes the IBM 8x8 CGA font into the BIOS ROM area at F000:C000 and sets
+/// INT 43h / INT 1Fh vectors to point to it.
 fn bios_font_reset(bus: &mut Bus) {
     for (i, &byte) in CGA_FONT_8X8_DATA.iter().enumerate() {
         bus.memory_write_u8(BIOS_CGA_FONT_ADDR + i, byte);
     }
-    // INT 43h (0x010C): full 256-char font table at F000:FA6E
-    bus.memory_write_u16(0x010C, 0xFA6E);
+    // INT 43h (0x010C): full 256-char font table at F000:C000
+    bus.memory_write_u16(0x010C, BIOS_CGA_FONT_OFFSET);
     bus.memory_write_u16(0x010E, 0xF000);
-    // INT 1Fh (0x007C): chars 0x80-0xFF start at F000:FA6E + 0x400
-    bus.memory_write_u16(0x007C, 0xFE6E);
+    // INT 1Fh (0x007C): chars 0x80-0xFF start at F000:C000 + 0x400
+    bus.memory_write_u16(0x007C, BIOS_CGA_FONT_OFFSET + 0x400);
     bus.memory_write_u16(0x007E, 0xF000);
 }
 

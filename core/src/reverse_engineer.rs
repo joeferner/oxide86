@@ -1,51 +1,53 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::cpu::instructions::decoder::{Instruction, Mnemonic, Operand};
 use crate::dis::FlowKind;
 use crate::physical_address;
 
 pub struct ReverseEntry {
     pub cs: u16,
     pub ip: u16,
-    pub text: String,
     pub bytes: Vec<u8>,
+    pub mnemonic: Mnemonic,
+    pub operands: Vec<Operand>,
+    pub data_refs: Vec<usize>, // implicit data accesses not covered by explicit operands
 }
 
 pub struct ReverseEngineer {
     instructions: BTreeMap<usize, ReverseEntry>,
     call_targets: BTreeSet<usize>,
     jump_targets: BTreeSet<usize>,
-    data_reads: BTreeMap<usize, (u8, u16)>, // phys_addr -> (val, 16-bit offset)
+    data_reads: BTreeMap<usize, u8>, // phys_addr -> byte value
     entry_address: Option<usize>,
 }
 
-/// Scan instruction text for `[0x????]` patterns and replace with data labels.
-fn substitute_data_labels(text: &str, offset_to_label: &BTreeMap<u16, String>) -> String {
-    let bytes = text.as_bytes();
-    let mut out = String::with_capacity(text.len() + 16);
-    let mut i = 0;
-    while i < bytes.len() {
-        // Look for "[0x" followed by exactly 4 hex digits and "]"
-        if bytes[i] == b'['
-            && i + 8 < bytes.len()
-            && bytes[i + 1] == b'0'
-            && bytes[i + 2] == b'x'
-            && bytes[i + 7] == b']'
-        {
-            let hex = &text[i + 3..i + 7];
-            if let Ok(offset) = u16::from_str_radix(hex, 16) {
-                if let Some(label) = offset_to_label.get(&offset) {
-                    out.push('[');
-                    out.push_str(label);
-                    out.push(']');
-                    i += 8;
-                    continue;
-                }
+/// Render an operand, substituting Mem8/Mem16 physical addresses with data labels where known.
+fn render_operand(op: &Operand, phys_to_label: &BTreeMap<usize, String>) -> String {
+    match op {
+        Operand::Mem8 { mem, .. } | Operand::Mem16 { mem, .. } => {
+            let phys = mem.phys() as usize;
+            if let Some(label) = phys_to_label.get(&phys) {
+                format!("[{label}]")
+            } else {
+                op.asm_str()
             }
         }
-        out.push(bytes[i] as char);
-        i += 1;
+        _ => op.asm_str(),
     }
-    out
+}
+
+/// Render instruction text with data label substitution applied to memory operands.
+fn render_instruction(entry: &ReverseEntry, phys_to_label: &BTreeMap<usize, String>) -> String {
+    let ops: Vec<String> = entry
+        .operands
+        .iter()
+        .map(|op| render_operand(op, phys_to_label))
+        .collect();
+    match ops.len() {
+        0 => entry.mnemonic.to_string(),
+        1 => format!("{} {}", entry.mnemonic, ops[0]),
+        _ => format!("{} {}, {}", entry.mnemonic, ops[0], ops[1]),
+    }
 }
 
 impl ReverseEngineer {
@@ -59,24 +61,23 @@ impl ReverseEngineer {
         }
     }
 
-    pub fn record_instruction(
-        &mut self,
-        cs: u16,
-        ip: u16,
-        flow: &FlowKind,
-        text: String,
-        bytes: Vec<u8>,
-    ) {
+    pub fn record_instruction(&mut self, instr: &Instruction, flow: &FlowKind, data_refs: Vec<usize>) {
+        let cs = instr.segment;
+        let ip = instr.offset;
         let addr = physical_address(cs, ip);
+
         if self.entry_address.is_none() {
             self.entry_address = Some(addr);
         }
-        // First-seen wins for instruction text/bytes
-        self.instructions.entry(addr).or_insert(ReverseEntry {
+
+        // First-seen wins for instruction text/bytes (deduplicates loops)
+        self.instructions.entry(addr).or_insert_with(|| ReverseEntry {
             cs,
             ip,
-            text,
-            bytes,
+            bytes: instr.bytes.clone(),
+            mnemonic: instr.mnemonic.clone(),
+            operands: instr.operands.clone(),
+            data_refs,
         });
 
         // Record control-flow targets using current CS for near transfers
@@ -97,9 +98,8 @@ impl ReverseEngineer {
         }
     }
 
-    pub fn record_data_read(&mut self, addr: usize, val: u8, ds: u16) {
-        let offset = addr.wrapping_sub(ds as usize * 16) as u16;
-        self.data_reads.entry(addr).or_insert((val, offset));
+    pub fn record_data_read(&mut self, addr: usize, val: u8) {
+        self.data_reads.entry(addr).or_insert(val);
     }
 
     pub fn to_asm_string(&self) -> String {
@@ -115,7 +115,7 @@ impl ReverseEngineer {
             .copied()
             .collect();
 
-        // Emit data section
+        // Data addresses that aren't instruction addresses
         let data_addrs: Vec<usize> = self
             .data_reads
             .keys()
@@ -123,18 +123,13 @@ impl ReverseEngineer {
             .copied()
             .collect();
 
-        // Build a map from 16-bit offset -> label name for instruction text substitution
-        let offset_to_label: BTreeMap<u16, String> = data_addrs
+        // Physical address -> label name, for operand substitution
+        let phys_to_label: BTreeMap<usize, String> = data_addrs
             .iter()
-            .map(|&a| {
-                let (_, offset) = self.data_reads[&a];
-                (offset, format!("data_{a:05X}"))
-            })
+            .map(|&a| (a, format!("data_{a:05X}")))
             .collect();
 
-        // Re-emit instructions with data label substitutions applied
-        out.clear();
-        out.push_str("; Reverse Engineered by Oxide86\n");
+        // Emit instructions with structured operand label substitution
         let mut prev_addr: Option<usize> = None;
         for (&addr, entry) in &self.instructions {
             if let Some(prev_end) = prev_addr
@@ -155,11 +150,21 @@ impl ReverseEngineer {
                 .collect::<Vec<_>>()
                 .join(" ");
 
-            let text = substitute_data_labels(&entry.text, &offset_to_label);
+            let text = render_instruction(entry, &phys_to_label);
+
+            let comment = if entry.data_refs.is_empty() {
+                String::new()
+            } else {
+                let refs = entry.data_refs.iter()
+                    .map(|&a| phys_to_label.get(&a).map(|s| s.as_str()).unwrap_or("?"))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                format!("  ; [{refs}]")
+            };
 
             out.push_str(&format!(
-                "    {:04X}:{:04X}  {:<20}  {}\n",
-                entry.cs, entry.ip, bytes_hex, text
+                "    {:04X}:{:04X}  {:<20}  {}{}\n",
+                entry.cs, entry.ip, bytes_hex, text, comment
             ));
 
             prev_addr = Some(addr + entry.bytes.len());
@@ -177,7 +182,7 @@ impl ReverseEngineer {
                 }
                 out.push_str(&format!("\ndata_{:05X}:\n", group_start));
                 for &a in &data_addrs[i..j] {
-                    let (val, _) = self.data_reads[&a];
+                    let val = self.data_reads[&a];
                     let ascii = if (0x20..0x7F).contains(&val) {
                         format!(" '{}'", val as char)
                     } else {

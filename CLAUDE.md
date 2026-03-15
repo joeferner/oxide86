@@ -101,6 +101,44 @@ The load segment is the paragraph DOS allocated for the program (PSP base). The 
 
 All addresses use `SEG:OFF` with hex values, matching the emulator's execution log format (e.g. `160F:0042`). The `0x` prefix is accepted but not required.
 
+## Reverse Engineering Mode
+
+Runtime-driven disassembly that builds a deduplicated map of all executed instructions and data reads, then emits a clean `.asm` file. Unlike the static disassembler (`oxide86-disasm`), this is driven by actual execution, so it only includes code paths that ran.
+
+### Key files
+
+| File | Role |
+|------|------|
+| `core/src/reverse_engineer.rs` | `ReverseEngineer` struct — records instructions, control-flow targets, and data reads; generates `.asm` via `to_asm_string()` |
+| `core/src/bus.rs` | `data_reads_recorder: Option<Vec<(usize,u8)>>` — opt-in per-step read capture; enabled/drained by `Cpu::step()` |
+| `core/src/cpu/mod.rs` | `reverse_engineer: Option<ReverseEngineer>` field; integrated in `step()` alongside exec logging |
+| `core/src/computer.rs` | `set_reverse_engineer_enabled`, `reverse_engineer_enabled`, `get_reverse_engineer_asm` |
+| `native-common/src/cli.rs` | `--reverse-engineer` flag |
+| `native-cli/src/main.rs` | Applies flag; writes `oxide86.asm` on exit |
+| `native-cli/src/command_mode.rs` | `re` command — toggles RE and writes `oxide86.asm` on disable |
+| `native-gui/src/menu.rs` | `ToggleReverseEngineer` menu action; Debug → Reverse Engineering checkbox |
+| `native-gui/src/main.rs` | Handles toggle; writes `oxide86.asm` on disable or window close |
+
+### How it works
+
+- **Instruction recording**: `cpu::step()` calls `disasm_one(bus, cs, ip)` before executing each instruction. `ReverseEngineer::record_instruction` stores the first-seen text/bytes at each linear address (deduplicates loops). Control-flow targets (`Call`, `Jump`, etc.) are tracked to generate labels.
+- **Data read recording**: Bus read recording is enabled before `exec_instruction` and drained after. Reads in the instruction fetch range (`code_start..code_end`) and above `0xA0000` are filtered out, leaving only true data accesses.
+- **`record_data_read(addr, val, ds)`**: stores `(val, ds-relative offset)` for each unique address; the offset is used to substitute `[0xNNNN]` patterns in instruction text with `data_XXXXX` labels.
+- **Output (`to_asm_string()`)**: emits `entry:` for the first executed address, `sub_XXXXX:` for call targets, `loc_XXXXX:` for jump targets, and a `; Data` section with `db` lines (ASCII comment for printable bytes). Blank lines separate non-consecutive address ranges.
+
+### Output path
+
+Always `oxide86.asm` in the working directory. No configurable path.
+
+### CLI usage
+
+```bash
+cargo run -p oxide86-cli -- --reverse-engineer myprogram.exe
+# oxide86.asm written on exit
+```
+
+Or toggle live in command mode (F12): type `re` to enable, `re` again to disable and write the file.
+
 ## Resources
 - [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
 - [x86 Reference](https://www.felixcloutier.com/x86/)

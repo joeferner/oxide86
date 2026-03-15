@@ -1,7 +1,8 @@
 use crate::{
     bus::Bus,
     cpu::{bios::BIOS_CODE_SEGMENT, instructions::{decoder, RepeatPrefix}},
-    dis::{asm_text, classify_instruction_flow},
+    cpu::instructions::decoder::Operand,
+    dis::classify_instruction_flow,
     disk::DriveNumber,
     physical_address,
     reverse_engineer::ReverseEngineer,
@@ -325,14 +326,28 @@ impl Cpu {
             let all_reads = bus.drain_read_recording();
             let code_start = physical_address(pre_cs, pre_ip);
             let code_end = physical_address(self.cs, self.ip);
+
+            let explicit_addrs: Vec<usize> = instr.operands.iter()
+                .filter_map(|op| match op {
+                    Operand::Mem8 { mem, .. } | Operand::Mem16 { mem, .. } => {
+                        Some(mem.phys() as usize)
+                    }
+                    _ => None,
+                })
+                .collect();
+
+            let mut data_refs = Vec::new();
             for (addr, val) in all_reads {
                 if addr < 0xA0000 && !(code_start..code_end).contains(&addr) {
-                    re.record_data_read(addr, val, self.ds);
+                    re.record_data_read(addr, val);
+                    if !explicit_addrs.contains(&addr) {
+                        data_refs.push(addr);
+                    }
                 }
             }
+
             let flow = classify_instruction_flow(instr);
-            let text = asm_text(instr);
-            re.record_instruction(pre_cs, pre_ip, &flow, text, instr.bytes.clone());
+            re.record_instruction(instr, &flow, data_refs);
         }
 
         if self.exec_logging_enabled {

@@ -1,6 +1,6 @@
 ; INT 10h Function 09h - Write Character and Attribute in EGA mode 0x0D
 ; Sets EGA mode 0x0D (320x200 16-colour), writes several characters with different
-; colours using AH=0x09 (which uses the ROM font at F000:FA6E via INT 43h),
+; colours using AH=0x09 (which uses the ROM font at F000:C000 via INT 43h),
 ; waits for a key for visual inspection, then verifies VRAM is non-zero.
 
 [CPU 8086]

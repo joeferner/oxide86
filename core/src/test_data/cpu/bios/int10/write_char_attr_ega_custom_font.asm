@@ -1,6 +1,6 @@
 ; INT 10h Function 09h - Write Character using patched INT 43h custom font
 ; Simulates the inverted-glyph technique used by games like King's Quest:
-;   1. Reads the 'A' glyph from the BIOS ROM font at F000:FA6E
+;   1. Reads the 'A' glyph from the BIOS ROM font at F000:C000
 ;   2. Inverts it (XOR 0xFF) to produce a dark-on-white glyph
 ;   3. Stores the inverted glyph in a local table and patches INT 43h to it
 ;   4. Draws char 0x80 (which the BIOS maps to the patched glyph) in white
@@ -26,7 +26,7 @@ start:
     ; Set DS = F000 to read the ROM font; keep ES = program segment for writes.
     mov ax, 0xF000
     mov ds, ax
-    mov si, 0xFA6E + 0x41*8     ; DS:SI → 'A' glyph in BIOS ROM
+    mov si, 0xC000 + 0x41*8     ; DS:SI → 'A' glyph in BIOS ROM
 
     mov di, glyph_80            ; ES:DI → our glyph buffer (ES = program segment)
     mov cx, 8

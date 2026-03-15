@@ -41,9 +41,9 @@ const FONT_8X16_OFFSET: u16 = 0xB000; // F000:B000
 const FONT_8X16_ADDR: usize = 0xFB000; // Physical address, ends at 0xFC000
 
 const FONT_8X8_SEGMENT: u16 = 0xF000;
-const FONT_8X8_OFFSET: u16 = 0xC000; // F000:C000
+const FONT_8X8_OFFSET: u16 = 0xC000; // F000:C000 — matches BIOS_CGA_FONT_ADDR/BIOS_CGA_FONT_OFFSET
 #[allow(dead_code)]
-const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC800
+const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC7FF (all 256 chars fit without 16-bit wrap)
 
 #[derive(Clone, Copy)]
 enum GraphicsDrawMode {

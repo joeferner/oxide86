@@ -276,7 +276,7 @@ pub(crate) fn write_char_attr_ega() {
 }
 
 /// INT 10h / AH=09h - Write Character using a patched INT 43h custom font
-/// Mimics the inverted-glyph technique: reads 'A' from F000:FA6E, inverts it,
+/// Mimics the inverted-glyph technique: reads 'A' from F000:C000, inverts it,
 /// patches INT 43h to point to the custom table, draws char 0x80 in white.
 /// The result should show a dark 'A' on a white background.
 #[test_log::test]
