@@ -1,81 +1,854 @@
-use crate::ByteReader;
-use crate::bus::Bus;
-use crate::cpu::Cpu;
-use crate::physical_address;
+use std::fmt;
 
-/// Information about a decoded instruction
-pub(crate) struct DecodedInstruction {
-    /// Human-readable assembly string
-    pub text: String,
-    /// Raw bytes that make up this instruction
-    pub bytes: Vec<u8>,
-    /// Which registers are relevant to this instruction (used as input or output)
-    pub uses_ax: bool,
-    pub uses_bx: bool,
-    pub uses_cx: bool,
-    pub uses_dx: bool,
-    /// Formatted string of memory values (e.g., "[0x24bc]=1234 [bx+4]=5678"), pre-execution
-    pub mem_values: String,
-}
+use crate::Computer;
 
-/// Decode instruction at given CS:IP and return detailed information with register values
-impl Cpu {
-    pub(in crate::cpu) fn decode_instruction_with_regs(&self, bus: &Bus) -> DecodedInstruction {
-        let mut decoder = InstructionDecoder::new(bus, self.cs, self.ip);
-        let mut text = decoder.decode();
+// ─── Register types ───────────────────────────────────────────────────────────
 
-        // Enrich INT instructions with AH subfunction and description
-        if text.starts_with("int 0x") {
-            let int_num = u8::from_str_radix(&text[6..8], 16).unwrap_or(0);
-            let ah = (self.ax >> 8) as u8;
-            if let Some((desc, show_ah)) = int_description(int_num, ah) {
-                if show_ah {
-                    text = format!("{text}     AH=0x{ah:02x} ; {desc}");
-                } else {
-                    text = format!("{text}     ; {desc}");
-                }
-            }
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reg8 { AL, CL, DL, BL, AH, CH, DH, BH }
+
+impl Reg8 {
+    fn from_bits(bits: u8) -> Self {
+        match bits & 7 {
+            0 => Reg8::AL, 1 => Reg8::CL, 2 => Reg8::DL, 3 => Reg8::BL,
+            4 => Reg8::AH, 5 => Reg8::CH, 6 => Reg8::DH, _ => Reg8::BH,
         }
+    }
 
-        let mem_values = decoder.format_memory_values(self);
-
-        // Collect the raw bytes consumed during decoding
-        let bytes: Vec<u8> = {
-            let start = ((self.cs as usize) << 4) + (self.ip as usize);
-            let end = ((self.cs as usize) << 4) + (decoder.ip as usize);
-            (start..end).map(|addr| bus.read_u8(addr)).collect()
-        };
-
-        DecodedInstruction {
-            text,
-            bytes,
-            uses_ax: decoder.uses_ax,
-            uses_bx: decoder.uses_bx,
-            uses_cx: decoder.uses_cx,
-            uses_dx: decoder.uses_dx,
-            mem_values,
+    fn value(self, cpu: &dyn Computer) -> u8 {
+        match self {
+            Reg8::AL => cpu.ax() as u8,
+            Reg8::CL => cpu.cx() as u8,
+            Reg8::DL => cpu.dx() as u8,
+            Reg8::BL => cpu.bx() as u8,
+            Reg8::AH => (cpu.ax() >> 8) as u8,
+            Reg8::CH => (cpu.cx() >> 8) as u8,
+            Reg8::DH => (cpu.dx() >> 8) as u8,
+            Reg8::BH => (cpu.bx() >> 8) as u8,
         }
     }
 }
 
-/// Information about a memory reference in the instruction
-#[derive(Clone)]
-struct MemoryRef {
-    /// Display string (e.g., "[0x24bc]", "[bx+si+4]")
-    display: String,
-    /// ModR/M byte that encodes this memory reference (if applicable)
-    modrm: Option<u8>,
-    /// Segment override, or None to use default
-    segment_override: Option<u16>,
-    /// Direct address (for mode 00, rm 110)
-    direct_address: Option<u16>,
-    /// Displacement value (0 for no displacement, 8-bit or 16-bit)
-    displacement: i16,
-    /// Whether this is a word (16-bit) access
-    is_word: bool,
+impl fmt::Display for Reg8 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Reg8::AL => "al", Reg8::CL => "cl", Reg8::DL => "dl", Reg8::BL => "bl",
+            Reg8::AH => "ah", Reg8::CH => "ch", Reg8::DH => "dh", Reg8::BH => "bh",
+        })
+    }
 }
 
-fn port_name(port: u16) -> Option<&'static str> {
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Reg16 { AX, CX, DX, BX, SP, BP, SI, DI }
+
+impl Reg16 {
+    fn from_bits(bits: u8) -> Self {
+        match bits & 7 {
+            0 => Reg16::AX, 1 => Reg16::CX, 2 => Reg16::DX, 3 => Reg16::BX,
+            4 => Reg16::SP, 5 => Reg16::BP, 6 => Reg16::SI, _ => Reg16::DI,
+        }
+    }
+
+    fn value(self, cpu: &dyn Computer) -> u16 {
+        match self {
+            Reg16::AX => cpu.ax(), Reg16::CX => cpu.cx(),
+            Reg16::DX => cpu.dx(), Reg16::BX => cpu.bx(),
+            Reg16::SP => cpu.sp(), Reg16::BP => cpu.bp(),
+            Reg16::SI => cpu.si(), Reg16::DI => cpu.di(),
+        }
+    }
+}
+
+impl fmt::Display for Reg16 {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            Reg16::AX => "ax", Reg16::CX => "cx", Reg16::DX => "dx", Reg16::BX => "bx",
+            Reg16::SP => "sp", Reg16::BP => "bp", Reg16::SI => "si", Reg16::DI => "di",
+        })
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SegReg { ES, CS, SS, DS }
+
+impl fmt::Display for SegReg {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            SegReg::ES => "es", SegReg::CS => "cs",
+            SegReg::SS => "ss", SegReg::DS => "ds",
+        })
+    }
+}
+
+// ─── Memory addressing ────────────────────────────────────────────────────────
+
+/// The base component of a ModRM memory reference (rm field, mod != 11).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RmBase {
+    BxSi, BxDi, BpSi, BpDi, Si, Di, Bp, Bx,
+}
+
+impl RmBase {
+    fn from_bits(bits: u8) -> Self {
+        match bits & 7 {
+            0 => RmBase::BxSi, 1 => RmBase::BxDi,
+            2 => RmBase::BpSi, 3 => RmBase::BpDi,
+            4 => RmBase::Si,   5 => RmBase::Di,
+            6 => RmBase::Bp,   _ => RmBase::Bx,
+        }
+    }
+
+    fn compute(self, cpu: &dyn Computer) -> u16 {
+        match self {
+            RmBase::BxSi => cpu.bx().wrapping_add(cpu.si()),
+            RmBase::BxDi => cpu.bx().wrapping_add(cpu.di()),
+            RmBase::BpSi => cpu.bp().wrapping_add(cpu.si()),
+            RmBase::BpDi => cpu.bp().wrapping_add(cpu.di()),
+            RmBase::Si   => cpu.si(),
+            RmBase::Di   => cpu.di(),
+            RmBase::Bp   => cpu.bp(),
+            RmBase::Bx   => cpu.bx(),
+        }
+    }
+
+    /// Default segment register (BP-based addressing uses SS; others use DS).
+    fn default_seg(self, cpu: &dyn Computer) -> u16 {
+        match self {
+            RmBase::BpSi | RmBase::BpDi | RmBase::Bp => cpu.ss(),
+            _ => cpu.ds(),
+        }
+    }
+}
+
+/// A resolved memory reference: segment + effective address.
+#[derive(Debug, Clone)]
+pub struct MemRef {
+    pub seg: u16,
+    pub ea: u16,
+}
+
+impl MemRef {
+    pub fn phys(&self) -> u32 {
+        ((self.seg as u32) << 4).wrapping_add(self.ea as u32)
+    }
+}
+
+// ─── Operands ─────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub enum Operand {
+    Reg8(Reg8, u8),              // register + its value at decode time
+    Reg16(Reg16, u16),           // register + its value at decode time
+    Seg(SegReg, u16),            // segment register + its value at decode time
+    Imm8(u8),
+    Imm16(u16),
+    Mem8  { mem: MemRef, value: u8  },
+    Mem16 { mem: MemRef, value: u16 },
+}
+
+impl Operand {
+    /// The text that goes inside the instruction mnemonic line, e.g. `bx`, `[0x7c11]`, `0x04`.
+    pub fn asm_str(&self) -> String {
+        match self {
+            Operand::Reg8(r, _)        => r.to_string(),
+            Operand::Reg16(r, _)       => r.to_string(),
+            Operand::Seg(r, _)         => r.to_string(),
+            Operand::Imm8(v)           => format!("0x{:02x}", v),
+            Operand::Imm16(v)          => format!("0x{:04x}", v),
+            Operand::Mem8  { mem, .. } => format!("[0x{:04x}]", mem.ea),
+            Operand::Mem16 { mem, .. } => format!("[0x{:04x}]", mem.ea),
+        }
+    }
+
+    /// Extra data shown on the right side of the log line, or `None` for immediates.
+    pub fn annotation(&self) -> Option<String> {
+        match self {
+            Operand::Reg8(r, v) =>
+                Some(format!("{}={:02X}", r.to_string().to_uppercase(), v)),
+            Operand::Reg16(r, v) =>
+                Some(format!("{}={:04X}", r.to_string().to_uppercase(), v)),
+            Operand::Seg(r, v) =>
+                Some(format!("{}={:04X}", r.to_string().to_uppercase(), v)),
+            Operand::Imm8(_) | Operand::Imm16(_) => None,
+            Operand::Mem8 { mem, value } =>
+                Some(format!("[0x{:04x}]={:02x} @{:04X}:{:04X}({:05X})",
+                    mem.ea, value, mem.seg, mem.ea, mem.phys())),
+            Operand::Mem16 { mem, value } =>
+                Some(format!("[0x{:04x}]={:04x} @{:04X}:{:04X}({:05X})",
+                    mem.ea, value, mem.seg, mem.ea, mem.phys())),
+        }
+    }
+}
+
+// ─── Mnemonics ────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Mnemonic {
+    // Data transfer
+    Mov, Push, Pop, Xchg, In, Out, Xlat, Lea, Lds, Les, Lahf, Sahf, Pushf, Popf,
+    // Arithmetic
+    Add, Adc, Sub, Sbb, Inc, Dec, Neg, Cmp, Mul, IMul, Div, IDiv,
+    Cbw, Cwd, Daa, Das, Aaa, Aas, Aam, Aad,
+    // Logic
+    And, Or, Xor, Not, Test,
+    // Shift / rotate
+    Shl, Shr, Sar, Rol, Ror, Rcl, Rcr,
+    // String ops
+    Movsb, Movsw, Cmpsb, Cmpsw, Scasb, Scasw, Lodsb, Lodsw, Stosb, Stosw,
+    // Control transfer
+    Call, CallFar, Ret, RetFar, Jmp, JmpFar,
+    Ja, Jae, Jb, Jbe, Jcxz, Je, Jg, Jge, Jl, Jle, Jne, Jno, Jns, Jo, Jp, Jnp, Js,
+    Loop, Loopz, Loopnz,
+    // Interrupt
+    Int, Int3, Into, Iret,
+    // Processor control
+    Nop, Hlt, Wait, Lock, Cli, Sti, Cld, Std, Clc, Stc, Cmc,
+    // Prefixes
+    Rep, Repne,
+    // Unknown / unimplemented
+    Unknown(u8),
+}
+
+impl fmt::Display for Mnemonic {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let s = match self {
+            Mnemonic::Mov   => "mov",   Mnemonic::Push  => "push",  Mnemonic::Pop   => "pop",
+            Mnemonic::Xchg  => "xchg",  Mnemonic::In    => "in",    Mnemonic::Out   => "out",
+            Mnemonic::Xlat  => "xlat",  Mnemonic::Lea   => "lea",   Mnemonic::Lds   => "lds",
+            Mnemonic::Les   => "les",   Mnemonic::Lahf  => "lahf",  Mnemonic::Sahf  => "sahf",
+            Mnemonic::Pushf => "pushf", Mnemonic::Popf  => "popf",
+            Mnemonic::Add   => "add",   Mnemonic::Adc   => "adc",   Mnemonic::Sub   => "sub",
+            Mnemonic::Sbb   => "sbb",   Mnemonic::Inc   => "inc",   Mnemonic::Dec   => "dec",
+            Mnemonic::Neg   => "neg",   Mnemonic::Cmp   => "cmp",   Mnemonic::Mul   => "mul",
+            Mnemonic::IMul  => "imul",  Mnemonic::Div   => "div",   Mnemonic::IDiv  => "idiv",
+            Mnemonic::Cbw   => "cbw",   Mnemonic::Cwd   => "cwd",   Mnemonic::Daa   => "daa",
+            Mnemonic::Das   => "das",   Mnemonic::Aaa   => "aaa",   Mnemonic::Aas   => "aas",
+            Mnemonic::Aam   => "aam",   Mnemonic::Aad   => "aad",
+            Mnemonic::And   => "and",   Mnemonic::Or    => "or",    Mnemonic::Xor   => "xor",
+            Mnemonic::Not   => "not",   Mnemonic::Test  => "test",
+            Mnemonic::Shl   => "shl",   Mnemonic::Shr   => "shr",   Mnemonic::Sar   => "sar",
+            Mnemonic::Rol   => "rol",   Mnemonic::Ror   => "ror",   Mnemonic::Rcl   => "rcl",
+            Mnemonic::Rcr   => "rcr",
+            Mnemonic::Movsb => "movsb", Mnemonic::Movsw => "movsw",
+            Mnemonic::Cmpsb => "cmpsb", Mnemonic::Cmpsw => "cmpsw",
+            Mnemonic::Scasb => "scasb", Mnemonic::Scasw => "scasw",
+            Mnemonic::Lodsb => "lodsb", Mnemonic::Lodsw => "lodsw",
+            Mnemonic::Stosb => "stosb", Mnemonic::Stosw => "stosw",
+            Mnemonic::Call    => "call",    Mnemonic::CallFar => "call far",
+            Mnemonic::Ret     => "ret",     Mnemonic::RetFar  => "retf",
+            Mnemonic::Jmp     => "jmp",     Mnemonic::JmpFar  => "jmp far",
+            Mnemonic::Ja   => "ja",   Mnemonic::Jae  => "jae",  Mnemonic::Jb   => "jb",
+            Mnemonic::Jbe  => "jbe",  Mnemonic::Jcxz => "jcxz", Mnemonic::Je   => "je",
+            Mnemonic::Jg   => "jg",   Mnemonic::Jge  => "jge",  Mnemonic::Jl   => "jl",
+            Mnemonic::Jle  => "jle",  Mnemonic::Jne  => "jne",  Mnemonic::Jno  => "jno",
+            Mnemonic::Jns  => "jns",  Mnemonic::Jo   => "jo",   Mnemonic::Jp   => "jp",
+            Mnemonic::Jnp  => "jnp",  Mnemonic::Js   => "js",
+            Mnemonic::Loop   => "loop",   Mnemonic::Loopz  => "loopz",
+            Mnemonic::Loopnz => "loopnz",
+            Mnemonic::Int  => "int",  Mnemonic::Int3 => "int3", Mnemonic::Into => "into",
+            Mnemonic::Iret => "iret",
+            Mnemonic::Nop  => "nop",  Mnemonic::Hlt  => "hlt",  Mnemonic::Wait => "wait",
+            Mnemonic::Lock => "lock", Mnemonic::Cli  => "cli",  Mnemonic::Sti  => "sti",
+            Mnemonic::Cld  => "cld",  Mnemonic::Std  => "std",  Mnemonic::Clc  => "clc",
+            Mnemonic::Stc  => "stc",  Mnemonic::Cmc  => "cmc",
+            Mnemonic::Rep  => "rep",  Mnemonic::Repne => "repne",
+            Mnemonic::Unknown(b) => return write!(f, "db 0x{:02x}", b),
+        };
+        f.write_str(s)
+    }
+}
+
+// ─── Instruction ──────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone)]
+pub struct Instruction {
+    /// Segment the instruction was fetched from.
+    pub segment: u16,
+    /// Offset (within segment) of the first byte.
+    pub offset: u16,
+    /// Raw bytes that make up this instruction (including any prefix).
+    pub bytes: Vec<u8>,
+    pub mnemonic: Mnemonic,
+    /// Operands in source-order: [dst, src] where applicable.
+    pub operands: Vec<Operand>,
+    /// Segment override prefix, if present.
+    pub seg_override: Option<SegReg>,
+    /// Optional comment shown at the end of the line, prefixed with ";".
+    pub comment: Option<String>,
+}
+
+impl Instruction {
+    /// Format as a single log line:
+    /// `SSSS:OOOO  BB BB BB BB    mnemonic dst, src       ANNOTATIONS    ; comment`
+    pub fn format_line(&self) -> String {
+        let location = format!("{:04X}:{:04X}", self.segment, self.offset);
+
+        let byte_str: String = self.bytes.iter()
+            .map(|b| format!("{:02X}", b))
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        let asm = match self.operands.len() {
+            0 => self.mnemonic.to_string(),
+            1 => format!("{} {}", self.mnemonic, self.operands[0].asm_str()),
+            _ => format!("{} {}, {}",
+                self.mnemonic,
+                self.operands[0].asm_str(),
+                self.operands[1].asm_str()),
+        };
+
+        let annotations: Vec<String> = self.operands.iter()
+            .filter_map(|op| op.annotation())
+            .collect();
+        let ann_str = annotations.join(" ");
+
+        let base = if ann_str.is_empty() {
+            format!("{} {:<20} {}", location, byte_str, asm)
+        } else {
+            format!("{} {:<20} {:<30} {}", location, byte_str, asm, ann_str)
+        };
+
+        match &self.comment {
+            Some(c) => format!("{}    ; {}", base, c),
+            None    => base,
+        }
+    }
+}
+
+impl fmt::Display for Instruction {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.format_line())
+    }
+}
+
+// ─── Decode cursor ────────────────────────────────────────────────────────────
+
+struct Cursor<'a> {
+    cpu: &'a dyn Computer,
+    /// Segment being fetched from.
+    seg: u16,
+    /// Current fetch offset (advances as bytes are consumed).
+    offset: u16,
+    /// Accumulated raw bytes.
+    bytes: Vec<u8>,
+    /// Active segment override prefix (if any).
+    seg_override: Option<SegReg>,
+}
+
+impl<'a> Cursor<'a> {
+    fn new(cpu: &'a dyn Computer, seg: u16, offset: u16) -> Self {
+        Self { cpu, seg, offset, bytes: Vec::new(), seg_override: None }
+    }
+
+    /// Fetch the next instruction byte and advance the cursor.
+    fn fetch(&mut self) -> u8 {
+        let phys = ((self.seg as u32) << 4).wrapping_add(self.offset as u32);
+        let b = self.cpu.read_u8(phys);
+        self.bytes.push(b);
+        self.offset = self.offset.wrapping_add(1);
+        b
+    }
+
+    /// Fetch a little-endian 16-bit word.
+    fn fetch16(&mut self) -> u16 {
+        let lo = self.fetch() as u16;
+        let hi = self.fetch() as u16;
+        lo | (hi << 8)
+    }
+
+    fn read_mem_u8(&self, seg: u16, ea: u16) -> u8 {
+        self.cpu.read_u8(((seg as u32) << 4).wrapping_add(ea as u32))
+    }
+
+    fn read_mem_u16(&self, seg: u16, ea: u16) -> u16 {
+        let lo = self.read_mem_u8(seg, ea) as u16;
+        let hi = self.read_mem_u8(seg, ea.wrapping_add(1)) as u16;
+        lo | (hi << 8)
+    }
+
+    /// Resolve which segment to use for a given RmBase (honouring any prefix override).
+    fn seg_for_base(&self, base: RmBase) -> u16 {
+        self.seg_override.map(|s| self.seg_val(s)).unwrap_or_else(|| base.default_seg(self.cpu))
+    }
+
+    /// Resolve which segment to use for a direct [imm16] address.
+    fn seg_for_direct(&self) -> u16 {
+        self.seg_override.map(|s| self.seg_val(s)).unwrap_or_else(|| self.cpu.ds())
+    }
+
+    fn seg_val(&self, s: SegReg) -> u16 {
+        match s {
+            SegReg::ES => self.cpu.es(),
+            SegReg::CS => self.cpu.cs(),
+            SegReg::SS => self.cpu.ss(),
+            SegReg::DS => self.cpu.ds(),
+        }
+    }
+}
+
+// ─── ModRM decoding ───────────────────────────────────────────────────────────
+
+/// Decode the `rm` field of a ModRM byte into an Operand.
+/// Any displacement bytes are consumed from `cur`.
+fn decode_rm(cur: &mut Cursor, modrm: u8, is16: bool) -> Operand {
+    let mod_ = (modrm >> 6) & 3;
+    let rm   = modrm & 7;
+
+    if mod_ == 3 {
+        // Register operand
+        return if is16 {
+            let r = Reg16::from_bits(rm);
+            Operand::Reg16(r, r.value(cur.cpu))
+        } else {
+            let r = Reg8::from_bits(rm);
+            Operand::Reg8(r, r.value(cur.cpu))
+        };
+    }
+
+    // Memory operand
+    let (ea, seg) = if mod_ == 0 && rm == 6 {
+        // Special case: [disp16] direct address
+        let addr = cur.fetch16();
+        (addr, cur.seg_for_direct())
+    } else {
+        let base = RmBase::from_bits(rm);
+        let base_ea = base.compute(cur.cpu);
+        let ea = match mod_ {
+            0 => base_ea,
+            1 => base_ea.wrapping_add(cur.fetch() as i8 as u16),
+            2 => base_ea.wrapping_add(cur.fetch16()),
+            _ => unreachable!(),
+        };
+        (ea, cur.seg_for_base(base))
+    };
+
+    let mem = MemRef { seg, ea };
+    if is16 {
+        let value = cur.read_mem_u16(seg, ea);
+        Operand::Mem16 { mem, value }
+    } else {
+        let value = cur.read_mem_u8(seg, ea);
+        Operand::Mem8 { mem, value }
+    }
+}
+
+/// Decode the `reg` field of a ModRM byte into a register Operand.
+fn decode_reg(cur: &Cursor, reg_bits: u8, is16: bool) -> Operand {
+    if is16 {
+        let r = Reg16::from_bits(reg_bits);
+        Operand::Reg16(r, r.value(cur.cpu))
+    } else {
+        let r = Reg8::from_bits(reg_bits);
+        Operand::Reg8(r, r.value(cur.cpu))
+    }
+}
+
+// ─── Public decode entry point ────────────────────────────────────────────────
+
+/// Decode a single 8086/286 instruction at `seg:offset`.
+/// CPU register and memory state is read via `cpu` (typically the state immediately
+/// after execution, so annotations reflect results).
+pub fn decode(cpu: &dyn Computer, seg: u16, offset: u16) -> Instruction {
+    let mut cur = Cursor::new(cpu, seg, offset);
+    let (mnemonic, operands) = decode_inner(&mut cur);
+    let comment = default_comment(&mnemonic, &operands, cpu);
+    Instruction { segment: seg, offset, bytes: cur.bytes, mnemonic, operands, seg_override: cur.seg_override, comment }
+}
+
+// ─── Main dispatch ────────────────────────────────────────────────────────────
+
+fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
+    let op = cur.fetch();
+    match op {
+
+        // ── Segment override prefixes (recursive: prefix is part of the instruction) ──
+        0x26 => { cur.seg_override = Some(SegReg::ES); decode_inner(cur) }
+        0x2E => { cur.seg_override = Some(SegReg::CS); decode_inner(cur) }
+        0x36 => { cur.seg_override = Some(SegReg::SS); decode_inner(cur) }
+        0x3E => { cur.seg_override = Some(SegReg::DS); decode_inner(cur) }
+
+        // ── MOV ──────────────────────────────────────────────────────────────
+
+        // 88/r  MOV r/m8,  r8
+        0x88 => { let m = cur.fetch(); (Mnemonic::Mov, vec![decode_rm(cur, m, false), decode_reg(cur, (m>>3)&7, false)]) }
+        // 89/r  MOV r/m16, r16
+        0x89 => { let m = cur.fetch(); (Mnemonic::Mov, vec![decode_rm(cur, m, true),  decode_reg(cur, (m>>3)&7, true)]) }
+        // 8A/r  MOV r8,  r/m8
+        0x8A => { let m = cur.fetch(); (Mnemonic::Mov, vec![decode_reg(cur, (m>>3)&7, false), decode_rm(cur, m, false)]) }
+        // 8B/r  MOV r16, r/m16
+        0x8B => { let m = cur.fetch(); (Mnemonic::Mov, vec![decode_reg(cur, (m>>3)&7, true),  decode_rm(cur, m, true)]) }
+        // 8C/r  MOV r/m16, Sreg  (represent Sreg value as Imm16 — no dedicated SegReg operand)
+        0x8C => {
+            let m = cur.fetch();
+            let sv = match (m >> 3) & 3 {
+                0 => cur.cpu.es(), 1 => cur.cpu.cs(), 2 => cur.cpu.ss(), _ => cur.cpu.ds(),
+            };
+            (Mnemonic::Mov, vec![decode_rm(cur, m, true), Operand::Imm16(sv)])
+        }
+        // 8E/r  MOV Sreg, r/m16  (represent Sreg as Imm16)
+        0x8E => { let m = cur.fetch(); (Mnemonic::Mov, vec![decode_rm(cur, m, true)]) }
+
+        // B0..B7  MOV r8, imm8
+        0xB0..=0xB7 => {
+            let r = Reg8::from_bits(op & 7);
+            let imm = cur.fetch();
+            (Mnemonic::Mov, vec![Operand::Reg8(r, r.value(cur.cpu)), Operand::Imm8(imm)])
+        }
+        // B8..BF  MOV r16, imm16
+        0xB8..=0xBF => {
+            let r = Reg16::from_bits(op & 7);
+            let imm = cur.fetch16();
+            (Mnemonic::Mov, vec![Operand::Reg16(r, r.value(cur.cpu)), Operand::Imm16(imm)])
+        }
+        // C6/0  MOV r/m8,  imm8
+        0xC6 => { let m = cur.fetch(); let rm = decode_rm(cur, m, false); let imm = cur.fetch();   (Mnemonic::Mov, vec![rm, Operand::Imm8(imm)]) }
+        // C7/0  MOV r/m16, imm16
+        0xC7 => { let m = cur.fetch(); let rm = decode_rm(cur, m, true);  let imm = cur.fetch16(); (Mnemonic::Mov, vec![rm, Operand::Imm16(imm)]) }
+        // A0  MOV AL, moffs8
+        0xA0 => {
+            let ea = cur.fetch16(); let seg = cur.seg_for_direct();
+            let v = cur.read_mem_u8(seg, ea);
+            (Mnemonic::Mov, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Mem8 { mem: MemRef { seg, ea }, value: v }])
+        }
+        // A1  MOV AX, moffs16
+        0xA1 => {
+            let ea = cur.fetch16(); let seg = cur.seg_for_direct();
+            let v = cur.read_mem_u16(seg, ea);
+            (Mnemonic::Mov, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Mem16 { mem: MemRef { seg, ea }, value: v }])
+        }
+        // A2  MOV moffs8, AL
+        0xA2 => {
+            let ea = cur.fetch16(); let seg = cur.seg_for_direct();
+            let v = cur.cpu.ax() as u8;
+            (Mnemonic::Mov, vec![Operand::Mem8 { mem: MemRef { seg, ea }, value: v }, Operand::Reg8(Reg8::AL, v)])
+        }
+        // A3  MOV moffs16, AX
+        0xA3 => {
+            let ea = cur.fetch16(); let seg = cur.seg_for_direct();
+            let v = cur.cpu.ax();
+            (Mnemonic::Mov, vec![Operand::Mem16 { mem: MemRef { seg, ea }, value: v }, Operand::Reg16(Reg16::AX, v)])
+        }
+
+        // ── PUSH ─────────────────────────────────────────────────────────────
+
+        // 50..57  PUSH r16
+        0x50..=0x57 => { let r = Reg16::from_bits(op & 7); (Mnemonic::Push, vec![Operand::Reg16(r, r.value(cur.cpu))]) }
+        // PUSH Sreg
+        0x06 => (Mnemonic::Push, vec![Operand::Imm16(cur.cpu.es())]),
+        0x0E => (Mnemonic::Push, vec![Operand::Imm16(cur.cpu.cs())]),
+        0x16 => (Mnemonic::Push, vec![Operand::Imm16(cur.cpu.ss())]),
+        0x1E => (Mnemonic::Push, vec![Operand::Imm16(cur.cpu.ds())]),
+        // 68  PUSH imm16  (186+)
+        0x68 => { let imm = cur.fetch16(); (Mnemonic::Push, vec![Operand::Imm16(imm)]) }
+        // 6A  PUSH imm8s  (186+)
+        0x6A => { let imm = cur.fetch() as i8 as u16; (Mnemonic::Push, vec![Operand::Imm16(imm)]) }
+
+        // ── POP ──────────────────────────────────────────────────────────────
+
+        // 58..5F  POP r16
+        0x58..=0x5F => { let r = Reg16::from_bits(op & 7); (Mnemonic::Pop, vec![Operand::Reg16(r, r.value(cur.cpu))]) }
+        // POP Sreg
+        0x07 => (Mnemonic::Pop, vec![Operand::Seg(SegReg::ES, cur.cpu.es())]),
+        0x17 => (Mnemonic::Pop, vec![Operand::Seg(SegReg::SS, cur.cpu.ss())]),
+        0x1F => (Mnemonic::Pop, vec![Operand::Seg(SegReg::DS, cur.cpu.ds())]),
+
+        // ── XCHG ─────────────────────────────────────────────────────────────
+
+        0x90 => (Mnemonic::Nop, vec![]),
+        0x91..=0x97 => {
+            let r = Reg16::from_bits(op & 7);
+            (Mnemonic::Xchg, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Reg16(r, r.value(cur.cpu))])
+        }
+        // 86/r  XCHG r8,  r/m8
+        0x86 => { let m = cur.fetch(); (Mnemonic::Xchg, vec![decode_reg(cur, (m>>3)&7, false), decode_rm(cur, m, false)]) }
+        // 87/r  XCHG r16, r/m16
+        0x87 => { let m = cur.fetch(); (Mnemonic::Xchg, vec![decode_reg(cur, (m>>3)&7, true),  decode_rm(cur, m, true)]) }
+
+        // ── INC / DEC (register short forms) ─────────────────────────────────
+
+        0x40..=0x47 => { let r = Reg16::from_bits(op & 7); (Mnemonic::Inc, vec![Operand::Reg16(r, r.value(cur.cpu))]) }
+        0x48..=0x4F => { let r = Reg16::from_bits(op & 7); (Mnemonic::Dec, vec![Operand::Reg16(r, r.value(cur.cpu))]) }
+
+        // ── ALU: ADD/OR/ADC/SBB/AND/SUB/XOR/CMP with r/m, r ─────────────────
+
+        0x00 | 0x01 | 0x02 | 0x03 => alu_rm_r(cur, op, Mnemonic::Add),
+        0x08 | 0x09 | 0x0A | 0x0B => alu_rm_r(cur, op, Mnemonic::Or),
+        0x10 | 0x11 | 0x12 | 0x13 => alu_rm_r(cur, op, Mnemonic::Adc),
+        0x18 | 0x19 | 0x1A | 0x1B => alu_rm_r(cur, op, Mnemonic::Sbb),
+        0x20 | 0x21 | 0x22 | 0x23 => alu_rm_r(cur, op, Mnemonic::And),
+        0x28 | 0x29 | 0x2A | 0x2B => alu_rm_r(cur, op, Mnemonic::Sub),
+        0x30 | 0x31 | 0x32 | 0x33 => alu_rm_r(cur, op, Mnemonic::Xor),
+        0x38 | 0x39 | 0x3A | 0x3B => alu_rm_r(cur, op, Mnemonic::Cmp),
+
+        // ALU: accumulator + immediate short forms
+        0x04 => (Mnemonic::Add, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0x05 => (Mnemonic::Add, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+        0x0C => (Mnemonic::Or,  vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0x0D => (Mnemonic::Or,  vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+        0x14 => (Mnemonic::Adc, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0x15 => (Mnemonic::Adc, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+        0x1C => (Mnemonic::Sbb, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0x1D => (Mnemonic::Sbb, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+        0x24 => (Mnemonic::And, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0x25 => (Mnemonic::And, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+        0x2C => (Mnemonic::Sub, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0x2D => (Mnemonic::Sub, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+        0x34 => (Mnemonic::Xor, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0x35 => (Mnemonic::Xor, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+        0x3C => (Mnemonic::Cmp, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0x3D => (Mnemonic::Cmp, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+
+        // ALU immediate groups (80–83)
+        0x80 | 0x82 => { let m = cur.fetch(); let rm = decode_rm(cur, m, false); let imm = cur.fetch();   (alu_group((m>>3)&7), vec![rm, Operand::Imm8(imm)]) }
+        0x81        => { let m = cur.fetch(); let rm = decode_rm(cur, m, true);  let imm = cur.fetch16(); (alu_group((m>>3)&7), vec![rm, Operand::Imm16(imm)]) }
+        // 83: sign-extend imm8 to 16 bits
+        0x83        => { let m = cur.fetch(); let rm = decode_rm(cur, m, true);  let imm = cur.fetch() as i8 as u16; (alu_group((m>>3)&7), vec![rm, Operand::Imm16(imm)]) }
+
+        // ── TEST ─────────────────────────────────────────────────────────────
+
+        0x84 => { let m = cur.fetch(); (Mnemonic::Test, vec![decode_rm(cur, m, false), decode_reg(cur, (m>>3)&7, false)]) }
+        0x85 => { let m = cur.fetch(); (Mnemonic::Test, vec![decode_rm(cur, m, true),  decode_reg(cur, (m>>3)&7, true)]) }
+        0xA8 => (Mnemonic::Test, vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0xA9 => (Mnemonic::Test, vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm16(cur.fetch16())]),
+
+        // ── SHIFT / ROTATE (D0–D3, C0–C1) ────────────────────────────────────
+
+        0xD0 => { let m = cur.fetch(); (shift_group((m>>3)&7), vec![decode_rm(cur, m, false), Operand::Imm8(1)]) }
+        0xD1 => { let m = cur.fetch(); (shift_group((m>>3)&7), vec![decode_rm(cur, m, true),  Operand::Imm8(1)]) }
+        0xD2 => { let m = cur.fetch(); (shift_group((m>>3)&7), vec![decode_rm(cur, m, false), Operand::Reg8(Reg8::CL, cur.cpu.cx() as u8)]) }
+        0xD3 => { let m = cur.fetch(); (shift_group((m>>3)&7), vec![decode_rm(cur, m, true),  Operand::Reg8(Reg8::CL, cur.cpu.cx() as u8)]) }
+        0xC0 => { let m = cur.fetch(); let rm = decode_rm(cur, m, false); let cnt = cur.fetch(); (shift_group((m>>3)&7), vec![rm, Operand::Imm8(cnt)]) }
+        0xC1 => { let m = cur.fetch(); let rm = decode_rm(cur, m, true);  let cnt = cur.fetch(); (shift_group((m>>3)&7), vec![rm, Operand::Imm8(cnt)]) }
+
+        // ── MUL / DIV / NOT / NEG group (F6/F7) ───────────────────────────────
+
+        0xF6 => {
+            let m = cur.fetch(); let rm = decode_rm(cur, m, false);
+            match (m >> 3) & 7 {
+                0 | 1 => { let i = cur.fetch(); (Mnemonic::Test, vec![rm, Operand::Imm8(i)]) }
+                2 => (Mnemonic::Not,  vec![rm]), 3 => (Mnemonic::Neg,  vec![rm]),
+                4 => (Mnemonic::Mul,  vec![rm]), 5 => (Mnemonic::IMul, vec![rm]),
+                6 => (Mnemonic::Div,  vec![rm]), _ => (Mnemonic::IDiv, vec![rm]),
+            }
+        }
+        0xF7 => {
+            let m = cur.fetch(); let rm = decode_rm(cur, m, true);
+            match (m >> 3) & 7 {
+                0 | 1 => { let i = cur.fetch16(); (Mnemonic::Test, vec![rm, Operand::Imm16(i)]) }
+                2 => (Mnemonic::Not,  vec![rm]), 3 => (Mnemonic::Neg,  vec![rm]),
+                4 => (Mnemonic::Mul,  vec![rm]), 5 => (Mnemonic::IMul, vec![rm]),
+                6 => (Mnemonic::Div,  vec![rm]), _ => (Mnemonic::IDiv, vec![rm]),
+            }
+        }
+
+        // ── INC/DEC/CALL/JMP/PUSH r/m (FE/FF) ───────────────────────────────
+
+        0xFE => {
+            let m = cur.fetch(); let rm = decode_rm(cur, m, false);
+            match (m >> 3) & 7 {
+                0 => (Mnemonic::Inc, vec![rm]), 1 => (Mnemonic::Dec, vec![rm]),
+                _ => (Mnemonic::Unknown(op), vec![rm]),
+            }
+        }
+        0xFF => {
+            let m = cur.fetch(); let rm = decode_rm(cur, m, true);
+            match (m >> 3) & 7 {
+                0 => (Mnemonic::Inc,     vec![rm]),
+                1 => (Mnemonic::Dec,     vec![rm]),
+                2 => (Mnemonic::Call,    vec![rm]),
+                3 => (Mnemonic::CallFar, vec![rm]),
+                4 => (Mnemonic::Jmp,     vec![rm]),
+                5 => (Mnemonic::JmpFar,  vec![rm]),
+                6 => (Mnemonic::Push,    vec![rm]),
+                _ => (Mnemonic::Unknown(op), vec![rm]),
+            }
+        }
+
+        // ── CALL ─────────────────────────────────────────────────────────────
+
+        // E8 cw  CALL rel16
+        0xE8 => { let rel = cur.fetch16() as i16; let tgt = cur.offset.wrapping_add(rel as u16); (Mnemonic::Call,    vec![Operand::Imm16(tgt)]) }
+        // 9A cd  CALL ptr16:16
+        0x9A => { let off = cur.fetch16(); let seg = cur.fetch16(); (Mnemonic::CallFar, vec![Operand::Imm16(seg), Operand::Imm16(off)]) }
+
+        // ── JMP ──────────────────────────────────────────────────────────────
+
+        // EB cb  JMP rel8
+        0xEB => { let rel = cur.fetch() as i8 as i16; let tgt = cur.offset.wrapping_add(rel as u16); (Mnemonic::Jmp, vec![Operand::Imm16(tgt)]) }
+        // E9 cw  JMP rel16
+        0xE9 => { let rel = cur.fetch16() as i16; let tgt = cur.offset.wrapping_add(rel as u16); (Mnemonic::Jmp, vec![Operand::Imm16(tgt)]) }
+        // EA cd  JMP ptr16:16
+        0xEA => { let off = cur.fetch16(); let seg = cur.fetch16(); (Mnemonic::JmpFar, vec![Operand::Imm16(seg), Operand::Imm16(off)]) }
+
+        // ── RET ──────────────────────────────────────────────────────────────
+
+        0xC2 => (Mnemonic::Ret,    vec![Operand::Imm16(cur.fetch16())]),
+        0xC3 => (Mnemonic::Ret,    vec![]),
+        0xCA => (Mnemonic::RetFar, vec![Operand::Imm16(cur.fetch16())]),
+        0xCB => (Mnemonic::RetFar, vec![]),
+
+        // ── Conditional jumps (all rel8) ──────────────────────────────────────
+
+        0x70 => jcc(cur, Mnemonic::Jo),    0x71 => jcc(cur, Mnemonic::Jno),
+        0x72 => jcc(cur, Mnemonic::Jb),    0x73 => jcc(cur, Mnemonic::Jae),
+        0x74 => jcc(cur, Mnemonic::Je),    0x75 => jcc(cur, Mnemonic::Jne),
+        0x76 => jcc(cur, Mnemonic::Jbe),   0x77 => jcc(cur, Mnemonic::Ja),
+        0x78 => jcc(cur, Mnemonic::Js),    0x79 => jcc(cur, Mnemonic::Jns),
+        0x7A => jcc(cur, Mnemonic::Jp),    0x7B => jcc(cur, Mnemonic::Jnp),
+        0x7C => jcc(cur, Mnemonic::Jl),    0x7D => jcc(cur, Mnemonic::Jge),
+        0x7E => jcc(cur, Mnemonic::Jle),   0x7F => jcc(cur, Mnemonic::Jg),
+        0xE0 => jcc(cur, Mnemonic::Loopnz), 0xE1 => jcc(cur, Mnemonic::Loopz),
+        0xE2 => jcc(cur, Mnemonic::Loop),   0xE3 => jcc(cur, Mnemonic::Jcxz),
+
+        // ── LEA ──────────────────────────────────────────────────────────────
+
+        0x8D => { let m = cur.fetch(); (Mnemonic::Lea, vec![decode_reg(cur, (m>>3)&7, true), decode_rm(cur, m, true)]) }
+
+        // ── LDS / LES ────────────────────────────────────────────────────────
+
+        0xC4 => { let m = cur.fetch(); (Mnemonic::Les, vec![decode_reg(cur, (m>>3)&7, true), decode_rm(cur, m, true)]) }
+        0xC5 => { let m = cur.fetch(); (Mnemonic::Lds, vec![decode_reg(cur, (m>>3)&7, true), decode_rm(cur, m, true)]) }
+
+        // ── CBW / CWD ────────────────────────────────────────────────────────
+
+        0x98 => (Mnemonic::Cbw, vec![]),
+        0x99 => (Mnemonic::Cwd, vec![]),
+
+        // ── String operations ─────────────────────────────────────────────────
+
+        0xA4 => (Mnemonic::Movsb, vec![]), 0xA5 => (Mnemonic::Movsw, vec![]),
+        0xA6 => (Mnemonic::Cmpsb, vec![]), 0xA7 => (Mnemonic::Cmpsw, vec![]),
+        0xAA => (Mnemonic::Stosb, vec![]), 0xAB => (Mnemonic::Stosw, vec![]),
+        0xAC => (Mnemonic::Lodsb, vec![]), 0xAD => (Mnemonic::Lodsw, vec![]),
+        0xAE => (Mnemonic::Scasb, vec![]), 0xAF => (Mnemonic::Scasw, vec![]),
+
+        // REP / REPNE prefixes
+        0xF2 => (Mnemonic::Repne, vec![]),
+        0xF3 => (Mnemonic::Rep,   vec![]),
+
+        // ── IN / OUT ─────────────────────────────────────────────────────────
+
+        0xE4 => (Mnemonic::In,  vec![Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8), Operand::Imm8(cur.fetch())]),
+        0xE5 => (Mnemonic::In,  vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()), Operand::Imm8(cur.fetch())]),
+        0xE6 => (Mnemonic::Out, vec![Operand::Imm8(cur.fetch()), Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8)]),
+        0xE7 => (Mnemonic::Out, vec![Operand::Imm8(cur.fetch()), Operand::Reg16(Reg16::AX, cur.cpu.ax())]),
+        0xEC => (Mnemonic::In,  vec![Operand::Reg8(Reg8::AL,   cur.cpu.ax() as u8), Operand::Reg16(Reg16::DX, cur.cpu.dx())]),
+        0xED => (Mnemonic::In,  vec![Operand::Reg16(Reg16::AX, cur.cpu.ax()),        Operand::Reg16(Reg16::DX, cur.cpu.dx())]),
+        0xEE => (Mnemonic::Out, vec![Operand::Reg16(Reg16::DX, cur.cpu.dx()), Operand::Reg8(Reg8::AL,   cur.cpu.ax() as u8)]),
+        0xEF => (Mnemonic::Out, vec![Operand::Reg16(Reg16::DX, cur.cpu.dx()), Operand::Reg16(Reg16::AX, cur.cpu.ax())]),
+
+        // ── XLAT ─────────────────────────────────────────────────────────────
+
+        0xD7 => (Mnemonic::Xlat, vec![]),
+
+        // ── Miscellaneous ─────────────────────────────────────────────────────
+
+        0x9C => (Mnemonic::Pushf, vec![]),
+        0x9D => (Mnemonic::Popf,  vec![]),
+        0x9E => (Mnemonic::Sahf,  vec![]),
+        0x9F => (Mnemonic::Lahf,  vec![]),
+        0xCC => (Mnemonic::Int3,  vec![]),
+        0xCD => { let n = cur.fetch(); (Mnemonic::Int, vec![Operand::Imm8(n)]) }
+        0xCE => (Mnemonic::Into,  vec![]),
+        0xCF => (Mnemonic::Iret,  vec![]),
+        0xF0 => (Mnemonic::Lock,  vec![]),
+        0xF4 => (Mnemonic::Hlt,   vec![]),
+        0xF5 => (Mnemonic::Cmc,   vec![]),
+        0xF8 => (Mnemonic::Clc,   vec![]),
+        0xF9 => (Mnemonic::Stc,   vec![]),
+        0xFA => (Mnemonic::Cli,   vec![]),
+        0xFB => (Mnemonic::Sti,   vec![]),
+        0xFC => (Mnemonic::Cld,   vec![]),
+        0xFD => (Mnemonic::Std,   vec![]),
+        0x9B => (Mnemonic::Wait,  vec![]),
+        0x37 => (Mnemonic::Aaa,   vec![]),
+        0x27 => (Mnemonic::Daa,   vec![]),
+        0x3F => (Mnemonic::Aas,   vec![]),
+        0x2F => (Mnemonic::Das,   vec![]),
+        0xD4 => { cur.fetch(); (Mnemonic::Aam, vec![]) }   // operand byte (usually 0x0A)
+        0xD5 => { cur.fetch(); (Mnemonic::Aad, vec![]) }
+
+        _ => (Mnemonic::Unknown(op), vec![]),
+    }
+}
+
+// ─── Small helpers ────────────────────────────────────────────────────────────
+
+/// ALU with r/m and r — direction and size encoded in low 2 bits of `op`.
+fn alu_rm_r(cur: &mut Cursor, op: u8, mnemo: Mnemonic) -> (Mnemonic, Vec<Operand>) {
+    let dir  = (op >> 1) & 1;   // 0 = rm is dst, 1 = reg is dst
+    let is16 = (op & 1) != 0;
+    let m    = cur.fetch();
+    let rm   = decode_rm(cur, m, is16);
+    let reg  = decode_reg(cur, (m >> 3) & 7, is16);
+    if dir == 0 { (mnemo, vec![rm, reg]) } else { (mnemo, vec![reg, rm]) }
+}
+
+/// Map the /r field of opcodes 80–83 to the right ALU mnemonic.
+fn alu_group(reg: u8) -> Mnemonic {
+    match reg {
+        0 => Mnemonic::Add, 1 => Mnemonic::Or,  2 => Mnemonic::Adc, 3 => Mnemonic::Sbb,
+        4 => Mnemonic::And, 5 => Mnemonic::Sub, 6 => Mnemonic::Xor, _ => Mnemonic::Cmp,
+    }
+}
+
+/// Map the /r field of D0–D3 / C0–C1 to the right shift/rotate mnemonic.
+fn shift_group(reg: u8) -> Mnemonic {
+    match reg {
+        0 => Mnemonic::Rol, 1 => Mnemonic::Ror, 2 => Mnemonic::Rcl, 3 => Mnemonic::Rcr,
+        4 | 6 => Mnemonic::Shl, 5 => Mnemonic::Shr, _ => Mnemonic::Sar,
+    }
+}
+
+/// Conditional jump with a rel8 target (post-fetch IP + sign-extended displacement).
+fn jcc(cur: &mut Cursor, mnemo: Mnemonic) -> (Mnemonic, Vec<Operand>) {
+    let rel = cur.fetch() as i8 as i16;
+    let tgt = cur.offset.wrapping_add(rel as u16);
+    (mnemo, vec![Operand::Imm16(tgt)])
+}
+
+// ─── Default comment derivation ───────────────────────────────────────────────
+
+fn default_comment(mnemonic: &Mnemonic, operands: &[Operand], cpu: &dyn Computer) -> Option<String> {
+    match mnemonic {
+        Mnemonic::In => {
+            // IN acc, port — port is operand[1]
+            port_comment(operands.get(1))
+        }
+        Mnemonic::Out => {
+            // OUT port, acc — port is operand[0]
+            port_comment(operands.get(0))
+        }
+        Mnemonic::Int => {
+            if let Some(Operand::Imm8(n)) = operands.get(0) {
+                let ah = (cpu.ax() >> 8) as u8;
+                int_description(*n, ah).map(|(desc, show_ah)| {
+                    if show_ah {
+                        format!("INT {:02X}h AH={:02X}h: {}", n, ah, desc)
+                    } else {
+                        format!("INT {:02X}h: {}", n, desc)
+                    }
+                })
+            } else {
+                None
+            }
+        }
+        _ => None,
+    }
+}
+
+/// Extract a port number from an IN/OUT port operand and look up its name.
+/// Handles both immediate ports (`imm8`) and DX-indirect ports (`Reg16(DX, value)`).
+fn port_comment(port_op: Option<&Operand>) -> Option<String> {
+    let port = match port_op? {
+        Operand::Imm8(p)                          => *p as u16,
+        Operand::Reg16(Reg16::DX, v)              => *v,
+        _ => return None,
+    };
+    io_port_name(port).map(|s| s.to_string())
+}
+
+fn io_port_name(port: u16) -> Option<&'static str> {
     match port {
         // PIC
         0x0020 => Some("PIC1 Command"),
@@ -143,8 +916,6 @@ fn port_name(port: u16) -> Option<&'static str> {
     }
 }
 
-/// Returns a description for a BIOS/DOS interrupt call.
-/// The bool indicates whether to display AH (true for multi-function interrupts).
 fn int_description(int_num: u8, ah: u8) -> Option<(&'static str, bool)> {
     match int_num {
         0x08 => Some(("timer interrupt", false)),
@@ -257,1122 +1028,4 @@ fn int_description(int_num: u8, ah: u8) -> Option<(&'static str, bool)> {
         0x74 => Some(("PS/2 mouse interrupt", false)),
         _ => None,
     }
-}
-
-struct InstructionDecoder<'a, R: ByteReader> {
-    reader: &'a R,
-    cs: u16,
-    ip: u16,
-    segment_override: Option<&'static str>,
-    repeat_prefix: Option<&'static str>,
-    uses_ax: bool,
-    uses_bx: bool,
-    uses_cx: bool,
-    uses_dx: bool,
-    /// Memory references found in this instruction
-    memory_refs: Vec<MemoryRef>,
-}
-
-impl<'a, R: ByteReader> InstructionDecoder<'a, R> {
-    fn new(reader: &'a R, cs: u16, ip: u16) -> Self {
-        Self {
-            reader,
-            cs,
-            ip,
-            segment_override: None,
-            repeat_prefix: None,
-            uses_ax: false,
-            uses_bx: false,
-            uses_cx: false,
-            uses_dx: false,
-            memory_refs: Vec::new(),
-        }
-    }
-
-    fn mark_reg_input(&mut self, reg_name: &str) {
-        match reg_name {
-            "ax" | "al" | "ah" => self.uses_ax = true,
-            "bx" | "bl" | "bh" => self.uses_bx = true,
-            "cx" | "cl" | "ch" => self.uses_cx = true,
-            "dx" | "dl" | "dh" => self.uses_dx = true,
-            _ => {}
-        }
-    }
-
-    fn format_memory_values(&self, cpu: &Cpu) -> String {
-        let mut parts = Vec::new();
-
-        for mem_ref in &self.memory_refs {
-            // Calculate the effective address
-            let address = if let Some(direct_addr) = mem_ref.direct_address {
-                // Direct addressing mode [0x1234]
-                // Use segment override if present, otherwise DS
-                let segment = match mem_ref.segment_override {
-                    Some(0) => cpu.es,
-                    Some(1) => cpu.cs,
-                    Some(2) => cpu.ss,
-                    Some(3) | None => cpu.ds, // DS is default
-                    Some(4) => cpu.es,        // FS -> ES for 8086
-                    Some(5) => cpu.es,        // GS -> ES for 8086
-                    _ => cpu.ds,
-                };
-                physical_address(segment, direct_addr)
-            } else if let Some(modrm) = mem_ref.modrm {
-                // Calculate effective address from modrm byte and CPU registers
-                let rm = modrm & 0x07;
-
-                // Calculate base offset based on addressing mode
-                let base_offset = match rm {
-                    0b000 => cpu.bx.wrapping_add(cpu.si),
-                    0b001 => cpu.bx.wrapping_add(cpu.di),
-                    0b010 => cpu.bp.wrapping_add(cpu.si),
-                    0b011 => cpu.bp.wrapping_add(cpu.di),
-                    0b100 => cpu.si,
-                    0b101 => cpu.di,
-                    0b110 => cpu.bp,
-                    0b111 => cpu.bx,
-                    _ => 0,
-                };
-
-                // Add displacement to get final offset
-                let offset = base_offset.wrapping_add(mem_ref.displacement as u16);
-
-                // Determine default segment (BP-based uses SS, others use DS)
-                let default_segment = if matches!(rm, 0b010 | 0b011 | 0b110) {
-                    cpu.ss
-                } else {
-                    cpu.ds
-                };
-
-                // Apply segment override if present
-                let segment = match mem_ref.segment_override {
-                    Some(0) => cpu.es,
-                    Some(1) => cpu.cs,
-                    Some(2) => cpu.ss,
-                    Some(3) => cpu.ds,
-                    Some(4) => cpu.es, // FS -> ES for 8086
-                    Some(5) => cpu.es, // GS -> ES for 8086
-                    None => default_segment,
-                    _ => default_segment,
-                };
-
-                physical_address(segment, offset)
-            } else {
-                continue; // Skip if we can't calculate the address
-            };
-
-            // Read the value from memory
-            let value = if mem_ref.is_word {
-                self.reader.read_u16(address)
-            } else {
-                self.reader.read_u8(address) as u16
-            };
-
-            // Calculate segment for display (only for direct addresses without override)
-            let segment = if mem_ref.direct_address.is_some() {
-                match mem_ref.segment_override {
-                    Some(0) => cpu.es,
-                    Some(1) => cpu.cs,
-                    Some(2) => cpu.ss,
-                    Some(3) | None => cpu.ds,
-                    Some(4) => cpu.es,
-                    Some(5) => cpu.es,
-                    _ => cpu.ds,
-                }
-            } else if let Some(modrm) = mem_ref.modrm {
-                let rm = modrm & 0x07;
-                let default_segment = if matches!(rm, 0b010 | 0b011 | 0b110) {
-                    cpu.ss
-                } else {
-                    cpu.ds
-                };
-                match mem_ref.segment_override {
-                    Some(0) => cpu.es,
-                    Some(1) => cpu.cs,
-                    Some(2) => cpu.ss,
-                    Some(3) => cpu.ds,
-                    Some(4) => cpu.es,
-                    Some(5) => cpu.es,
-                    None => default_segment,
-                    _ => default_segment,
-                }
-            } else {
-                cpu.ds
-            };
-
-            // Format as "display=value @seg:off(linear)"
-            let offset = address.wrapping_sub((segment as usize) << 4);
-            if mem_ref.is_word {
-                parts.push(format!(
-                    "{}={:04X} @{:04X}:{:04X}({:05X})",
-                    mem_ref.display, value, segment, offset, address,
-                ));
-            } else {
-                parts.push(format!(
-                    "{}={:02X} @{:04X}:{:04X}({:05X})",
-                    mem_ref.display, value as u8, segment, offset, address,
-                ));
-            }
-        }
-
-        parts.join(" ")
-    }
-
-    fn physical_address(segment: u16, offset: u16) -> usize {
-        ((segment as usize) << 4) + (offset as usize)
-    }
-
-    fn fetch_byte(&mut self) -> u8 {
-        let addr = Self::physical_address(self.cs, self.ip);
-        let byte = self.reader.read_u8(addr);
-        self.ip = self.ip.wrapping_add(1);
-        byte
-    }
-
-    fn fetch_word(&mut self) -> u16 {
-        let low = self.fetch_byte() as u16;
-        let high = self.fetch_byte() as u16;
-        (high << 8) | low
-    }
-
-    fn peek_byte(&self) -> u8 {
-        let addr = Self::physical_address(self.cs, self.ip);
-        self.reader.read_u8(addr)
-    }
-
-    fn reg8_name(reg: u8) -> &'static str {
-        match reg {
-            0 => "al",
-            1 => "cl",
-            2 => "dl",
-            3 => "bl",
-            4 => "ah",
-            5 => "ch",
-            6 => "dh",
-            7 => "bh",
-            _ => "?",
-        }
-    }
-
-    fn reg16_name(reg: u8) -> &'static str {
-        match reg & 0x07 {
-            0 => "ax",
-            1 => "cx",
-            2 => "dx",
-            3 => "bx",
-            4 => "sp",
-            5 => "bp",
-            6 => "si",
-            7 => "di",
-            _ => "?",
-        }
-    }
-
-    fn segreg_name(reg: u8) -> &'static str {
-        match reg & 0x03 {
-            0 => "es",
-            1 => "cs",
-            2 => "ss",
-            3 => "ds",
-            _ => "?",
-        }
-    }
-
-    fn decode_modrm(&mut self, w: bool) -> (u8, u8, String) {
-        let modrm = self.fetch_byte();
-        let mode = modrm >> 6;
-        let reg = (modrm >> 3) & 0x07;
-        let rm = modrm & 0x07;
-
-        if mode == 0b11 {
-            // Register mode
-            let rm_str = if w {
-                Self::reg16_name(rm).to_string()
-            } else {
-                Self::reg8_name(rm).to_string()
-            };
-            return (reg, rm, rm_str);
-        }
-
-        // Memory mode - build effective address string
-        let mut ea = String::new();
-
-        // Add segment override if present
-        let segment_override_value = match self.segment_override {
-            Some("es") => Some(0), // Will be resolved to ES register value later
-            Some("cs") => Some(1),
-            Some("ss") => Some(2),
-            Some("ds") => Some(3),
-            Some("fs") => Some(4),
-            Some("gs") => Some(5),
-            _ => None,
-        };
-
-        if let Some(seg) = self.segment_override {
-            ea.push_str(seg);
-            ea.push(':');
-        }
-
-        ea.push('[');
-
-        // Track displacement
-        let mut displacement: i16 = 0;
-
-        // Base addressing mode
-        let base = match rm {
-            0b000 => "bx+si",
-            0b001 => "bx+di",
-            0b010 => "bp+si",
-            0b011 => "bp+di",
-            0b100 => "si",
-            0b101 => "di",
-            0b110 => {
-                if mode == 0b00 {
-                    // Direct address
-                    let disp = self.fetch_word();
-                    ea.push_str(&format!("0x{:04x}]", disp));
-
-                    // Record this memory reference
-                    self.memory_refs.push(MemoryRef {
-                        display: ea.clone(),
-                        modrm: None,
-                        segment_override: segment_override_value,
-                        direct_address: Some(disp),
-                        displacement: 0,
-                        is_word: w,
-                    });
-
-                    return (reg, rm, ea);
-                } else {
-                    "bp"
-                }
-            }
-            0b111 => "bx",
-            _ => "?",
-        };
-
-        ea.push_str(base);
-
-        // Add displacement
-        match mode {
-            0b00 => {} // No displacement
-            0b01 => {
-                // 8-bit signed displacement
-                let disp = self.fetch_byte() as i8;
-                displacement = disp as i16;
-                if disp >= 0 {
-                    ea.push_str(&format!("+0x{:02x}", disp));
-                } else {
-                    ea.push_str(&format!("-0x{:02x}", -(disp as i16)));
-                }
-            }
-            0b10 => {
-                // 16-bit displacement
-                let disp = self.fetch_word();
-                displacement = disp as i16;
-                if disp > 0 {
-                    ea.push_str(&format!("+0x{:04x}", disp));
-                }
-            }
-            _ => {}
-        }
-
-        ea.push(']');
-
-        // Record this memory reference (non-direct addressing)
-        self.memory_refs.push(MemoryRef {
-            display: ea.clone(),
-            modrm: Some(modrm),
-            segment_override: segment_override_value,
-            direct_address: None,
-            displacement,
-            is_word: w,
-        });
-
-        (reg, rm, ea)
-    }
-
-    fn decode_rm_reg(&mut self, opcode: u8, mnemonic: &str) -> String {
-        let d = (opcode >> 1) & 1; // Direction bit
-        let w = opcode & 1; // Width bit
-
-        let (reg, rm, rm_str) = self.decode_modrm(w == 1);
-        let reg_str = if w == 1 {
-            Self::reg16_name(reg)
-        } else {
-            Self::reg8_name(reg)
-        };
-
-        // Track register inputs
-        let is_arithmetic = matches!(
-            mnemonic,
-            "add" | "sub" | "and" | "or" | "xor" | "adc" | "sbb" | "cmp" | "test"
-        );
-
-        if d == 1 {
-            // Register is destination, rm is source
-            self.mark_rm_input(rm, w == 1);
-            if is_arithmetic {
-                // Destination is also read in arithmetic ops
-                self.mark_reg_input(reg_str);
-            }
-            format!("{} {}, {}", mnemonic, reg_str, rm_str)
-        } else {
-            // R/M is destination, register is source
-            self.mark_reg_input(reg_str);
-            if is_arithmetic {
-                // Destination is also read in arithmetic ops
-                self.mark_rm_input(rm, w == 1);
-            }
-            format!("{} {}, {}", mnemonic, rm_str, reg_str)
-        }
-    }
-
-    fn mark_rm_input(&mut self, rm: u8, is_16bit: bool) {
-        let reg_name = if is_16bit {
-            Self::reg16_name(rm)
-        } else {
-            Self::reg8_name(rm)
-        };
-        self.mark_reg_input(reg_name);
-    }
-
-    fn decode_imm_acc(&mut self, opcode: u8, mnemonic: &str) -> String {
-        let w = opcode & 1;
-
-        // For arithmetic operations, accumulator is read
-        let is_arithmetic = matches!(
-            mnemonic,
-            "add" | "sub" | "and" | "or" | "xor" | "adc" | "sbb" | "cmp" | "test"
-        );
-        if is_arithmetic {
-            self.mark_reg_input(if w == 1 { "ax" } else { "al" });
-        }
-
-        if w == 1 {
-            let imm = self.fetch_word();
-            format!("{} ax, 0x{:04x}", mnemonic, imm)
-        } else {
-            let imm = self.fetch_byte();
-            format!("{} al, 0x{:02x}", mnemonic, imm)
-        }
-    }
-
-    fn decode_arith_imm_rm(&mut self, w: bool, sign_extend: bool) -> String {
-        let (reg, rm, rm_str) = self.decode_modrm(w);
-        self.mark_rm_input(rm, w);
-
-        let mnemonic = match reg {
-            0 => "add",
-            1 => "or",
-            2 => "adc",
-            3 => "sbb",
-            4 => "and",
-            5 => "sub",
-            6 => "xor",
-            7 => "cmp",
-            _ => "?",
-        };
-
-        let imm_str = if w {
-            if sign_extend {
-                // Sign-extended 8-bit immediate to 16-bit
-                let imm = self.fetch_byte() as i8 as i16 as u16;
-                format!("0x{:04x}", imm)
-            } else {
-                let imm = self.fetch_word();
-                format!("0x{:04x}", imm)
-            }
-        } else {
-            let imm = self.fetch_byte();
-            format!("0x{:02x}", imm)
-        };
-
-        format!("{} {}, {}", mnemonic, rm_str, imm_str)
-    }
-
-    fn decode_shift_rotate(&mut self, opcode: u8) -> String {
-        let w = opcode & 1;
-        let count_in_cl = (opcode >> 1) & 1;
-        let use_imm = (0xC0..=0xC1).contains(&opcode);
-
-        let (reg, rm, rm_str) = self.decode_modrm(w == 1);
-        self.mark_rm_input(rm, w == 1);
-
-        let mnemonic = match reg {
-            0 => "rol",
-            1 => "ror",
-            2 => "rcl",
-            3 => "rcr",
-            4 => "shl",
-            5 => "shr",
-            6 => "sal",
-            7 => "sar",
-            _ => "?",
-        };
-
-        let count_str = if use_imm {
-            let count = self.fetch_byte();
-            format!("0x{:02x}", count)
-        } else if count_in_cl == 1 {
-            self.mark_reg_input("cx");
-            "cl".to_string()
-        } else {
-            "1".to_string()
-        };
-
-        format!("{} {}, {}", mnemonic, rm_str, count_str)
-    }
-
-    fn decode_group3(&mut self, w: bool) -> String {
-        let (reg, rm, rm_str) = self.decode_modrm(w);
-
-        match reg {
-            0 | 1 => {
-                // TEST with immediate
-                self.mark_rm_input(rm, w);
-                let imm_str = if w {
-                    let imm = self.fetch_word();
-                    format!("0x{:04x}", imm)
-                } else {
-                    let imm = self.fetch_byte();
-                    format!("0x{:02x}", imm)
-                };
-                format!("test {}, {}", rm_str, imm_str)
-            }
-            2 => format!("not {}", rm_str),
-            3 => format!("neg {}", rm_str),
-            4 => format!("mul {}", rm_str),
-            5 => format!("imul {}", rm_str),
-            6 => format!("div {}", rm_str),
-            7 => format!("idiv {}", rm_str),
-            _ => format!("? {}", rm_str),
-        }
-    }
-
-    pub(crate) fn decode(&mut self) -> String {
-        let opcode = self.fetch_byte();
-
-        match opcode {
-            // Segment override prefixes
-            0x26 => {
-                self.segment_override = Some("es");
-                let rest = self.decode();
-                format!("es: {}", rest.trim_start_matches("es: "))
-            }
-            0x2E => {
-                self.segment_override = Some("cs");
-                let rest = self.decode();
-                format!("cs: {}", rest.trim_start_matches("cs: "))
-            }
-            0x36 => {
-                self.segment_override = Some("ss");
-                let rest = self.decode();
-                format!("ss: {}", rest.trim_start_matches("ss: "))
-            }
-            0x3E => {
-                self.segment_override = Some("ds");
-                let rest = self.decode();
-                format!("ds: {}", rest.trim_start_matches("ds: "))
-            }
-            0x64 => {
-                self.segment_override = Some("fs");
-                let rest = self.decode();
-                format!("fs: {}", rest.trim_start_matches("fs: "))
-            }
-            0x65 => {
-                self.segment_override = Some("gs");
-                let rest = self.decode();
-                format!("gs: {}", rest.trim_start_matches("gs: "))
-            }
-
-            // Repeat prefixes
-            0xF2 => {
-                self.repeat_prefix = Some("repne");
-                let rest = self.decode();
-                format!("repne {}", rest)
-            }
-            0xF3 => {
-                self.repeat_prefix = Some("rep");
-                let rest = self.decode();
-                format!("rep {}", rest)
-            }
-
-            // LOCK prefix
-            0xF0 => {
-                let rest = self.decode();
-                format!("lock {}", rest)
-            }
-
-            // ADD
-            0x00..=0x03 => self.decode_rm_reg(opcode, "add"),
-            0x04..=0x05 => self.decode_imm_acc(opcode, "add"),
-
-            // PUSH/POP segment registers
-            0x06 => "push es".to_string(),
-            0x07 => "pop es".to_string(),
-            0x0E => "push cs".to_string(),
-            0x16 => "push ss".to_string(),
-            0x17 => "pop ss".to_string(),
-            0x1E => "push ds".to_string(),
-            0x1F => "pop ds".to_string(),
-
-            // OR
-            0x08..=0x0B => self.decode_rm_reg(opcode, "or"),
-            0x0C..=0x0D => self.decode_imm_acc(opcode, "or"),
-
-            // ADC
-            0x10..=0x13 => self.decode_rm_reg(opcode, "adc"),
-            0x14..=0x15 => self.decode_imm_acc(opcode, "adc"),
-
-            // SBB
-            0x18..=0x1B => self.decode_rm_reg(opcode, "sbb"),
-            0x1C..=0x1D => self.decode_imm_acc(opcode, "sbb"),
-
-            // AND
-            0x20..=0x23 => self.decode_rm_reg(opcode, "and"),
-            0x24..=0x25 => self.decode_imm_acc(opcode, "and"),
-            0x27 => "daa".to_string(),
-
-            // SUB
-            0x28..=0x2B => self.decode_rm_reg(opcode, "sub"),
-            0x2C..=0x2D => self.decode_imm_acc(opcode, "sub"),
-            0x2F => "das".to_string(),
-
-            // XOR
-            0x30..=0x33 => self.decode_rm_reg(opcode, "xor"),
-            0x34..=0x35 => self.decode_imm_acc(opcode, "xor"),
-            0x37 => "aaa".to_string(),
-
-            // CMP
-            0x38..=0x3B => self.decode_rm_reg(opcode, "cmp"),
-            0x3C..=0x3D => self.decode_imm_acc(opcode, "cmp"),
-            0x3F => "aas".to_string(),
-
-            // INC 16-bit registers
-            0x40..=0x47 => {
-                let reg = opcode & 0x07;
-                let reg_name = Self::reg16_name(reg);
-                self.mark_reg_input(reg_name);
-                format!("inc {}", reg_name)
-            }
-
-            // DEC 16-bit registers
-            0x48..=0x4F => {
-                let reg = opcode & 0x07;
-                let reg_name = Self::reg16_name(reg);
-                self.mark_reg_input(reg_name);
-                format!("dec {}", reg_name)
-            }
-
-            // PUSH 16-bit registers
-            0x50..=0x57 => {
-                let reg = opcode & 0x07;
-                let reg_name = Self::reg16_name(reg);
-                self.mark_reg_input(reg_name);
-                format!("push {}", reg_name)
-            }
-
-            // POP 16-bit registers
-            0x58..=0x5F => {
-                let reg = opcode & 0x07;
-                format!("pop {}", Self::reg16_name(reg))
-            }
-
-            // PUSHA / POPA
-            0x60 => "pusha".to_string(),
-            0x61 => "popa".to_string(),
-
-            // BOUND
-            0x62 => {
-                let (_reg, _rm, rm_str) = self.decode_modrm(true);
-                format!("bound {}", rm_str)
-            }
-
-            // PUSH immediate
-            0x68 => {
-                let imm = self.fetch_word();
-                format!("push 0x{:04x}", imm)
-            }
-            0x6A => {
-                let imm = self.fetch_byte() as i8;
-                format!("push 0x{:02x}", imm as u8)
-            }
-
-            // IMUL with immediate
-            0x69 => {
-                let (reg, _rm, rm_str) = self.decode_modrm(true);
-                let imm = self.fetch_word();
-                format!("imul {}, {}, 0x{:04x}", Self::reg16_name(reg), rm_str, imm)
-            }
-            0x6B => {
-                let (reg, _rm, rm_str) = self.decode_modrm(true);
-                let imm = self.fetch_byte() as i8 as i16 as u16;
-                format!("imul {}, {}, 0x{:04x}", Self::reg16_name(reg), rm_str, imm)
-            }
-
-            // INS/OUTS
-            0x6C => "insb".to_string(),
-            0x6D => "insw".to_string(),
-            0x6E => "outsb".to_string(),
-            0x6F => "outsw".to_string(),
-
-            // Conditional jumps
-            0x70 => {
-                let offset = self.fetch_byte() as i8;
-                format!("jo 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x71 => {
-                let offset = self.fetch_byte() as i8;
-                format!("jno 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x72 => {
-                let offset = self.fetch_byte() as i8;
-                format!("jb 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x73 => {
-                let offset = self.fetch_byte() as i8;
-                format!("jnb 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x74 => {
-                let offset = self.fetch_byte() as i8;
-                format!("jz 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x75 => {
-                let offset = self.fetch_byte() as i8;
-                format!("jnz 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x76 => {
-                let offset = self.fetch_byte() as i8;
-                format!("jbe 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x77 => {
-                let offset = self.fetch_byte() as i8;
-                format!("ja 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x78 => {
-                let offset = self.fetch_byte() as i8;
-                format!("js 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x79 => {
-                let offset = self.fetch_byte() as i8;
-                format!("jns 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x7A => {
-                let offset = self.fetch_byte() as i8;
-                format!("jp 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x7B => {
-                let offset = self.fetch_byte() as i8;
-                format!("jnp 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x7C => {
-                let offset = self.fetch_byte() as i8;
-                format!("jl 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x7D => {
-                let offset = self.fetch_byte() as i8;
-                format!("jge 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x7E => {
-                let offset = self.fetch_byte() as i8;
-                format!("jle 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0x7F => {
-                let offset = self.fetch_byte() as i8;
-                format!("jg 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-
-            // Arithmetic/logical immediate to r/m (0x82 is same as 0x80)
-            0x80 | 0x82 => self.decode_arith_imm_rm(false, false),
-            0x81 => self.decode_arith_imm_rm(true, false),
-            0x83 => self.decode_arith_imm_rm(true, true),
-
-            // TEST
-            0x84..=0x85 => self.decode_rm_reg(opcode, "test"),
-
-            // XCHG
-            0x86..=0x87 => self.decode_rm_reg(opcode, "xchg"),
-
-            // MOV
-            0x88..=0x8B => self.decode_rm_reg(opcode, "mov"),
-
-            // MOV segment register to r/m16
-            0x8C => {
-                let (reg, _rm, rm_str) = self.decode_modrm(true);
-                format!("mov {}, {}", rm_str, Self::segreg_name(reg))
-            }
-
-            // LEA
-            0x8D => {
-                let (reg, _rm, rm_str) = self.decode_modrm(true);
-                format!("lea {}, {}", Self::reg16_name(reg), rm_str)
-            }
-
-            // MOV r/m16 to segment register
-            0x8E => {
-                let (reg, rm, rm_str) = self.decode_modrm(true);
-                self.mark_rm_input(rm, true);
-                format!("mov {}, {}", Self::segreg_name(reg), rm_str)
-            }
-
-            // POP r/m16
-            0x8F => {
-                let (_reg, _rm, rm_str) = self.decode_modrm(true);
-                format!("pop {}", rm_str)
-            }
-
-            // NOP / XCHG AX with registers
-            0x90 => "nop".to_string(),
-            0x91..=0x97 => {
-                let reg = opcode & 0x07;
-                format!("xchg ax, {}", Self::reg16_name(reg))
-            }
-
-            // CBW/CWD
-            0x98 => "cbw".to_string(),
-            0x99 => "cwd".to_string(),
-
-            // CALL/JMP far
-            0x9A => {
-                let offset = self.fetch_word();
-                let segment = self.fetch_word();
-                format!("call 0x{:04x}:0x{:04x}", segment, offset)
-            }
-
-            // PUSHF/POPF
-            0x9C => "pushf".to_string(),
-            0x9D => "popf".to_string(),
-
-            // SAHF/LAHF
-            0x9E => "sahf".to_string(),
-            0x9F => "lahf".to_string(),
-
-            // MOV accumulator to/from memory
-            0xA0 => {
-                let offset = self.fetch_word();
-                let display = format!("[0x{:04x}]", offset);
-                self.memory_refs.push(MemoryRef {
-                    display: display.clone(),
-                    modrm: None,
-                    segment_override: None,
-                    direct_address: Some(offset),
-                    displacement: 0,
-                    is_word: false,
-                });
-                format!("mov al, {}", display)
-            }
-            0xA1 => {
-                let offset = self.fetch_word();
-                let display = format!("[0x{:04x}]", offset);
-                self.memory_refs.push(MemoryRef {
-                    display: display.clone(),
-                    modrm: None,
-                    segment_override: None,
-                    direct_address: Some(offset),
-                    displacement: 0,
-                    is_word: true,
-                });
-                format!("mov ax, {}", display)
-            }
-            0xA2 => {
-                let offset = self.fetch_word();
-                let display = format!("[0x{:04x}]", offset);
-                self.memory_refs.push(MemoryRef {
-                    display: display.clone(),
-                    modrm: None,
-                    segment_override: None,
-                    direct_address: Some(offset),
-                    displacement: 0,
-                    is_word: false,
-                });
-                self.mark_reg_input("al");
-                format!("mov {}, al", display)
-            }
-            0xA3 => {
-                let offset = self.fetch_word();
-                let display = format!("[0x{:04x}]", offset);
-                self.memory_refs.push(MemoryRef {
-                    display: display.clone(),
-                    modrm: None,
-                    segment_override: None,
-                    direct_address: Some(offset),
-                    displacement: 0,
-                    is_word: true,
-                });
-                self.mark_reg_input("ax");
-                format!("mov {}, ax", display)
-            }
-
-            // String operations
-            0xA4 => "movsb".to_string(),
-            0xA5 => "movsw".to_string(),
-            0xA6 => "cmpsb".to_string(),
-            0xA7 => "cmpsw".to_string(),
-            0xA8 => {
-                self.mark_reg_input("al");
-                let imm = self.fetch_byte();
-                format!("test al, 0x{:02x}", imm)
-            }
-            0xA9 => {
-                self.mark_reg_input("ax");
-                let imm = self.fetch_word();
-                format!("test ax, 0x{:04x}", imm)
-            }
-            0xAA => "stosb".to_string(),
-            0xAB => "stosw".to_string(),
-            0xAC => "lodsb".to_string(),
-            0xAD => "lodsw".to_string(),
-            0xAE => "scasb".to_string(),
-            0xAF => "scasw".to_string(),
-
-            // MOV immediate to register
-            0xB0..=0xB7 => {
-                let reg = opcode & 0x07;
-                let imm = self.fetch_byte();
-                format!("mov {}, 0x{:02x}", Self::reg8_name(reg), imm)
-            }
-            0xB8..=0xBF => {
-                let reg = opcode & 0x07;
-                let imm = self.fetch_word();
-                format!("mov {}, 0x{:04x}", Self::reg16_name(reg), imm)
-            }
-
-            // Shift/rotate with immediate or count
-            0xC0..=0xC1 | 0xD0..=0xD3 => self.decode_shift_rotate(opcode),
-
-            // RET
-            0xC2 => {
-                let imm = self.fetch_word();
-                format!("ret 0x{:04x}", imm)
-            }
-            0xC3 => "ret".to_string(),
-
-            // LES/LDS
-            0xC4 => {
-                let (reg, _rm, rm_str) = self.decode_modrm(true);
-                format!("les {}, {}", Self::reg16_name(reg), rm_str)
-            }
-            0xC5 => {
-                let (reg, _rm, rm_str) = self.decode_modrm(true);
-                format!("lds {}, {}", Self::reg16_name(reg), rm_str)
-            }
-
-            // MOV immediate to r/m
-            0xC6 => {
-                let (_reg, _rm, rm_str) = self.decode_modrm(false);
-                let imm = self.fetch_byte();
-                format!("mov {}, 0x{:02x}", rm_str, imm)
-            }
-            0xC7 => {
-                let (_reg, _rm, rm_str) = self.decode_modrm(true);
-                let imm = self.fetch_word();
-                format!("mov {}, 0x{:04x}", rm_str, imm)
-            }
-
-            // ENTER / LEAVE
-            0xC8 => {
-                let stack_size = self.fetch_word();
-                let nesting = self.fetch_byte();
-                format!("enter 0x{:04x}, 0x{:02x}", stack_size, nesting)
-            }
-            0xC9 => "leave".to_string(),
-
-            // RETF
-            0xCA => {
-                let imm = self.fetch_word();
-                format!("retf 0x{:04x}", imm)
-            }
-            0xCB => "retf".to_string(),
-
-            // INT
-            0xCC => "int3".to_string(),
-            0xCD => {
-                let int_num = self.fetch_byte();
-                format!("int 0x{:02x}", int_num)
-            }
-            0xCE => "into".to_string(),
-            0xCF => "iret".to_string(),
-
-            // AAM/AAD
-            0xD4 => {
-                let base = self.fetch_byte();
-                if base == 10 {
-                    "aam".to_string()
-                } else {
-                    format!("aam 0x{:02x}", base)
-                }
-            }
-            0xD5 => {
-                let base = self.fetch_byte();
-                if base == 10 {
-                    "aad".to_string()
-                } else {
-                    format!("aad 0x{:02x}", base)
-                }
-            }
-
-            // XLAT
-            0xD7 => "xlat".to_string(),
-
-            // ESC (coprocessor escape)
-            0xD8..=0xDF => {
-                let modrm = self.peek_byte();
-                self.fetch_byte(); // consume modrm
-                format!("esc 0x{:02x}, 0x{:02x}", opcode & 0x07, modrm)
-            }
-
-            // LOOP instructions
-            0xE0 => {
-                self.mark_reg_input("cx");
-                let offset = self.fetch_byte() as i8;
-                format!(
-                    "loopne 0x{:04x}",
-                    self.ip.wrapping_add(offset as i16 as u16)
-                )
-            }
-            0xE1 => {
-                self.mark_reg_input("cx");
-                let offset = self.fetch_byte() as i8;
-                format!("loope 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0xE2 => {
-                self.mark_reg_input("cx");
-                let offset = self.fetch_byte() as i8;
-                format!("loop 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-            0xE3 => {
-                self.mark_reg_input("cx");
-                let offset = self.fetch_byte() as i8;
-                format!("jcxz 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-
-            // IN/OUT
-            0xE4 => {
-                let port = self.fetch_byte();
-                let name = port_name(port as u16)
-                    .map(|n| format!(" ; {}", n))
-                    .unwrap_or_default();
-                format!("in al, 0x{:02x}{}", port, name)
-            }
-            0xE5 => {
-                let port = self.fetch_byte();
-                let name = port_name(port as u16)
-                    .map(|n| format!(" ; {}", n))
-                    .unwrap_or_default();
-                format!("in ax, 0x{:02x}{}", port, name)
-            }
-            0xE6 => {
-                let port = self.fetch_byte();
-                self.mark_reg_input("al");
-                let name = port_name(port as u16)
-                    .map(|n| format!(" ; {}", n))
-                    .unwrap_or_default();
-                format!("out 0x{:02x}, al{}", port, name)
-            }
-            0xE7 => {
-                let port = self.fetch_byte();
-                self.mark_reg_input("ax");
-                let name = port_name(port as u16)
-                    .map(|n| format!(" ; {}", n))
-                    .unwrap_or_default();
-                format!("out 0x{:02x}, ax{}", port, name)
-            }
-
-            // CALL/JMP near/short
-            0xE8 => {
-                let offset = self.fetch_word() as i16;
-                format!("call 0x{:04x}", self.ip.wrapping_add(offset as u16))
-            }
-            0xE9 => {
-                let offset = self.fetch_word() as i16;
-                format!("jmp 0x{:04x}", self.ip.wrapping_add(offset as u16))
-            }
-            0xEA => {
-                let offset = self.fetch_word();
-                let segment = self.fetch_word();
-                format!("jmp 0x{:04x}:0x{:04x}", segment, offset)
-            }
-            0xEB => {
-                let offset = self.fetch_byte() as i8;
-                format!("jmp 0x{:04x}", self.ip.wrapping_add(offset as i16 as u16))
-            }
-
-            // IN/OUT with DX
-            0xEC => {
-                self.mark_reg_input("dx");
-                "in al, dx".to_string()
-            }
-            0xED => {
-                self.mark_reg_input("dx");
-                "in ax, dx".to_string()
-            }
-            0xEE => {
-                self.mark_reg_input("al");
-                self.mark_reg_input("dx");
-                "out dx, al".to_string()
-            }
-            0xEF => {
-                self.mark_reg_input("ax");
-                self.mark_reg_input("dx");
-                "out dx, ax".to_string()
-            }
-
-            // HLT and flag instructions
-            0xF4 => "hlt".to_string(),
-            0xF5 => "cmc".to_string(),
-            0xF6..=0xF7 => self.decode_group3((opcode & 1) == 1),
-            0xF8 => "clc".to_string(),
-            0xF9 => "stc".to_string(),
-            0xFA => "cli".to_string(),
-            0xFB => "sti".to_string(),
-            0xFC => "cld".to_string(),
-            0xFD => "std".to_string(),
-
-            // INC/DEC/CALL/JMP/PUSH Group 4/5
-            0xFE => {
-                let modrm = self.peek_byte();
-                let reg = (modrm >> 3) & 0x07;
-                let (_reg, _rm, rm_str) = self.decode_modrm(false);
-                match reg {
-                    0 => format!("inc {}", rm_str),
-                    1 => format!("dec {}", rm_str),
-                    _ => format!("? {}", rm_str),
-                }
-            }
-            0xFF => {
-                let modrm = self.peek_byte();
-                let reg = (modrm >> 3) & 0x07;
-                let (_reg, _rm, rm_str) = self.decode_modrm(true);
-                match reg {
-                    0 => format!("inc {}", rm_str),
-                    1 => format!("dec {}", rm_str),
-                    2 => format!("call {}", rm_str),
-                    3 => format!("call far {}", rm_str),
-                    4 => format!("jmp {}", rm_str),
-                    5 => format!("jmp far {}", rm_str),
-                    6 => format!("push {}", rm_str),
-                    _ => format!("? {}", rm_str),
-                }
-            }
-
-            _ => format!("db 0x{:02x}", opcode),
-        }
-    }
-}
-
-/// Decode one instruction from `reader` at `cs:ip`.
-/// Returns `(text, bytes, next_ip)`.
-pub(crate) fn decode_one_raw<R: ByteReader>(
-    reader: &R,
-    cs: u16,
-    ip: u16,
-) -> (String, Vec<u8>, u16) {
-    let mut decoder = InstructionDecoder::new(reader, cs, ip);
-    let text = decoder.decode();
-    let next_ip = decoder.ip;
-    let start = InstructionDecoder::<R>::physical_address(cs, ip);
-    let end = InstructionDecoder::<R>::physical_address(cs, next_ip);
-    let bytes: Vec<u8> = (start..end).map(|a| reader.read_u8(a)).collect();
-    (text, bytes, next_ip)
 }

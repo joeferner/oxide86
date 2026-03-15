@@ -42,6 +42,7 @@ struct Port {
     dll: u8,         // Divisor Latch Low  (offset 0, DLAB=1)
     dlm: u8,         // Divisor Latch High (offset 1, DLAB=1)
     ier: u8,         // Interrupt Enable   (offset 1, DLAB=0)
+    fcr: u8,         // FIFO Control       (offset 2, write-only; read returns IIR)
     lcr: u8,         // Line Control       (offset 3)
     mcr: u8,         // Modem Control      (offset 4)
     lsr: u8,         // Line Status        (offset 5)
@@ -56,6 +57,7 @@ impl Port {
         self.dll = 0x18; // divisor low  for 4800 baud (24 = 0x0018)
         self.dlm = 0x00; // divisor high for 4800 baud
         self.ier = 0x00; // all interrupts disabled
+        self.fcr = 0x00;
         self.lcr = 0x03; // 8-N-1, DLAB=0
         self.mcr = 0x00;
         self.lsr = LSR_THRE | LSR_TEMT; // transmitter ready
@@ -110,6 +112,7 @@ impl Default for Port {
             dll: 0x18, // divisor low  for 4800 baud (24 = 0x0018)
             dlm: 0x00, // divisor high for 4800 baud
             ier: 0x00, // all interrupts disabled
+            fcr: 0x00,
             lcr: 0x03, // 8-N-1, DLAB=0
             mcr: 0x00,
             lsr: LSR_THRE | LSR_TEMT, // transmitter ready
@@ -120,6 +123,9 @@ impl Default for Port {
         }
     }
 }
+
+/// IIR (read offset 2) — no interrupt pending, FIFOs disabled
+const IIR_NO_INT: u8 = 0x01;
 
 /// MCR (Modem Control Register) signal lines, passed to [`ComPortDevice::modem_control_changed`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -243,6 +249,7 @@ impl Device for Uart {
                     p.ier
                 }
             }
+            2 => IIR_NO_INT, // IIR: no interrupt pending, FIFOs disabled
             3 => p.lcr,
             4 => p.mcr,
             5 => {
@@ -289,6 +296,7 @@ impl Device for Uart {
                     p.ier = val;
                 }
             }
+            2 => p.fcr = val, // FCR: FIFO control (stored but not acted on)
             3 => p.lcr = val,
             4 => {
                 let prev = p.mcr;

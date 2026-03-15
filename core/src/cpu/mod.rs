@@ -1,10 +1,11 @@
 use crate::{
     bus::Bus,
-    cpu::{bios::BIOS_CODE_SEGMENT, instructions::RepeatPrefix},
-    dis::disasm_one,
+    cpu::{bios::BIOS_CODE_SEGMENT, instructions::{decoder, RepeatPrefix}},
+    dis::{asm_text, classify_instruction_flow},
     disk::DriveNumber,
     physical_address,
     reverse_engineer::ReverseEngineer,
+    Computer,
 };
 
 pub mod bios;
@@ -102,6 +103,28 @@ pub(crate) struct Cpu {
     /// Set by INT 19h (bootstrap loader) to signal that the next reboot should
     /// try drives in boot order rather than only the configured boot drive.
     bootstrap_request: bool,
+}
+
+/// Adapter that implements `Computer` by combining a `Cpu` and a `Bus`.
+struct CpuBusComputer<'a> {
+    cpu: &'a Cpu,
+    bus: &'a Bus,
+}
+
+impl Computer for CpuBusComputer<'_> {
+    fn ax(&self) -> u16 { self.cpu.ax }
+    fn bx(&self) -> u16 { self.cpu.bx }
+    fn cx(&self) -> u16 { self.cpu.cx }
+    fn dx(&self) -> u16 { self.cpu.dx }
+    fn sp(&self) -> u16 { self.cpu.sp }
+    fn bp(&self) -> u16 { self.cpu.bp }
+    fn si(&self) -> u16 { self.cpu.si }
+    fn di(&self) -> u16 { self.cpu.di }
+    fn cs(&self) -> u16 { self.cpu.cs }
+    fn ds(&self) -> u16 { self.cpu.ds }
+    fn ss(&self) -> u16 { self.cpu.ss }
+    fn es(&self) -> u16 { self.cpu.es }
+    fn read_u8(&self, phys: u32) -> u8 { self.bus.memory_read_u8(phys as usize) }
 }
 
 impl Cpu {
@@ -284,22 +307,21 @@ impl Cpu {
         let pre_cs = self.cs;
         let pre_ip = self.ip;
 
-        let pre_decoded = if self.exec_logging_enabled || self.reverse_engineer.is_some() {
-            Some(self.decode_instruction_with_regs(bus))
-        } else {
-            None
-        };
-
-        let pre_disasm = if self.reverse_engineer.is_some() {
+        if self.reverse_engineer.is_some() {
             bus.enable_read_recording();
-            Some(disasm_one(bus, pre_cs, pre_ip))
-        } else {
-            None
-        };
+        }
 
         self.exec_instruction(bus);
 
-        if let (Some(re), Some(disasm)) = (&mut self.reverse_engineer, pre_disasm) {
+        // Decode after execution so register annotations reflect post-exec state.
+        // Instruction bytes at pre_cs:pre_ip are still in memory (code is not modified).
+        let decoded = if self.exec_logging_enabled || self.reverse_engineer.is_some() {
+            Some(decoder::decode(&CpuBusComputer { cpu: self, bus }, pre_cs, pre_ip))
+        } else {
+            None
+        };
+
+        if let (Some(re), Some(instr)) = (&mut self.reverse_engineer, &decoded) {
             let all_reads = bus.drain_read_recording();
             let code_start = physical_address(pre_cs, pre_ip);
             let code_end = physical_address(self.cs, self.ip);
@@ -308,58 +330,14 @@ impl Cpu {
                     re.record_data_read(addr, val, self.ds);
                 }
             }
-            let (text, bytes) = if let Some(ref d) = pre_decoded {
-                (d.text.clone(), d.bytes.clone())
-            } else {
-                (disasm.text.clone(), disasm.bytes.clone())
-            };
-            re.record_instruction(pre_cs, pre_ip, &disasm.flow, text, bytes);
+            let flow = classify_instruction_flow(instr);
+            let text = asm_text(instr);
+            re.record_instruction(pre_cs, pre_ip, &flow, text, instr.bytes.clone());
         }
 
         if self.exec_logging_enabled {
-            if let Some(decoded) = pre_decoded {
-                // Format register values from post-execution CPU state
-                let mut reg_parts: Vec<String> = Vec::new();
-                if decoded.uses_ax {
-                    reg_parts.push(format!("AX={:04X}", self.ax));
-                }
-                if decoded.uses_bx {
-                    reg_parts.push(format!("BX={:04X}", self.bx));
-                }
-                if decoded.uses_cx {
-                    reg_parts.push(format!("CX={:04X}", self.cx));
-                }
-                if decoded.uses_dx {
-                    reg_parts.push(format!("DX={:04X}", self.dx));
-                }
-                let reg_values = reg_parts.join(" ");
-
-                // Combine register and memory values for logging
-                let mut values = String::new();
-                if !reg_values.is_empty() {
-                    values.push_str(&reg_values);
-                }
-                if !decoded.mem_values.is_empty() {
-                    if !values.is_empty() {
-                        values.push(' ');
-                    }
-                    values.push_str(&decoded.mem_values);
-                }
-
-                let bytes_hex = decoded
-                    .bytes
-                    .iter()
-                    .map(|b| format!("{:02X}", b))
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                log::info!(
-                    "{}",
-                    format!(
-                        "OP {:04X}:{:04X} {:<18} {:30} {}",
-                        self.cs, self.ip, bytes_hex, decoded.text, values,
-                    )
-                    .trim()
-                );
+            if let Some(ref instr) = decoded {
+                log::info!("{}", instr.format_line());
             }
         }
     }

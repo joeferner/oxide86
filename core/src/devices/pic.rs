@@ -274,6 +274,10 @@ impl Device for Pic {
                 self.pic2_mask = val;
                 true
             }
+            0x0028 => {
+                log::debug!("PIC: write to port 0x0028 val=0x{val:02X} (unimplemented)");
+                true
+            }
             _ => false,
         }
     }

@@ -71,6 +71,25 @@ pub trait ByteReader {
     }
 }
 
+/// Abstraction over CPU registers + memory, used by the instruction decoder.
+/// Implementations provide both register state and physical memory reads.
+pub trait Computer {
+    fn ax(&self) -> u16;
+    fn bx(&self) -> u16;
+    fn cx(&self) -> u16;
+    fn dx(&self) -> u16;
+    fn sp(&self) -> u16;
+    fn bp(&self) -> u16;
+    fn si(&self) -> u16;
+    fn di(&self) -> u16;
+    fn cs(&self) -> u16;
+    fn ds(&self) -> u16;
+    fn ss(&self) -> u16;
+    fn es(&self) -> u16;
+    /// Read one byte from a physical (20-bit) address.
+    fn read_u8(&self, phys: u32) -> u8;
+}
+
 pub trait Device {
     fn as_any(&self) -> &dyn Any;
 

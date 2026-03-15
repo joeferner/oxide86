@@ -1,5 +1,5 @@
-use crate::ByteReader;
-use crate::cpu::instructions::decoder::decode_one_raw;
+use crate::cpu::instructions::decoder::{self, Instruction, Mnemonic, Operand};
+use crate::{ByteReader, Computer};
 
 /// How control flows out of a decoded instruction.
 #[derive(Debug, Clone, PartialEq)]
@@ -33,95 +33,113 @@ pub struct DisasmResult {
     pub flow: FlowKind,
 }
 
+/// A `Computer` implementation backed by a `ByteReader` with zeroed registers.
+/// Used for static disassembly where register values are not available.
+struct ByteReaderComputer<'a, R> {
+    reader: &'a R,
+}
+
+impl<R: ByteReader> Computer for ByteReaderComputer<'_, R> {
+    fn ax(&self) -> u16 { 0 }
+    fn bx(&self) -> u16 { 0 }
+    fn cx(&self) -> u16 { 0 }
+    fn dx(&self) -> u16 { 0 }
+    fn sp(&self) -> u16 { 0 }
+    fn bp(&self) -> u16 { 0 }
+    fn si(&self) -> u16 { 0 }
+    fn di(&self) -> u16 { 0 }
+    fn cs(&self) -> u16 { 0 }
+    fn ds(&self) -> u16 { 0 }
+    fn ss(&self) -> u16 { 0 }
+    fn es(&self) -> u16 { 0 }
+    fn read_u8(&self, phys: u32) -> u8 { self.reader.read_u8(phys as usize) }
+}
+
 /// Decode a single instruction at `cs:ip` using `reader`.
 pub fn disasm_one(reader: &impl ByteReader, cs: u16, ip: u16) -> DisasmResult {
-    let (text, bytes, next_ip) = decode_one_raw(reader, cs, ip);
-    let flow = classify_flow(&text, next_ip);
-    DisasmResult {
-        text,
-        bytes,
-        next_ip,
-        flow,
-    }
+    let computer = ByteReaderComputer { reader };
+    let instr = decoder::decode(&computer, cs, ip);
+    let next_ip = ip.wrapping_add(instr.bytes.len() as u16);
+    let flow = classify_instruction_flow(&instr);
+    let text = asm_text(&instr);
+    DisasmResult { text, bytes: instr.bytes, next_ip, flow }
 }
 
-fn parse_hex_u16(s: &str) -> Option<u16> {
-    u16::from_str_radix(s.strip_prefix("0x").unwrap_or(s), 16).ok()
-}
+/// Classify the control-flow kind of a decoded instruction.
+pub fn classify_instruction_flow(instr: &Instruction) -> FlowKind {
+    match &instr.mnemonic {
+        Mnemonic::Hlt => FlowKind::Halt,
 
-/// Parse a `SEG:OFF` pair from a string like `"0x1234:0x5678"`.
-fn parse_seg_off(s: &str) -> Option<(u16, u16)> {
-    let (seg_s, off_s) = s.split_once(':')?;
-    Some((parse_hex_u16(seg_s.trim())?, parse_hex_u16(off_s.trim())?))
-}
+        Mnemonic::Ret | Mnemonic::RetFar | Mnemonic::Iret => FlowKind::Return,
 
-fn classify_flow(text: &str, _next_ip: u16) -> FlowKind {
-    // Strip any prefix (rep, lock, cs:, es:, etc.) to get the mnemonic
-    let text = text.trim();
+        Mnemonic::Jmp => match instr.operands.first() {
+            Some(Operand::Imm16(target)) => FlowKind::Jump(*target),
+            _ => FlowKind::IndirectTransfer,
+        },
 
-    // HLT
-    if text == "hlt" {
-        return FlowKind::Halt;
-    }
-
-    // Return instructions
-    if matches!(text, "ret" | "retf" | "iret")
-        || text.starts_with("ret ")
-        || text.starts_with("retf ")
-    {
-        return FlowKind::Return;
-    }
-
-    // Unconditional near jump: "jmp 0xXXXX"
-    if let Some(rest) = text.strip_prefix("jmp 0x")
-        && let Some(target) = parse_hex_u16(rest)
-    {
-        return FlowKind::Jump(target);
-    }
-
-    // Far jump: "jmp 0xSEG:0xOFF"
-    if let Some(rest) = text.strip_prefix("jmp ")
-        && let Some((seg, off)) = parse_seg_off(rest)
-    {
-        return FlowKind::JumpFar(seg, off);
-    }
-
-    // Indirect jmp: "jmp [...]" or "jmp far [...]"
-    if text.starts_with("jmp ") {
-        return FlowKind::IndirectTransfer;
-    }
-
-    // Near call: "call 0xXXXX"
-    if let Some(rest) = text.strip_prefix("call 0x")
-        && let Some(target) = parse_hex_u16(rest)
-    {
-        return FlowKind::Call(target);
-    }
-
-    // Far call: "call 0xSEG:0xOFF"
-    if let Some(rest) = text.strip_prefix("call ")
-        && let Some((seg, off)) = parse_seg_off(rest)
-    {
-        return FlowKind::CallFar(seg, off);
-    }
-
-    // Indirect call
-    if text.starts_with("call ") {
-        return FlowKind::IndirectTransfer;
-    }
-
-    // Conditional jumps: j<cc> 0xXXXX
-    let cond_mnemonics = [
-        "jo ", "jno ", "jb ", "jnb ", "jz ", "jnz ", "jbe ", "ja ", "js ", "jns ", "jp ", "jnp ",
-        "jl ", "jge ", "jle ", "jg ", "jcxz ", "loop ", "loope ", "loopne ",
-    ];
-    for prefix in &cond_mnemonics {
-        if let Some(rest) = text.strip_prefix(prefix)
-            && let Some(target) = parse_hex_u16(rest)
-        {
-            return FlowKind::ConditionalJump(target);
+        Mnemonic::JmpFar => {
+            if let (Some(Operand::Imm16(seg)), Some(Operand::Imm16(off))) =
+                (instr.operands.get(0), instr.operands.get(1))
+            {
+                FlowKind::JumpFar(*seg, *off)
+            } else {
+                FlowKind::IndirectTransfer
+            }
         }
-    }
 
-    FlowKind::Continue
+        Mnemonic::Call => match instr.operands.first() {
+            Some(Operand::Imm16(target)) => FlowKind::Call(*target),
+            _ => FlowKind::IndirectTransfer,
+        },
+
+        Mnemonic::CallFar => {
+            if let (Some(Operand::Imm16(seg)), Some(Operand::Imm16(off))) =
+                (instr.operands.get(0), instr.operands.get(1))
+            {
+                FlowKind::CallFar(*seg, *off)
+            } else {
+                FlowKind::IndirectTransfer
+            }
+        }
+
+        Mnemonic::Ja
+        | Mnemonic::Jae
+        | Mnemonic::Jb
+        | Mnemonic::Jbe
+        | Mnemonic::Jcxz
+        | Mnemonic::Je
+        | Mnemonic::Jg
+        | Mnemonic::Jge
+        | Mnemonic::Jl
+        | Mnemonic::Jle
+        | Mnemonic::Jne
+        | Mnemonic::Jno
+        | Mnemonic::Jns
+        | Mnemonic::Jo
+        | Mnemonic::Jp
+        | Mnemonic::Jnp
+        | Mnemonic::Js
+        | Mnemonic::Loop
+        | Mnemonic::Loopz
+        | Mnemonic::Loopnz => match instr.operands.first() {
+            Some(Operand::Imm16(target)) => FlowKind::ConditionalJump(*target),
+            _ => FlowKind::Continue,
+        },
+
+        _ => FlowKind::Continue,
+    }
+}
+
+/// Format just the mnemonic + operands portion of an instruction (no location/bytes/annotations).
+pub fn asm_text(instr: &Instruction) -> String {
+    match instr.operands.len() {
+        0 => instr.mnemonic.to_string(),
+        1 => format!("{} {}", instr.mnemonic, instr.operands[0].asm_str()),
+        _ => format!(
+            "{} {}, {}",
+            instr.mnemonic,
+            instr.operands[0].asm_str(),
+            instr.operands[1].asm_str()
+        ),
+    }
 }
