@@ -21,6 +21,11 @@ use crate::{
 pub const EGA_MEMORY_START: usize = 0xA0000;
 pub const EGA_MEMORY_END: usize = 0xAFFFF;
 
+// MDA/HGC video memory constants (monochrome adapters at B000:0000)
+pub const MDA_MEMORY_START: usize = 0xB0000;
+pub const MDA_MEMORY_END: usize = 0xB7FFF;
+pub const MDA_MEMORY_SIZE: usize = MDA_MEMORY_END - MDA_MEMORY_START + 1; // 32KB
+
 // CGA video memory constants
 pub const CGA_MEMORY_START: usize = 0xB8000;
 pub const CGA_MEMORY_END: usize = 0xBFFFF;

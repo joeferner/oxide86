@@ -498,21 +498,21 @@ impl VideoBuffer {
         //   PHASE0[11] (270°, 3px) = light pink      — used by trans flag with PHASE1
         //   PHASE0[14] (90°,  3px) = light cyan      — complement of pink
         const PHASE0: [[u8; 3]; 16] = [
-            [0,   0,   0  ], // 0  black         (0px, no chroma)
-            [85,  0,   0  ], // 1  dark red       (1px, 270° = red direction)
-            [0,   85,  0  ], // 2  dark green     (1px, 180°)
-            [170, 85,  0  ], // 3  brown/orange   (2px, 225°) ← PHASE1 blue complement
-            [0,   85,  85 ], // 4  dark cyan      (1px, 90°)
+            [0, 0, 0],       // 0  black         (0px, no chroma)
+            [85, 0, 0],      // 1  dark red       (1px, 270° = red direction)
+            [0, 85, 0],      // 2  dark green     (1px, 180°)
+            [170, 85, 0],    // 3  brown/orange   (2px, 225°) ← PHASE1 blue complement
+            [0, 85, 85],     // 4  dark cyan      (1px, 90°)
             [128, 128, 128], // 5  gray           (2px, no chroma)
-            [0,   170, 0  ], // 6  green          (2px, 135°)
-            [170, 200, 85 ], // 7  yellow-green   (3px, 180°)
-            [85,  0,   170], // 8  dark purple    (1px, 0°)
-            [170, 0,   170], // 9  magenta        (2px, 315°)
+            [0, 170, 0],     // 6  green          (2px, 135°)
+            [170, 200, 85],  // 7  yellow-green   (3px, 180°)
+            [85, 0, 170],    // 8  dark purple    (1px, 0°)
+            [170, 0, 170],   // 9  magenta        (2px, 315°)
             [128, 128, 128], // 10 gray           (2px, no chroma)
             [255, 133, 240], // 11 light pink     (3px, 270°) ← PHASE1 trans pink  #FF85F0
-            [0,   159, 253], // 12 blue           (2px, 45°)  ← PHASE1 trans blue  #009FFD
+            [0, 159, 253],   // 12 blue           (2px, 45°)  ← PHASE1 trans blue  #009FFD
             [200, 100, 255], // 13 light purple   (3px, 0°)
-            [85,  255, 200], // 14 light cyan     (3px, 90°)  ← PHASE1 pink complement
+            [85, 255, 200],  // 14 light cyan     (3px, 90°)  ← PHASE1 pink complement
             [255, 255, 255], // 15 white          (4px, no chroma)
         ];
         // PHASE1[n] = PHASE0[rotate_left_2(n)] — 180° subcarrier inversion.
@@ -558,7 +558,7 @@ impl VideoBuffer {
                     let x = group * 4 + bit;
                     for dy in 0..2 {
                         let offset = ((y * 2 + dy) * OUT_WIDTH + x) * 4;
-                        buf[offset]     = rgb[0];
+                        buf[offset] = rgb[0];
                         buf[offset + 1] = rgb[1];
                         buf[offset + 2] = rgb[2];
                         buf[offset + 3] = 0xFF;

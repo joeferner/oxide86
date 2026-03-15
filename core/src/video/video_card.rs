@@ -7,8 +7,8 @@ use crate::{
     Device,
     video::{
         CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, EGA_MEMORY_END, EGA_MEMORY_START,
-        EGA_PLANE_SIZE, Mode, VGA_MODE_13_FRAMEBUFFER_SIZE, VIDEO_MEMORY_SIZE, VideoBuffer,
-        VideoCardType,
+        EGA_PLANE_SIZE, MDA_MEMORY_END, MDA_MEMORY_SIZE, MDA_MEMORY_START, Mode,
+        VGA_MODE_13_FRAMEBUFFER_SIZE, VIDEO_MEMORY_SIZE, VideoBuffer, VideoCardType,
         font::{CHAR_HEIGHT_8, Cp437Font},
         mode::TextDimensions,
         palette::{TextModePalette, VGA_DEFAULT_DAC_PALETTE},
@@ -21,9 +21,11 @@ pub const VIDEO_CARD_DATA_ADDR: u16 = 0x03D5;
 pub const CGA_MODE_CTRL_ADDR: u16 = 0x03D8;
 pub const CGA_COLOR_SELECT_ADDR: u16 = 0x03D9;
 
-// MDA CRTC ports (same 6845 chip but different address; none of our card types are MDA)
-const MDA_CRTC_CONTROL_ADDR: u16 = 0x03B4;
-const MDA_CRTC_DATA_ADDR: u16 = 0x03B5;
+// MDA/HGC CRTC ports (same 6845 chip as CGA but at different addresses)
+pub const MDA_CRTC_CONTROL_ADDR: u16 = 0x03B4;
+pub const MDA_CRTC_DATA_ADDR: u16 = 0x03B5;
+const MDA_MODE_CTRL_ADDR: u16 = 0x03B8; // Mode control register (write-only)
+const MDA_STATUS_ADDR: u16 = 0x03BA; // Status register: bit0=hsync, bit7=vsync (HGC only)
 
 pub const VIDEO_CARD_REG_CURSOR_START_LINE: u8 = 0x0a;
 pub const VIDEO_CARD_REG_CURSOR_END_LINE: u8 = 0x0b;
@@ -66,6 +68,7 @@ pub struct VideoCard {
     cpu_clock_speed: u32,
     io_register: u8,
     cga_mode_ctrl: u8,
+    mda_mode_ctrl: u8,
     color_select: u8,
     // EGA/VGA Attribute Controller registers (16 palette + 1 border color)
     ac_registers: [u8; 17],
@@ -108,7 +111,7 @@ impl VideoCard {
     ) -> Self {
         let dac_registers = match card_type {
             VideoCardType::VGA => VGA_DEFAULT_DAC_PALETTE.to_vec(),
-            VideoCardType::EGA => {
+            VideoCardType::EGA | VideoCardType::MDA | VideoCardType::HGC => {
                 let mut regs = vec![[0u8; 3]; 256];
                 for (i, entry) in regs.iter_mut().enumerate().take(16) {
                     *entry = TextModePalette::get_dac_color(i as u8);
@@ -122,11 +125,13 @@ impl VideoCard {
             buffer,
             vram_size: match card_type {
                 VideoCardType::EGA | VideoCardType::VGA => VIDEO_MEMORY_SIZE,
+                VideoCardType::MDA | VideoCardType::HGC => MDA_MEMORY_SIZE,
                 VideoCardType::CGA => CGA_MEMORY_SIZE,
             },
             cpu_clock_speed,
             io_register: 0,
             cga_mode_ctrl: 0,
+            mda_mode_ctrl: 0,
             color_select: 0,
             ac_registers: [0u8; 17],
             ac_address: 0,
@@ -200,7 +205,7 @@ impl VideoCard {
                     buffer.set_dac_color(i, r, g, b);
                 }
             }
-            VideoCardType::CGA => {}
+            VideoCardType::CGA | VideoCardType::MDA | VideoCardType::HGC => {}
         }
         dims
     }
@@ -610,17 +615,19 @@ impl Device for VideoCard {
         buffer.reset();
         self.vram_size = match self.card_type {
             VideoCardType::EGA | VideoCardType::VGA => VIDEO_MEMORY_SIZE,
+            VideoCardType::MDA | VideoCardType::HGC => MDA_MEMORY_SIZE,
             VideoCardType::CGA => CGA_MEMORY_SIZE,
         };
         self.io_register = 0;
         self.cga_mode_ctrl = 0;
+        self.mda_mode_ctrl = 0;
         self.color_select = 0;
         self.ac_registers = [0u8; 17];
         self.ac_address = 0;
         self.ac_flip_flop = false;
         match self.card_type {
             VideoCardType::VGA => self.dac_registers.copy_from_slice(&VGA_DEFAULT_DAC_PALETTE),
-            VideoCardType::EGA => {
+            VideoCardType::EGA | VideoCardType::MDA | VideoCardType::HGC => {
                 for (i, entry) in self.dac_registers.iter_mut().enumerate().take(16) {
                     *entry = TextModePalette::get_dac_color(i as u8);
                 }
@@ -650,7 +657,11 @@ impl Device for VideoCard {
     }
 
     fn memory_read_u8(&mut self, addr: usize, _cycle_count: u32) -> Option<u8> {
-        if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
+        if matches!(self.card_type, VideoCardType::MDA | VideoCardType::HGC)
+            && (MDA_MEMORY_START..=MDA_MEMORY_END).contains(&addr)
+        {
+            Some(self.internal_read_u8(addr - MDA_MEMORY_START))
+        } else if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
             Some(self.internal_read_u8(offset))
         } else if matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA)
@@ -687,7 +698,12 @@ impl Device for VideoCard {
     }
 
     fn memory_write_u8(&mut self, addr: usize, val: u8, _cycle_count: u32) -> bool {
-        if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
+        if matches!(self.card_type, VideoCardType::MDA | VideoCardType::HGC)
+            && (MDA_MEMORY_START..=MDA_MEMORY_END).contains(&addr)
+        {
+            self.internal_write_u8(addr - MDA_MEMORY_START, val);
+            true
+        } else if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
             self.internal_write_u8(offset, val);
             true
@@ -768,6 +784,43 @@ impl Device for VideoCard {
     fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8> {
         let is_ega_vga = matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA);
         match self.card_type {
+            VideoCardType::MDA | VideoCardType::HGC => match port {
+                MDA_CRTC_CONTROL_ADDR => Some(self.io_register),
+                MDA_CRTC_DATA_ADDR => {
+                    let buffer = self.buffer.read().unwrap();
+                    Some(match self.io_register {
+                        VIDEO_CARD_REG_CURSOR_START_LINE => buffer.cursor_start_line(),
+                        VIDEO_CARD_REG_CURSOR_END_LINE => buffer.cursor_end_line(),
+                        VIDEO_CARD_REG_CURSOR_LOC_HIGH => (buffer.cursor_loc() >> 8) as u8,
+                        VIDEO_CARD_REG_CURSOR_LOC_LOW => (buffer.cursor_loc() & 0xFF) as u8,
+                        VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
+                            (buffer.start_address() >> 8) as u8
+                        }
+                        VIDEO_CARD_START_ADDRESS_LOW_REGISTER => {
+                            (buffer.start_address() & 0xFF) as u8
+                        }
+                        _ => 0,
+                    })
+                }
+                MDA_MODE_CTRL_ADDR => Some(self.mda_mode_ctrl),
+                MDA_STATUS_ADDR => {
+                    // Bit 0: horizontal retrace (simulated).
+                    // Bit 7: vertical sync — toggles on HGC (used by findmono to distinguish
+                    //        HGC from MDA), static 0 on MDA.
+                    let cycles_per_frame = self.cpu_clock_speed as u64 / CGA_VSYNC_HZ;
+                    let vsync_cycles = cycles_per_frame / CGA_VSYNC_DUTY_DIVISOR;
+                    let phase = cycle_count as u64 % cycles_per_frame;
+                    let in_vsync = phase < vsync_cycles;
+                    let vsync_bit: u8 = if matches!(self.card_type, VideoCardType::HGC) && in_vsync
+                    {
+                        0x80
+                    } else {
+                        0x00
+                    };
+                    Some(vsync_bit)
+                }
+                _ => None,
+            },
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: return 0xFF — no MDA card present
                 MDA_CRTC_CONTROL_ADDR | MDA_CRTC_DATA_ADDR => Some(0xFF),
@@ -835,6 +888,52 @@ impl Device for VideoCard {
     fn io_write_u8(&mut self, port: u16, val: u8, _cycle_count: u32) -> bool {
         let is_ega_vga = matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA);
         match self.card_type {
+            VideoCardType::MDA | VideoCardType::HGC => match port {
+                MDA_CRTC_CONTROL_ADDR => {
+                    self.io_register = val;
+                    true
+                }
+                MDA_CRTC_DATA_ADDR => {
+                    let mut buffer = self.buffer.write().unwrap();
+                    match self.io_register {
+                        VIDEO_CARD_REG_CURSOR_START_LINE => {
+                            buffer.set_cursor_visible((val & 0x20) == 0);
+                            buffer.set_cursor_start_line(val & 0x1F);
+                        }
+                        VIDEO_CARD_REG_CURSOR_END_LINE => buffer.set_cursor_end_line(val & 0x1F),
+                        VIDEO_CARD_REG_CURSOR_LOC_HIGH => {
+                            let loc = (buffer.cursor_loc() & 0x00FF) | ((val as u16) << 8);
+                            buffer.set_cursor_loc(loc);
+                        }
+                        VIDEO_CARD_REG_CURSOR_LOC_LOW => {
+                            let loc = (buffer.cursor_loc() & 0xFF00) | val as u16;
+                            buffer.set_cursor_loc(loc);
+                        }
+                        VIDEO_CARD_START_ADDRESS_HIGH_REGISTER => {
+                            let addr = (buffer.start_address() & 0x00FF) | ((val as u16) << 8);
+                            buffer.set_start_address(addr);
+                        }
+                        VIDEO_CARD_START_ADDRESS_LOW_REGISTER => {
+                            let addr = (buffer.start_address() & 0xFF00) | val as u16;
+                            buffer.set_start_address(addr);
+                        }
+                        _ => {}
+                    }
+                    true
+                }
+                MDA_MODE_CTRL_ADDR => {
+                    self.mda_mode_ctrl = val;
+                    if matches!(self.card_type, VideoCardType::HGC) && (val & 0x02 != 0) {
+                        log::warn!(
+                            "HGC graphics mode (0x3B8=0x{:02X}) not yet implemented",
+                            val
+                        );
+                    }
+                    true
+                }
+                MDA_STATUS_ADDR => true, // write-only register, ignore reads-as-write
+                _ => false,
+            },
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: silently ignore — no MDA card present
                 MDA_CRTC_CONTROL_ADDR | MDA_CRTC_DATA_ADDR => true,

@@ -10,7 +10,10 @@ use crate::{
     },
     video::{
         DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, TEXT_MODE_COLS, TEXT_MODE_SIZE,
-        mode::Mode, video_buffer::CursorPosition, video_card::VIDEO_CARD_CONTROL_ADDR,
+        VideoCardType,
+        mode::Mode,
+        video_buffer::CursorPosition,
+        video_card::{MDA_CRTC_CONTROL_ADDR, VIDEO_CARD_CONTROL_ADDR},
     },
 };
 
@@ -49,6 +52,7 @@ const BDA_KEYBOARD_BUFFER_START: usize = 0x80; // Keyboard buffer start pointer 
 const BDA_KEYBOARD_BUFFER_END: usize = 0x82; // Keyboard buffer end pointer (word, normally 0x003E)
 const BDA_EGA_ROWS: usize = 0x84; // EGA/VGA: number of rows on screen minus 1 (byte, e.g. 24 for 25-row mode)
 const BDA_EGA_CHAR_HEIGHT: usize = 0x85; // EGA/VGA: bytes per character (byte, e.g. 16 for 8x16 font)
+const BDA_EGA_INFO: usize = 0x87; // EGA info: bit3=0 active, bits4-5=RAM size (00=64K..11=256K), 0x00=no EGA
 const BDA_DISPLAY_COMBINATION_CODE: usize = 0x8A; // PS/2 VGA: DCC word (low=active, high=alternate)
 const BDA_MOUSE_X: usize = 0xE0; // Mouse X position (word)
 const BDA_MOUSE_Y: usize = 0xE2; // Mouse Y position (word)
@@ -116,7 +120,11 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // TODO properly fill out equipment list
     let mut equipment = 0u16;
     equipment |= EQUIPMENT_FLOPPY_INSTALLED; // Floppy drive installed
-    equipment |= EQUIPMENT_VIDEO_MODE_80X25_COLOR; // 80x25 color text mode
+    equipment |= if bus.video_card().card_type().is_monochrome() {
+        EQUIPMENT_VIDEO_MODE_80X25_MONO // bits 4-5 = 11: 80x25 mono
+    } else {
+        EQUIPMENT_VIDEO_MODE_80X25_COLOR // bits 4-5 = 10: 80x25 color
+    };
     equipment |= 0x0040; // 1 floppy drive (bits 6-7: count-1 = 0)
     // No math coprocessor, no serial ports configured in equipment list
     bus.memory_write_u16(BDA_START + BDA_EQUIPMENT_LIST, equipment);
@@ -167,7 +175,12 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     bus.memory_write_u8(BDA_START + BDA_ACTIVE_PAGE, 0); // Page 0
 
     // CRT controller port address (0x0040:0063)
-    bus.memory_write_u16(BDA_START + BDA_CRTC_PORT, VIDEO_CARD_CONTROL_ADDR); // Color adapter (monochrome = 0x03B4)
+    let crtc_port = if bus.video_card().card_type().is_monochrome() {
+        MDA_CRTC_CONTROL_ADDR // 0x03B4
+    } else {
+        VIDEO_CARD_CONTROL_ADDR // 0x03D4
+    };
+    bus.memory_write_u16(BDA_START + BDA_CRTC_PORT, crtc_port);
 
     // CRT mode control register (0x0040:0065)
     bus.memory_write_u8(BDA_START + BDA_CRT_MODE_CONTROL, 0x09); // 80x25 text, enable video
@@ -205,6 +218,14 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     // Programs (e.g., Turbo Pascal, dBASE) read these to determine screen dimensions
     bus.memory_write_u8(BDA_START + BDA_EGA_ROWS, 24); // 25 rows - 1 = 24
     bus.memory_write_u8(BDA_START + BDA_EGA_CHAR_HEIGHT, 16); // 8x16 VGA font
+
+    // EGA info byte (0x0040:0087): 0x00 = no EGA; non-zero = EGA present.
+    // Bit 3: 0 = EGA active as display adapter.  Bits 4-5: RAM size (11 = 256 KB).
+    let ega_info = match bus.video_card().card_type() {
+        VideoCardType::EGA | VideoCardType::VGA => 0x30, // 256 KB, EGA active (bit3=0)
+        VideoCardType::CGA | VideoCardType::MDA | VideoCardType::HGC => 0x00,
+    };
+    bus.memory_write_u8(BDA_START + BDA_EGA_INFO, ega_info);
 
     // Display combination code (0x0040:008A) - PS/2 VGA extension
     let dcc = bus.video_card().card_type().display_combination_code();

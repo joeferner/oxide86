@@ -1,5 +1,5 @@
 use crate::{
-    tests::{create_computer, run_assert_screen_key_press_run_test},
+    tests::{assert_screen, create_computer, run_assert_screen_key_press_run_test, run_test},
     video::VideoCardType,
 };
 
@@ -75,4 +75,60 @@ pub(crate) fn mode_10h_ega_640x350x16() {
 #[test_log::test]
 pub(crate) fn cga_composite_trans() {
     run_assert_screen_key_press_run_test("video/cga_composite/trans", create_computer());
+}
+
+#[test_log::test]
+pub(crate) fn ct755r_vhw_detect_cga() {
+    run_test(
+        "video/ct755r/vhw_detect",
+        make_computer!(video_card_type: VideoCardType::CGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ct755r/vhw_detect_cga", video_buffer);
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
+pub(crate) fn ct755r_vhw_detect_mda() {
+    run_test(
+        "video/ct755r/vhw_detect",
+        make_computer!(video_card_type: VideoCardType::MDA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ct755r/vhw_detect_mda", video_buffer);
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
+pub(crate) fn ct755r_vhw_detect_hgc() {
+    run_test(
+        "video/ct755r/vhw_detect",
+        make_computer!(video_card_type: VideoCardType::HGC),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ct755r/vhw_detect_hgc", video_buffer);
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
+pub(crate) fn ct755r_vhw_detect_ega_256k() {
+    run_test(
+        "video/ct755r/vhw_detect",
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ct755r/vhw_detect_ega_256k", video_buffer);
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
 }

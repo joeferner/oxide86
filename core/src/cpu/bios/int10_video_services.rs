@@ -28,8 +28,8 @@ use crate::{
         video_card::{
             AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
             CGA_COLOR_SELECT_ADDR, DAC_DATA_PORT, DAC_READ_INDEX_PORT, DAC_WRITE_INDEX_PORT,
-            INPUT_STATUS_1_PORT, ScrollWindow, VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_DATA_ADDR,
-            VIDEO_CARD_REG_CURSOR_END_LINE, VIDEO_CARD_REG_CURSOR_START_LINE,
+            INPUT_STATUS_1_PORT, ScrollWindow, VIDEO_CARD_REG_CURSOR_END_LINE,
+            VIDEO_CARD_REG_CURSOR_START_LINE,
         },
         video_set_cursor_pos,
     },
@@ -233,12 +233,13 @@ impl Cpu {
         let crtc_start = crtc_start | (start_line & !0x1F); // preserve option bits
 
         // Set Cursor Start Scanline
-        bus.io_write_u8(VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_REG_CURSOR_START_LINE);
-        bus.io_write_u8(VIDEO_CARD_DATA_ADDR, crtc_start);
+        let crtc = bda_get_crt_controller_port_address(bus);
+        bus.io_write_u8(crtc, VIDEO_CARD_REG_CURSOR_START_LINE);
+        bus.io_write_u8(crtc + 1, crtc_start);
 
         // Set Cursor End Scanline
-        bus.io_write_u8(VIDEO_CARD_CONTROL_ADDR, VIDEO_CARD_REG_CURSOR_END_LINE);
-        bus.io_write_u8(VIDEO_CARD_DATA_ADDR, crtc_end);
+        bus.io_write_u8(crtc, VIDEO_CARD_REG_CURSOR_END_LINE);
+        bus.io_write_u8(crtc + 1, crtc_end);
 
         log::debug!(
             "INT 0x10/AH=0x01: cursor shape CH=0x{:02X} CL=0x{:02X} -> crtc {}/{} visible={}",
@@ -328,12 +329,13 @@ impl Cpu {
 
         // Update active page in Video struct
         // Write to CRTC Register 0x0C (Start Address High)
-        bus.io_write_u8(VIDEO_CARD_CONTROL_ADDR, 0x0C);
-        bus.io_write_u8(VIDEO_CARD_DATA_ADDR, ((word_offset >> 8) & 0xff) as u8);
+        let crtc = bda_get_crt_controller_port_address(bus);
+        bus.io_write_u8(crtc, 0x0C);
+        bus.io_write_u8(crtc + 1, ((word_offset >> 8) & 0xff) as u8);
 
         // Write to CRTC Register 0x0D (Start Address Low)
-        bus.io_write_u8(VIDEO_CARD_CONTROL_ADDR, 0x0D);
-        bus.io_write_u8(VIDEO_CARD_DATA_ADDR, (word_offset & 0xff) as u8);
+        bus.io_write_u8(crtc, 0x0D);
+        bus.io_write_u8(crtc + 1, (word_offset & 0xff) as u8);
 
         // The BIOS also tracks cursor X/Y for EACH page
         // refresh the hardware cursor to match the stored position for the NEW page.
@@ -1015,9 +1017,15 @@ impl Cpu {
     ///   1Ah = Read color page state
     ///   1Bh = Perform gray-scale summing
     fn int10_palette_registers(&mut self, bus: &mut Bus) {
-        // CGA BIOS does not implement AH=10h (EGA/VGA function only)
-        if bus.video_card().card_type() == VideoCardType::CGA {
-            log::warn!("INT 10h AH=10h: not supported by CGA card - ignoring");
+        // Only EGA/VGA implement AH=10h
+        if !matches!(
+            bus.video_card().card_type(),
+            VideoCardType::EGA | VideoCardType::VGA
+        ) {
+            log::warn!(
+                "INT 10h AH=10h: not supported by {:?} card - ignoring",
+                bus.video_card().card_type()
+            );
             return;
         }
 
@@ -1270,9 +1278,15 @@ impl Cpu {
     ///   CX = bytes per character
     ///   DL = rows on screen - 1
     fn int10_character_generator(&mut self, bus: &mut Bus) {
-        // CGA BIOS does not implement AH=11h (EGA/VGA function only)
-        if bus.video_card().card_type() == VideoCardType::CGA {
-            log::warn!("INT 10h AH=11h: not supported by CGA card - ignoring");
+        // Only EGA/VGA implement AH=11h
+        if !matches!(
+            bus.video_card().card_type(),
+            VideoCardType::EGA | VideoCardType::VGA
+        ) {
+            log::warn!(
+                "INT 10h AH=11h: not supported by {:?} card - ignoring",
+                bus.video_card().card_type()
+            );
             return;
         }
 
@@ -1408,9 +1422,15 @@ impl Cpu {
     ///   35h = Display switch
     ///   36h = Video refresh control
     fn int10_alternate_function_select(&mut self, bus: &Bus) {
-        // CGA BIOS does not implement AH=12h (EGA/VGA function only)
-        if bus.video_card().card_type() == VideoCardType::CGA {
-            log::warn!("INT 10h AH=12h: not supported by CGA card - ignoring");
+        // Only EGA/VGA implement AH=12h
+        if !matches!(
+            bus.video_card().card_type(),
+            VideoCardType::EGA | VideoCardType::VGA
+        ) {
+            log::warn!(
+                "INT 10h AH=12h: not supported by {:?} card - ignoring",
+                bus.video_card().card_type()
+            );
             return;
         }
 

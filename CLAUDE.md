@@ -18,6 +18,7 @@ Intel x86 CPU emulator in Rust with native and WebAssembly support.
 - The assembly files (.asm) are compiled in core/build.rs using nasm
 - Tests are run from core/src/tests.rs
 - You can run the tests using `cargo test --all` you don't need to run pre-commit.sh
+- Do NOT modify `assert_screen` in `core/src/tests/mod.rs` to auto-save missing PNG snapshots; the user manages snapshot creation manually
 
 ## Bus, IO, and Memory Architecture
 
