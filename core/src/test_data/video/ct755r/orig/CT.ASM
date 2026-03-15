@@ -180,8 +180,6 @@ usage_str db " CGA/MDA/HGC card modes test v7.55R, (c) 2023 Emil Mammadov", 0Dh,
         db " T - test video hardware", 0Dh, 0Ah, '$'
 
 error_dosver_str	db " DOS version must be 2.00 or above!", 0Dh, 0Ah, '$'
-ovl_str			db "Overflow!", 0
-ms_str			db " ms",0
 
 mode4_pal0_s		db "CGA mode 4, Palette 0   ", 0
 mode4_pal0h_s		db "CGA mode 4, Palette 0 HI", 0
@@ -203,12 +201,6 @@ mode5_pal0h_dw_s	db "CGA mode 5, Palette 0 HI  Direct write", 0
 mode5_pal1_dw_s		db "CGA mode 5, Palette 1     Direct write", 0
 mode5_pal1h_dw_s	db "CGA mode 5, Palette 1 HI  Direct write", 0
 
-ntsc_m4_p0_s		db "NTSC mode 4, Palette 0   ", 0 
-ntsc_m4_p0h_s		db "NTSC mode 4, Palette 0 HI", 0 
-ntsc_m4_p1_s		db "NTSC mode 4, Palette 1   ", 0 
-ntsc_m4_p1h_s		db "NTSC mode 4, Palette 1 HI", 0 
-ntsc_m6_s		db "NTSC mode 6              ", 0 
-ntsc_m6h_s		db "NTSC mode 6 HI           ", 0 
 
 back_black_str		db "Background Color Black  ", 0
 back_blue_str		db "Background Color Blue   ", 0
@@ -288,7 +280,6 @@ C160X100_param  db      00,  113  ; horizontal total
 C160X100_len    EQU ($ - C160X100_param)/2
 
 file_handle	dw	0000h
-ntscdata_file_s	db	"NTSCDATA.IMG", 0
 c160100d_file_s	db	"C160100D.IMG", 0
 h_bmp_file_s	db      "800600BW.BMP", 0
 
@@ -453,12 +444,6 @@ cmdloop:
 	call	mode7
         jmp     exit
 @@:
-	cmp	al, 'c'
-        jne	@F
-        lea     dx, ntscdata_file_s
-        call    ntsc_out         ; composite NTSC out test
-        jmp     exit
-@@:
 	cmp	al, 'l'
 	jne	@F
         lea     dx, c160100d_file_s
@@ -573,188 +558,6 @@ ega_sw proc near
         int     10h
         retn
 ega_sw endp
-
-;********************NTSC Composite Out Color test*****************************
-ntsc_out proc near
-; load file into mem
-        mov     allocpara, 1000
-        call    load_file
-        jnc     @F      ; exit, if CF was set
-        retn
-@@:
-
-; CGA mode 4 for NTSC out
-	mov	ah, 00h		; set mode function
-	mov	al, 04h		; set CGA mode 04
-	int	10h
-; bit0 set blue  color
-; bit1 set green color
-; bit2 set red   color
-; bit3 set intensity for background's colors
-; bit4 set intensity for pallette's colors
-; bit5 - palette
-; bit6 - not used
-; bit7 - not used
-
-; set black as background color, palette 0
-        mov     bh, 00h
-        mov     bl, 00000000b	; set black background color
-	mov	ah, 0Bh
-        int     10h
-
-; set palette
-	mov	bh, 01h
-	mov	bl, 00h		; set palette 00h
-	mov	ah, 0Bh
-	int	10h
-
-;  prepare initial counter value for bencmark
-        mov     ax, 40h
-        mov     es, ax
-        mov     ax, word ptr es:[6Ch]
-        push    ax  ; save value in stack
-
-; write all graphic screen
-; SI - screen data offset
-; ES - segment addr of screen data
-        push    es
-        mov     ax, mem_block_addr
-        mov     es, ax
-        mov     si, 0000h       ; offset of image data
-        call write_mode4
-        pop     es
-
-; calculating and show bencmark value, ES = 40h
-        mov     ax, word ptr es:[6Ch]   ; get ending counter value
-        mov     dx, 0000h       ; cursor to row 0 : col 0
-	call	set_cursor
-
-        pop     bx       ; restore initial counter value from stack to bx
-        sub     ax, bx   ; calculate time in ~55ms quants
-        mov     bx, 55   ; mul time to ~55ms for getting time in ms in DX:AX
-        mul     bx
-
-        mov     si, offset ovl_str      ; prepare "overflow!" str
-
-if 0    ; only for test purpose
-        mov     ax, 65535
-        mov     dx, 10
-endif
-    
-	cmp     dx, 10          ; if DX above or equal 10, show Ovl str
-        jae     @F              ; jump for preventing divide overflow int
-        call    show_dx_ax ; show value from DX:AX after mul
-        mov     si, offset ms_str
-@@:
-	call	print_str
-
-        mov     dx, 000Fh       ; cursor to row 0 : col 15
-	call	set_cursor
-        mov     si, offset ntsc_m4_p0_s
-	call	print_str
-	call	wait_key
-
-
-; bit0 set blue  color
-; bit1 set green color
-; bit2 set red   color
-; bit3 set intensity for background's colors
-; bit4 set intensity for pallette's colors
-; bit5 - set palette
-; bit6 - not used
-; bit7 - not used
-        mov     bh, 00h
-        mov     bl,  00010000b          ; set intensified color
-	mov	ah, 0Bh
-        int     10h
-
-        mov     dx, 000Fh       ; cursor to row 0 : col 15
-	call	set_cursor
-        mov     si, offset ntsc_m4_p0h_s
-	call	print_str
-	call	wait_key
-
-
-        mov     bh, 00h
-        mov     bl, 00000000b		; set normal color
-	mov	ah, 0Bh
-        int     10h
-
-        mov     bh, 01h
-        mov     bl,  000000001b          ; set palette 1
-	mov	ah, 0Bh
-        int     10h
-
-        mov     dx, 000Fh       ; cursor to row 0 : col 15
-	call	set_cursor
-        mov     si, offset ntsc_m4_p1_s
-	call	print_str
-	call	wait_key
-
-
-        mov     bh, 00h
-        mov     bl, 00010000b          ; set intensified color
-	mov	ah, 0Bh
-        int     10h
-
-        mov     dx, 000Fh       ; cursor to row 0 : col 15
-	call	set_cursor
-        mov     si, offset ntsc_m4_p1h_s
-	call	print_str
-	call	wait_key
-
-;---------------------- NTSC out, CGA mode 6 -------------------------------
-; mode control reg
-; bit0   1 -> 80x25, 0 ->40x25, graphics modes ->0
-; bit1   1-> 320x200 mode, 0 -> text mode
-; bit2   1-> B/W mode on NTSC out, 0-> color mode on NTSC out 
-; bit3   1-> enable video signal, 0-> disable
-; bit4   1-> enable high res 640x200 mode
-; bit5   1-> blinking function, 0-> high intensity
-; 80x25  color off at NTSC out ????
-
-	mov	dx, mode_6845
-	mov	al, 00011010b		; 1Eh for BW mode on composite out
-	out	dx, al			; 1Ah for color mode on composite out
-					; bit2 0 -> color mode; 1-> B/W mode
-					; bit2 doesn't affected for RGB out
-
-	mov	dx, color_6845
-        mov     al, 00000111b           ; normal intensity
-	out	dx, al
-
-        mov     dx, 000Fh       ; cursor to row 0 : col 15
-	call	set_cursor
-        mov     si, offset ntsc_m6_s
-	call	print_str
-	call	wait_key
-
-	mov	dx, color_6845
-        mov     al, 00001111b           ; high intensity
-	out	dx, al
-
-        mov     dx, 000Fh       ; cursor to row 0 : col 15
-	call	set_cursor
-        mov     si, offset ntsc_m6h_s
-	call	print_str
-	call	wait_key
-
-
-        mov     ah, 00h
-	mov	al, init_video_mode	; return old video mode
-	int	10h
-        call    sync_fix        ; ??? for G3101
-
-        mov     ax, mem_block_addr
-        mov     es, ax
-        mov     ah, 49h
-        int     21h
-        jnc     @F
-        mov     si, offset mem_free_err_str
-        call    print_str
-@@:
-	retn
-ntsc_out endp
 
 ;******************Non-standard 160 x 100 16 color mode*********************
 c160_100 proc near

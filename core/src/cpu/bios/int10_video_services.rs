@@ -850,7 +850,7 @@ impl Cpu {
             }
             Mode::M0DEga320x200x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_8);
-                bus.video_card_mut().ega_draw_glyph_transparent(
+                bus.video_card_mut().ega_draw_glyph(
                     &glyph,
                     row,
                     col,
@@ -861,7 +861,7 @@ impl Cpu {
             }
             Mode::M10Ega640x350x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_14);
-                bus.video_card_mut().ega_draw_glyph_transparent(
+                bus.video_card_mut().ega_draw_glyph(
                     &glyph,
                     row,
                     col,
@@ -924,7 +924,9 @@ impl Cpu {
                 let mode = bda_get_video_mode(bus);
                 match mode {
                     Mode::M04Cga320x200x4 | Mode::M06Cga640x200x2 => {
-                        // Graphics mode: draw character pixel-by-pixel into CGA framebuffer
+                        // Graphics mode: draw character pixel-by-pixel into CGA framebuffer.
+                        // AH=0Eh is opaque: the full 8x8 cell is written, background pixels
+                        // become black (0). This matches real IBM BIOS behavior.
                         let fg_color = (self.bx & 0xFF) as u8; // BL
                         self.draw_char_cga_graphics(
                             bus,
@@ -933,13 +935,13 @@ impl Cpu {
                             cursor.row,
                             cursor.col,
                             fg_color,
-                            GraphicsDrawMode::Transparent,
+                            GraphicsDrawMode::Opaque,
                         );
                     }
                     Mode::M0DEga320x200x16 => {
-                        // EGA planar graphics: draw character transparently into EGA planes
+                        // EGA planar graphics: draw character opaquely (fg pixels = fg_color, bg pixels = black)
                         let fg_color = (self.bx & 0xFF) as u8; // BL
-                        bus.video_card_mut().ega_draw_char_transparent(
+                        bus.video_card_mut().ega_draw_char(
                             ch,
                             cursor.row,
                             cursor.col,
@@ -951,7 +953,7 @@ impl Cpu {
                     Mode::M10Ega640x350x16 => {
                         // EGA 640x350 planar graphics: 80 bytes per row, 8x14 character cells
                         let fg_color = (self.bx & 0xFF) as u8; // BL
-                        bus.video_card_mut().ega_draw_char_transparent(
+                        bus.video_card_mut().ega_draw_char(
                             ch,
                             cursor.row,
                             cursor.col,

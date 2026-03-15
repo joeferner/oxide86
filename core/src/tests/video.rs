@@ -120,6 +120,35 @@ pub(crate) fn ct755r_vhw_detect_hgc() {
 }
 
 #[test_log::test]
+pub(crate) fn ct755r_ntsc_out() {
+    run_test(
+        "video/ct755r/ntsc_out",
+        create_computer(),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ct755r/ntsc_out_m4_p0", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/ntsc_out_m4_p0h", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/ntsc_out_m4_p1", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/ntsc_out_m4_p1h", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/ntsc_out_m6", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/ntsc_out_m6h", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn ct755r_vhw_detect_ega_256k() {
     run_test(
         "video/ct755r/vhw_detect",

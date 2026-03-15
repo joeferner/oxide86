@@ -46,8 +46,9 @@
 - [X] Create reverse engineering mode (see ai-analysis/reverse-engineer-plan.md)
 - [X] Test SimCity (1989)
 - [ ] CGA Composite mode (see ai-analysis/cga-composite-plan.md)
-  - [ ] see https://github.com/MobyGamer/CGACompatibilityTester
+  - [X] Trans flag https://archive.org/details/composite_cga_test_program_trans.com
   - [ ] see CT.EXE https://www.vogons.org/viewtopic.php?t=96231
+  - [ ] see https://github.com/MobyGamer/CGACompatibilityTester
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support

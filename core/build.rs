@@ -12,12 +12,16 @@ fn main() {
             println!("cargo:rerun-if-changed={}", path.display());
 
             let output_obj = path.with_extension("com");
+            let dir = path.parent().unwrap();
+            let filename = path.file_name().unwrap();
+            let output_filename = output_obj.file_name().unwrap();
             let status = Command::new("nasm")
+                .current_dir(dir)
                 .arg("-f")
                 .arg("bin")
-                .arg(path)
+                .arg(filename)
                 .arg("-o")
-                .arg(&output_obj)
+                .arg(output_filename)
                 .status()
                 .expect("Failed to run nasm");
 

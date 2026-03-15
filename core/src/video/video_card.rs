@@ -550,7 +550,7 @@ impl VideoCard {
     /// `char_row` and `char_col` are character-cell coordinates.
     /// `bytes_per_row` is the number of bytes per pixel row (40 for mode 0Dh, 80 for mode 10h).
     /// `char_height` is the character cell height in pixels (8 for mode 0Dh, 14 for mode 10h).
-    pub(crate) fn ega_draw_char_transparent(
+    pub(crate) fn ega_draw_char(
         &self,
         ch: u8,
         char_row: u8,
@@ -565,7 +565,7 @@ impl VideoCard {
         } else {
             font.get_glyph_16(ch)
         };
-        self.ega_draw_glyph_transparent(
+        self.ega_draw_glyph(
             glyph,
             char_row,
             char_col,
@@ -579,7 +579,7 @@ impl VideoCard {
     ///
     /// Foreground pixels (glyph bit = 1) are set to `fg_color` in all planes.
     /// Background pixels (glyph bit = 0) are set to 0 (black).
-    pub(crate) fn ega_draw_glyph_transparent(
+    pub(crate) fn ega_draw_glyph(
         &self,
         glyph: &[u8],
         char_row: u8,

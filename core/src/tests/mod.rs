@@ -84,7 +84,7 @@ fn assert_screen(name: &str, video_buffer: Arc<RwLock<VideoBuffer>>) {
             image::ColorType::Rgba8,
         )
         .expect(&format!("failed to save {filename}"));
-        panic!("frame mismatch");
+        panic!("frame mismatch {filename}");
     }
 }
 
