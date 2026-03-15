@@ -88,6 +88,18 @@ fn assert_screen(name: &str, video_buffer: Arc<RwLock<VideoBuffer>>) {
     }
 }
 
+fn run_assert_screen_key_press_run_test(
+    name: &str,
+    computer: (Computer, Arc<RwLock<VideoBuffer>>),
+) {
+    run_test(name, computer, |computer, video_buffer| {
+        computer.run();
+        assert_screen(name, video_buffer);
+        computer.push_key_press(0x1C /* Enter */);
+        computer.run();
+    });
+}
+
 fn run_test(
     name: &str,
     (mut computer, video_buffer): (Computer, Arc<RwLock<VideoBuffer>>),
