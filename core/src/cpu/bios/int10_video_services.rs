@@ -616,7 +616,11 @@ impl Cpu {
 
         if matches!(
             mode,
-            Mode::M00ColorText40 | Mode::M01Text40 | Mode::M02ColorText | Mode::M03Text
+            Mode::M00ColorText40
+                | Mode::M01Text40
+                | Mode::M02ColorText
+                | Mode::M03Text
+                | Mode::M07MdaText
         ) {
             // Text mode: write to video memory
             for i in 0..count {

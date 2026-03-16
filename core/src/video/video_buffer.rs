@@ -146,6 +146,9 @@ impl VideoBuffer {
             Mode::M00ColorText40 | Mode::M01Text40 => TEXT_MODE_COLS_40 as u8,
             _ => TEXT_MODE_COLS as u8,
         };
+        // MDA mode 7: bit 7 of the attribute byte is always the blink flag.
+        // CGA modes 0-6 default to intensity mode (bit 7 = bright background).
+        self.blink_enabled = matches!(mode, Mode::M07MdaText);
         self.mode = mode;
     }
 
@@ -260,9 +263,11 @@ impl VideoBuffer {
 
     fn render_into(&self, buf: &mut [u8]) {
         match self.mode {
-            Mode::M00ColorText40 | Mode::M01Text40 | Mode::M02ColorText | Mode::M03Text => {
-                self.render_text_mode(buf)
-            }
+            Mode::M00ColorText40
+            | Mode::M01Text40
+            | Mode::M02ColorText
+            | Mode::M03Text
+            | Mode::M07MdaText => self.render_text_mode(buf),
             Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => self.render_mode_04h_320x200x4(buf),
             Mode::M06Cga640x200x2 => {
                 if self.cga_composite {
@@ -504,15 +509,18 @@ impl VideoBuffer {
         const SCREEN_WIDTH: usize = 640;
         const SCREEN_HEIGHT: usize = 200;
         const VRAM_BANK_SIZE: usize = 0x2000; // 8 KB per bank
-        const HUE_SETTING: f32 = 315.0; // color clock phase in degrees
+        // Hardware base phase of the CGA color clock.
+        // cga_intensity (bit 4 of port 0x3D9) inverts the colorburst phase by 180°.
+        let intensity_phase = if self.cga_intensity { 180.0 } else { 0.0 };
+        let hue_setting = (309.0_f32 + intensity_phase) % 360.0;
 
         // Pre-compute cos/sin phase for each horizontal position (4-pixel NTSC color cycle).
         let phase_lookup_cos: [f32; SCREEN_WIDTH] = std::array::from_fn(|x| {
-            let angle = ((x % 4) as f32 * 90.0 + HUE_SETTING) * std::f32::consts::PI / 180.0;
+            let angle = ((x % 4) as f32 * 90.0 + hue_setting) * std::f32::consts::PI / 180.0;
             angle.cos()
         });
         let phase_lookup_sin: [f32; SCREEN_WIDTH] = std::array::from_fn(|x| {
-            let angle = ((x % 4) as f32 * 90.0 + HUE_SETTING) * std::f32::consts::PI / 180.0;
+            let angle = ((x % 4) as f32 * 90.0 + hue_setting) * std::f32::consts::PI / 180.0;
             angle.sin()
         });
 
@@ -548,10 +556,12 @@ impl VideoBuffer {
                 }
 
                 let yy = y_luma / 4.0;
-                let ii = i_chroma / 2.0;
-                let qq = q_chroma / 2.0;
+                // Chroma amplitude: real CGA chroma is ~40% of luma range.
+                // Dividing by 5 (vs luma /4) keeps chroma from clamping artifact colors.
+                let ii = i_chroma / 5.0;
+                let qq = q_chroma / 5.0;
 
-                // YIQ → RGB matrix with slight saturation boost for CRT look.
+                // YIQ → RGB conversion matrix.
                 let r = (yy + 0.956 * ii + 0.621 * qq).clamp(0.0, 1.0);
                 let g = (yy - 0.272 * ii - 0.647 * qq).clamp(0.0, 1.0);
                 let b = (yy - 1.106 * ii + 1.703 * qq).clamp(0.0, 1.0);

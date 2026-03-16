@@ -16,6 +16,7 @@ pub enum Mode {
     M04Cga320x200x4,
     M05Cga320x200x4,
     M06Cga640x200x2,
+    M07MdaText,
     M0DEga320x200x16,
     M10Ega640x350x16,
     M13Vga320x200x256,
@@ -34,6 +35,7 @@ impl Mode {
             Mode::M04Cga320x200x4 => 0x04,
             Mode::M05Cga320x200x4 => 0x05,
             Mode::M06Cga640x200x2 => 0x06,
+            Mode::M07MdaText => 0x07,
             Mode::M0DEga320x200x16 => 0x0d,
             Mode::M10Ega640x350x16 => 0x10,
             Mode::M13Vga320x200x256 => 0x13,
@@ -69,6 +71,7 @@ impl Mode {
                 Some(TextDimensions { rows: 25, cols: 40 })
             }
             Mode::M06Cga640x200x2 => Some(TextDimensions { rows: 25, cols: 80 }),
+            Mode::M07MdaText => Some(TextDimensions { rows: 25, cols: 80 }),
             Mode::M0DEga320x200x16 => Some(TextDimensions { rows: 25, cols: 40 }),
             Mode::M10Ega640x350x16 => Some(TextDimensions { rows: 25, cols: 80 }),
             Mode::M13Vga320x200x256 => Some(TextDimensions { rows: 25, cols: 40 }),
@@ -87,6 +90,7 @@ impl From<u8> for Mode {
             0x04 => Mode::M04Cga320x200x4,
             0x05 => Mode::M05Cga320x200x4,
             0x06 => Mode::M06Cga640x200x2,
+            0x07 => Mode::M07MdaText,
             0x0d => Mode::M0DEga320x200x16,
             0x10 => Mode::M10Ega640x350x16,
             0x13 => Mode::M13Vga320x200x256,

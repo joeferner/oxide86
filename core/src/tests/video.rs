@@ -322,6 +322,23 @@ pub(crate) fn ct755r_mode6() {
 }
 
 #[test_log::test]
+pub(crate) fn ct755r_mode7() {
+    run_test(
+        "video/ct755r/mode7",
+        make_computer!(video_card_type: VideoCardType::MDA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ct755r/mode7_s01", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode7_s02", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn ct755r_vhw_detect_ega_256k() {
     run_test(
         "video/ct755r/vhw_detect",

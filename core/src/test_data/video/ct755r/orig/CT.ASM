@@ -110,7 +110,7 @@ PUBLIC indx_6845, set_video_mode, init_video_mode, file_handle
 PUBLIC err_open_file_str, err_read_file_str
 PUBLIC mem_alloc_err_str, mem_free_err_str, mem_block_addr, allocpara 
 
-EXTRN   mode7:near, hgc_out:near, load_file:near
+EXTRN   hgc_out:near, load_file:near
 EXTRN	wait_key:near, print_str:near, set_cursor:near
 EXTRN	write_mode4:near, write_6845:near, sync_fix:near
 EXTRN   findmono:near, find6845:near
@@ -303,12 +303,6 @@ cmdloop:
 @@:
 	or	al, 20h		; convert symbol to lower case
 
-	cmp	al, '7'
-	jne	@F
-	and	al, 0Fh		; get mode number (0-F) in AL
-	call	mode7
-        jmp     exit
-@@:
 	cmp	al, 'l'
 	jne	@F
         lea     dx, c160100d_file_s

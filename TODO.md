@@ -49,6 +49,7 @@
   - [X] Trans flag https://archive.org/details/composite_cga_test_program_trans.com
   - [ ] see CT.EXE https://www.vogons.org/viewtopic.php?t=96231
   - [ ] see https://github.com/MobyGamer/CGACompatibilityTester
+  - [ ] Blinking text core/src/test_data/video/ct755r/mode7.asm
 - [ ] Test MS Flight Simulator 1.05
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
