@@ -373,8 +373,8 @@ impl VideoBuffer {
         // (cyan/red/grey), matching real CGA hardware where colorburst is disabled.
         let color_map: [usize; 4] = if matches!(self.mode, Mode::M05Cga320x200x4) {
             match intensity {
-                false => [bg, 3, 4, 7],    // cyan, red, grey
-                true  => [bg, 11, 12, 15], // light cyan, light red, white
+                false => [bg, 3, 4, 7],   // cyan, red, grey
+                true => [bg, 11, 12, 15], // light cyan, light red, white
             }
         } else {
             match (palette, intensity) {
@@ -495,134 +495,78 @@ impl VideoBuffer {
 
     /// Render CGA 640x200 mode 06h in composite (colorburst) mode.
     ///
-    /// Every 4 consecutive 1-bit pixels form a nibble (MSB = leftmost pixel). That nibble
-    /// indexes into a 16-color NTSC artifact color palette, producing colors beyond B&W.
-    /// `cga_palette` (bit 5 of port 0x3D9) selects the phase: false = phase 0, true = phase 1
-    /// (equivalent to a 1-pixel shift, i.e. 90° NTSC colorburst phase rotation).
+    /// Simulates NTSC composite color decoding via a 4-pixel sliding window filter.
+    /// Each pixel's color is derived by accumulating luma (Y) and chroma (I, Q) signals
+    /// from a 4-sample window, then converting YIQ→RGB. The HUE_SETTING constant controls
+    /// the color clock phase (tint knob).
     /// Output is 640×400 (scanlines doubled) matching the non-composite mode 06h resolution.
     fn render_mode_06h_composite(&self, buf: &mut [u8]) {
-        const SRC_WIDTH: usize = 640;
-        const OUT_WIDTH: usize = 640;
-        const SRC_HEIGHT: usize = 200;
+        const SCREEN_WIDTH: usize = 640;
+        const SCREEN_HEIGHT: usize = 200;
+        const VRAM_BANK_SIZE: usize = 0x2000; // 8 KB per bank
+        const HUE_SETTING: f32 = 315.0; // color clock phase in degrees
 
-        // CGA composite artifact color palettes (16 entries, RGB).
-        //
-        // Each 4-pixel group forms a nibble (MSB = leftmost pixel). The nibble indexes
-        // into one of four palettes selected by two bits:
-        //   - Bit 5 of port 0x3D9 (cga_palette): phase select.
-        //     PHASE1[n] = PHASE0[rotate_left_2(n)], where rotate_left_2(n) = ((n << 2) | (n >> 2)) & 0xF
-        //   - Bit 3 of bits[3:0] of port 0x3D9 (cga_bg >= 8): RGBI intensity of the foreground color.
-        //     When set, selects the high-intensity variant of the palette.
-        //
-        // Colors calibrated to match DOSBox CGA composite output.
-        const PHASE0: [[u8; 3]; 16] = [
-            [0, 0, 0],       // 0  black
-            [0, 75, 29],     // 1  #004B1D
-            [33, 24, 155],   // 2  #21189B
-            [10, 99, 166],   // 3  #0A63A6
-            [104, 7, 54],    // 4  #680736
-            [84, 82, 86],    // 5  #545256
-            [138, 30, 170],  // 6  #8A1EAA
-            [117, 106, 166], // 7  #756AA6
-            [50, 58, 0],     // 8  #323A00
-            [28, 136, 0],    // 9  #1C8800
-            [84, 82, 86],    // 10 #545256
-            [62, 159, 112],  // 11 #3E9F70
-            [155, 66, 0],    // 12 #9B4200
-            [133, 142, 15],  // 13 #858E0F
-            [167, 90, 139],  // 14 #A75A8B
-            [168, 167, 168], // 15 #A8A7A8
-        ];
-        const PHASE0_HI: [[u8; 3]; 16] = [
-            [0, 0, 0],       // 0  black
-            [0, 115, 41],    // 1  #007329
-            [50, 34, 233],   // 2  #3222E9
-            [18, 152, 254],  // 3  #1298FE
-            [159, 9, 84],    // 4  #9F0954
-            [127, 126, 127], // 5  #7F7E7F
-            [210, 46, 255],  // 6  #D22EFF
-            [177, 162, 255], // 7  #B1A2FF
-            [74, 90, 0],     // 8  #4A5A00
-            [44, 206, 0],    // 9  #2CCE00
-            [127, 126, 127], // 10 #7F7E7F
-            [93, 243, 168],  // 11 #5DF3A8
-            [234, 100, 0],   // 12 #EA6400
-            [202, 218, 19],  // 13 #CADA13
-            [254, 137, 211], // 14 #FE89D3
-            [255, 254, 255], // 15 #FFFEFF
-        ];
-        // PHASE1[n] = PHASE0[rotate_left_2(n)] — 180° subcarrier inversion.
-        // Precomputed: rotate_left_2(n) = ((n << 2) | (n >> 2)) & 0xF
-        const PHASE1: [[u8; 3]; 16] = [
-            PHASE0[0],  // 0  → 0
-            PHASE0[4],  // 1  → 4
-            PHASE0[8],  // 2  → 8
-            PHASE0[12], // 3  → 12
-            PHASE0[1],  // 4  → 1
-            PHASE0[5],  // 5  → 5
-            PHASE0[9],  // 6  → 9
-            PHASE0[13], // 7  → 13
-            PHASE0[2],  // 8  → 2
-            PHASE0[6],  // 9  → 6
-            PHASE0[10], // 10 → 10
-            PHASE0[14], // 11 → 14
-            PHASE0[3],  // 12 → 3
-            PHASE0[7],  // 13 → 7
-            PHASE0[11], // 14 → 11
-            PHASE0[15], // 15 → 15
-        ];
-        const PHASE1_HI: [[u8; 3]; 16] = [
-            PHASE0_HI[0],  // 0  → 0
-            PHASE0_HI[4],  // 1  → 4
-            PHASE0_HI[8],  // 2  → 8
-            PHASE0_HI[12], // 3  → 12
-            PHASE0_HI[1],  // 4  → 1
-            PHASE0_HI[5],  // 5  → 5
-            PHASE0_HI[9],  // 6  → 9
-            PHASE0_HI[13], // 7  → 13
-            PHASE0_HI[2],  // 8  → 2
-            PHASE0_HI[6],  // 9  → 6
-            PHASE0_HI[10], // 10 → 10
-            PHASE0_HI[14], // 11 → 14
-            PHASE0_HI[3],  // 12 → 3
-            PHASE0_HI[7],  // 13 → 7
-            PHASE0_HI[11], // 14 → 11
-            PHASE0_HI[15], // 15 → 15
-        ];
+        // Pre-compute cos/sin phase for each horizontal position (4-pixel NTSC color cycle).
+        let phase_lookup_cos: [f32; SCREEN_WIDTH] = std::array::from_fn(|x| {
+            let angle = ((x % 4) as f32 * 90.0 + HUE_SETTING) * std::f32::consts::PI / 180.0;
+            angle.cos()
+        });
+        let phase_lookup_sin: [f32; SCREEN_WIDTH] = std::array::from_fn(|x| {
+            let angle = ((x % 4) as f32 * 90.0 + HUE_SETTING) * std::f32::consts::PI / 180.0;
+            angle.sin()
+        });
 
-        let hi = self.cga_bg >= 8;
-        let palette = match (self.cga_palette, hi) {
-            (false, false) => &PHASE0,
-            (false, true) => &PHASE0_HI,
-            (true, false) => &PHASE1,
-            (true, true) => &PHASE1_HI,
-        };
+        let mut scanline_bits = [0u8; SCREEN_WIDTH];
 
-        for y in 0..SRC_HEIGHT {
-            let bank_offset = if y % 2 == 1 { 0x2000 } else { 0 };
-            let row_base = bank_offset + (y / 2) * 80;
+        for y in 0..SCREEN_HEIGHT {
+            // CGA interlacing: even lines at bank 0 (0x0000), odd lines at bank 1 (0x2000).
+            let bank_offset = (y % 2) * VRAM_BANK_SIZE;
+            let line_offset = (y / 2) * 80; // 80 bytes per row (640 pixels / 8 bpp)
 
-            for group in 0..(SRC_WIDTH / 4) {
-                // Collect 4 consecutive pixels into a nibble (MSB = leftmost)
-                let mut nibble: usize = 0;
-                for bit in 0..4 {
-                    let x = group * 4 + bit;
-                    let byte_val = self.vram[row_base + x / 8];
-                    let pixel = (byte_val >> (7 - (x % 8))) & 1;
-                    nibble = (nibble << 1) | pixel as usize;
+            // Unpack all 640 bits for this scanline (MSB = leftmost pixel).
+            for b in 0..80 {
+                let byte_val = self.vram[bank_offset + line_offset + b];
+                for bit in 0..8 {
+                    scanline_bits[b * 8 + bit] = (byte_val >> (7 - bit)) & 1;
                 }
-                let rgb = palette[nibble];
+            }
 
-                // Write 4 pixels across, doubled vertically for CRT aspect ratio
-                for bit in 0..4 {
-                    let x = group * 4 + bit;
-                    for dy in 0..2 {
-                        let offset = ((y * 2 + dy) * OUT_WIDTH + x) * 4;
-                        buf[offset] = rgb[0];
-                        buf[offset + 1] = rgb[1];
-                        buf[offset + 2] = rgb[2];
-                        buf[offset + 3] = 0xFF;
+            for x in 0..SCREEN_WIDTH {
+                let mut y_luma: f32 = 0.0;
+                let mut i_chroma: f32 = 0.0;
+                let mut q_chroma: f32 = 0.0;
+
+                // 4-pixel sliding window — matches NTSC color subcarrier cycle length.
+                for w in 0..4 {
+                    let sample_x = x + w;
+                    if sample_x < SCREEN_WIDTH {
+                        let pixel = scanline_bits[sample_x] as f32;
+                        y_luma += pixel;
+                        i_chroma += pixel * phase_lookup_cos[sample_x];
+                        q_chroma += pixel * phase_lookup_sin[sample_x];
                     }
+                }
+
+                let yy = y_luma / 4.0;
+                let ii = i_chroma / 2.0;
+                let qq = q_chroma / 2.0;
+
+                // YIQ → RGB matrix with slight saturation boost for CRT look.
+                let r = (yy + 0.956 * ii + 0.621 * qq).clamp(0.0, 1.0);
+                let g = (yy - 0.272 * ii - 0.647 * qq).clamp(0.0, 1.0);
+                let b = (yy - 1.106 * ii + 1.703 * qq).clamp(0.0, 1.0);
+
+                let r8 = (r * 255.0) as u8;
+                let g8 = (g * 255.0) as u8;
+                let b8 = (b * 255.0) as u8;
+
+                // Double scanlines for CRT aspect ratio (640×200 → 640×400).
+                for dy in 0..2 {
+                    let offset = ((y * 2 + dy) * SCREEN_WIDTH + x) * 4;
+                    buf[offset] = r8;
+                    buf[offset + 1] = g8;
+                    buf[offset + 2] = b8;
+                    buf[offset + 3] = 0xFF;
                 }
             }
         }
@@ -638,7 +582,7 @@ impl VideoBuffer {
         const WIDTH: usize = 640;
         const SRC_HEIGHT: usize = 200;
 
-        let fg_dac = self.vga_dac_palette[15]; // white
+        let fg_dac = self.vga_dac_palette[self.cga_bg]; // foreground color from color select register
         let bg_dac = self.vga_dac_palette[0]; // black
         let fg_rgb = [
             dac_to_8bit(fg_dac[0]),

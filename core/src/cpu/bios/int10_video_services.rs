@@ -160,8 +160,12 @@ impl Cpu {
         // Many CGA programs (e.g. AdLib Jukebox) rely on the BIOS to set this after a mode
         // change and never write to it directly. Real IBM BIOS sets 0x30 for mode 4:
         // palette 1 (cyan/magenta/white, bit 5) with high intensity (bit 4).
-        if matches!(mode, Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4) {
-            let color_select = 0x30u8;
+        let color_select = match mode {
+            Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => Some(0x30u8),
+            Mode::M06Cga640x200x2 => Some(0x0F), // white foreground
+            _ => None,
+        };
+        if let Some(color_select) = color_select {
             bda_set_crt_palette(bus, color_select);
             bus.io_write_u8(CGA_COLOR_SELECT_ADDR, color_select);
         }
@@ -610,7 +614,10 @@ impl Cpu {
         let rows = bda_get_rows(bus) as usize;
         let mode = bda_get_video_mode(bus);
 
-        if matches!(mode, Mode::M00ColorText40 | Mode::M01Text40 | Mode::M02ColorText | Mode::M03Text) {
+        if matches!(
+            mode,
+            Mode::M00ColorText40 | Mode::M01Text40 | Mode::M02ColorText | Mode::M03Text
+        ) {
             // Text mode: write to video memory
             for i in 0..count {
                 let pos = cursor.row as usize * cols + cursor.col as usize + (i as usize);
@@ -722,8 +729,8 @@ impl Cpu {
     ///   DX = row    (pixel y)
     fn int10_write_graphics_pixel(&mut self, bus: &mut Bus) {
         let color = (self.ax & 0xFF) as u8; // AL
-        let col = self.cx as usize;         // CX
-        let row = self.dx as usize;         // DX
+        let col = self.cx as usize; // CX
+        let row = self.dx as usize; // DX
         let xor_mode = (color & 0x80) != 0;
         let color = color & 0x7F;
 
@@ -771,10 +778,7 @@ impl Cpu {
                 bus.memory_write_u8(addr, new_val);
             }
             _ => {
-                log::warn!(
-                    "INT 10h/AH=0Ch: unsupported mode {} for write pixel",
-                    mode
-                );
+                log::warn!("INT 10h/AH=0Ch: unsupported mode {} for write pixel", mode);
             }
         }
     }
@@ -917,25 +921,13 @@ impl Cpu {
             }
             Mode::M0DEga320x200x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_8);
-                bus.video_card_mut().ega_draw_glyph(
-                    &glyph,
-                    row,
-                    col,
-                    fg_color,
-                    40,
-                    CHAR_HEIGHT_8,
-                );
+                bus.video_card_mut()
+                    .ega_draw_glyph(&glyph, row, col, fg_color, 40, CHAR_HEIGHT_8);
             }
             Mode::M10Ega640x350x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_14);
-                bus.video_card_mut().ega_draw_glyph(
-                    &glyph,
-                    row,
-                    col,
-                    fg_color,
-                    80,
-                    CHAR_HEIGHT_14,
-                );
+                bus.video_card_mut()
+                    .ega_draw_glyph(&glyph, row, col, fg_color, 80, CHAR_HEIGHT_14);
             }
             _ => {
                 log::warn!(

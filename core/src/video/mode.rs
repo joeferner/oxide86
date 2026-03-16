@@ -65,7 +65,9 @@ impl Mode {
             Mode::M01Text40 => Some(TextDimensions { rows: 25, cols: 40 }),
             Mode::M02ColorText => Some(TextDimensions { rows: 25, cols: 80 }),
             Mode::M03Text => Some(TextDimensions { rows: 25, cols: 80 }),
-            Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => Some(TextDimensions { rows: 25, cols: 40 }),
+            Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => {
+                Some(TextDimensions { rows: 25, cols: 40 })
+            }
             Mode::M06Cga640x200x2 => Some(TextDimensions { rows: 25, cols: 80 }),
             Mode::M0DEga320x200x16 => Some(TextDimensions { rows: 25, cols: 40 }),
             Mode::M10Ega640x350x16 => Some(TextDimensions { rows: 25, cols: 80 }),

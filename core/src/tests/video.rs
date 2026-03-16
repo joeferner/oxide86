@@ -293,6 +293,35 @@ pub(crate) fn ct755r_mode45() {
 }
 
 #[test_log::test]
+pub(crate) fn ct755r_mode6() {
+    run_test(
+        "video/ct755r/mode6",
+        create_computer(),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ct755r/mode6_s01", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode6_s02", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode6_s03", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode6_s04", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode6_s05", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode6_s06", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn ct755r_vhw_detect_ega_256k() {
     run_test(
         "video/ct755r/vhw_detect",
