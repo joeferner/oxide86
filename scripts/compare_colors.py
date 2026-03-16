@@ -2,11 +2,16 @@
 """Compare color bars between expected and actual composite renders.
 Analyzes whether differences are hue, saturation, or brightness (HSV).
 """
+import sys
 from PIL import Image
 import colorsys
 
-exp = Image.open('core/src/test_data/video/ct755r/ntsc_out_m6.png').convert('RGB')
-act = Image.open('core/src/test_data/video/ct755r/ntsc_out_m6_actual.png').convert('RGB')
+if len(sys.argv) != 3:
+    print(f'Usage: {sys.argv[0]} <expected.png> <actual.png>', file=sys.stderr)
+    sys.exit(1)
+
+exp = Image.open(sys.argv[1]).convert('RGB')
+act = Image.open(sys.argv[2]).convert('RGB')
 
 def avg_row(img, y):
     w = img.width

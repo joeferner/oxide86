@@ -509,10 +509,20 @@ impl VideoBuffer {
         const SCREEN_WIDTH: usize = 640;
         const SCREEN_HEIGHT: usize = 200;
         const VRAM_BANK_SIZE: usize = 0x2000; // 8 KB per bank
+
+        // Brightness scale (1.0 = full, lower values dim the output).
+        const BRIGHTNESS: f32 = 0.7;
+        const HUE: f32 = 309.0;
+
         // Hardware base phase of the CGA color clock.
         // cga_intensity (bit 4 of port 0x3D9) inverts the colorburst phase by 180°.
         let intensity_phase = if self.cga_intensity { 180.0 } else { 0.0 };
-        let hue_setting = (309.0_f32 + intensity_phase) % 360.0;
+        let hue_setting = (HUE + intensity_phase) % 360.0;
+        let brightness = if self.cga_bg & 0x08 == 0 {
+            BRIGHTNESS
+        } else {
+            1.0
+        };
 
         // Pre-compute cos/sin phase for each horizontal position (4-pixel NTSC color cycle).
         let phase_lookup_cos: [f32; SCREEN_WIDTH] = std::array::from_fn(|x| {
@@ -555,7 +565,7 @@ impl VideoBuffer {
                     }
                 }
 
-                let yy = y_luma / 4.0;
+                let yy = (y_luma / 4.0) * brightness;
                 // Chroma amplitude: real CGA chroma is ~40% of luma range.
                 // Dividing by 5 (vs luma /4) keeps chroma from clamping artifact colors.
                 let ii = i_chroma / 5.0;
