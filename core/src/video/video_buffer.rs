@@ -485,35 +485,49 @@ impl VideoBuffer {
 
         // CGA composite artifact color palettes (16 entries, RGB).
         //
-        // Each 4-pixel group forms a nibble (MSB = leftmost pixel). The nibble's chroma
-        // vector angle determines the hue; the NTSC color subcarrier runs at 4× the CGA
-        // pixel clock, so each pixel is 90° of a color cycle. Bit 5 of port 0x3D9 inverts
-        // the colorburst phase (180° = 2 pixel-positions), which maps nibble n to nibble
-        // rotate_left_2(n) in the base palette:
-        //   PHASE1[n] = PHASE0[((n << 2) | (n >> 2)) & 0xF]
+        // Each 4-pixel group forms a nibble (MSB = leftmost pixel). The nibble indexes
+        // into one of four palettes selected by two bits:
+        //   - Bit 5 of port 0x3D9 (cga_palette): phase select.
+        //     PHASE1[n] = PHASE0[rotate_left_2(n)], where rotate_left_2(n) = ((n << 2) | (n >> 2)) & 0xF
+        //   - Bit 3 of bits[3:0] of port 0x3D9 (cga_bg >= 8): RGBI intensity of the foreground color.
+        //     When set, selects the high-intensity variant of the palette.
         //
-        // Colors are NTSC-derived (not EGA digital). Calibrated so that:
-        //   PHASE0[3]  (225°, 2px) = brown/orange   — complement of blue
-        //   PHASE0[12] (45°,  2px) = blue            — used by trans flag with PHASE1
-        //   PHASE0[11] (270°, 3px) = light pink      — used by trans flag with PHASE1
-        //   PHASE0[14] (90°,  3px) = light cyan      — complement of pink
+        // Colors calibrated to match DOSBox CGA composite output.
         const PHASE0: [[u8; 3]; 16] = [
-            [0, 0, 0],       // 0  black         (0px, no chroma)
-            [85, 0, 0],      // 1  dark red       (1px, 270° = red direction)
-            [0, 85, 0],      // 2  dark green     (1px, 180°)
-            [170, 85, 0],    // 3  brown/orange   (2px, 225°) ← PHASE1 blue complement
-            [0, 85, 85],     // 4  dark cyan      (1px, 90°)
-            [128, 128, 128], // 5  gray           (2px, no chroma)
-            [0, 170, 0],     // 6  green          (2px, 135°)
-            [170, 200, 85],  // 7  yellow-green   (3px, 180°)
-            [85, 0, 170],    // 8  dark purple    (1px, 0°)
-            [170, 0, 170],   // 9  magenta        (2px, 315°)
-            [128, 128, 128], // 10 gray           (2px, no chroma)
-            [255, 133, 240], // 11 light pink     (3px, 270°) ← PHASE1 trans pink  #FF85F0
-            [0, 159, 253],   // 12 blue           (2px, 45°)  ← PHASE1 trans blue  #009FFD
-            [200, 100, 255], // 13 light purple   (3px, 0°)
-            [85, 255, 200],  // 14 light cyan     (3px, 90°)  ← PHASE1 pink complement
-            [255, 255, 255], // 15 white          (4px, no chroma)
+            [0, 0, 0],       // 0  black
+            [0, 75, 29],     // 1  #004B1D
+            [33, 24, 155],   // 2  #21189B
+            [10, 99, 166],   // 3  #0A63A6
+            [104, 7, 54],    // 4  #680736
+            [84, 82, 86],    // 5  #545256
+            [138, 30, 170],  // 6  #8A1EAA
+            [117, 106, 166], // 7  #756AA6
+            [50, 58, 0],     // 8  #323A00
+            [28, 136, 0],    // 9  #1C8800
+            [84, 82, 86],    // 10 #545256
+            [62, 159, 112],  // 11 #3E9F70
+            [155, 66, 0],    // 12 #9B4200
+            [133, 142, 15],  // 13 #858E0F
+            [167, 90, 139],  // 14 #A75A8B
+            [168, 167, 168], // 15 #A8A7A8
+        ];
+        const PHASE0_HI: [[u8; 3]; 16] = [
+            [0, 0, 0],       // 0  black
+            [0, 115, 41],    // 1  #007329
+            [50, 34, 233],   // 2  #3222E9
+            [18, 152, 254],  // 3  #1298FE
+            [159, 9, 84],    // 4  #9F0954
+            [127, 126, 127], // 5  #7F7E7F
+            [210, 46, 255],  // 6  #D22EFF
+            [177, 162, 255], // 7  #B1A2FF
+            [74, 90, 0],     // 8  #4A5A00
+            [44, 206, 0],    // 9  #2CCE00
+            [127, 126, 127], // 10 #7F7E7F
+            [93, 243, 168],  // 11 #5DF3A8
+            [234, 100, 0],   // 12 #EA6400
+            [202, 218, 19],  // 13 #CADA13
+            [254, 137, 211], // 14 #FE89D3
+            [255, 254, 255], // 15 #FFFEFF
         ];
         // PHASE1[n] = PHASE0[rotate_left_2(n)] — 180° subcarrier inversion.
         // Precomputed: rotate_left_2(n) = ((n << 2) | (n >> 2)) & 0xF
@@ -521,22 +535,46 @@ impl VideoBuffer {
             PHASE0[0],  // 0  → 0
             PHASE0[4],  // 1  → 4
             PHASE0[8],  // 2  → 8
-            PHASE0[12], // 3  → 12 = blue   ← trans blue  ✓
+            PHASE0[12], // 3  → 12
             PHASE0[1],  // 4  → 1
-            PHASE0[5],  // 5  → 5  (gray, fixed point)
+            PHASE0[5],  // 5  → 5
             PHASE0[9],  // 6  → 9
             PHASE0[13], // 7  → 13
             PHASE0[2],  // 8  → 2
             PHASE0[6],  // 9  → 6
-            PHASE0[10], // 10 → 10 (gray, fixed point)
+            PHASE0[10], // 10 → 10
             PHASE0[14], // 11 → 14
             PHASE0[3],  // 12 → 3
             PHASE0[7],  // 13 → 7
-            PHASE0[11], // 14 → 11 = pink   ← trans pink ✓
-            PHASE0[15], // 15 → 15 (white, fixed point)
+            PHASE0[11], // 14 → 11
+            PHASE0[15], // 15 → 15
+        ];
+        const PHASE1_HI: [[u8; 3]; 16] = [
+            PHASE0_HI[0],  // 0  → 0
+            PHASE0_HI[4],  // 1  → 4
+            PHASE0_HI[8],  // 2  → 8
+            PHASE0_HI[12], // 3  → 12
+            PHASE0_HI[1],  // 4  → 1
+            PHASE0_HI[5],  // 5  → 5
+            PHASE0_HI[9],  // 6  → 9
+            PHASE0_HI[13], // 7  → 13
+            PHASE0_HI[2],  // 8  → 2
+            PHASE0_HI[6],  // 9  → 6
+            PHASE0_HI[10], // 10 → 10
+            PHASE0_HI[14], // 11 → 14
+            PHASE0_HI[3],  // 12 → 3
+            PHASE0_HI[7],  // 13 → 7
+            PHASE0_HI[11], // 14 → 11
+            PHASE0_HI[15], // 15 → 15
         ];
 
-        let palette = if self.cga_palette { &PHASE1 } else { &PHASE0 };
+        let hi = self.cga_bg >= 8;
+        let palette = match (self.cga_palette, hi) {
+            (false, false) => &PHASE0,
+            (false, true) => &PHASE0_HI,
+            (true, false) => &PHASE1,
+            (true, true) => &PHASE1_HI,
+        };
 
         for y in 0..SRC_HEIGHT {
             let bank_offset = if y % 2 == 1 { 0x2000 } else { 0 };

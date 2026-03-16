@@ -53,6 +53,7 @@ const FONT_8X8_OFFSET: u16 = 0xC000; // F000:C000 — matches BIOS_CGA_FONT_ADDR
 const FONT_8X8_ADDR: usize = 0xFC000; // Physical address, ends at 0xFC7FF (all 256 chars fit without 16-bit wrap)
 
 #[derive(Clone, Copy)]
+#[allow(dead_code)]
 enum GraphicsDrawMode {
     Opaque,
     Xor,
