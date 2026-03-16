@@ -605,13 +605,13 @@ impl VideoBuffer {
             1.0
         };
 
-        // Pre-compute cos/sin phase for each horizontal position (4-pixel NTSC color cycle).
-        let phase_lookup_cos: [f32; SCREEN_WIDTH] = std::array::from_fn(|x| {
-            let angle = ((x % 4) as f32 * 90.0 + hue_setting) * std::f32::consts::PI / 180.0;
+        // Pre-compute cos/sin phase for the 4-pixel NTSC color cycle (x % 4 repeats).
+        let phase_lookup_cos: [f32; 4] = std::array::from_fn(|i| {
+            let angle = (i as f32 * 90.0 + hue_setting) * std::f32::consts::PI / 180.0;
             angle.cos()
         });
-        let phase_lookup_sin: [f32; SCREEN_WIDTH] = std::array::from_fn(|x| {
-            let angle = ((x % 4) as f32 * 90.0 + hue_setting) * std::f32::consts::PI / 180.0;
+        let phase_lookup_sin: [f32; 4] = std::array::from_fn(|i| {
+            let angle = (i as f32 * 90.0 + hue_setting) * std::f32::consts::PI / 180.0;
             angle.sin()
         });
 
@@ -641,8 +641,8 @@ impl VideoBuffer {
                     if sample_x < SCREEN_WIDTH {
                         let pixel = scanline_bits[sample_x] as f32;
                         y_luma += pixel;
-                        i_chroma += pixel * phase_lookup_cos[sample_x];
-                        q_chroma += pixel * phase_lookup_sin[sample_x];
+                        i_chroma += pixel * phase_lookup_cos[sample_x % 4];
+                        q_chroma += pixel * phase_lookup_sin[sample_x % 4];
                     }
                 }
 
