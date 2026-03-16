@@ -82,6 +82,7 @@ impl Cpu {
             0x09 => self.int10_write_char_attr(bus),
             0x0A => self.int10_write_char(bus),
             0x0B => self.int10_set_color_palette(bus),
+            0x0C => self.int10_write_graphics_pixel(bus),
             0x0E => self.int10_teletype_output(bus),
             0x0F => self.int10_get_video_mode(bus),
             0x10 => self.int10_palette_registers(bus),
@@ -117,7 +118,7 @@ impl Cpu {
 
         if clear_screen_flag {
             match mode {
-                Mode::M04Cga320x200x4 | Mode::M06Cga640x200x2 => {
+                Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 | Mode::M06Cga640x200x2 => {
                     // Clear both CGA interleaved banks (even rows at 0x0000, odd at 0x2000)
                     for i in 0..0x4000usize {
                         bus.memory_write_u8(CGA_MEMORY_START + i, 0);
@@ -159,7 +160,7 @@ impl Cpu {
         // Many CGA programs (e.g. AdLib Jukebox) rely on the BIOS to set this after a mode
         // change and never write to it directly. Real IBM BIOS sets 0x30 for mode 4:
         // palette 1 (cyan/magenta/white, bit 5) with high intensity (bit 4).
-        if let Mode::M04Cga320x200x4 = mode {
+        if matches!(mode, Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4) {
             let color_select = 0x30u8;
             bda_set_crt_palette(bus, color_select);
             bus.io_write_u8(CGA_COLOR_SELECT_ADDR, color_select);
@@ -407,7 +408,7 @@ impl Cpu {
                     false,
                 );
             }
-            Mode::M04Cga320x200x4 => {
+            Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => {
                 bus.video_card_mut().cga_scroll_window(
                     ScrollWindow {
                         lines,
@@ -514,7 +515,7 @@ impl Cpu {
                     true,
                 );
             }
-            Mode::M04Cga320x200x4 => {
+            Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => {
                 bus.video_card_mut().cga_scroll_window(
                     ScrollWindow {
                         lines,
@@ -713,6 +714,71 @@ impl Cpu {
     /// Subfunction in BH:
     ///   00h = Set background/border color
     ///        BL = color value (bits 0-3 = border/background color, bit 4 = intensity)
+    /// INT 10h, AH=0Ch - Write Graphics Pixel
+    /// Input:
+    ///   AL = pixel color (bit 7 set = XOR with existing pixel)
+    ///   BH = page number (ignored for CGA)
+    ///   CX = column (pixel x)
+    ///   DX = row    (pixel y)
+    fn int10_write_graphics_pixel(&mut self, bus: &mut Bus) {
+        let color = (self.ax & 0xFF) as u8; // AL
+        let col = self.cx as usize;         // CX
+        let row = self.dx as usize;         // DX
+        let xor_mode = (color & 0x80) != 0;
+        let color = color & 0x7F;
+
+        let mode = bda_get_video_mode(bus);
+        log::debug!(
+            "INT 10h/AH=0Ch: write pixel color=0x{color:02X} col={col} row={row} mode={mode}"
+        );
+
+        match mode {
+            Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => {
+                if col >= 320 || row >= 200 {
+                    return;
+                }
+                let bank_offset = if row % 2 == 1 { 0x2000usize } else { 0 };
+                let byte_offset = (row / 2) * 80 + col / 4;
+                let addr = CGA_MEMORY_START + bank_offset + byte_offset;
+                // 2bpp: pixel 0 is bits 7-6, pixel 3 is bits 1-0
+                let shift = (3 - (col % 4)) * 2;
+                let mask = !(0x03u8 << shift);
+                let existing = bus.memory_read_u8(addr);
+                let new_bits = (color & 0x03) << shift;
+                let new_val = if xor_mode {
+                    existing ^ new_bits
+                } else {
+                    (existing & mask) | new_bits
+                };
+                bus.memory_write_u8(addr, new_val);
+            }
+            Mode::M06Cga640x200x2 => {
+                if col >= 640 || row >= 200 {
+                    return;
+                }
+                let bank_offset = if row % 2 == 1 { 0x2000usize } else { 0 };
+                let byte_offset = (row / 2) * 80 + col / 8;
+                let addr = CGA_MEMORY_START + bank_offset + byte_offset;
+                let shift = 7 - (col % 8);
+                let mask = !(1u8 << shift);
+                let existing = bus.memory_read_u8(addr);
+                let new_bit = (color & 0x01) << shift;
+                let new_val = if xor_mode {
+                    existing ^ new_bit
+                } else {
+                    (existing & mask) | new_bit
+                };
+                bus.memory_write_u8(addr, new_val);
+            }
+            _ => {
+                log::warn!(
+                    "INT 10h/AH=0Ch: unsupported mode {} for write pixel",
+                    mode
+                );
+            }
+        }
+    }
+
     ///   01h = Set palette
     ///        BL = palette ID (0 = green/red/brown, 1 = cyan/magenta/white)
     fn int10_set_color_palette(&mut self, bus: &mut Bus) {
@@ -808,7 +874,7 @@ impl Cpu {
                     bus.memory_write_u8(CGA_MEMORY_START + vram_offset, new_val);
                 }
             }
-            Mode::M04Cga320x200x4 => {
+            Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => {
                 let fg_2bit = fg_color & 0x03;
                 for (r, &row_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
                     let pixel_y = row as usize * CHAR_HEIGHT_8 + r;
@@ -924,7 +990,7 @@ impl Cpu {
                 // Normal character - handle based on video mode
                 let mode = bda_get_video_mode(bus);
                 match mode {
-                    Mode::M04Cga320x200x4 | Mode::M06Cga640x200x2 => {
+                    Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 | Mode::M06Cga640x200x2 => {
                         // Graphics mode: draw character pixel-by-pixel into CGA framebuffer.
                         // AH=0Eh is opaque: the full 8x8 cell is written, background pixels
                         // become black (0). This matches real IBM BIOS behavior.

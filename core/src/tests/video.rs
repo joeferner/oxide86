@@ -184,6 +184,115 @@ pub(crate) fn ct755r_mode0123() {
 }
 
 #[test_log::test]
+pub(crate) fn ct755r_mode45() {
+    run_test(
+        "video/ct755r/mode45",
+        create_computer(),
+        |computer, video_buffer| {
+            // Mode 4: 16 screens
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s01", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s02", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s03", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s04", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s05", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s06", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s07", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s08", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s09", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s10", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s11", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s12", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s13", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s14", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s15", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m4_s16", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            // Mode 5: 16 screens
+            assert_screen("video/ct755r/mode45_m5_s01", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s02", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s03", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s04", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s05", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s06", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s07", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s08", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s09", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s10", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s11", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s12", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s13", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s14", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s15", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode45_m5_s16", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn ct755r_vhw_detect_ega_256k() {
     run_test(
         "video/ct755r/vhw_detect",

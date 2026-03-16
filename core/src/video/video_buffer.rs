@@ -260,11 +260,10 @@ impl VideoBuffer {
 
     fn render_into(&self, buf: &mut [u8]) {
         match self.mode {
-            Mode::M00ColorText40
-            | Mode::M01Text40
-            | Mode::M02ColorText
-            | Mode::M03Text => self.render_text_mode(buf),
-            Mode::M04Cga320x200x4 => self.render_mode_04h_320x200x4(buf),
+            Mode::M00ColorText40 | Mode::M01Text40 | Mode::M02ColorText | Mode::M03Text => {
+                self.render_text_mode(buf)
+            }
+            Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 => self.render_mode_04h_320x200x4(buf),
             Mode::M06Cga640x200x2 => {
                 if self.cga_composite {
                     self.render_mode_06h_composite(buf)
@@ -369,12 +368,21 @@ impl VideoBuffer {
         let intensity = self.cga_intensity;
         let palette = self.cga_palette;
 
-        // Map 2-bit pixel values to EGA color indices (0-15)
-        let color_map: [usize; 4] = match (palette, intensity) {
-            (false, false) => [bg, 2, 4, 6],   // green, red, brown
-            (false, true) => [bg, 10, 12, 14], // light green, light red, yellow
-            (true, false) => [bg, 3, 5, 7],    // cyan, magenta, white
-            (true, true) => [bg, 11, 13, 15],  // light cyan, light magenta, bright white
+        // Map 2-bit pixel values to EGA color indices (0-15).
+        // Mode 5 ignores the palette select bit and always uses the alt color set
+        // (cyan/red/grey), matching real CGA hardware where colorburst is disabled.
+        let color_map: [usize; 4] = if matches!(self.mode, Mode::M05Cga320x200x4) {
+            match intensity {
+                false => [bg, 3, 4, 7],    // cyan, red, grey
+                true  => [bg, 11, 12, 15], // light cyan, light red, white
+            }
+        } else {
+            match (palette, intensity) {
+                (false, false) => [bg, 2, 4, 6],   // green, red, brown
+                (false, true) => [bg, 10, 12, 14], // light green, light red, yellow
+                (true, false) => [bg, 3, 5, 7],    // cyan, magenta, white
+                (true, true) => [bg, 11, 13, 15],  // light cyan, light magenta, bright white
+            }
         };
 
         for y in 0..HEIGHT {
