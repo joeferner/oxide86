@@ -188,6 +188,7 @@ impl VideoCard {
         log::info!("set mode: {mode}");
         let dims = mode.get_text_dimensions();
         let mut buffer = self.buffer.write().unwrap();
+        buffer.reset_crtc_overrides();
         buffer.set_mode(mode);
         // Re-initialize DAC registers with the default palette for this card type so
         // programs that read them back (e.g. via INT 10h/AL=0x17) get correct values.
@@ -1015,6 +1016,14 @@ impl Device for VideoCard {
                         VIDEO_CARD_REG_CURSOR_LOC_LOW => {
                             let new_cursor_loc = (buffer.cursor_loc() & 0xff00) | val as u16;
                             buffer.set_cursor_loc(new_cursor_loc);
+                        }
+                        0x06 => {
+                            log::debug!("CRTC reg 0x06: vertical displayed={}", val);
+                            buffer.set_crtc_vertical_displayed(val);
+                        }
+                        0x09 => {
+                            log::debug!("CRTC reg 0x09: max scan line={}", val);
+                            buffer.set_crtc_max_scan_line(val);
                         }
                         // CRTC timing registers (horizontal/vertical) — not needed by emulator
                         0x00..=0x09 => {}

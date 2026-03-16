@@ -20,6 +20,8 @@ pub(crate) struct RenderTextArgs<'a> {
     pub stride: usize,
     /// Number of pixel rows to render per character cell.
     pub char_height: usize,
+    /// How many output rows each source scanline maps to (1 = normal, 2 = doubled, etc.).
+    pub scanline_scale: usize,
 }
 
 /// Render a single text cell to an RGBA buffer.
@@ -45,21 +47,23 @@ pub(crate) fn render_text(args: RenderTextArgs, output: &mut [u8]) {
     ];
 
     let char_x = args.col * CHAR_WIDTH;
-    let char_y = args.row * args.char_height;
+    let char_y = args.row * args.char_height * args.scanline_scale;
 
-    for (glyph_row, &glyph_byte) in glyph.iter().enumerate() {
-        let pixel_y = char_y + glyph_row;
+    for (glyph_row, &glyph_byte) in glyph.iter().enumerate().take(args.char_height) {
+        for s in 0..args.scanline_scale {
+            let pixel_y = char_y + glyph_row * args.scanline_scale + s;
 
-        for bit in 0..8 {
-            let pixel_x = char_x + bit;
-            let is_fg = (glyph_byte & (0x80 >> bit)) != 0;
-            let color = if is_fg { fg_color } else { bg_color };
+            for bit in 0..8 {
+                let pixel_x = char_x + bit;
+                let is_fg = (glyph_byte & (0x80 >> bit)) != 0;
+                let color = if is_fg { fg_color } else { bg_color };
 
-            let offset = (pixel_y * args.stride + pixel_x) * 4;
-            output[offset] = color[0];
-            output[offset + 1] = color[1];
-            output[offset + 2] = color[2];
-            output[offset + 3] = 0xFF;
+                let offset = (pixel_y * args.stride + pixel_x) * 4;
+                output[offset] = color[0];
+                output[offset + 1] = color[1];
+                output[offset + 2] = color[2];
+                output[offset + 3] = 0xFF;
+            }
         }
     }
 }

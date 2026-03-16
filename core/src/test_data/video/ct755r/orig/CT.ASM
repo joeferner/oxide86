@@ -112,7 +112,6 @@ PUBLIC mem_alloc_err_str, mem_free_err_str, mem_block_addr, allocpara
 
 EXTRN   hgc_out:near, load_file:near
 EXTRN	wait_key:near, print_str:near, set_cursor:near
-EXTRN	write_mode4:near, write_6845:near, sync_fix:near
 EXTRN   findmono:near, find6845:near
 EXTRN   show_dx_ax:near
 
@@ -159,7 +158,6 @@ usage_str db " CGA/MDA/HGC card modes test v7.55R, (c) 2023 Emil Mammadov", 0Dh,
         db " MODE6 test, color switching sequence:", 0Dh, 0Ah
         db "    foreground white; foreground green; foreground green HI", 0Dh, 0Ah
         db "    then same, but with direct write instead int10h routine", 0Dh, 0Ah
-        db " L - non-standard CGA color 160 x 100 mode test", 0Dh, 0Ah
         db " H [filename]- hercules card test", 0Dh, 0Ah
         db "    moving image - Arrow U/D; Arrow L/R; Page U/D; Home/End", 0Dh, 0Ah
 	db " SM  - switch to MDA/HGC card", 0Dh, 0Ah
@@ -169,25 +167,7 @@ usage_str db " CGA/MDA/HGC card modes test v7.55R, (c) 2023 Emil Mammadov", 0Dh,
 
 error_dosver_str	db " DOS version must be 2.00 or above!", 0Dh, 0Ah, '$'
 
-; CGA 160x100 mode params
-C160X100_param  db      00,  113  ; horizontal total
-                db      01,  80   ; horizontal displayed
-                db      02,  90   ; horizontal sync pos
-                db      03,  10   ; horizontal sync with
-                db      04, 127   ; vertical total *127 max, else no hor sync
-                db      05,  06   ; vertical total adjust 06
-                db      06, 100   ; vertical displayed 25 100
-                db      07, 112   ; vertical sync pos 28  135
-                db      08,  02   ; interlace mode
-                db      09,  01   ; max scan line 07
-                db      0Ah, 00100110b  ; cursor start 06 and hide cursor (bit5)
-                db      0Bh, 07   ; cursor ebd
-                db      0Ch, 00   ; start addr H 
-                db      0Dh,  00   ; start addr L
-C160X100_len    EQU ($ - C160X100_param)/2
-
 file_handle	dw	0000h
-c160100d_file_s	db	"C160100D.IMG", 0
 h_bmp_file_s	db      "800600BW.BMP", 0
 
 err_open_file_str       db      " file open error!", 0Dh, 0Ah, 0
@@ -303,12 +283,6 @@ cmdloop:
 @@:
 	or	al, 20h		; convert symbol to lower case
 
-	cmp	al, 'l'
-	jne	@F
-        lea     dx, c160100d_file_s
-        call    c160_100         ; 160 x 100 color mode test
-        jmp     exit
-@@:
 	cmp	al, 'h'
 	jne	@F
         call    get_cmd_fname   ; get file name from cmd str to h_bmp_file_s
@@ -417,73 +391,6 @@ ega_sw proc near
         int     10h
         retn
 ega_sw endp
-
-;******************Non-standard 160 x 100 16 color mode*********************
-c160_100 proc near
-; CGA mode 3	(80 x 25, 16 color)
-; since this mode is not supported by BIOS, we use direct operations
-; and also use hard settings the addresses of 6845 I/O ports
-
-; load file into mem
-        mov     allocpara, 1000
-        call    load_file
-        jnc     @F      ; exit, if CF was set
-        retn
-
-@@:
-        mov     dx, 3D9h        ; CGA color select reg
-        mov     al, 00000000b
-        out     dx, al
-
-        mov     dx, 3D8h                ; mode control reg of 6845
-        mov     al, 00000001b           ; disable video signal
-	out	dx, al
-
-; 6845 controller init
-; AL - reg number (index)
-; AH - value to vrite
-; DX -> 6845 index port , 3D4h
-        mov     dx, 3D4h        ; 6845 index port
-        mov     si, offset C160X100_param
-        mov     cx, C160X100_len
-@@:
-	lodsw
-        call    write_6845
-        loop    @B
-
-        mov     dx, 3D8h        ; mode control reg of 6845
-        mov     al, 00001001b	; enable video signal
-	out	dx, al
-
-        mov     ax, CGA_VBUF_SEG
-	mov	es, ax
-        mov     di, 0000h       ; zero offset in seg
-
-        push    ds
-        mov     ax, mem_block_addr
-	mov	ds, ax
-	cld
-        mov     cx, 8000
-        mov     si, 0000h       ; offset of image data
-rep     movs    word ptr es:[di], word ptr ds:[si]
-        pop     ds
-	call	wait_key
-
-        mov     ah, 00h
-	mov	al, init_video_mode	; return old video mode
-	int	10h
-        call    sync_fix        ; ??? for G3101
-
-	mov     ax, mem_block_addr
-	mov     es, ax
-        mov     ah, 49h
-        int     21h
-        jnc     @F
-        mov     si, offset mem_free_err_str
-        call    print_str
-@@:
-	retn
-c160_100 endp
 
 ;-----------------------------------------------------------------------
 exit:

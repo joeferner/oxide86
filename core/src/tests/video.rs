@@ -339,6 +339,11 @@ pub(crate) fn ct755r_mode7() {
 }
 
 #[test_log::test]
+pub(crate) fn ct755r_c160_100() {
+    run_assert_screen_key_press_run_test("video/ct755r/c160_100", create_computer());
+}
+
+#[test_log::test]
 pub(crate) fn ct755r_vhw_detect_ega_256k() {
     run_test(
         "video/ct755r/vhw_detect",

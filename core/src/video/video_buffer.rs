@@ -77,6 +77,14 @@ pub struct VideoBuffer {
     /// Display start address written by CRT controller registers 0x0C (high) and 0x0D (low).
     /// Controls which VRAM offset is shown at the top-left of the screen (used for hardware scrolling).
     start_address: u16,
+    /// CRTC register 0x09 override (max scan line). When set, char cell height = value + 1.
+    /// None = use font-based default (8 or 16 depending on mode).
+    /// Reset to None on INT 10h mode set.
+    crtc_max_scan_line: Option<u8>,
+    /// CRTC register 0x06 override (vertical displayed rows).
+    /// None = use default 25 rows.
+    /// Reset to None on INT 10h mode set.
+    crtc_vertical_displayed: Option<u8>,
     /// If any value changes in the struct which could result in different output this will be set to true
     dirty: bool,
 }
@@ -99,6 +107,8 @@ impl VideoBuffer {
             cursor_visible: true,
             cursor_end_line: DEFAULT_CURSOR_END_LINE,
             start_address: 0,
+            crtc_max_scan_line: None,
+            crtc_vertical_displayed: None,
             dirty: false,
         };
         me.reset();
@@ -120,6 +130,8 @@ impl VideoBuffer {
         self.cursor_visible = true;
         self.cursor_end_line = DEFAULT_CURSOR_END_LINE;
         self.start_address = 0;
+        self.crtc_max_scan_line = None;
+        self.crtc_vertical_displayed = None;
         self.dirty = false;
         for i in (0..TEXT_MODE_SIZE).step_by(2) {
             self.vram[i] = 0x20; // space
@@ -150,6 +162,25 @@ impl VideoBuffer {
         // CGA modes 0-6 default to intensity mode (bit 7 = bright background).
         self.blink_enabled = matches!(mode, Mode::M07MdaText);
         self.mode = mode;
+    }
+
+    /// Reset CRTC timing overrides back to hardware defaults.
+    /// Called when INT 10h AH=0 sets a new video mode (which reprograms the CRTC).
+    /// Direct I/O writes to 0x3D8 do NOT call this.
+    pub(crate) fn reset_crtc_overrides(&mut self) {
+        self.crtc_max_scan_line = None;
+        self.crtc_vertical_displayed = None;
+        self.dirty = true;
+    }
+
+    pub(crate) fn set_crtc_max_scan_line(&mut self, val: u8) {
+        self.crtc_max_scan_line = Some(val);
+        self.dirty = true;
+    }
+
+    pub(crate) fn set_crtc_vertical_displayed(&mut self, val: u8) {
+        self.crtc_vertical_displayed = Some(val);
+        self.dirty = true;
     }
 
     pub fn read_vram(&self, addr: usize) -> u8 {
@@ -251,7 +282,7 @@ impl VideoBuffer {
     }
 
     pub fn render(&self) -> RenderResult {
-        let (width, height) = self.mode.resolution();
+        let (width, height) = self.render_resolution();
         let mut data = vec![0u8; width as usize * height as usize * 4];
         self.render_into(&mut data);
         RenderResult {
@@ -259,6 +290,35 @@ impl VideoBuffer {
             width,
             height,
         }
+    }
+
+    fn render_resolution(&self) -> (u32, u32) {
+        if self.crtc_max_scan_line.is_some() || self.crtc_vertical_displayed.is_some() {
+            // Always output at the standard CGA text resolution so scanlines fill the
+            // same physical height as normal text mode (matching mode 06h behaviour).
+            let cols = self.text_columns as usize;
+            return (
+                (CHAR_WIDTH * cols) as u32,
+                (CHAR_HEIGHT * TEXT_MODE_ROWS) as u32,
+            );
+        }
+        self.mode.resolution()
+    }
+
+    /// Returns (cols, rows, char_height) for text mode rendering,
+    /// honouring any active CRTC overrides.
+    fn text_geometry(&self) -> (usize, usize, usize) {
+        let cols = self.text_columns as usize;
+        let char_height = if let Some(max_sl) = self.crtc_max_scan_line {
+            (max_sl as usize) + 1
+        } else {
+            match self.mode {
+                Mode::M00ColorText40 | Mode::M01Text40 => CHAR_HEIGHT_8,
+                _ => CHAR_HEIGHT,
+            }
+        };
+        let rows = self.crtc_vertical_displayed.unwrap_or(TEXT_MODE_ROWS as u8) as usize;
+        (cols, rows, char_height)
     }
 
     fn render_into(&self, buf: &mut [u8]) {
@@ -284,16 +344,28 @@ impl VideoBuffer {
     }
 
     fn render_text_mode(&self, buf: &mut [u8]) {
-        let cols = self.text_columns as usize;
+        let (cols, rows, char_height) = self.text_geometry();
         let width = CHAR_WIDTH * cols;
-        let char_height = match self.mode {
-            Mode::M00ColorText40 | Mode::M01Text40 => CHAR_HEIGHT_8,
-            _ => CHAR_HEIGHT,
-        };
+
+        // When CRTC overrides are active the output is padded to standard text height
+        // (640×400) by scaling each source scanline.  For unmodified text modes the
+        // mode resolution already matches the buffer so no scaling is needed.
+        let scanline_scale =
+            if self.crtc_max_scan_line.is_some() || self.crtc_vertical_displayed.is_some() {
+                let standard_height = CHAR_HEIGHT * TEXT_MODE_ROWS;
+                let render_height = rows * char_height;
+                if render_height > 0 && render_height < standard_height {
+                    standard_height / render_height
+                } else {
+                    1
+                }
+            } else {
+                1
+            };
 
         // Render all cells
         let mut i = (self.start_address as usize) * 2;
-        for row in 0..TEXT_MODE_ROWS {
+        for row in 0..rows {
             for col in 0..cols {
                 let character = self.vram[i];
                 i += 1;
@@ -309,16 +381,23 @@ impl VideoBuffer {
                         vga_dac_palette: &self.vga_dac_palette,
                         stride: width,
                         char_height,
+                        scanline_scale,
                     },
                     buf,
                 );
             }
         }
 
-        self.render_cursor(buf, width, char_height);
+        self.render_cursor(buf, width, char_height, scanline_scale);
     }
 
-    fn render_cursor(&self, data: &mut [u8], width: usize, char_height: usize) {
+    fn render_cursor(
+        &self,
+        data: &mut [u8],
+        width: usize,
+        char_height: usize,
+        scanline_scale: usize,
+    ) {
         if self.cursor_visible {
             let cursor_row = (self.cursor_loc / self.text_columns as u16) as usize;
             let cursor_col = (self.cursor_loc % self.text_columns as u16) as usize;
@@ -342,17 +421,19 @@ impl VideoBuffer {
                 let end_scan = (self.cursor_end_line as usize).min(char_height - 1);
 
                 let char_x = cursor_col * CHAR_WIDTH;
-                let char_y = cursor_row * char_height;
+                let char_y = cursor_row * char_height * scanline_scale;
 
                 for scan_line in start_scan..=end_scan {
-                    let pixel_y = char_y + scan_line;
-                    for bit in 0..CHAR_WIDTH {
-                        let pixel_x = char_x + bit;
-                        let offset = (pixel_y * width + pixel_x) * 4;
-                        data[offset] = fg_color[0];
-                        data[offset + 1] = fg_color[1];
-                        data[offset + 2] = fg_color[2];
-                        data[offset + 3] = 0xFF;
+                    for s in 0..scanline_scale {
+                        let pixel_y = char_y + scan_line * scanline_scale + s;
+                        for bit in 0..CHAR_WIDTH {
+                            let pixel_x = char_x + bit;
+                            let offset = (pixel_y * width + pixel_x) * 4;
+                            data[offset] = fg_color[0];
+                            data[offset + 1] = fg_color[1];
+                            data[offset + 2] = fg_color[2];
+                            data[offset + 3] = 0xFF;
+                        }
                     }
                 }
             }
