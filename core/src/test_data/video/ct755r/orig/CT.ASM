@@ -149,7 +149,6 @@ cursor_pos1	dw	0800h	; for color 1 string
 cursor_pos2	dw	0E00h	; for color 2 string
 cursor_pos3	dw	1400h	; for color 3 string
 
-sym_row		dw	40	; number of symbols per row (text modes)
 indx_6845       dw      03D4h	; addr of 6845 index reg
 mode_6845	dw      03D8h	; addr of 6845 mode control reg
 color_6845	dw	03D9h	; addr of 6845 color select reg
@@ -242,25 +241,6 @@ mode6_green_hi_s	db "CGA mode 6, Foreground Color Green HI", 0
 mode6_dw_s              db "CGA mode 6 B/W                         Direct write", 0
 mode6_green_dw_s        db "CGA mode 6, Foreground Color Green     Direct write", 0
 mode6_green_dw_hi_s     db "CGA mode 6, Foreground Color Green HI  Direct write", 0
-
-; Color strings for text modes
-black_str	db "Black      ", 0Dh, 0Ah, 0
-blue_str	db "Blue       ", 0Dh, 0Ah, 0
-green_str	db "Green      ", 0Dh, 0Ah, 0
-cyan_str	db "Cyan       ", 0Dh, 0Ah, 0
-red_str		db "Red        ", 0Dh, 0Ah, 0
-magenta_str	db "Magenta    ", 0Dh, 0Ah, 0
-brown_str	db "Brown      ", 0Dh, 0Ah, 0
-gray_str	db "Gray       ", 0Dh, 0Ah, 0
-
-hi_black_str	db "HI Black   ", 0Dh, 0Ah, 0
-hi_blue_str	db "HI Blue    ", 0Dh, 0Ah, 0
-hi_green_str	db "HI Green   ", 0Dh, 0Ah, 0
-hi_cyan_str	db "HI Cyan    ", 0Dh, 0Ah, 0
-hi_red_str	db "HI Red     ", 0Dh, 0Ah, 0
-hi_magenta_str	db "HI Magenta ", 0Dh, 0Ah, 0
-yellow_str	db "Yellow     ", 0Dh, 0Ah, 0
-white_str	db "White      ", 0Dh, 0Ah, 0
 
 ; CGA 160x100 mode params
 C160X100_param  db      00,  113  ; horizontal total
@@ -396,30 +376,6 @@ cmdloop:
 @@:
 	or	al, 20h		; convert symbol to lower case
 
-	cmp	al, '0'
-	jne	@F
-	and	al, 0Fh		; get mode number (0-F) in AL
-	call	mode0123
-        jmp     exit
-@@:
-	cmp	al, '1'
-	jne	@F
-	and	al, 0Fh		; get mode number (0-F) in AL
-	call	mode0123
-        jmp     exit
-@@:
-	cmp	al, '2'
-	jne	@F
-	and	al, 0Fh		; get mode number (0-F) in AL
-	call	mode0123
-        jmp     exit
-@@:
-	cmp	al, '3'
-	jne	@F
-	and	al, 0Fh		; get mode number (0-F) in AL
-	call	mode0123
-        jmp     exit
-@@:
 	cmp	al, '4'
 	jne	@F
 	and	al, 0Fh		; get mode number (0-F) in AL
@@ -625,156 +581,6 @@ rep     movs    word ptr es:[di], word ptr ds:[si]
 @@:
 	retn
 c160_100 endp
-
-;******************Write screen for CGA modes 0, 1, 2, 3*******************
-; mode in AL
-mode0123 proc near
-	mov	ah, 00h		; set mode function
-	push	ax
-	mov	set_video_mode, al
-	int	10h
-	pop	ax
-
-	cmp	al, 2
-	jb	@F
-	mov	sym_row, 80
-@@:
-
-; show all symbols from ROM
-; write symbols to screen by BIOS functions
-
-	mov	dh, 02		; cursor row
-	mov	dl, 02		; cursor column
-	call	set_cursor	; set cursor for symbol table
-	mov	al, 00h		; starting symbol
-        mov     bh, 00h         ; page 0
-        mov     bl, 07h         ; attribute
-
-write_rows:
-	mov	cx, 16
-@@:
-	push	dx
-	push	ax
-	mov	ah, 09h
-	int	10h	; - VIDEO - WRITE CHARACTER AND	ADVANCE	CURSOR (TTY WRITE)
-			; AL = character, BH = display page
-			; BL = foreground color	(graphics modes)
-	pop	ax
-	pop	dx
-
-	inc	al
-	inc	dl
-	call	set_cursor	; set cursor for symbol table
-	loop	@B
-
-	inc	dh
-	mov	dl, 02
-	call	set_cursor	; set cursor for symbol table
-	cmp	dh, (16+2)
-	jb	write_rows
-
-; hide cursor
-	mov	dh, 25		; cursor row
-	mov	dl, 00		; cursor column
-	call	set_cursor
-
-	call	wait_key
-
-;---------------- show all colors for CGA mode 0, 1, 2 and 3 -----------------
-; set mode for clear screen
-	mov	ah, 00h
-	mov	al, set_video_mode
-	int	10h
-
-	mov	dh, 04		; cursor row
-	mov	dl, 00h		; cursor column
-	mov	bl, 00h		; attribute
-	mov	cx, 16
-
-color_txt_loop:
-	push	cx
-	push	dx
-	push	bx
-
-	call	set_cursor
-	mov	cx, sym_row	; 80 for mode 2,3 and 40 for mode 0,1 (repeat)
-        mov     bh, 00h         ; page 0
-	mov	al, 219
-
-; correction for doing "black" string visible
-	cmp	bl, 00h
-	jne	@F
-	mov	bl, 07h	; att is white for symbol, black for background
-	mov	al, 00h	; symbol "empty", print as black
-@@:
-; correction for doing "HI black" string visible
-	cmp	bl, 08h
-	jne	@F
-	mov	bl, 78h	; att is HI black for symbol, white for background
-	mov	al, 219	; symbol is "full rectangle", print as black HI
-@@:
-	mov	ah, 09h		; write str with attributes
-	int	10h
-
-	pop	bx
-	pop	dx
-	pop	cx
-
-	inc	dh		; inc row number
-	inc	bl		; inc color code
-	loop	color_txt_loop
-
-
-	mov	dh, 04h		; cursor row
-	mov	dl, 00h		; cursor column
-	call	set_cursor
-
-	mov	si, offset black_str
-	call	print_str
-	mov	si, offset blue_str
-	call	print_str
-	mov	si, offset green_str
-	call	print_str
-	mov	si, offset cyan_str
-	call	print_str
-	mov	si, offset red_str
-	call	print_str
-	mov	si, offset magenta_str
-	call	print_str
-	mov	si, offset brown_str
-	call	print_str
-	mov	si, offset gray_str
-	call	print_str
-
-	mov	si, offset hi_black_str
-	call	print_str
-	mov	si, offset hi_blue_str
-	call	print_str
-	mov	si, offset hi_green_str
-	call	print_str
-	mov	si, offset hi_cyan_str
-	call	print_str
-	mov	si, offset hi_red_str
-	call	print_str
-	mov	si, offset hi_magenta_str
-	call	print_str
-	mov	si, offset yellow_str
-	call	print_str
-	mov	si, offset white_str
-	call	print_str
-
-; hide cursor
-	mov	dh, 25		; cursor row
-	mov	dl, 00		; cursor column
-	call	set_cursor
-	call	wait_key
-
-        mov     ah, 00h
-	mov	al, init_video_mode	; return old video mode
-	int	10h
-
-	retn
-mode0123 endp
 
 ;******************Write screen for CGA mode 04 and 05***************************
 ; mode in AL

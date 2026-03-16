@@ -149,6 +149,41 @@ pub(crate) fn ct755r_ntsc_out() {
 }
 
 #[test_log::test]
+pub(crate) fn ct755r_mode0123() {
+    run_test(
+        "video/ct755r/mode0123",
+        create_computer(),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ct755r/mode0123_m0_chars", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode0123_m0_colors", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode0123_m1_chars", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode0123_m1_colors", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode0123_m2_chars", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode0123_m2_colors", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode0123_m3_chars", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ct755r/mode0123_m3_colors", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn ct755r_vhw_detect_ega_256k() {
     run_test(
         "video/ct755r/vhw_detect",

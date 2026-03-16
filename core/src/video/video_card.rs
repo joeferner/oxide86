@@ -953,7 +953,7 @@ impl Device for VideoCard {
                     } else if val & 0x01 != 0 {
                         Mode::M03Text
                     } else {
-                        Mode::M02ColorText
+                        Mode::M00ColorText40
                     };
                     let composite = (val & 0x08) != 0;
                     log::info!(

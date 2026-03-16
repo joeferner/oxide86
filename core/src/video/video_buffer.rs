@@ -1,12 +1,13 @@
 use std::fmt;
 
-use crate::video::font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font};
+use crate::video::font::{CHAR_HEIGHT, CHAR_HEIGHT_8, CHAR_WIDTH, Cp437Font};
 use crate::video::palette::TextModePalette;
 use crate::video::renderer::{RenderTextArgs, dac_to_8bit, render_text};
 use crate::video::text::TextAttribute;
 use crate::video::{
     DEFAULT_CURSOR_END_LINE, DEFAULT_CURSOR_START_LINE, EGA_PLANE_SIZE, Mode, TEXT_MODE_COLS,
     TEXT_MODE_ROWS, TEXT_MODE_SIZE, VGA_MODE_13_HEIGHT, VGA_MODE_13_WIDTH, VIDEO_MEMORY_SIZE,
+    mode::TEXT_MODE_COLS_40,
 };
 
 #[derive(PartialEq)]
@@ -141,6 +142,10 @@ impl VideoBuffer {
     }
 
     pub fn set_mode(&mut self, mode: Mode) {
+        self.text_columns = match &mode {
+            Mode::M00ColorText40 | Mode::M01Text40 => TEXT_MODE_COLS_40 as u8,
+            _ => TEXT_MODE_COLS as u8,
+        };
         self.mode = mode;
     }
 
@@ -255,7 +260,10 @@ impl VideoBuffer {
 
     fn render_into(&self, buf: &mut [u8]) {
         match self.mode {
-            Mode::M02ColorText | Mode::M03Text => self.render_text_mode(buf),
+            Mode::M00ColorText40
+            | Mode::M01Text40
+            | Mode::M02ColorText
+            | Mode::M03Text => self.render_text_mode(buf),
             Mode::M04Cga320x200x4 => self.render_mode_04h_320x200x4(buf),
             Mode::M06Cga640x200x2 => {
                 if self.cga_composite {
@@ -272,12 +280,17 @@ impl VideoBuffer {
     }
 
     fn render_text_mode(&self, buf: &mut [u8]) {
-        let width = CHAR_WIDTH * TEXT_MODE_COLS;
+        let cols = self.text_columns as usize;
+        let width = CHAR_WIDTH * cols;
+        let char_height = match self.mode {
+            Mode::M00ColorText40 | Mode::M01Text40 => CHAR_HEIGHT_8,
+            _ => CHAR_HEIGHT,
+        };
 
         // Render all cells
         let mut i = (self.start_address as usize) * 2;
         for row in 0..TEXT_MODE_ROWS {
-            for col in 0..TEXT_MODE_COLS {
+            for col in 0..cols {
                 let character = self.vram[i];
                 i += 1;
                 let text_attr = TextAttribute::from_byte(self.vram[i], self.blink_enabled);
@@ -291,21 +304,22 @@ impl VideoBuffer {
                         text_attr,
                         vga_dac_palette: &self.vga_dac_palette,
                         stride: width,
+                        char_height,
                     },
                     buf,
                 );
             }
         }
 
-        self.render_cursor(buf, width);
+        self.render_cursor(buf, width, char_height);
     }
 
-    fn render_cursor(&self, data: &mut [u8], width: usize) {
+    fn render_cursor(&self, data: &mut [u8], width: usize, char_height: usize) {
         if self.cursor_visible {
             let cursor_row = (self.cursor_loc / self.text_columns as u16) as usize;
             let cursor_col = (self.cursor_loc % self.text_columns as u16) as usize;
 
-            if cursor_row < TEXT_MODE_ROWS && cursor_col < TEXT_MODE_COLS {
+            if cursor_row < TEXT_MODE_ROWS && cursor_col < self.text_columns as usize {
                 // Use foreground color of the character cell under the cursor
                 let cell_idx = (cursor_row * self.text_columns as usize + cursor_col) * 2;
                 let attr_byte = self.vram[cell_idx + 1];
@@ -321,10 +335,10 @@ impl VideoBuffer {
                 // within the character cell (0-based). Use them as-is, clamped to the
                 // render height.
                 let start_scan = self.cursor_start_line as usize;
-                let end_scan = (self.cursor_end_line as usize).min(CHAR_HEIGHT - 1);
+                let end_scan = (self.cursor_end_line as usize).min(char_height - 1);
 
                 let char_x = cursor_col * CHAR_WIDTH;
-                let char_y = cursor_row * CHAR_HEIGHT;
+                let char_y = cursor_row * char_height;
 
                 for scan_line in start_scan..=end_scan {
                     let pixel_y = char_y + scan_line;

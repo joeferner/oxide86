@@ -392,7 +392,7 @@ impl Cpu {
         let mode = bda_get_video_mode(bus);
 
         match mode {
-            Mode::M02ColorText | Mode::M03Text => {
+            Mode::M00ColorText40 | Mode::M01Text40 | Mode::M02ColorText | Mode::M03Text => {
                 bus.video_card_mut().scroll_text_window(
                     ScrollWindow {
                         lines,
@@ -499,7 +499,7 @@ impl Cpu {
 
         let mode = bda_get_video_mode(bus);
         match mode {
-            Mode::M02ColorText | Mode::M03Text => {
+            Mode::M00ColorText40 | Mode::M01Text40 | Mode::M02ColorText | Mode::M03Text => {
                 bus.video_card_mut().scroll_text_window(
                     ScrollWindow {
                         lines,
@@ -609,7 +609,7 @@ impl Cpu {
         let rows = bda_get_rows(bus) as usize;
         let mode = bda_get_video_mode(bus);
 
-        if matches!(mode, Mode::M02ColorText | Mode::M03Text) {
+        if matches!(mode, Mode::M00ColorText40 | Mode::M01Text40 | Mode::M02ColorText | Mode::M03Text) {
             // Text mode: write to video memory
             for i in 0..count {
                 let pos = cursor.row as usize * cols + cursor.col as usize + (i as usize);

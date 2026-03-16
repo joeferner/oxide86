@@ -1,5 +1,5 @@
 use crate::video::{
-    font::{CHAR_HEIGHT, CHAR_WIDTH, Cp437Font},
+    font::{CHAR_WIDTH, Cp437Font},
     text::TextAttribute,
 };
 
@@ -18,23 +18,19 @@ pub(crate) struct RenderTextArgs<'a> {
     pub text_attr: TextAttribute,
     pub vga_dac_palette: &'a [[u8; 3]; 256],
     pub stride: usize,
+    /// Number of pixel rows to render per character cell.
+    pub char_height: usize,
 }
 
 /// Render a single text cell to an RGBA buffer.
 ///
-/// Uses VGA DAC palette for foreground/background colors. The output buffer
-/// must be at least `stride * (row * CHAR_HEIGHT + CHAR_HEIGHT) * 4` bytes.
-///
-/// # Arguments
-/// * `font` - CP437 font for glyph lookup
-/// * `row` - Character row position (0-based)
-/// * `col` - Character column position (0-based)
-/// * `cell` - The text cell (character + attribute)
-/// * `vga_dac_palette` - 256-entry VGA DAC palette (6-bit RGB per component)
-/// * `stride` - Output buffer width in pixels (e.g., 640)
-/// * `output` - RGBA buffer to write to
+/// Uses VGA DAC palette for foreground/background colors.
 pub(crate) fn render_text(args: RenderTextArgs, output: &mut [u8]) {
-    let glyph = args.font.get_glyph(args.character);
+    let glyph = if args.char_height <= 8 {
+        args.font.get_glyph_8(args.character)
+    } else {
+        args.font.get_glyph(args.character)
+    };
     let fg_dac = args.vga_dac_palette[args.text_attr.foreground as usize];
     let bg_dac = args.vga_dac_palette[args.text_attr.background as usize];
     let fg_color = [
@@ -49,7 +45,7 @@ pub(crate) fn render_text(args: RenderTextArgs, output: &mut [u8]) {
     ];
 
     let char_x = args.col * CHAR_WIDTH;
-    let char_y = args.row * CHAR_HEIGHT;
+    let char_y = args.row * args.char_height;
 
     for (glyph_row, &glyph_byte) in glyph.iter().enumerate() {
         let pixel_y = char_y + glyph_row;
