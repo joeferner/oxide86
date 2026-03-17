@@ -68,10 +68,10 @@ RUST_LOG=info cargo run -p oxide86-native-gui -- --boot --hdd hdd.img --boot-dri
 
 ```bash
 # Create a blank 1.44MB image
-oxide86-disktools -- format --floppy-1440 test.img
+cargo run -p oxide86-disktools -- format --floppy-1440 test.img
 
 # Copy the file into the image
-oxide86-disktools -- copy -i test.img my-files/* ::/
+cargo run -p oxide86-disktools -- copy -i test.img my-files/* ::/
 ```
 
 # Compatibility

@@ -13,6 +13,8 @@ pub mod reverse_engineer;
 pub mod scan_code;
 pub mod video;
 
+pub use disk::{DiskGeometry, SECTOR_SIZE};
+
 #[cfg(test)]
 pub mod tests;
 

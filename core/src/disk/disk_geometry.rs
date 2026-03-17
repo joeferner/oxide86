@@ -52,7 +52,7 @@ impl DiskGeometry {
     /// Create a hard drive geometry from total sector count
     /// Uses standard CHS parameters: 63 sectors/track, 16 heads
     /// Maximum 1024 cylinders (CHS addressing limit)
-    pub(crate) fn hard_drive(total_sectors: usize) -> Self {
+    pub fn hard_drive(total_sectors: usize) -> Self {
         let sectors_per_track = 63u16;
         let heads = 16u16;
         let cylinders =
@@ -68,6 +68,10 @@ impl DiskGeometry {
 
     /// Detect geometry based on disk image size
     /// Returns known floppy geometries for exact matches, or hard drive geometry for larger disks
+    pub fn is_floppy(&self) -> bool {
+        matches!(self.total_size, 1_474_560 | 737_280 | 368_640 | 163_840)
+    }
+
     pub(crate) fn from_size(size: usize) -> Option<Self> {
         match size {
             1_474_560 => Some(Self::FLOPPY_1440K),
@@ -84,7 +88,7 @@ impl DiskGeometry {
     }
 
     /// Calculate total number of sectors
-    pub(crate) fn total_sectors(&self) -> usize {
+    pub fn total_sectors(&self) -> usize {
         self.cylinders as usize * self.heads as usize * self.sectors_per_track as usize
     }
 

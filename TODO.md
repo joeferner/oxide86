@@ -45,17 +45,17 @@
 - [X] Support 286 instructions
 - [X] Create reverse engineering mode (see ai-analysis/reverse-engineer-plan.md)
 - [X] Test SimCity (1989)
-- [ ] CGA Composite mode (see ai-analysis/cga-composite-plan.md)
+- [X] CGA Composite mode (see ai-analysis/cga-composite-plan.md)
   - [X] Trans flag https://archive.org/details/composite_cga_test_program_trans.com
   - [X] see CT.EXE https://www.vogons.org/viewtopic.php?t=96231
-  - [ ] see https://github.com/MobyGamer/CGACompatibilityTester
-  - [ ] Blinking text core/src/test_data/video/ct755r/mode7.asm
-- [ ] Test MS Flight Simulator 1.05
+- [X] Test MS Flight Simulator 1.05
+- [ ] Test Commander Keen 1 (see ai-analysis/commander-keen-1-error-investigation.md)
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
 - [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
+- [ ] Blinking text core/src/test_data/video/ct755r/mode7.asm
 - [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
   - [ ] Test Fractint Version 15.x and below
 - [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code
@@ -64,3 +64,4 @@
 - [ ] remove functions from bus to get internal devices unless really needed
 - [ ] check all #[allow(dead_code)]
 - [ ] Support external bios (see ai-analysis/bios-options.md)
+- [ ] Test https://github.com/MobyGamer/CGACompatibilityTester

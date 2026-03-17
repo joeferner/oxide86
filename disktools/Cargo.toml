@@ -1,0 +1,20 @@
+[package]
+name = "oxide86-disktools"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "oxide86-disktools"
+path = "src/main.rs"
+
+[dependencies]
+oxide86-core = { path = "../core" }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+clap = { workspace = true }
+env_logger = { workspace = true }
+fatfs = { workspace = true }
+log = { workspace = true }
+
+[lints]
+workspace = true

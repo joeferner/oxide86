@@ -8,7 +8,7 @@ mod mem_backend;
 
 pub use backed_disk::BackedDisk;
 pub(crate) use disk_error::DiskError;
-pub use disk_geometry::DiskGeometry;
+pub use disk_geometry::{DiskGeometry, SECTOR_SIZE};
 pub use drive_number::DriveNumber;
 pub use mem_backend::MemBackend;
 
