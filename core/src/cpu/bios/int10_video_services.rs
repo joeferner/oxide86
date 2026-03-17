@@ -1939,7 +1939,7 @@ impl Cpu {
             b'\n' => {
                 if !self.teletype_log_buffer.is_empty() {
                     let s = std::mem::take(&mut self.teletype_log_buffer);
-                    log::info!("[BIOS] teletype: \"{s}\"");
+                    log::debug!("[BIOS] teletype: \"{s}\"");
                 }
             }
             _ if ch >= 0x20 && ch < 0x7F => {
@@ -1948,7 +1948,7 @@ impl Cpu {
             _ => {
                 if !self.teletype_log_buffer.is_empty() {
                     let s = std::mem::take(&mut self.teletype_log_buffer);
-                    log::info!("[BIOS] teletype: \"{s}\"");
+                    log::debug!("[BIOS] teletype: \"{s}\"");
                 }
             }
         }
@@ -1958,7 +1958,7 @@ impl Cpu {
     fn flush_teletype_log(&mut self) {
         if !self.teletype_log_buffer.is_empty() {
             let s = std::mem::take(&mut self.teletype_log_buffer);
-            log::info!("[BIOS] teletype: \"{s}\"");
+            log::debug!("[BIOS] teletype: \"{s}\"");
         }
     }
 }

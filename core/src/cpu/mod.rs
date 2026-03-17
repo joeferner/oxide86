@@ -1,7 +1,7 @@
 use crate::{
     Computer,
     bus::Bus,
-    cpu::bios::int21_dos_services::PendingDosRead,
+    cpu::bios::int21_dos_services::{DosFileHandleTable, PendingDosOpen, PendingDosRead, PendingDosSeek},
     cpu::instructions::decoder::Operand,
     cpu::{
         bios::BIOS_CODE_SEGMENT,
@@ -112,6 +112,15 @@ pub(crate) struct Cpu {
     /// Pending INT 0x21 AH=3Fh: buffer location to dump on return from DOS.
     pending_dos_read: Option<PendingDosRead>,
 
+    /// Pending INT 0x21 AH=3C/3Dh: filename waiting for the returned handle.
+    pending_dos_open: Option<PendingDosOpen>,
+
+    /// Pending INT 0x21 AH=42h: handle waiting for the returned file position.
+    pending_dos_seek: Option<PendingDosSeek>,
+
+    /// Side-table: open DOS file handle → filename + current position.
+    dos_file_handles: DosFileHandleTable,
+
     /// Buffer for consecutive INT 10h AH=0Eh / INT 29h teletype characters.
     /// Flushed as a single log line on CR, LF, or any non-teletype interrupt.
     teletype_log_buffer: String,
@@ -199,6 +208,9 @@ impl Cpu {
             reverse_engineer: None,
             bootstrap_request: false,
             pending_dos_read: None,
+            pending_dos_open: None,
+            pending_dos_seek: None,
+            dos_file_handles: DosFileHandleTable::new(),
             teletype_log_buffer: String::new(),
         }
     }
@@ -353,7 +365,7 @@ impl Cpu {
 
         self.exec_instruction(bus);
 
-        self.check_pending_dos_read(bus);
+        self.check_int21_dos_call(bus);
 
         // Decode after execution so register annotations reflect post-exec state.
         // Instruction bytes at pre_cs:pre_ip are still in memory (code is not modified).
@@ -426,8 +438,7 @@ impl Cpu {
     fn dispatch_interrupt(&mut self, bus: &mut Bus, int_num: u8) {
         if int_num == 0x10 {
             self.log_int10_video_services();
-        }
-        if int_num == 0x21 {
+        } else if int_num == 0x21 {
             self.log_int21_dos_call(bus);
         }
         if self.exec_logging_enabled {

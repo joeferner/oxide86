@@ -53,6 +53,20 @@ pub(crate) fn cpu_detect_8086() {
     );
 }
 
+/// Verify 8086 shift-by-CL behaviour: counts ≥ 16 (word) or ≥ 8 (byte) must
+/// shift all bits out and produce 0, not wrap mod 16 as on 286+/modern x86.
+/// This is the root cause of oxide86's EGALATCH.CK1 decoding bug.
+#[test_log::test]
+pub(crate) fn shift_cl() {
+    run_test(
+        "cpu/shift_cl",
+        create_computer(),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// Run the same program as a 286.
 /// Expected: no SP quirk, IOPL not settable, bits 12-15 confirmed 0x0000 → exit 0x01.
 #[test_log::test]

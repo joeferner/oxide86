@@ -1,15 +1,41 @@
+use std::collections::HashMap;
+
 use crate::{
     bus::Bus,
     cpu::{Cpu, cpu_flag},
     physical_address,
 };
 
+/// Tracks an open DOS file handle.
+pub(in crate::cpu) struct DosFileHandle {
+    pub(in crate::cpu) filename: String,
+    pub(in crate::cpu) position: u32,
+}
+
+/// Saved state for an in-flight AH=3C/3D open/create call; resolved on return.
+pub(in crate::cpu) struct PendingDosOpen {
+    pub(in crate::cpu) filename: String,
+    pub(in crate::cpu) ret_cs: u16,
+    pub(in crate::cpu) ret_ip: u16,
+}
+
+/// Saved state for an in-flight AH=42 seek call; resolved on return.
+pub(in crate::cpu) struct PendingDosSeek {
+    pub(in crate::cpu) handle: u16,
+    pub(in crate::cpu) ret_cs: u16,
+    pub(in crate::cpu) ret_ip: u16,
+}
+
 pub(in crate::cpu) struct PendingDosRead {
     pub(in crate::cpu) ret_cs: u16,
     pub(in crate::cpu) ret_ip: u16,
     pub(in crate::cpu) ds: u16,
     pub(in crate::cpu) dx: u16,
+    pub(in crate::cpu) handle: u16,
 }
+
+/// Side-table: DOS file handle → open file info.
+pub(in crate::cpu) type DosFileHandleTable = HashMap<u16, DosFileHandle>;
 
 impl Cpu {
     pub(in crate::cpu) fn handle_int21_dos_services(&mut self, bus: &mut Bus) {
@@ -96,6 +122,15 @@ impl Cpu {
         }
     }
 
+    /// Returns a short annotation string like ` ("foo.txt" pos=42)` for a handle,
+    /// or an empty string if the handle is not in the table.
+    fn file_handle_annotation(&self, handle: u16) -> String {
+        match self.dos_file_handles.get(&handle) {
+            Some(fh) => format!(" (\"{}\", pos={})", fh.filename, fh.position),
+            None => String::new(),
+        }
+    }
+
     /// Log INT 0x21 call parameters before the call is dispatched to any handler.
     /// Called from dispatch_interrupt so it fires for both the built-in Rust DOS
     /// handler and a real DOS kernel running in guest memory.
@@ -110,49 +145,117 @@ impl Cpu {
         match ah {
             0x3C => {
                 let name = bus.read_c_string(physical_address(ds, dx));
-                log::info!("[DOS] AH=3C create \"{name}\" attr={cx:04X}");
+                log::debug!("[DOS] AH=3C create \"{name}\" attr={cx:04X}");
+                self.pending_dos_open = Some(PendingDosOpen {
+                    filename: name,
+                    ret_cs: self.cs,
+                    ret_ip: self.ip,
+                });
             }
             0x3D => {
                 let name = bus.read_c_string(physical_address(ds, dx));
-                log::info!("[DOS] AH=3D open  \"{name}\" mode={al:02X}");
+                log::debug!("[DOS] AH=3D open \"{name}\" mode={al:02X}");
+                self.pending_dos_open = Some(PendingDosOpen {
+                    filename: name,
+                    ret_cs: self.cs,
+                    ret_ip: self.ip,
+                });
             }
             0x3E => {
-                log::info!("[DOS] AH=3E close handle={bx}");
+                let ann = self.file_handle_annotation(bx);
+                log::debug!("[DOS] AH=3E close handle={bx}{ann}");
+                self.dos_file_handles.remove(&bx);
             }
             0x3F => {
-                log::info!("[DOS] AH=3F read  handle={bx} buf={ds:04X}:{dx:04X} max={cx}");
+                let ann = self.file_handle_annotation(bx);
+                log::debug!("[DOS] AH=3F read handle={bx}{ann} buf={ds:04X}:{dx:04X} max={cx}");
                 self.pending_dos_read = Some(PendingDosRead {
                     ret_cs: self.cs,
                     ret_ip: self.ip,
                     ds,
                     dx,
+                    handle: bx,
                 });
             }
             0x40 => {
-                log::info!("[DOS] AH=40 write handle={bx} buf={ds:04X}:{dx:04X} len={cx}");
+                let ann = self.file_handle_annotation(bx);
+                log::debug!("[DOS] AH=40 write handle={bx}{ann} buf={ds:04X}:{dx:04X} len={cx}");
             }
             0x41 => {
                 let name = bus.read_c_string(physical_address(ds, dx));
-                log::info!("[DOS] AH=41 delete \"{name}\"");
+                log::debug!("[DOS] AH=41 delete \"{name}\"");
             }
             0x42 => {
                 let offset = ((cx as i32) << 16) | (dx as i32);
-                log::info!("[DOS] AH=42 seek  handle={bx} origin={al} offset={offset}");
+                let ann = self.file_handle_annotation(bx);
+                log::debug!("[DOS] AH=42 seek handle={bx}{ann} origin={al} offset={offset}");
+                self.pending_dos_seek = Some(PendingDosSeek {
+                    handle: bx,
+                    ret_cs: self.cs,
+                    ret_ip: self.ip,
+                });
             }
             0x4E => {
                 let name = bus.read_c_string(physical_address(ds, dx));
-                log::info!("[DOS] AH=4E find_first \"{name}\" attr={cx:02X}");
+                log::debug!("[DOS] AH=4E find_first \"{name}\" attr={cx:02X}");
             }
             0x4F => {
-                log::info!("[DOS] AH=4F find_next");
+                log::debug!("[DOS] AH=4F find_next");
             }
             _ => {}
         }
     }
 
+    pub(in crate::cpu) fn check_int21_dos_call(&mut self, bus: &Bus) {
+        self.check_pending_dos_open();
+        self.check_pending_dos_seek();
+        self.check_pending_dos_read(bus);
+    }
+
+    /// If a pending AH=3C/3Dh open/create has just returned, register the new handle.
+    fn check_pending_dos_open(&mut self) {
+        let Some(ref pdo) = self.pending_dos_open else {
+            return;
+        };
+        if self.cs != pdo.ret_cs || self.ip != pdo.ret_ip {
+            return;
+        }
+        if !self.get_flag(cpu_flag::CARRY) {
+            let handle = self.ax;
+            let filename = pdo.filename.clone();
+            log::debug!("[DOS] open/create → handle={handle} \"{filename}\"");
+            self.dos_file_handles.insert(
+                handle,
+                DosFileHandle {
+                    filename,
+                    position: 0,
+                },
+            );
+        }
+        self.pending_dos_open = None;
+    }
+
+    /// If a pending AH=42h seek has just returned, update the stored file position.
+    fn check_pending_dos_seek(&mut self) {
+        let Some(ref pds) = self.pending_dos_seek else {
+            return;
+        };
+        if self.cs != pds.ret_cs || self.ip != pds.ret_ip {
+            return;
+        }
+        if !self.get_flag(cpu_flag::CARRY) {
+            let new_pos = ((self.dx as u32) << 16) | (self.ax as u32);
+            let handle = pds.handle;
+            if let Some(fh) = self.dos_file_handles.get_mut(&handle) {
+                fh.position = new_pos;
+            }
+        }
+        self.pending_dos_seek = None;
+    }
+
     /// If a pending AH=3Fh read has just returned (cs:ip matches the saved return address),
     /// log the bytes-read count and a hex+ASCII dump of the first 16 bytes of the buffer.
-    pub(in crate::cpu) fn check_pending_dos_read(&mut self, bus: &Bus) {
+    fn check_pending_dos_read(&mut self, bus: &Bus) {
         let Some(ref pdr) = self.pending_dos_read else {
             return;
         };
@@ -160,6 +263,7 @@ impl Cpu {
             return;
         }
         let bytes_read = self.ax as usize;
+        let handle = pdr.handle;
         let dump_len = bytes_read.min(16);
         if dump_len > 0 {
             let base = physical_address(pdr.ds, pdr.dx);
@@ -174,9 +278,14 @@ impl Cpu {
                     '.'
                 });
             }
-            log::info!("[DOS] AH=3F → read={bytes_read}  {hex} {asc}");
+            let ann = self.file_handle_annotation(handle);
+            log::debug!("[DOS] AH=3F{ann} → read={bytes_read}  {hex} {asc}");
         } else {
-            log::info!("[DOS] AH=3F → read={bytes_read}");
+            let ann = self.file_handle_annotation(handle);
+            log::debug!("[DOS] AH=3F{ann} → read={bytes_read}");
+        }
+        if let Some(fh) = self.dos_file_handles.get_mut(&handle) {
+            fh.position += bytes_read as u32;
         }
         self.pending_dos_read = None;
     }

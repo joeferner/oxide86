@@ -10,6 +10,11 @@ Error during code expansion!
 
 This document traces the exact code path that produces this error, as observed in `oxide86.log` around line 2,886,453.
 
+**Summary of findings:** There are two separate issues.
+
+1. The game has a historical buffer-sizing bug (4,000-byte limit, sized for CGA, used for EGA data). On real hardware this limit is never reached because the maximum possible chain depth is 3,839 < 4,000.
+2. oxide86 has a shift-by-CL bug (mod-16 masking) that corrupts the LZW bit stream from the second code onward. The garbled codes eventually produce a chain depth > 4,000, triggering the error in a way that never happens on real hardware.
+
 ## Program Loading
 
 Commander Keen 1 is packed with LZEXE. On startup:
@@ -19,7 +24,7 @@ Commander Keen 1 is packed with LZEXE. On startup:
 
 ## Error Trigger Location
 
-The error originates inside the GIF/LZW image decoder at `102A:6BAE`:
+The error originates inside the custom LZW decoder at `102A:6BAE`:
 
 ```asm
 102A:6BAB  3D A0 0F   cmp ax, 0x0FA0   ; compare output index to 4000
@@ -31,36 +36,129 @@ The error originates inside the GIF/LZW image decoder at `102A:6BAE`:
 
 `DI` is the output byte counter. When it reaches `0x0FA0` (4000 decimal), the `jl` is no longer taken and execution falls through to the error path.
 
-## GIF/LZW Decoder Structure
+## Custom LZW Decoder Structure
 
-The decoder is split across two functions:
+The decoder is implemented as three cooperating routines:
 
 | Address | Role |
 |---------|------|
-| `102A:6A50` | Outer loop — drives decoding, calls `6B62` once per LZW code |
-| `102A:6B62` | Inner function — follows a single LZW code chain, writing output bytes |
+| `102A:6A50` | Outer loop — iterates one code per pass; manages previous-code state |
+| `102A:6BD4` | Code-extraction function — refills bit buffer, extracts next variable-width code |
+| `102A:6B62` | Chain-follow function — expands a single code to output bytes; DI = byte counter |
 
-The inner function (`6B62`) entry:
+### Code-Extraction Function (`102A:6BD4`)
+
+**Bit buffer** state lives in three DS-relative variables:
+
+| Variable | Width | Role |
+|----------|-------|------|
+| `[0x82f2]` | 16-bit | Low 16 bits of 32-bit bit buffer |
+| `[0x82f4]` | 16-bit | High 16 bits of 32-bit bit buffer |
+| `[0x82f6]` | 16-bit | Number of valid bits currently held |
+
+**Bit-fill loop** (`6BDB–6C0E`): while `[0x82f6] ≤ 24`, read one byte from `7D0F:offset` via the `E1B3` nibble-pointer-advance routine, shift it into the high bits of the 32-bit buffer via `E151`, and add 8 to `[0x82f6]`.
+
+**Code extraction** (`6C15–6C43`):
+1. `E192` right-shifts the 32-bit buffer by `(32 − code_bits)` to produce the code in `AX`.
+2. `E151` left-shifts the 32-bit buffer by `code_bits` to consume those bits.
+3. Subtract `code_bits` from `[0x82f6]`.
+
+Confirmed from log (first iteration, oxide86):
+
+```
+[0x82f4]=E140 [0x82f2]=E062  [0x82f6]=0x1F (31 valid bits)
+code_bits = [0x96fa] = 9
+→ E192: shr E140:E062 by (32−9) = 23  →  AX = 0x01C2  (code 450)   ← garbled (oxide86 bug)
+→ E151: shl 32-bit buffer left by 9   →  [0x82f4]=81C0 [0x82f2]=C400
+→ [0x82f6] = 0x16 (22 bits remaining)
+```
+
+On real hardware the buffer at the same point would be `0x0040A070` (not `0x0070A070`) and the second code would be `0x0102 = 258`, which is a valid dictionary entry.
+
+**Seed loading and the oxide86 shift bug** — The file header contains 4 seed bytes at offsets 6–9 (`00 40 A0 70`) loaded into the 32-bit buffer before decoding begins. The E151 routine shifts BX left by CL bits using the sequence:
+
+```asm
+neg  cl          ; negate shift count
+add  cl, 16      ; add 16 to get complement
+shr  bx, cl      ; shift BX right by complement to achieve left shift
+```
+
+For the 4th byte (0x70), the original shift is 0, so `neg 0 → 0`, `add 0+16 → 16`, `shr BX, 16`. On real 8086, shifting a 16-bit register by 16 produces 0. oxide86 incorrectly masks the shift count mod 16 (modern x86 behavior), so `shr BX, 16` becomes `shr BX, 0`, leaving BX = 0x70. The subsequent `or DX, BX` puts 0x70 into the high word, yielding buffer `0x0070A070` instead of `0x0040A070`.
+
+The top 9 bits of both values are 0, so the **first code is identical** (0x000 = literal NUL). The second code onwards diverges because the buffered bits differ. oxide86 reads `0x01C2 = 450` as the second code; at that point only codes 0–256 are defined, so the decoder is processing an invalid code. Garbled codes eventually produce a chain depth > 4,000, triggering the error message.
+
+### Chain-Follow Function (`102A:6B62`)
 
 ```asm
 102A:6B62  push bp
 102A:6B63  mov  bp, sp
 102A:6B65  push si
 102A:6B66  push di
-102A:6B67  mov  si, [0xff36]   ; starting address from caller
+102A:6B67  mov  si, [0xff36]   ; [bp+04] = output buffer address (from caller)
 102A:6B6A  xor  di, di         ; DI = 0 (output byte counter)
-102A:6B6C  jmp  0x6bc2         ; enter loop
+102A:6B6C  jmp  0x6bc2         ; enter chain-follow loop
+
+; Loop: if code > 0xFF, look up char/next-state tables, recurse
+102A:6BC2  cmp  [0xff38], 0x00ff   ; [bp+06] = code to expand
+102A:6BC7  ja   0x6b6e             ; code > 0xFF → follow table chain
+; leaf: code ≤ 0xFF → write literal byte
+102A:6BC9  mov  al, [0xff38]
+102A:6BCC  mov  [si], al           ; write to output address
+102A:6BCE  mov  ax, si             ; return output address
+102A:6BD0  pop  di
+102A:6BD1  pop  si
+102A:6BD2  pop  bp
+102A:6BD3  ret
 ```
 
-Inside the loop, for each decoded byte:
+When DI reaches `0x0FA0` (4000) inside the chain-follow loop the overflow check fires:
 
 ```asm
-102A:6BA8  mov  ax, di         ; ax = current output index
-102A:6BAA  inc  di
-102A:6BAB  cmp  ax, 0x0FA0     ; 4000 = buffer limit
-102A:6BAE  jl   0x6bc2         ; ok → write byte
-            ; fall through → error
+102A:6BAB  cmp  ax, 0x0FA0     ; 4000 = hard-coded buffer limit
+102A:6BAE  jl   0x6bc2         ; ok → continue
+            ; fall through → error path
 ```
+
+### Compression Parameters
+
+The file header's 2-byte type field (`0x000C = 12`) selects the decoder parameters:
+
+| Parameter | Value |
+|-----------|-------|
+| Initial code width | 9 bits |
+| Maximum code width | 12 bits (from `[0x8326]` = 12 = type field) |
+| Code space | 0x000–0x0FF literals; 0x100 clear; 0x101 end; 0x102–0xFFF dictionary |
+| Maximum dictionary code | 0xFFF = 4095 |
+| Maximum chain depth | 4095 − 256 = **3,839** — safely under the 4,000-byte buffer |
+
+**Code-width growth** — the current width in `[0x96fa]` starts at 9 and grows via a threshold mechanism:
+
+- Threshold `[0x8348]` is initialised to `(1 << code_bits) − 1` = 511.
+- Dict entries are added only while `next_code ≤ threshold` (`ja` check at `102A:6AEF`).
+- When `next_code` (after increment) equals the threshold, code_bits is incremented and the threshold doubles minus one (log: `inc [0x96fa]` triggered when DI=0x01FF at `102A:6B37`).
+- Thresholds: 511 → 1023 → 2047 → 4095; stops growing at 12 bits.
+
+### Compression Format Classification
+
+The algorithm is a **custom variable-width LZW variant** specific to the id Tech 0 / Commander Keen Vorticons engine (1990). It is **not** standard GIF LZW, TIFF LZW, or any other well-known variant:
+- GIF LZW (LSB-first, min_code_size parameter): produces invalid output from this file.
+- TIFF LZW (MSB-first): produces invalid output.
+- Fixed-width 12-bit LZW: produces invalid output.
+
+The custom nature is consistent with id Software's practice of writing proprietary compression for every asset type in this era (Carmack, RLEW, custom Huffman are used elsewhere in the same engine).
+
+## Decoder Validation
+
+A Python implementation (`ai-analysis/keen1_latch_decode.py`) was written to match the game's exact decoder logic — same bit-fill loop, same MSB-first accumulator, same threshold-based code-width growth — and run against the actual `EGALATCH.CK1` file:
+
+```
+File size (compressed) : 57,065 bytes
+Total uncompressed     : 119,680 bytes
+Decoded                : 119,680 bytes  ✓
+Max chain depth seen   : 57  (limit: 4,000)
+```
+
+The maximum observed chain depth is 57, not 3,839 or anywhere near 4,000. This confirms that on correct 8086 hardware the overflow check at `102A:6BAB` is **never reached**. The historical 4,000-byte limit is safe for this file.
 
 ## Error Path
 
@@ -110,64 +208,66 @@ Each of the 28 printable characters in `"Error during code expansion!"` passes t
 
 ## Source File Identification
 
-The compressed data being expanded comes from **EGAGRAPH.CK1** — the Commander Keen 1 graphics archive. This was established by tracing all DOS file I/O calls in segment `102A` from program start through the decoder overflow.
+The compressed data being expanded comes from **EGALATCH.CK1** — the Commander Keen 1 EGA latch data archive. This was established directly from the structured DOS file I/O log added to the emulator.
 
-### Filename construction
-
-The game assembles filenames at `232F:FF90` using three string parts:
-- A base path from `232F:254C` (empty in this run)
-- A stem string from `232F:2871` (e.g. `"EGAHEAD."` or `"EGAGRAPH."`)
-- An extension from `232F:27C0` (`"CK1"`)
-
-The stem at `232F:2871` had these bytes decompressed by the LZEXE stub:
-
-| Linear Address | Byte | Char |
-|---------------|------|------|
-| `0x25B61` | `0x45` | `E` |
-| `0x25B62` | `0x47` | `G` |
-| `0x25B63` | `0x41` | `A` |
-| `0x25B64` | `0x48` | `H` |
-| `0x25B65` | `0x45` | `E` |
-| `0x25B66` | (not read in log) | `A` (inferred) |
-| `0x25B67` | (not read in log) | `D` (inferred) |
-| `0x25B68` | `0x2E` | `.` |
-| `0x25B69` | `0x00` | null |
-
-This confirms the first file is `EGAHEAD.CK1` (7-char stem). The second data file opens with an 8-char stem (dot at `FF98` rather than `FF97`), consistent with `EGAGRAPH.CK1`.
+> **Note:** An earlier version of this document incorrectly identified the file as `EGAGRAPH.CK1`. That name never appears in the log. The structured `[DOS]` logging added as improvement #1 below made the correct file immediately visible.
 
 ### File I/O call sequence
 
-Two open code paths were identified in segment `102A`:
-
-| Address | Purpose |
-|---------|---------|
-| `102A:D5EF` | Opens the file for header/seek operations; handle stored in `[0xff40]` or `[0xff4a]` |
-| `102A:5CE1` | `mov ax, 0x3D00` / `int 0x21` — opens for bulk read; handle stored in `[0xff48]` |
-
-Full sequence (all in segment `102A`):
+All DOS file operations observed from Keen startup through the decoder overflow:
 
 | Log Line | Operation | File | Notes |
 |----------|-----------|------|-------|
-| 785,295 | AH=3D open (`D5EF`) | EGAHEAD.CK1 | First open; 7-char stem, dot at `FF97` |
-| 790,615 | AH=3E close (`CF8B`) | EGAHEAD.CK1 | Handle 5 closed via `[0xff4a]` |
-| 790,936 | AH=3D open (`5CE4`) | EGAHEAD.CK1 | Reopened; `lseek(0, SEEK_END)` at `5CF4` to get file size |
-| 794,988 | AH=3F read (`5D1D`) | EGAHEAD.CK1 | BX=5, CX=0xFFFF, DS:DX=3330:0000 — reads full header into memory |
-| 797,345 | AH=3E close (`5D50`) | EGAHEAD.CK1 | |
-| 847,789 | AH=3D open (`D5EF`) | EGAGRAPH.CK1 | 8-char stem, dot at `FF98` |
-| 851,818 | AH=3F read (`D6E7`) | EGAGRAPH.CK1 | BX=5, CX=4 — reads 4-byte chunk count/header |
-| 852,862 | AH=3F read (`D6E7`) | EGAGRAPH.CK1 | Second small read |
-| 853,395 | AH=3E close (`CF8B`) | EGAGRAPH.CK1 | |
-| 854,194 | AH=3D open (`D5EF`) | EGAGRAPH.CK1 | Reopened to seek to specific chunk offset |
-| 858,809 | AH=3E close (`CF8B`) | EGAGRAPH.CK1 | |
-| 859,560 | AH=3D open (`5CE4`) | EGAGRAPH.CK1 | Final open; followed by seek then bulk read |
-| 863,719 | AH=3F read (`5D1D`) | **EGAGRAPH.CK1** | BX=5, CX=0xFFFF — **reads compressed chunk data** |
-| 869,953 | LZW inner fn entry | — | `102A:6B62`, DI=0 |
+| 795,629 | AH=3D open | EGAHEAD.CK1 | First open; seek to get size |
+| 800,960 | AH=3E close | EGAHEAD.CK1 | |
+| 801,279 | AH=3D open | EGAHEAD.CK1 | Reopened; `lseek(SEEK_END)` then `lseek(0)` for size |
+| 807,698 | AH=3F read | EGAHEAD.CK1 | buf=3330:0000 max=65535 → read=15568 bytes — reads full header into memory |
+| 807,707 | AH=3E close | EGAHEAD.CK1 | |
+| 858,235 | AH=3D open | EGALATCH.CK1 | First open |
+| 863,268 | AH=3F read | EGALATCH.CK1 | buf=232F:FF5A max=4 → read=4 (`80 D3 01 00`) — chunk count/header |
+| 863,810 | AH=3F read | EGALATCH.CK1 | buf=232F:8326 max=2 → read=2 (`0C 00`) — second small read |
+| 863,852 | AH=3E close | EGALATCH.CK1 | |
+| 864,654 | AH=3D open | EGALATCH.CK1 | Reopened; seek to get file size |
+| 869,281 | AH=3E close | EGALATCH.CK1 | |
+| 870,033 | AH=3D open | EGALATCH.CK1 | Final open; seek to chunk offset then bulk read |
+| ~875,000 | AH=3F read | **EGALATCH.CK1** | buf=7D0F:0004 max=65535 → **read=57,065 bytes** — compressed chunk data fed to LZW decoder |
+| ~875,010 | AH=3E close | EGALATCH.CK1 | |
+| ~876,000 | LZW inner fn entry | — | `102A:6B62`, DI=0 |
 
-The read at log line 863,719 supplies the compressed data to the LZW decoder. The decoded chunk expands beyond 4000 bytes, triggering the overflow.
+The read of 57,065 bytes supplies the compressed data to the LZW decoder. In oxide86 the garbled codes eventually produce a chain depth > 4,000, triggering the overflow.
 
 ## Root Cause
 
-The 4000-byte output limit (`0x0FA0`) in the LZW decoder at `102A:6BAB` is a fixed buffer size (80×50 = 4000 bytes, matching a CGA text-mode screen). The chunk from `EGAGRAPH.CK1` being decoded at this point decompresses to more than 4000 bytes, overflowing the hard-coded buffer and triggering the error message.
+### Real hardware
+
+The 4,000-byte output limit (`0x0FA0`) at `102A:6BAB` is a historical artifact: the buffer was sized for an 80×50 CGA screen (80×50 = 4,000 bytes) and was never updated when the engine was ported to EGA. However, the actual maximum chain depth achievable with the type-12 parameters is 3,839 (code 0xFFF − 256 literals), which is **below** the limit. The overflow check is never triggered on correctly functioning hardware.
+
+### oxide86
+
+The emulator's shift-by-CL implementation masked the CL shift count mod 16 (x86 486+ behaviour), treating `shr BX, 16` as `shr BX, 0`. This corrupted the LZW bit-buffer seed, producing an invalid second code (0x01C2 = 450 instead of 0x0102 = 258). The cascading effect of invalid codes caused chain depths exceeding 4,000, triggering the game's overflow check.
+
+## Emulator Fix
+
+The shift-by-CL bug was fixed in `core/src/cpu/instructions/shift_rotate.rs`:
+
+- **CL fetch** (opcodes `D2`/`D3`): removed `& 0x1F` masking — the 8086 does not mask shift counts.
+- **`shl_8` / `shr_8`**: changed `count > 8` to `count >= 8` so that shifting an 8-bit register by exactly 8 produces 0 (Rust's `wrapping_shr(8)` on `u8` would otherwise wrap mod 8 and return the original value).
+- **`shl_16` / `shr_16`**: changed `count > 16` to `count >= 16` for the same reason.
+
+A TDD test was added at `core/src/test_data/cpu/shift_cl.asm` covering:
+
+| Test | CL | Input | Expected |
+|------|----|-------|----------|
+| `test_shr_cl_normal` | 4 | `0x00F0` | `0x000F` |
+| `test_shl_cl_normal` | 4 | `0x000F` | `0x00F0` |
+| `test_shr_cl_16` | 16 | `0x1234` | `0x0000` |
+| `test_shl_cl_16` | 16 | `0x1234` | `0x0000` |
+| `test_shr_cl_17` | 17 | `0xFFFF` | `0x0000` |
+| `test_shl_cl_17` | 17 | `0xFFFF` | `0x0000` |
+| `test_shr_cl_zero` | 0 | `0xABCD` | `0xABCD` |
+| `test_shl_cl_zero` | 0 | `0xABCD` | `0xABCD` |
+| `test_shr_byte_cl_8` | 8 | `0xFF` | `0x00` |
+| `test_shr_byte_cl_9` | 9 | `0xFF` | `0x00` |
 
 ## Suggested Emulator Improvements
 
@@ -201,7 +301,7 @@ Currently each character of `"Error during code expansion!\r\n"` produces a sepa
 [BIOS] INT10 teletype: "Error during code expansion!"
 ```
 
-### 4. INT 0x21 handler summary table
+### ❌ 4. INT 0x21 handler summary table
 
 A compact optional mode that logs DOS calls as a one-liner table:
 
@@ -212,7 +312,7 @@ A compact optional mode that logs DOS calls as a one-liner table:
 | 3 | open | "EGAHEAD.CK1" r/o | hnd=5 |
 | 4 | read | hnd=5 65535B→3330:0000 | 1024B |
 
-### 5. Named-interrupt annotation in oxide86.asm
+### ❌ 5. Named-interrupt annotation in oxide86.asm
 
 The reverse-engineering output (`oxide86.asm`) emits raw `int 0x21` instructions. Post-processing or inline annotation based on the AH value just before the INT would make the disassembly far more readable:
 
@@ -222,9 +322,13 @@ The reverse-engineering output (`oxide86.asm`) emits raw `int 0x21` instructions
 102A:5D1F  CD 21  int 0x21   ; AH=3F → read file
 ```
 
-### 6. DOS file handle tracking in the emulator
+### ✅ 6. DOS file handle tracking in the emulator
 
-Maintain a small side-table mapping open file handles to their filenames and open positions. This would let any log line that shows `BX=5` be cross-referenced to the currently open file without manual reconstruction.
+Maintain a small side-table mapping open file handles to their filenames and open positions. This would let any log line that shows file handles be cross-referenced to the currently open file without manual reconstruction.
+
+### ✅ 7. Fix shift-by-CL to not mask shift count (completed)
+
+The 8086 shift instructions (`D2`/`D3`) must not mask CL. This was the root cause of the oxide86 crash described in this document. Fixed in `core/src/cpu/instructions/shift_rotate.rs`; verified by `core/src/test_data/cpu/shift_cl.asm`.
 
 ## Log Line Reference
 
@@ -232,14 +336,21 @@ Maintain a small side-table mapping open file handles to their filenames and ope
 |----------|-------|
 | ~276,124 | LZEXE packer stub (seg `28A4`) begins processing |
 | 763,155 | Keen starts executing at `102A:0000` |
-| 785,295 | First open: `EGAHEAD.CK1` via `102A:D5EF` |
-| 790,936 | Second open: `EGAHEAD.CK1` via `102A:5CE4` (with lseek for size) |
-| 794,988 | Read: `EGAHEAD.CK1` chunk headers into `3330:0000` |
-| 847,789 | Open: `EGAGRAPH.CK1` via `102A:D5EF` |
-| 859,560 | Final open: `EGAGRAPH.CK1` via `102A:5CE4` |
-| 863,719 | Read: compressed chunk from `EGAGRAPH.CK1` → fed to LZW decoder |
-| 869,953 | First call to LZW decoder inner function (`102A:6B62`), DI=0 |
-| ~2,885,297 | DI reaches `0x0FA0` (4000), overflow check fails |
-| ~2,885,300 | Error format string assembled into stack buffer |
-| ~2,886,171 | `INT 0x21 AH=40h` writes "Error during code expansion!\r\n" to stdout |
-| 2,886,453 | First character `'E'` output via `INT 0x10 AH=0Eh` through `sub_055E3` |
+| 795,629 | First open: `EGAHEAD.CK1` |
+| 800,960 | Close: `EGAHEAD.CK1` |
+| 801,279 | Second open: `EGAHEAD.CK1` (lseek for size, then bulk read) |
+| 807,698 | Read: `EGAHEAD.CK1` → 15,568 bytes into `3330:0000` |
+| 807,707 | Close: `EGAHEAD.CK1` |
+| 858,235 | First open: `EGALATCH.CK1` |
+| 863,268 | Read: `EGALATCH.CK1` → 4 bytes (chunk count header) |
+| 863,852 | Close: `EGALATCH.CK1` |
+| 864,654 | Second open: `EGALATCH.CK1` (seek for file size) |
+| 869,281 | Close: `EGALATCH.CK1` |
+| 870,033 | Third open: `EGALATCH.CK1` (seek to chunk offset, then bulk read) |
+| ~875,000 | Read: `EGALATCH.CK1` → **57,065 bytes** into `7D0F:0004` — fed to LZW decoder |
+| ~875,010 | Close: `EGALATCH.CK1` |
+| ~876,000 | First call to LZW decoder inner function (`102A:6B62`), DI=0 |
+| ~2,901,000 | DI reaches `0x0FA0` (4000), overflow check fails (oxide86 only — due to shift bug) |
+| ~2,901,100 | Error format string assembled into stack buffer |
+| ~2,902,100 | `INT 0x21 AH=40h` writes "Error during code expansion!\r\n" to stdout |
+| 2,902,187 | First character `'E'` output via `INT 0x10 AH=0Eh` |

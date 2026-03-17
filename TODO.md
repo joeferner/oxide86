@@ -49,7 +49,7 @@
   - [X] Trans flag https://archive.org/details/composite_cga_test_program_trans.com
   - [X] see CT.EXE https://www.vogons.org/viewtopic.php?t=96231
 - [X] Test MS Flight Simulator 1.05
-- [ ] Test Commander Keen 1 (see ai-analysis/commander-keen-1-error-investigation.md)
+- [ ] Test Commander Keen 1 (see ai-analysis/commander-keen-1-error-investigation.md and ai-analysis/keen1_latch_decode.py)
 - [ ] Add extended memory/A20 line support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up

@@ -20,7 +20,7 @@ impl Cpu {
         let count = match opcode {
             0xC0 | 0xC1 => self.fetch_byte(bus),    // imm8
             0xD0 | 0xD1 => 1,                       // shift by 1
-            0xD2 | 0xD3 => self.get_reg8(1) & 0x1F, // CL (masked to 5 bits for 8086)
+            0xD2 | 0xD3 => self.get_reg8(1), // CL — 8086 does not mask the shift count
             _ => unreachable!(),
         };
 
@@ -99,8 +99,7 @@ impl Cpu {
             return value;
         }
 
-        let count = count & 0x1F; // Mask to 5 bits
-        if count > 8 {
+        if count >= 8 {
             // All bits shifted out
             self.set_flag(cpu_flag::CARRY, false);
             self.set_flags_8(0);
@@ -136,8 +135,7 @@ impl Cpu {
             return value;
         }
 
-        let count = count & 0x1F; // Mask to 5 bits
-        if count > 8 {
+        if count >= 8 {
             // All bits shifted out
             self.set_flag(cpu_flag::CARRY, false);
             self.set_flags_8(0);
@@ -173,7 +171,6 @@ impl Cpu {
             return value;
         }
 
-        let count = count & 0x1F; // Mask to 5 bits
         let sign_bit = value & 0x80;
 
         // For counts >= 8, result is all sign bits
@@ -327,8 +324,7 @@ impl Cpu {
             return value;
         }
 
-        let count = count & 0x1F; // Mask to 5 bits
-        if count > 16 {
+        if count >= 16 {
             // All bits shifted out
             self.set_flag(cpu_flag::CARRY, false);
             self.set_flags_16(0);
@@ -364,8 +360,7 @@ impl Cpu {
             return value;
         }
 
-        let count = count & 0x1F; // Mask to 5 bits
-        if count > 16 {
+        if count >= 16 {
             // All bits shifted out
             self.set_flag(cpu_flag::CARRY, false);
             self.set_flags_16(0);
@@ -401,7 +396,6 @@ impl Cpu {
             return value;
         }
 
-        let count = count & 0x1F; // Mask to 5 bits
         let sign_bit = value & 0x8000;
 
         // For counts >= 16, result is all sign bits
