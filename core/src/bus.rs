@@ -242,6 +242,21 @@ impl Bus {
         (high << 8) | low
     }
 
+    /// Read a null-terminated C string from guest memory, stopping at NUL or 260 bytes.
+    pub(crate) fn read_c_string(&self, addr: usize) -> String {
+        let mut bytes = Vec::new();
+        let mut a = addr;
+        loop {
+            let b = self.memory_read_u8(a);
+            if b == 0 || bytes.len() >= 260 {
+                break;
+            }
+            bytes.push(b);
+            a += 1;
+        }
+        String::from_utf8_lossy(&bytes).into_owned()
+    }
+
     /// Write a 16-bit word (little-endian)
     pub(crate) fn memory_write_u16(&mut self, addr: usize, val: u16) {
         self.memory_write_u8(addr, (val & 0xFF) as u8);

@@ -4,6 +4,13 @@ use crate::{
     physical_address,
 };
 
+pub(in crate::cpu) struct PendingDosRead {
+    pub(in crate::cpu) ret_cs: u16,
+    pub(in crate::cpu) ret_ip: u16,
+    pub(in crate::cpu) ds: u16,
+    pub(in crate::cpu) dx: u16,
+}
+
 impl Cpu {
     pub(in crate::cpu) fn handle_int21_dos_services(&mut self, bus: &mut Bus) {
         bus.increment_cycle_count(500);
@@ -87,5 +94,90 @@ impl Cpu {
             self.cs = terminate_cs;
             self.ip = terminate_ip;
         }
+    }
+
+    /// Log INT 0x21 call parameters before the call is dispatched to any handler.
+    /// Called from dispatch_interrupt so it fires for both the built-in Rust DOS
+    /// handler and a real DOS kernel running in guest memory.
+    pub(in crate::cpu) fn log_int21_dos_call(&mut self, bus: &Bus) {
+        let ah = (self.ax >> 8) as u8;
+        let al = (self.ax & 0xff) as u8;
+        let bx = self.bx;
+        let cx = self.cx;
+        let dx = self.dx;
+        let ds = self.ds;
+
+        match ah {
+            0x3C => {
+                let name = bus.read_c_string(physical_address(ds, dx));
+                log::info!("[DOS] AH=3C create \"{name}\" attr={cx:04X}");
+            }
+            0x3D => {
+                let name = bus.read_c_string(physical_address(ds, dx));
+                log::info!("[DOS] AH=3D open  \"{name}\" mode={al:02X}");
+            }
+            0x3E => {
+                log::info!("[DOS] AH=3E close handle={bx}");
+            }
+            0x3F => {
+                log::info!("[DOS] AH=3F read  handle={bx} buf={ds:04X}:{dx:04X} max={cx}");
+                self.pending_dos_read = Some(PendingDosRead {
+                    ret_cs: self.cs,
+                    ret_ip: self.ip,
+                    ds,
+                    dx,
+                });
+            }
+            0x40 => {
+                log::info!("[DOS] AH=40 write handle={bx} buf={ds:04X}:{dx:04X} len={cx}");
+            }
+            0x41 => {
+                let name = bus.read_c_string(physical_address(ds, dx));
+                log::info!("[DOS] AH=41 delete \"{name}\"");
+            }
+            0x42 => {
+                let offset = ((cx as i32) << 16) | (dx as i32);
+                log::info!("[DOS] AH=42 seek  handle={bx} origin={al} offset={offset}");
+            }
+            0x4E => {
+                let name = bus.read_c_string(physical_address(ds, dx));
+                log::info!("[DOS] AH=4E find_first \"{name}\" attr={cx:02X}");
+            }
+            0x4F => {
+                log::info!("[DOS] AH=4F find_next");
+            }
+            _ => {}
+        }
+    }
+
+    /// If a pending AH=3Fh read has just returned (cs:ip matches the saved return address),
+    /// log the bytes-read count and a hex+ASCII dump of the first 16 bytes of the buffer.
+    pub(in crate::cpu) fn check_pending_dos_read(&mut self, bus: &Bus) {
+        let Some(ref pdr) = self.pending_dos_read else {
+            return;
+        };
+        if self.cs != pdr.ret_cs || self.ip != pdr.ret_ip {
+            return;
+        }
+        let bytes_read = self.ax as usize;
+        let dump_len = bytes_read.min(16);
+        if dump_len > 0 {
+            let base = physical_address(pdr.ds, pdr.dx);
+            let mut hex = String::new();
+            let mut asc = String::new();
+            for i in 0..dump_len {
+                let b = bus.memory_read_u8(base + i);
+                hex.push_str(&format!("{b:02X} "));
+                asc.push(if b.is_ascii_graphic() || b == b' ' {
+                    b as char
+                } else {
+                    '.'
+                });
+            }
+            log::info!("[DOS] AH=3F → read={bytes_read}  {hex} {asc}");
+        } else {
+            log::info!("[DOS] AH=3F → read={bytes_read}");
+        }
+        self.pending_dos_read = None;
     }
 }

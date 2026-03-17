@@ -1,6 +1,7 @@
 use crate::{
     Computer,
     bus::Bus,
+    cpu::bios::int21_dos_services::PendingDosRead,
     cpu::instructions::decoder::Operand,
     cpu::{
         bios::BIOS_CODE_SEGMENT,
@@ -107,6 +108,13 @@ pub(crate) struct Cpu {
     /// Set by INT 19h (bootstrap loader) to signal that the next reboot should
     /// try drives in boot order rather than only the configured boot drive.
     bootstrap_request: bool,
+
+    /// Pending INT 0x21 AH=3Fh: buffer location to dump on return from DOS.
+    pending_dos_read: Option<PendingDosRead>,
+
+    /// Buffer for consecutive INT 10h AH=0Eh / INT 29h teletype characters.
+    /// Flushed as a single log line on CR, LF, or any non-teletype interrupt.
+    teletype_log_buffer: String,
 }
 
 /// Adapter that implements `Computer` by combining a `Cpu` and a `Bus`.
@@ -190,6 +198,8 @@ impl Cpu {
             exec_logging_enabled: false,
             reverse_engineer: None,
             bootstrap_request: false,
+            pending_dos_read: None,
+            teletype_log_buffer: String::new(),
         }
     }
 
@@ -343,6 +353,8 @@ impl Cpu {
 
         self.exec_instruction(bus);
 
+        self.check_pending_dos_read(bus);
+
         // Decode after execution so register annotations reflect post-exec state.
         // Instruction bytes at pre_cs:pre_ip are still in memory (code is not modified).
         let decoded = if self.exec_logging_enabled || self.reverse_engineer.is_some() {
@@ -412,6 +424,12 @@ impl Cpu {
     /// Dispatch an interrupt: push FLAGS/CS/IP, clear IF/TF, load CS:IP from IVT.
     /// Common mechanism for INT instructions and hardware IRQs.
     fn dispatch_interrupt(&mut self, bus: &mut Bus, int_num: u8) {
+        if int_num == 0x10 {
+            self.log_int10_video_services();
+        }
+        if int_num == 0x21 {
+            self.log_int21_dos_call(bus);
+        }
         if self.exec_logging_enabled {
             log::info!(
                 "pushing flags={:04X}  CF={} PF={} AF={} ZF={} SF={} TF={} IF={} DF={} OF={}",

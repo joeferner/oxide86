@@ -171,7 +171,7 @@ The 4000-byte output limit (`0x0FA0`) in the LZW decoder at `102A:6BAB` is a fix
 
 ## Suggested Emulator Improvements
 
-### 1. DOS INT 0x21 high-level logging
+### ✅ 1. DOS INT 0x21 high-level logging
 
 The most immediately useful improvement would be adding structured logging for DOS file operations inside the INT 0x21 handler. For each call, log the function name, the filename string (read from DS:DX as a null-terminated C string), and the returned handle. For example:
 
@@ -189,11 +189,11 @@ Implementation sketch:
 - Read the filename string from guest memory at `DS:DX` using `bus.memory_read_u8` in a loop up to the null terminator
 - Log with `log::info!` using a `[DOS]` prefix so it is easy to `grep`
 
-### 2. INT 0x21 AH=3Fh buffer dump
+### ✅ 2. INT 0x21 AH=3Fh buffer dump
 
 When the emulator handles a successful `AH=3Fh` read, optionally log the first N bytes of the destination buffer. This would immediately reveal what data was read without needing to trace memory accesses later.
 
-### 3. INT 0x10 / INT 0x29 character output grouping
+### ✅ 3. INT 0x10 / INT 0x29 character output grouping
 
 Currently each character of `"Error during code expansion!\r\n"` produces a separate log line via `INT 0x10 AH=0Eh`. Buffering consecutive `AH=0Eh` calls and flushing them on a non-printable character (CR, LF, or a non-0Eh call) would collapse 28 lines into one:
 

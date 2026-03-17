@@ -1922,6 +1922,45 @@ impl Cpu {
             self.di
         );
     }
+
+    pub(in crate::cpu) fn log_int10_video_services(&mut self) {
+        if (self.ax >> 8) as u8 == 0x0E {
+            self.log_teletype_char((self.ax & 0xFF) as u8);
+        } else {
+            self.flush_teletype_log();
+        }
+    }
+
+    /// Buffer a teletype character (INT 10h AH=0Eh or INT 29h) and flush to log
+    /// when a line is complete or a non-printable character is encountered.
+    fn log_teletype_char(&mut self, ch: u8) {
+        match ch {
+            b'\r' => {}
+            b'\n' => {
+                if !self.teletype_log_buffer.is_empty() {
+                    let s = std::mem::take(&mut self.teletype_log_buffer);
+                    log::info!("[BIOS] teletype: \"{s}\"");
+                }
+            }
+            _ if ch >= 0x20 && ch < 0x7F => {
+                self.teletype_log_buffer.push(ch as char);
+            }
+            _ => {
+                if !self.teletype_log_buffer.is_empty() {
+                    let s = std::mem::take(&mut self.teletype_log_buffer);
+                    log::info!("[BIOS] teletype: \"{s}\"");
+                }
+            }
+        }
+    }
+
+    /// Flush any pending teletype buffer to the log (call before non-teletype interrupts).
+    fn flush_teletype_log(&mut self) {
+        if !self.teletype_log_buffer.is_empty() {
+            let s = std::mem::take(&mut self.teletype_log_buffer);
+            log::info!("[BIOS] teletype: \"{s}\"");
+        }
+    }
 }
 
 fn set_cursor_pos(bus: &mut Bus, page: u8, row: u8, col: u8) {
