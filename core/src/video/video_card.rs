@@ -1025,6 +1025,10 @@ impl Device for VideoCard {
                             log::debug!("CRTC reg 0x09: max scan line={}", val);
                             buffer.set_crtc_max_scan_line(val);
                         }
+                        0x13 => {
+                            log::debug!("CRTC reg 0x13: offset={} ({} bytes/row)", val, val as usize * 2);
+                            buffer.set_crtc_offset(val);
+                        }
                         // CRTC timing registers (horizontal/vertical) — not needed by emulator
                         0x00..=0x09 => {}
                         _ => log::warn!(

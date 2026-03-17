@@ -85,6 +85,10 @@ pub struct VideoBuffer {
     /// None = use default 25 rows.
     /// Reset to None on INT 10h mode set.
     crtc_vertical_displayed: Option<u8>,
+    /// CRTC register 0x13 (Offset): logical scan-line stride in words (2 bytes each).
+    /// bytes_per_row = crtc_offset * 2.  None = use mode default.
+    /// Reset to None on INT 10h mode set.
+    crtc_offset: Option<u8>,
     /// If any value changes in the struct which could result in different output this will be set to true
     dirty: bool,
 }
@@ -109,6 +113,7 @@ impl VideoBuffer {
             start_address: 0,
             crtc_max_scan_line: None,
             crtc_vertical_displayed: None,
+            crtc_offset: None,
             dirty: false,
         };
         me.reset();
@@ -132,6 +137,7 @@ impl VideoBuffer {
         self.start_address = 0;
         self.crtc_max_scan_line = None;
         self.crtc_vertical_displayed = None;
+        self.crtc_offset = None;
         self.dirty = false;
         for i in (0..TEXT_MODE_SIZE).step_by(2) {
             self.vram[i] = 0x20; // space
@@ -170,6 +176,7 @@ impl VideoBuffer {
     pub(crate) fn reset_crtc_overrides(&mut self) {
         self.crtc_max_scan_line = None;
         self.crtc_vertical_displayed = None;
+        self.crtc_offset = None;
         self.dirty = true;
     }
 
@@ -180,6 +187,11 @@ impl VideoBuffer {
 
     pub(crate) fn set_crtc_vertical_displayed(&mut self, val: u8) {
         self.crtc_vertical_displayed = Some(val);
+        self.dirty = true;
+    }
+
+    pub(crate) fn set_crtc_offset(&mut self, val: u8) {
+        self.crtc_offset = Some(val);
         self.dirty = true;
     }
 
@@ -504,10 +516,11 @@ impl VideoBuffer {
     fn render_mode_0dh_320x200x16(&self, buf: &mut [u8]) {
         const WIDTH: usize = 320;
         const HEIGHT: usize = 200;
+        let bytes_per_row = self.crtc_offset.map(|v| v as usize * 2).unwrap_or(40);
 
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
-                let byte_offset = y * 40 + x / 8;
+                let byte_offset = y * bytes_per_row + x / 8;
                 let bit_pos = 7 - (x % 8);
 
                 let mut color_index: usize = 0;
@@ -536,11 +549,11 @@ impl VideoBuffer {
     fn render_mode_10h_640x350x16(&self, buf: &mut [u8]) {
         const WIDTH: usize = 640;
         const HEIGHT: usize = 350;
-        const BYTES_PER_ROW: usize = 80;
+        let bytes_per_row = self.crtc_offset.map(|v| v as usize * 2).unwrap_or(80);
 
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
-                let byte_offset = y * BYTES_PER_ROW + x / 8;
+                let byte_offset = y * bytes_per_row + x / 8;
                 let bit_pos = 7 - (x % 8);
 
                 let mut color_index: usize = 0;
