@@ -1125,8 +1125,16 @@ impl Cpu {
             }
             0x01 => {
                 // Set border (overscan) color
-                // BH = border color value
-                log::warn!("INT 10h/AH=10h/AL=01h: Set border color");
+                // BH = border color value (AC overscan register 0x11)
+                let color = ((self.bx >> 8) & 0xFF) as u8; // BH
+                let _ = bus.io_read_u8(INPUT_STATUS_1_PORT); // reset AC flip-flop to address mode
+                bus.io_write_u8(AC_ADDR_DATA_PORT, 0x11); // AC overscan register
+                bus.io_write_u8(AC_ADDR_DATA_PORT, color);
+                bus.io_write_u8(AC_ADDR_DATA_PORT, 0x20); // re-enable video (set PAS bit)
+                log::debug!(
+                    "INT 10h/AH=10h/AL=01h: Set border color to 0x{:02X}",
+                    color
+                );
             }
             0x02 => {
                 // Set all AC palette registers and border
