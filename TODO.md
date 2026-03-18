@@ -57,6 +57,10 @@
   - [ ] Test Fractint Version 15.x and below
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
+- [ ] WASM
+- [ ] CD-ROM
+- [ ] 386 Real Mode
+- [ ] 286/386 Protected Mode
 - [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
 - [ ] Blinking text core/src/test_data/video/ct755r/mode7.asm
