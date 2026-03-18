@@ -12,7 +12,6 @@ use crate::{
     devices::rtc::{CMOS_REG_FLOPPY_TYPES, Clock, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
     disk::{Disk, DiskError, DriveNumber},
     memory::Memory,
-    physical_address,
     video::{VideoBuffer, VideoCard, VideoCardType},
 };
 use anyhow::{Result, anyhow};
@@ -147,7 +146,7 @@ impl Computer {
 
     /// Load a program at the specified segment:offset and set CPU to start there
     pub fn load_program(&mut self, program_data: &[u8], segment: u16, offset: u16) -> Result<()> {
-        let physical_addr = physical_address(segment, offset);
+        let physical_addr = self.bus.physical_address(segment, offset);
         self.bus.load_at(physical_addr, program_data)?;
         self.cpu.reset(segment, offset, None);
         self.loaded_program = Some((program_data.to_vec(), segment, offset));
@@ -198,7 +197,7 @@ impl Computer {
         self.key_presses.clear();
         if let Some((data, segment, offset)) = self.loaded_program.clone() {
             self.bus.reset();
-            let physical_addr = physical_address(segment, offset);
+            let physical_addr = self.bus.physical_address(segment, offset);
             if let Err(e) = self.bus.load_at(physical_addr, &data) {
                 log::error!("Failed to reload program on reset: {e}");
             }
@@ -286,7 +285,7 @@ impl Computer {
         // Load boot sector to 0x0000:0x7C00 (physical address 0x7C00)
         const BOOT_SEGMENT: u16 = 0x0000;
         const BOOT_OFFSET: u16 = 0x7C00;
-        let boot_addr = physical_address(BOOT_SEGMENT, BOOT_OFFSET);
+        let boot_addr = self.bus.physical_address(BOOT_SEGMENT, BOOT_OFFSET);
         self.bus.load_at(boot_addr, boot_data)?;
         self.cpu.reset(BOOT_SEGMENT, BOOT_OFFSET, Some(drive));
         self.boot_drive = Some(drive);

@@ -14,7 +14,6 @@ use crate::{
         rtc::{CMOS_REG_FLOPPY_TYPES, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
     },
     disk::{DiskError, DriveNumber},
-    physical_address,
 };
 
 /// ATA commands used by the INT 13h handlers
@@ -173,7 +172,7 @@ impl Cpu {
         let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
         let head = (self.dx >> 8) as u8; // DH
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
-        let buffer_addr = physical_address(self.es, self.bx);
+        let buffer_addr = bus.physical_address(self.es, self.bx);
 
         if drive.is_floppy() {
             let drive_index = drive.as_floppy_index() as u8;
@@ -296,7 +295,7 @@ impl Cpu {
         let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
         let head = (self.dx >> 8) as u8; // DH
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
-        let buffer_addr = physical_address(self.es, self.bx);
+        let buffer_addr = bus.physical_address(self.es, self.bx);
 
         if drive.is_floppy() {
             let drive_index = drive.as_floppy_index() as u8;
@@ -825,7 +824,7 @@ impl Cpu {
         // Build Disk Base Table (DBT) in BIOS ROM area at F000:E000
         const DBT_SEGMENT: u16 = 0xF000;
         const DBT_OFFSET: u16 = 0xE000;
-        let dbt_addr = physical_address(DBT_SEGMENT, DBT_OFFSET);
+        let dbt_addr = bus.physical_address(DBT_SEGMENT, DBT_OFFSET);
 
         // Disk Base Table format (11 bytes):
         // Standard values for common floppy formats

@@ -1,7 +1,6 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, CpuType, cpu_flag, timing},
-    physical_address,
 };
 
 impl Cpu {
@@ -39,7 +38,7 @@ impl Cpu {
         let offset = self.fetch_word(bus);
         // Use segment override if present, otherwise use DS
         let segment = self.segment_override.unwrap_or(self.ds);
-        let addr = physical_address(segment, offset);
+        let addr = bus.physical_address(segment, offset);
 
         if is_word {
             if to_acc {
@@ -111,7 +110,7 @@ impl Cpu {
             // PUSH SP on 8086: push the decremented value (post-decrement SP)
             self.sp = self.sp.wrapping_sub(2);
             let value = self.sp;
-            let addr = physical_address(self.ss, self.sp);
+            let addr = bus.physical_address(self.ss, self.sp);
             bus.memory_write_u16(addr, value);
         } else {
             let value = self.get_reg16(reg);
@@ -487,7 +486,7 @@ impl Cpu {
         let offset = self.bx.wrapping_add(al as u16);
         // Use segment override if present, otherwise use DS
         let segment = self.segment_override.unwrap_or(self.ds);
-        let addr = physical_address(segment, offset);
+        let addr = bus.physical_address(segment, offset);
         let value = bus.memory_read_u8(addr);
         self.ax = (self.ax & 0xFF00) | (value as u16);
 
@@ -652,7 +651,6 @@ impl Cpu {
 mod tests {
     // Assuming these exist in your project structure
     use crate::cpu::tests::create_test_cpu;
-    use crate::physical_address;
 
     #[test_log::test]
     fn test_mov_imm_to_reg_8bit() {
@@ -665,7 +663,7 @@ mod tests {
         let imm_val_8 = 0x42;
 
         // Place the immediate value in memory at the current IP
-        bus.memory_write_u8(physical_address(0, cpu.ip), imm_val_8);
+        bus.memory_write_u8(bus.physical_address(0, cpu.ip), imm_val_8);
 
         cpu.mov_imm_to_reg(opcode_al, &mut bus);
 
@@ -685,7 +683,7 @@ mod tests {
         let imm_val_16 = 0x1234;
 
         // Place the word in memory (handling little-endian if applicable)
-        bus.memory_write_u16(physical_address(0, cpu.ip), imm_val_16);
+        bus.memory_write_u16(bus.physical_address(0, cpu.ip), imm_val_16);
 
         cpu.mov_imm_to_reg(opcode_ax, &mut bus);
 

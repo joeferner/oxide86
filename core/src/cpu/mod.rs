@@ -9,7 +9,6 @@ use crate::{
         instructions::{RepeatPrefix, decoder},
     },
     disk::DriveNumber,
-    physical_address,
 };
 
 pub mod bios;
@@ -439,7 +438,7 @@ impl Cpu {
         // so self.flags has IF=0, but the stacked copy reflects the caller's IF state
         // (typically IF=1).  Clobbering IF here would leave the caller running with
         // interrupts disabled after every BIOS call.
-        let stacked_flags_addr = physical_address(self.ss, self.sp.wrapping_add(4));
+        let stacked_flags_addr = bus.physical_address(self.ss, self.sp.wrapping_add(4));
         let original_stacked = bus.memory_read_u16(stacked_flags_addr);
         let patched =
             (self.flags & !cpu_flag::INTERRUPT) | (original_stacked & cpu_flag::INTERRUPT);
@@ -449,7 +448,7 @@ impl Cpu {
 
     /// Fetch a byte from memory at CS:IP and increment IP
     fn fetch_byte(&mut self, bus: &Bus) -> u8 {
-        let addr = physical_address(self.cs, self.ip);
+        let addr = bus.physical_address(self.cs, self.ip);
         let byte = bus.memory_read_u8(addr);
         self.ip = self.ip.wrapping_add(1);
         byte

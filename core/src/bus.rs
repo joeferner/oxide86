@@ -348,6 +348,14 @@ impl Bus {
         }
     }
 
+    /// Calculate physical address from segment:offset, applying A20 gate masking.
+    /// When A20 is disabled, bit 20 is cleared, aliasing the HMA
+    /// (0x100000–0x10FFEF) back to 0x000000–0x0FFEF.
+    pub(crate) fn physical_address(&self, segment: u16, offset: u16) -> usize {
+        let addr = ((segment as usize) << 4) + (offset as usize);
+        self.apply_a20(addr)
+    }
+
     /// Apply A20 gate masking to a physical address. When A20 is disabled, bit 20
     /// is cleared, aliasing the HMA (0x100000–0x10FFEF) back to 0x000000–0x0FFEF.
     #[inline(always)]

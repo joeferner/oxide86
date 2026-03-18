@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use crate::{
     bus::Bus,
     cpu::{Cpu, cpu_flag},
-    physical_address,
 };
 
 /// Tracks an open DOS file handle.
@@ -65,7 +64,7 @@ impl Cpu {
     /// INT 21h, AH=09h - Write String to STDOUT
     /// Input: DS:DX = pointer to '$'-terminated string
     fn int21_write_string(&mut self, bus: &mut Bus) {
-        let mut addr = physical_address(self.ds, self.dx);
+        let mut addr = bus.physical_address(self.ds, self.dx);
         let saved_ax = self.ax;
 
         loop {
@@ -89,7 +88,7 @@ impl Cpu {
 
         // Read the terminate address (INT 22h) from the PSP at offset 0x0A
         let psp_segment = self.current_psp;
-        let terminate_offset_addr = physical_address(psp_segment, 0x0A);
+        let terminate_offset_addr = bus.physical_address(psp_segment, 0x0A);
         let terminate_ip = bus.memory_read_u16(terminate_offset_addr);
         let terminate_cs = bus.memory_read_u16(terminate_offset_addr + 2);
 
@@ -101,7 +100,7 @@ impl Cpu {
         );
 
         // Restore parent's PSP
-        let parent_psp_addr = physical_address(psp_segment, 0x16);
+        let parent_psp_addr = bus.physical_address(psp_segment, 0x16);
         let parent_psp = bus.memory_read_u16(parent_psp_addr);
         if parent_psp != 0 {
             self.current_psp = parent_psp;
@@ -144,7 +143,7 @@ impl Cpu {
 
         match ah {
             0x3C => {
-                let name = bus.read_c_string(physical_address(ds, dx));
+                let name = bus.read_c_string(bus.physical_address(ds, dx));
                 log::debug!("[DOS] AH=3C create \"{name}\" attr={cx:04X}");
                 self.pending_dos_open = Some(PendingDosOpen {
                     filename: name,
@@ -153,7 +152,7 @@ impl Cpu {
                 });
             }
             0x3D => {
-                let name = bus.read_c_string(physical_address(ds, dx));
+                let name = bus.read_c_string(bus.physical_address(ds, dx));
                 log::debug!("[DOS] AH=3D open \"{name}\" mode={al:02X}");
                 self.pending_dos_open = Some(PendingDosOpen {
                     filename: name,
@@ -182,7 +181,7 @@ impl Cpu {
                 log::debug!("[DOS] AH=40 write handle={bx}{ann} buf={ds:04X}:{dx:04X} len={cx}");
             }
             0x41 => {
-                let name = bus.read_c_string(physical_address(ds, dx));
+                let name = bus.read_c_string(bus.physical_address(ds, dx));
                 log::debug!("[DOS] AH=41 delete \"{name}\"");
             }
             0x42 => {
@@ -196,7 +195,7 @@ impl Cpu {
                 });
             }
             0x4E => {
-                let name = bus.read_c_string(physical_address(ds, dx));
+                let name = bus.read_c_string(bus.physical_address(ds, dx));
                 log::debug!("[DOS] AH=4E find_first \"{name}\" attr={cx:02X}");
             }
             0x4F => {
@@ -266,7 +265,7 @@ impl Cpu {
         let handle = pdr.handle;
         let dump_len = bytes_read.min(16);
         if dump_len > 0 {
-            let base = physical_address(pdr.ds, pdr.dx);
+            let base = bus.physical_address(pdr.ds, pdr.dx);
             let mut hex = String::new();
             let mut asc = String::new();
             for i in 0..dump_len {

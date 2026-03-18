@@ -1,7 +1,6 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, cpu_flag},
-    physical_address,
 };
 
 mod arithmetic;
@@ -485,7 +484,7 @@ impl Cpu {
             0xFE => self.inc_dec_rm(opcode, bus),
             0xFF => {
                 // For FF, we need to check the reg field to determine operation
-                let modrm_peek = bus.memory_read_u8(physical_address(self.cs, self.ip));
+                let modrm_peek = bus.memory_read_u8(bus.physical_address(self.cs, self.ip));
                 let reg_field = (modrm_peek >> 3) & 0x07;
                 match reg_field {
                     0 | 1 => self.inc_dec_rm(opcode, bus), // INC/DEC
@@ -541,7 +540,7 @@ impl Cpu {
                     // Special case: direct address (16-bit displacement, no base)
                     let disp = self.fetch_word(bus);
                     let seg = self.segment_override.unwrap_or(self.ds);
-                    return (mode, reg, rm, physical_address(seg, disp), seg);
+                    return (mode, reg, rm, bus.physical_address(seg, disp), seg);
                 } else {
                     (self.bp, self.ss) // [BP]
                 }
@@ -568,7 +567,7 @@ impl Cpu {
 
         // Use segment override if present, otherwise use default segment
         let effective_seg = self.segment_override.unwrap_or(default_seg);
-        let effective_addr = physical_address(effective_seg, effective_offset);
+        let effective_addr = bus.physical_address(effective_seg, effective_offset);
         (mode, reg, rm, effective_addr, effective_seg)
     }
 
@@ -707,13 +706,13 @@ impl Cpu {
     /// Push 16-bit value onto stack
     pub(in crate::cpu) fn push(&mut self, value: u16, bus: &mut Bus) {
         self.sp = self.sp.wrapping_sub(2);
-        let addr = physical_address(self.ss, self.sp);
+        let addr = bus.physical_address(self.ss, self.sp);
         bus.memory_write_u16(addr, value);
     }
 
     /// Pop 16-bit value from stack
     fn pop(&mut self, bus: &Bus) -> u16 {
-        let addr = physical_address(self.ss, self.sp);
+        let addr = bus.physical_address(self.ss, self.sp);
         let value = bus.memory_read_u16(addr);
         self.sp = self.sp.wrapping_add(2);
         value

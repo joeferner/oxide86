@@ -19,7 +19,6 @@ use crate::{
         },
         cpu_flag,
     },
-    physical_address,
     video::{
         CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, Mode, TEXT_MODE_SIZE,
         VGA_MODE_13_FRAMEBUFFER_SIZE, VideoCardType,
@@ -1136,7 +1135,7 @@ impl Cpu {
             0x02 => {
                 // Set all AC palette registers and border
                 // ES:DX -> 17-byte table (16 AC register values + 1 border color byte)
-                let table_addr = physical_address(self.es, self.dx);
+                let table_addr = bus.physical_address(self.es, self.dx);
                 let _ = bus.io_read_u8(INPUT_STATUS_1_PORT); // reset AC flip-flop to address mode
                 for i in 0..16usize {
                     let value = bus.memory_read_u8(table_addr + i);
@@ -1204,7 +1203,7 @@ impl Cpu {
                 //        ES:DX -> table of RGB triplets (3 bytes per entry)
                 let first_register = (self.bx & 0xFF) as u8; // Use low byte only
                 let count = self.cx;
-                let mut table_addr = physical_address(self.es, self.dx);
+                let mut table_addr = bus.physical_address(self.es, self.dx);
 
                 for i in 0..count {
                     let register = first_register.wrapping_add(i as u8);
@@ -1255,7 +1254,7 @@ impl Cpu {
                 //        ES:DX -> buffer for RGB triplets (3 bytes per entry)
                 let first_register = (self.bx & 0xFF) as u8;
                 let count = self.cx;
-                let mut table_addr = physical_address(self.es, self.dx);
+                let mut table_addr = bus.physical_address(self.es, self.dx);
 
                 bus.io_write_u8(DAC_READ_INDEX_PORT, first_register);
                 for _ in 0..count {
@@ -1739,7 +1738,7 @@ impl Cpu {
             return;
         }
 
-        let buffer_addr = physical_address(self.es, self.di);
+        let buffer_addr = bus.physical_address(self.es, self.di);
 
         // Build the 64-byte state information structure
         // Offset 00h-03h: Pointer to static functionality table (we'll point to a dummy location)

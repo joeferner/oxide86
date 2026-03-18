@@ -1,7 +1,6 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, cpu_flag, instructions::RepeatPrefix, timing},
-    physical_address,
 };
 
 impl Cpu {
@@ -36,7 +35,7 @@ impl Cpu {
         if is_word {
             // LODSW - Load word
             let src_seg = self.segment_override.unwrap_or(self.ds);
-            let addr = physical_address(src_seg, self.si);
+            let addr = bus.physical_address(src_seg, self.si);
             self.ax = bus.memory_read_u16(addr);
 
             // Update SI based on direction flag
@@ -48,7 +47,7 @@ impl Cpu {
         } else {
             // LODSB - Load byte
             let src_seg = self.segment_override.unwrap_or(self.ds);
-            let addr = physical_address(src_seg, self.si);
+            let addr = bus.physical_address(src_seg, self.si);
             let value = bus.memory_read_u8(addr);
             self.ax = (self.ax & 0xFF00) | (value as u16);
 
@@ -99,7 +98,7 @@ impl Cpu {
     fn stos_once(&mut self, is_word: bool, bus: &mut Bus) {
         if is_word {
             // STOSW - Store word
-            let addr = physical_address(self.es, self.di);
+            let addr = bus.physical_address(self.es, self.di);
             bus.memory_write_u16(addr, self.ax);
 
             // Update DI based on direction flag
@@ -110,7 +109,7 @@ impl Cpu {
             }
         } else {
             // STOSB - Store byte
-            let addr = physical_address(self.es, self.di);
+            let addr = bus.physical_address(self.es, self.di);
             let al = (self.ax & 0xFF) as u8;
             bus.memory_write_u8(addr, al);
 
@@ -156,8 +155,8 @@ impl Cpu {
         if is_word {
             // MOVSW - Move word
             let src_seg = self.segment_override.unwrap_or(self.ds);
-            let src_addr = physical_address(src_seg, self.si);
-            let dst_addr = physical_address(self.es, self.di); // ES:DI is always ES
+            let src_addr = bus.physical_address(src_seg, self.si);
+            let dst_addr = bus.physical_address(self.es, self.di); // ES:DI is always ES
             let value = bus.memory_read_u16(src_addr);
             bus.memory_write_u16(dst_addr, value);
 
@@ -174,8 +173,8 @@ impl Cpu {
         } else {
             // MOVSB - Move byte
             let src_seg = self.segment_override.unwrap_or(self.ds);
-            let src_addr = physical_address(src_seg, self.si);
-            let dst_addr = physical_address(self.es, self.di); // ES:DI is always ES
+            let src_addr = bus.physical_address(src_seg, self.si);
+            let dst_addr = bus.physical_address(self.es, self.di); // ES:DI is always ES
             let value = bus.memory_read_u8(src_addr);
             bus.memory_write_u8(dst_addr, value);
 
@@ -253,8 +252,8 @@ impl Cpu {
         if is_word {
             // CMPSW - Compare word
             let src_seg = self.segment_override.unwrap_or(self.ds);
-            let src_addr = physical_address(src_seg, self.si);
-            let dst_addr = physical_address(self.es, self.di); // ES:DI is always ES
+            let src_addr = bus.physical_address(src_seg, self.si);
+            let dst_addr = bus.physical_address(self.es, self.di); // ES:DI is always ES
             let src = bus.memory_read_u16(src_addr);
             let dst = bus.memory_read_u16(dst_addr);
 
@@ -273,8 +272,8 @@ impl Cpu {
         } else {
             // CMPSB - Compare byte
             let src_seg = self.segment_override.unwrap_or(self.ds);
-            let src_addr = physical_address(src_seg, self.si);
-            let dst_addr = physical_address(self.es, self.di); // ES:DI is always ES
+            let src_addr = bus.physical_address(src_seg, self.si);
+            let dst_addr = bus.physical_address(self.es, self.di); // ES:DI is always ES
             let src = bus.memory_read_u8(src_addr);
             let dst = bus.memory_read_u8(dst_addr);
 
@@ -351,7 +350,7 @@ impl Cpu {
     fn scas_once(&mut self, is_word: bool, bus: &Bus) {
         if is_word {
             // SCASW - Scan word
-            let addr = physical_address(self.es, self.di);
+            let addr = bus.physical_address(self.es, self.di);
             let value = bus.memory_read_u16(addr);
 
             // Compare AX with bus value (AX - value)
@@ -366,7 +365,7 @@ impl Cpu {
             }
         } else {
             // SCASB - Scan byte
-            let addr = physical_address(self.es, self.di);
+            let addr = bus.physical_address(self.es, self.di);
             let value = bus.memory_read_u8(addr);
             let al = (self.ax & 0xFF) as u8;
 
@@ -471,7 +470,7 @@ impl Cpu {
             } else {
                 bus.io_read_u16(port)
             };
-            let addr = physical_address(self.es, self.di);
+            let addr = bus.physical_address(self.es, self.di);
             bus.memory_write_u16(addr, value);
 
             // Update DI based on direction flag
@@ -483,7 +482,7 @@ impl Cpu {
         } else {
             // INSB - Input byte
             let value = bus.io_read_u8(port);
-            let addr = physical_address(self.es, self.di);
+            let addr = bus.physical_address(self.es, self.di);
             bus.memory_write_u8(addr, value);
 
             // Update DI based on direction flag
@@ -520,7 +519,7 @@ impl Cpu {
         if is_word {
             // OUTSW - Output word
             let src_seg = self.segment_override.unwrap_or(self.ds);
-            let addr = physical_address(src_seg, self.si);
+            let addr = bus.physical_address(src_seg, self.si);
             let value = bus.memory_read_u16(addr);
             bus.io_write_u16(port, value);
 
@@ -533,7 +532,7 @@ impl Cpu {
         } else {
             // OUTSB - Output byte
             let src_seg = self.segment_override.unwrap_or(self.ds);
-            let addr = physical_address(src_seg, self.si);
+            let addr = bus.physical_address(src_seg, self.si);
             let value = bus.memory_read_u8(addr);
             bus.io_write_u8(port, value);
 

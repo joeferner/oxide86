@@ -1,7 +1,6 @@
 use crate::{
     bus::Bus,
     cpu::{Cpu, CpuType, cpu_flag, timing},
-    physical_address,
 };
 
 impl Cpu {
@@ -344,7 +343,7 @@ impl Cpu {
             for _ in 1..level {
                 // Walk caller's display chain (BP still holds caller's BP)
                 self.bp = self.bp.wrapping_sub(2);
-                let addr = physical_address(self.ss, self.bp);
+                let addr = bus.physical_address(self.ss, self.bp);
                 let val = bus.memory_read_u16(addr);
                 self.push(val, bus);
             }
