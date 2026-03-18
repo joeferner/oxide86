@@ -52,14 +52,14 @@
 - [X] Test Commander Keen 1
   - [X] Decompressing graphics (see ai-analysis/commander-keen-1-error-investigation.md and ai-analysis/keen1_latch_decode.py)
   - [X] Splash screen not showing
-- [ ] Add extended memory/A20 line support
+- [X] Add extended memory/A20 line support
+- [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
+  - [ ] Test Fractint Version 15.x and below
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
 - [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
 - [ ] Blinking text core/src/test_data/video/ct755r/mode7.asm
-- [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
-  - [ ] Test Fractint Version 15.x and below
 - [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions

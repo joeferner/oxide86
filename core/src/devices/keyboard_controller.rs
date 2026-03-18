@@ -33,6 +33,12 @@ pub(crate) struct KeyboardController {
     pending_mouse: bool,
     /// Auxiliary port enabled (8042 commands 0xA7/0xA8 on port 0x64).
     aux_enabled: bool,
+
+    // A20 gate
+    /// Pending multi-byte 8042 command (e.g. 0xD1 = write output port).
+    pending_command: Option<u8>,
+    /// Queued A20 gate change from 8042 output port write; drained by Bus.
+    a20_request: Option<bool>,
 }
 
 impl KeyboardController {
@@ -45,7 +51,14 @@ impl KeyboardController {
             aux_read_pos: 0,
             pending_mouse: false,
             aux_enabled: false,
+            pending_command: None,
+            a20_request: None,
         }
+    }
+
+    /// Drain and return a pending A20 gate change requested via 8042 output port write.
+    pub(crate) fn take_a20_request(&mut self) -> Option<bool> {
+        self.a20_request.take()
     }
 
     pub(crate) fn key_press(&mut self, scan_code: u8) {
@@ -143,6 +156,8 @@ impl Device for KeyboardController {
         self.aux_read_pos = 0;
         self.pending_mouse = false;
         self.aux_enabled = false;
+        self.pending_command = None;
+        self.a20_request = None;
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -194,6 +209,20 @@ impl Device for KeyboardController {
 
     fn io_write_u8(&mut self, port: u16, val: u8, _cycle_count: u32) -> bool {
         match port {
+            KEYBOARD_IO_PORT_DATA => {
+                // Port 0x60: data written after a pending 8042 command, or keyboard command.
+                if self.pending_command == Some(0xD1) {
+                    // 8042 write output port: bit 1 = A20 gate.
+                    self.a20_request = Some((val & 0x02) != 0);
+                    self.pending_command = None;
+                    log::debug!(
+                        "8042: output port write 0x{val:02X} → A20={}",
+                        (val & 0x02) != 0
+                    );
+                }
+                // Accept all port 0x60 writes (keyboard commands, LED writes, etc.)
+                true
+            }
             KEYBOARD_IO_PORT_COMMAND => {
                 match val {
                     0xA7 => self.aux_enabled = false,
@@ -204,6 +233,21 @@ impl Device for KeyboardController {
                     }
                     0xAD => {} // Disable keyboard interface — no-op
                     0xAE => {} // Enable keyboard interface — no-op
+                    0xD0 => {
+                        // Read 8042 output port — response byte will be placed in output
+                        // buffer. Bit 1 = A20 (always enabled in emulator).
+                        // We use 0xCF: system reset high, A20 enabled, other bits set.
+                        log::debug!("8042: read output port command (A20 always enabled)");
+                    }
+                    0xD1 => {
+                        // Write 8042 output port — next byte written to port 0x60 is the value.
+                        self.pending_command = Some(0xD1);
+                        log::debug!("8042: write output port command pending");
+                    }
+                    0xFF => {
+                        // Keyboard controller self-test / reset — no-op (accept silently).
+                        self.pending_command = None;
+                    }
                     _ => log::warn!("8042: unhandled command 0x{val:02X} on port 0x64"),
                 }
                 true

@@ -29,6 +29,10 @@ use crate::{
 const MEMORY_MAPPED_IO_START: usize = 0xA0000;
 const MEMORY_MAPPED_IO_END: usize = 0xF0000;
 
+/// System Control Port A — Fast A20 gate and system reset (PS/2 systems).
+/// Bit 1 = A20 gate (1 = enabled); bit 0 = system reset (pulse to reset).
+const PORT_SYSTEM_CONTROL_A: u16 = 0x0092;
+
 pub(crate) struct BusConfig {
     pub memory: Memory,
     pub cpu_clock_speed: u32,
@@ -57,6 +61,12 @@ pub(crate) struct Bus {
     /// Optional recorder for memory reads (used by reverse engineering mode).
     /// Uses RefCell for interior mutability since memory_read_u8 takes &self.
     data_reads_recorder: RefCell<Option<Vec<(usize, u8)>>>,
+
+    /// A20 address line gate. When false, bit 20 of every memory address is
+    /// masked out, causing the region 0x100000–0x10FFEF to alias 0x00000–0x0FFEF
+    /// (classic 8086 wrap-around behaviour). Starts enabled because the emulator's
+    /// BIOS accesses extended memory before any OS A20-enable sequence runs.
+    a20_enabled: bool,
 }
 
 impl Bus {
@@ -107,6 +117,7 @@ impl Bus {
             cycle_count: 0,
             rtc,
             data_reads_recorder: RefCell::new(None),
+            a20_enabled: true,
         }
     }
 
@@ -204,6 +215,7 @@ impl Bus {
     }
 
     pub(crate) fn memory_read_u8(&self, addr: usize) -> u8 {
+        let addr = self.apply_a20(addr);
         if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
             for device in &self.devices {
                 if let Some(val) = device.borrow_mut().memory_read_u8(addr, self.cycle_count) {
@@ -223,6 +235,7 @@ impl Bus {
     }
 
     pub(crate) fn memory_write_u8(&mut self, addr: usize, val: u8) {
+        let addr = self.apply_a20(addr);
         let cycle_count = self.cycle_count;
         if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
             for device in &self.devices {
@@ -270,6 +283,12 @@ impl Bus {
     }
 
     pub(crate) fn io_read_u8(&self, port: u16) -> u8 {
+        // Port 0x92: System Control Port A (Fast A20 gate).
+        // Bit 1 = A20 gate state; bit 0 = system reset (always 0 on read).
+        if port == PORT_SYSTEM_CONTROL_A {
+            return if self.a20_enabled { 0x02 } else { 0x00 };
+        }
+
         for device in &self.devices {
             if let Some(val) = device.borrow_mut().io_read_u8(port, self.cycle_count) {
                 return val;
@@ -297,9 +316,21 @@ impl Bus {
     }
 
     pub(crate) fn io_write_u8(&mut self, port: u16, val: u8) {
+        // Port 0x92: System Control Port A (Fast A20 gate).
+        // Bit 1 = A20 gate; bit 0 = system reset pulse (ignored).
+        if port == PORT_SYSTEM_CONTROL_A {
+            self.set_a20_enabled((val & 0x02) != 0);
+            return;
+        }
+
         let cycle_count = self.cycle_count;
         for device in &self.devices {
             if device.borrow_mut().io_write_u8(port, val, cycle_count) {
+                // After each device write, drain any A20 gate change from the keyboard controller.
+                let a20_request = self.keyboard_controller.borrow_mut().take_a20_request();
+                if let Some(enabled) = a20_request {
+                    self.set_a20_enabled(enabled);
+                }
                 return;
             }
         }
@@ -327,6 +358,28 @@ impl Bus {
     /// Get extended memory size in KB
     pub(crate) fn extended_memory_kb(&self) -> u16 {
         self.memory.extended_memory_kb()
+    }
+
+    pub(crate) fn a20_enabled(&self) -> bool {
+        self.a20_enabled
+    }
+
+    pub(crate) fn set_a20_enabled(&mut self, enabled: bool) {
+        if self.a20_enabled != enabled {
+            log::debug!("A20 gate {}", if enabled { "enabled" } else { "disabled" });
+            self.a20_enabled = enabled;
+        }
+    }
+
+    /// Apply A20 gate masking to a physical address. When A20 is disabled, bit 20
+    /// is cleared, aliasing the HMA (0x100000–0x10FFEF) back to 0x000000–0x0FFEF.
+    #[inline(always)]
+    fn apply_a20(&self, addr: usize) -> usize {
+        if self.a20_enabled {
+            addr
+        } else {
+            addr & !(1 << 20)
+        }
     }
 
     /// Encode a PS/2 mouse event as a 3-byte packet and queue it into the

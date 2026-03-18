@@ -19,9 +19,11 @@ impl Cpu {
 
         match function {
             0x10 => self.int15_top_view_multi_dos(),
+            0x24 => self.int15_a20_gate(bus),
             0x41 => self.int15_wait_external_event(),
             0x4F => self.int15_keyboard_intercept(),
             0x53 => self.int15_apm_not_present(),
+            0xD8 => self.int15_eisa_not_present(),
             0x87 => self.int15_move_extended_memory(bus),
             0x88 => self.int15_get_extended_memory(bus),
             0x91 => self.int15_device_interrupt_complete(),
@@ -98,6 +100,18 @@ impl Cpu {
     /// post-interrupt processing. Not supported on standard AT-class hardware.
     fn int15_device_interrupt_complete(&mut self) {
         // Not supported on this system; caller should check CF and continue regardless
+        self.set_flag(cpu_flag::CARRY, true);
+    }
+
+    /// INT 15h AH=D8h - EISA Configuration Services
+    ///
+    /// Output:
+    ///   CF = 1, AH = 86h (function not supported)
+    ///
+    /// EISA is not present in this emulation; programs that check for EISA
+    /// should gracefully fall back to ISA operation.
+    fn int15_eisa_not_present(&mut self) {
+        self.ax = (self.ax & 0x00FF) | 0x8600; // AH = 0x86 (function not supported)
         self.set_flag(cpu_flag::CARRY, true);
     }
 
@@ -234,6 +248,63 @@ impl Cpu {
         // Return function not supported
         self.set_flag(cpu_flag::CARRY, true);
         log::info!("INT 15h AH=C1h: EBDA not present (8086/PC/XT system)");
+    }
+
+    // ── INT 15h AH=24h — A20 Gate Services ──────────────────────────────────
+
+    /// INT 15h AH=24h - A20 Gate Services
+    ///
+    /// Input:
+    ///   AL = subfunction:
+    ///     00h: Disable A20
+    ///     01h: Enable A20
+    ///     02h: Query A20 state
+    ///     03h: Query A20 support
+    ///
+    /// Output (AL=00h/01h): CF=0, AH=0 on success
+    /// Output (AL=02h): CF=0, AH=0, AL=0 (disabled) or 1 (enabled)
+    /// Output (AL=03h): CF=0, AH=0, BX=0x0003 (BIOS + keyboard controller)
+    fn int15_a20_gate(&mut self, bus: &mut Bus) {
+        // A20 gate services are an AT-class (286+) feature. The 8086 has only 20
+        // address lines and no A20 gate hardware; report function not supported.
+        if !self.cpu_type.is_286_or_later() {
+            self.ax = (self.ax & 0x00FF) | 0x8600; // AH = 0x86 (unsupported)
+            self.set_flag(cpu_flag::CARRY, true);
+            return;
+        }
+
+        let subfunction = self.ax as u8; // AL
+        match subfunction {
+            0x00 => {
+                bus.set_a20_enabled(false);
+                self.ax &= 0x00FF; // AH = 0
+                self.set_flag(cpu_flag::CARRY, false);
+                log::debug!("INT 15h AH=24h AL=00h: A20 disabled via BIOS");
+            }
+            0x01 => {
+                bus.set_a20_enabled(true);
+                self.ax &= 0x00FF; // AH = 0
+                self.set_flag(cpu_flag::CARRY, false);
+                log::debug!("INT 15h AH=24h AL=01h: A20 enabled via BIOS");
+            }
+            0x02 => {
+                let state = bus.a20_enabled() as u8;
+                self.ax = state as u16; // AH=0, AL=state
+                self.set_flag(cpu_flag::CARRY, false);
+                log::debug!("INT 15h AH=24h AL=02h: A20 state = {state}");
+            }
+            0x03 => {
+                // Return supported methods: bit 0 = keyboard controller, bit 1 = port 0x92
+                self.ax &= 0x00FF; // AH = 0
+                self.bx = 0x0003;
+                self.set_flag(cpu_flag::CARRY, false);
+            }
+            _ => {
+                log::warn!("INT 15h AH=24h: unhandled subfunction AL=0x{subfunction:02X}");
+                self.ax = (self.ax & 0x00FF) | 0x8600; // AH = 0x86 (unsupported)
+                self.set_flag(cpu_flag::CARRY, true);
+            }
+        }
     }
 
     // ── INT 15h AH=C2h — PS/2 Mouse BIOS Services ───────────────────────────
