@@ -83,4 +83,8 @@ pub struct CommonCli {
     /// Enable joystick/gamepad input on the game port (0x201). Uses the first connected gamepad.
     #[arg(long = "joystick")]
     pub joystick: bool,
+
+    /// Disable the 8087 math coprocessor
+    #[arg(long = "no-fpu")]
+    pub no_fpu: bool,
 }

@@ -8,6 +8,7 @@ mod comparison;
 mod control_flow;
 mod data_transfer;
 pub(crate) mod decoder;
+mod fpu;
 mod io;
 mod logical;
 mod shift_rotate;
@@ -161,7 +162,10 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.pusha(bus);
                 } else {
-                    log::warn!("PUSHA (0x60) not supported on {:?} — firing INT 6", self.cpu_type);
+                    log::warn!(
+                        "PUSHA (0x60) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -171,7 +175,10 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.popa(bus);
                 } else {
-                    log::warn!("POPA (0x61) not supported on {:?} — firing INT 6", self.cpu_type);
+                    log::warn!(
+                        "POPA (0x61) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -183,7 +190,10 @@ impl Cpu {
                         self.dispatch_interrupt(bus, 5);
                     }
                 } else {
-                    log::warn!("BOUND (0x62) not supported on {:?} — firing INT 6", self.cpu_type);
+                    log::warn!(
+                        "BOUND (0x62) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -200,7 +210,11 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.push_imm(opcode, bus);
                 } else {
-                    log::warn!("PUSH imm ({:#04X}) not supported on {:?} — firing INT 6", opcode, self.cpu_type);
+                    log::warn!(
+                        "PUSH imm ({:#04X}) not supported on {:?} — firing INT 6",
+                        opcode,
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -210,7 +224,10 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.imul_imm16(bus);
                 } else {
-                    log::warn!("IMUL imm16 (0x69) not supported on {:?} — firing INT 6", self.cpu_type);
+                    log::warn!(
+                        "IMUL imm16 (0x69) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -218,7 +235,10 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.imul_imm8(bus);
                 } else {
-                    log::warn!("IMUL imm8 (0x6B) not supported on {:?} — firing INT 6", self.cpu_type);
+                    log::warn!(
+                        "IMUL imm8 (0x6B) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -228,7 +248,11 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.ins(opcode, bus);
                 } else {
-                    log::warn!("INS ({:#04X}) not supported on {:?} — firing INT 6", opcode, self.cpu_type);
+                    log::warn!(
+                        "INS ({:#04X}) not supported on {:?} — firing INT 6",
+                        opcode,
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -238,7 +262,11 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.outs(opcode, bus);
                 } else {
-                    log::warn!("OUTS ({:#04X}) not supported on {:?} — firing INT 6", opcode, self.cpu_type);
+                    log::warn!(
+                        "OUTS ({:#04X}) not supported on {:?} — firing INT 6",
+                        opcode,
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -325,7 +353,11 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.shift_rotate_group(opcode, bus);
                 } else {
-                    log::warn!("Shift/rotate by immediate ({:#04X}) not supported on {:?} — firing INT 6", opcode, self.cpu_type);
+                    log::warn!(
+                        "Shift/rotate by immediate ({:#04X}) not supported on {:?} — firing INT 6",
+                        opcode,
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -347,7 +379,10 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.enter(bus);
                 } else {
-                    log::warn!("ENTER (0xC8) not supported on {:?} — firing INT 6", self.cpu_type);
+                    log::warn!(
+                        "ENTER (0xC8) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -357,7 +392,10 @@ impl Cpu {
                 if self.cpu_type.is_286_or_later() {
                     self.leave(bus);
                 } else {
-                    log::warn!("LEAVE (0xC9) not supported on {:?} — firing INT 6", self.cpu_type);
+                    log::warn!(
+                        "LEAVE (0xC9) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
                     self.dispatch_interrupt(bus, 6);
                 }
             }
@@ -388,7 +426,7 @@ impl Cpu {
 
             // ESC - Escape to coprocessor (D8-DF)
             // Passes instruction to 8087 FPU; NOP without coprocessor
-            0xD8..=0xDF => self.esc(bus),
+            0xD8..=0xDF => self.esc(opcode, bus),
 
             // LOOPNE/LOOPNZ (E0)
             0xE0 => self.loopne(bus),

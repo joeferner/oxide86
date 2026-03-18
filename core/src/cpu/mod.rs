@@ -119,6 +119,18 @@ pub(crate) struct Cpu {
     /// Buffer for consecutive INT 10h AH=0Eh / INT 29h teletype characters.
     /// Flushed as a single log line on CR, LF, or any non-teletype interrupt.
     teletype_log_buffer: String,
+
+    /// 8087 math coprocessor present
+    math_coprocessor: bool,
+
+    /// 8087 status word (SW). Reset to 0x0000 by FNINIT.
+    fpu_status_word: u16,
+
+    /// 8087 register stack (8 x 80-bit stored as f64)
+    fpu_stack: [f64; 8],
+
+    /// 8087 stack top pointer (0-7). ST(i) = fpu_stack[(fpu_top + i) & 7].
+    fpu_top: u8,
 }
 
 /// Adapter that implements `Computer` by combining a `Cpu` and a `Bus`.
@@ -170,7 +182,7 @@ impl Computer for CpuBusComputer<'_> {
 }
 
 impl Cpu {
-    pub(crate) fn new(cpu_type: CpuType, clock_speed: u32) -> Self {
+    pub(crate) fn new(cpu_type: CpuType, clock_speed: u32, math_coprocessor: bool) -> Self {
         Self {
             cpu_type,
             clock_speed,
@@ -206,7 +218,15 @@ impl Cpu {
             pending_dos_seek: None,
             dos_file_handles: DosFileHandleTable::new(),
             teletype_log_buffer: String::new(),
+            math_coprocessor,
+            fpu_status_word: 0,
+            fpu_stack: [0.0_f64; 8],
+            fpu_top: 0,
         }
+    }
+
+    pub(crate) fn math_coprocessor(&self) -> bool {
+        self.math_coprocessor
     }
 
     pub(crate) fn clock_speed(&self) -> u32 {
@@ -489,6 +509,9 @@ impl Cpu {
         self.pending_exception = None;
         self.wait_for_key_press = false;
         self.wait_for_key_press_patch_flags = false;
+        self.fpu_status_word = 0;
+        self.fpu_stack = [0.0_f64; 8];
+        self.fpu_top = 0;
 
         // Set CPU to start at this location
         self.cs = segment;
@@ -605,7 +628,7 @@ mod tests {
 
     pub(crate) fn create_test_cpu() -> (Cpu, Bus) {
         let cpu_clock_speed = 8_000_000;
-        let cpu = Cpu::new(CpuType::I8086, cpu_clock_speed);
+        let cpu = Cpu::new(CpuType::I8086, cpu_clock_speed, false);
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
         let bus = Bus::new(BusConfig {
             memory: Memory::new(1024),

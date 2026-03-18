@@ -53,7 +53,26 @@
   - [X] Decompressing graphics (see ai-analysis/commander-keen-1-error-investigation.md and ai-analysis/keen1_latch_decode.py)
   - [X] Splash screen not showing
 - [X] Add extended memory/A20 line support
-- [ ] Emulate 8087 coprocessor see core/src/cpu/instructions/control_flow.rs:esc
+- [ ] Emulate 8087 math coprocessor see core/src/cpu/instructions/control_flow.rs:esc
+  - [X] Test FLD / FST / FSTP: Load, Store, and Store-and-Pop
+  - [ ] Test FCOM / FTST: Compare or Test against zero. This would set flags that the CPU could then read to make branching decisions (like IF statements).
+  - [ ] Test FLDZ / FLD1: Load constant 0.0 or 1.0.
+  - [ ] Test FILD / FIST: Integer Load/Store (automatically converted integers to floating-point).
+  - [ ] Test FBLD / FBSTP: Packed BCD (Binary Coded Decimal) Load/Store, used for high-precision financial calculations
+  - [ ] Test FLDPI: Load the value of $\pi$ (Pi) with 80-bit precision
+  - [ ] Test FLDL2E / FLDLN2: Load constants like $\log_2(e)$ or $\ln(2)$.
+  - [ ] Test FINIT: Initialize (reset) the coprocessor
+  - [ ] Test FLDCW / FSTCW: Load/Store the "Control Word" (used to set rounding modes or precision).
+  - [ ] Test FNSAVE / FRSTOR: Save and Restore the entire state of the 8087 (crucial when switching between different running programs).
+  - [ ] Test FXCH: Exchange the contents of two registers
+  - [ ] Test FADD / FSUB: Addition and Subtraction
+  - [ ] Test FMUL / FDIV: Multiplication and Division
+  - [ ] Test FSQRT: Square root (a very powerful single-instruction operation at the time).
+  - [ ] Test FABS / FCHS: Absolute value and Change Sign (negation).
+  - [ ] Test FRNDINT: Round to the nearest integer
+  - [ ] Test FPTAN / FPATAN: Partial Tangent and Partial Arctangent. (Interestingly, there were no direct "Sin" or "Cos" instructions until the 80387; you had to derive them from Tangent).
+  - [ ] Test F2XM1: Calculates $2^x - 1$.
+  - [ ] Test FYL2X: Calculates $y \cdot \log_2(x)$. This was the foundation for all logarithmic and power functions ($a^b$).
   - [ ] Test Fractint Version 15.x and below
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
@@ -72,3 +91,4 @@
 - [ ] Support external bios (see ai-analysis/bios-options.md)
 - [ ] Test https://github.com/MobyGamer/CGACompatibilityTester
 - [ ] Commander Keen 1 laggy scrolling (see ai-analysis/commander-keen-1-laggy-scroll.md)
+- [ ] Emulate 80287 an 80387 math coprocessors

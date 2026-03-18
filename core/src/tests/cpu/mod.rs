@@ -15,6 +15,17 @@ pub(crate) fn op8086() {
 }
 
 #[test_log::test]
+pub(crate) fn op8087() {
+    run_test(
+        "cpu/op8087",
+        make_computer!(math_coprocessor: true),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn op286() {
     run_test(
         "cpu/op286",
@@ -64,6 +75,40 @@ pub(crate) fn shift_cl() {
         |computer, _video_buffer| {
             computer.run();
         },
+    );
+}
+
+/// Run with no math coprocessor configured (default).
+/// Both INT 11h and FNINIT/FNSTSW must agree that no 8087 is present → exit 0x00.
+#[test_log::test]
+pub(crate) fn fpu_not_present() {
+    let program_data = super::load_program_data("cpu/fpu_not_present");
+    let (mut computer, _video_buffer) = make_computer!();
+    computer
+        .load_program(&program_data, super::TEST_SEGMENT, super::TEST_OFFSET)
+        .unwrap();
+    computer.run();
+    assert_eq!(
+        Some(0x00),
+        computer.get_exit_code(),
+        "expected no coprocessor detected (exit 0x00)"
+    );
+}
+
+/// Run with a math coprocessor configured.
+/// Both INT 11h and FNINIT/FNSTSW must agree that an 8087 is present → exit 0x00.
+#[test_log::test]
+pub(crate) fn fpu_present() {
+    let program_data = super::load_program_data("cpu/fpu_present");
+    let (mut computer, _video_buffer) = make_computer!(math_coprocessor: true);
+    computer
+        .load_program(&program_data, super::TEST_SEGMENT, super::TEST_OFFSET)
+        .unwrap();
+    computer.run();
+    assert_eq!(
+        Some(0x00),
+        computer.get_exit_code(),
+        "expected coprocessor detected (exit 0x00)"
     );
 }
 

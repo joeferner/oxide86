@@ -8,7 +8,12 @@ use crate::{
     Device,
     bus::{Bus, BusConfig},
     byte_to_printable_char,
-    cpu::{Cpu, CpuType, bios::int09_keyboard_hardware_interrupt::scan_code_to_ascii},
+    cpu::{
+        Cpu, CpuType,
+        bios::{
+            bda::bda_set_math_coprocessor, int09_keyboard_hardware_interrupt::scan_code_to_ascii,
+        },
+    },
     devices::rtc::{CMOS_REG_FLOPPY_TYPES, Clock, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
     disk::{Disk, DiskError, DriveNumber},
     memory::Memory,
@@ -56,6 +61,7 @@ pub struct ComputerConfig {
     pub video_card_type: VideoCardType,
     pub video_buffer: Arc<RwLock<VideoBuffer>>,
     pub pc_speaker: Box<dyn PcSpeaker>,
+    pub math_coprocessor: bool,
 }
 
 pub struct Computer {
@@ -68,7 +74,7 @@ pub struct Computer {
 
 impl Computer {
     pub fn new(config: ComputerConfig) -> Self {
-        let cpu = Cpu::new(config.cpu_type, config.clock_speed);
+        let cpu = Cpu::new(config.cpu_type, config.clock_speed, config.math_coprocessor);
         log::info!("Memory {}kb", config.memory_size / 1024);
         let memory = Memory::new(config.memory_size);
         let cpu_clock_speed = cpu.clock_speed();
@@ -197,6 +203,7 @@ impl Computer {
         self.key_presses.clear();
         if let Some((data, segment, offset)) = self.loaded_program.clone() {
             self.bus.reset();
+            self.apply_coprocessor_bda();
             let physical_addr = self.bus.physical_address(segment, offset);
             if let Err(e) = self.bus.load_at(physical_addr, &data) {
                 log::error!("Failed to reload program on reset: {e}");
@@ -208,7 +215,14 @@ impl Computer {
             }
         } else {
             self.bus.reset();
+            self.apply_coprocessor_bda();
             self.cpu.reset(0xffff, 0x0000, None);
+        }
+    }
+
+    fn apply_coprocessor_bda(&mut self) {
+        if self.cpu.math_coprocessor() {
+            bda_set_math_coprocessor(&mut self.bus);
         }
     }
 
@@ -241,6 +255,7 @@ impl Computer {
         // Reset bus state (IVT, BDA, devices) before booting so that any modifications
         // made by a previous session (e.g. DOS replacing INT 13h at 0x0070) don't persist.
         self.bus.reset();
+        self.apply_coprocessor_bda();
 
         // Read boot sector: cylinder 0, head 0, sector 1
         let boot_sector = if drive.is_floppy() {

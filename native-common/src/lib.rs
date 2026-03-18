@@ -92,6 +92,7 @@ pub fn create_computer(
         video_card_type,
         video_buffer,
         pc_speaker,
+        math_coprocessor: !cli.no_fpu,
     });
 
     if let Some(sound_card_type) = SoundCardType::parse(&cli.sound_card) {

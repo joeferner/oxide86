@@ -312,18 +312,6 @@ impl Cpu {
         }
     }
 
-    /// ESC - Escape to coprocessor (opcodes D8-DF)
-    /// Passes instruction to 8087 FPU. Without a coprocessor, this is a NOP
-    /// that reads the ModR/M byte and any displacement to maintain bus timing.
-    pub(in crate::cpu) fn esc(&mut self, bus: &mut Bus) {
-        let modrm = self.fetch_byte(bus);
-        // Decode ModR/M to consume any displacement bytes
-        let _ = self.decode_modrm(modrm, bus);
-        // No operation - 8087 coprocessor not emulated
-
-        // ESC: 2 cycles (no coprocessor)
-        bus.increment_cycle_count(timing::cycles::ESC)
-    }
 
     /// ENTER - Make Stack Frame (opcode C8, 80186+)
     /// Creates a procedure stack frame for high-level language support.

@@ -69,7 +69,6 @@ const BDA_MOUSE_HANDLER_MASK: usize = 0xF2; // Event mask byte (byte)
 
 // Equipment list bits
 const EQUIPMENT_FLOPPY_INSTALLED: u16 = 0x0001;
-#[allow(dead_code)]
 const EQUIPMENT_MATH_COPROCESSOR: u16 = 0x0002;
 #[allow(dead_code)]
 const EQUIPMENT_POINTING_DEVICE: u16 = 0x0004; // PS/2 mouse
@@ -372,6 +371,14 @@ pub(crate) fn bda_get_memory_size(bus: &Bus) -> u16 {
 /// - Bits 14-15: Number of printers
 pub(crate) fn bda_get_equipment_list(bus: &Bus) -> u16 {
     bus.memory_read_u16(BDA_START + BDA_EQUIPMENT_LIST)
+}
+
+pub(crate) fn bda_set_math_coprocessor(bus: &mut Bus) {
+    let equipment = bus.memory_read_u16(BDA_START + BDA_EQUIPMENT_LIST);
+    bus.memory_write_u16(
+        BDA_START + BDA_EQUIPMENT_LIST,
+        equipment | EQUIPMENT_MATH_COPROCESSOR,
+    );
 }
 
 pub(crate) fn bda_set_timer_counter(bus: &mut Bus, low_word: u16, high_word: u16) {
