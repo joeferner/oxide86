@@ -60,8 +60,8 @@ pub(crate) struct Bus {
 
     /// A20 address line gate. When false, bit 20 of every memory address is
     /// masked out, causing the region 0x100000–0x10FFEF to alias 0x00000–0x0FFEF
-    /// (classic 8086 wrap-around behaviour). Starts enabled because the emulator's
-    /// BIOS accesses extended memory before any OS A20-enable sequence runs.
+    /// (classic 8086 wrap-around behaviour). Starts disabled, matching real
+    /// hardware: the BIOS or OS (e.g. HIMEM.SYS) must explicitly enable it.
     a20_enabled: bool,
 }
 
@@ -112,7 +112,7 @@ impl Bus {
             sound_card: None,
             cycle_count: 0,
             rtc,
-            a20_enabled: true,
+            a20_enabled: false,
         }
     }
 

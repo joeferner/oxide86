@@ -23,6 +23,7 @@
     "disktools",
     "ebda",
     "egui",
+    "eisa",
     "fatfs",
     "fdisk",
     "Ferner",

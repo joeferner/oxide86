@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, CpuType, bios::bda::bda_get_num_hard_drives, cpu_flag},
+    cpu::{Cpu, bios::bda::bda_get_num_hard_drives, cpu_flag},
     devices::{
         floppy_disk_controller::{
             FDC_DATA, FDC_DIR, FDC_DIR_DISK_CHANGE, FDC_DOR, FDC_MSR, FDC_MSR_CB, FDC_MSR_NDM,
@@ -542,16 +542,6 @@ impl Cpu {
     /// Hard disk geometry is obtained via ATA IDENTIFY DEVICE command (0xEC):
     ///   Word 1 = cylinders, word 3 = heads, word 6 = sectors per track
     fn int13_get_drive_params(&mut self, bus: &mut Bus) {
-        // INT 13h AH=08h was introduced with the PC AT (80286). 8086/8088 BIOSes did not
-        // implement this function; return InvalidCommand to signal the call is unsupported.
-        if self.cpu_type == CpuType::I8086 {
-            log::warn!("INT 0x13 AH=0x08: not supported on 8086");
-            self.ax = (self.ax & 0x00FF) | ((DiskError::InvalidCommand as u16) << 8);
-            self.set_flag(cpu_flag::CARRY, true);
-            self.last_disk_status = DiskError::InvalidCommand as u8;
-            return;
-        }
-
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // Get DL
 
         if drive.is_floppy() {
