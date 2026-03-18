@@ -46,6 +46,27 @@ pub(crate) fn mode_0dh_ega_320x200x16() {
     );
 }
 
+/// Tests that CRTC start address registers 0x0C/0x0D correctly offset the
+/// display viewport in EGA mode 0x0D. Page 0 (offset 0) is white; page 1
+/// (offset 8000 = 0x1F40) is blue. Flipping the CRTC start address must
+/// show the correct page.
+#[test_log::test]
+pub(crate) fn ega_crtc_start_address() {
+    run_test(
+        "video/ega_crtc_start_address",
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen("video/ega_crtc_start_address_page0", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen("video/ega_crtc_start_address_page1", video_buffer.clone());
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
 /// Tests INT 10h/AH=11h/AL=30h font info queries and direct EGA VRAM glyph rendering,
 /// mirroring the technique SimCity uses for menu text (BH=02h ROM 8x14 path).
 #[test_log::test]

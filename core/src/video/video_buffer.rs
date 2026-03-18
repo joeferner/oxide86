@@ -517,10 +517,11 @@ impl VideoBuffer {
         const WIDTH: usize = 320;
         const HEIGHT: usize = 200;
         let bytes_per_row = self.crtc_offset.map(|v| v as usize * 2).unwrap_or(40);
+        let start_byte = self.start_address as usize;
 
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
-                let byte_offset = y * bytes_per_row + x / 8;
+                let byte_offset = (start_byte + y * bytes_per_row + x / 8) % EGA_PLANE_SIZE;
                 let bit_pos = 7 - (x % 8);
 
                 let mut color_index: usize = 0;
@@ -550,10 +551,11 @@ impl VideoBuffer {
         const WIDTH: usize = 640;
         const HEIGHT: usize = 350;
         let bytes_per_row = self.crtc_offset.map(|v| v as usize * 2).unwrap_or(80);
+        let start_byte = self.start_address as usize;
 
         for y in 0..HEIGHT {
             for x in 0..WIDTH {
-                let byte_offset = y * bytes_per_row + x / 8;
+                let byte_offset = (start_byte + y * bytes_per_row + x / 8) % EGA_PLANE_SIZE;
                 let bit_pos = 7 - (x % 8);
 
                 let mut color_index: usize = 0;
