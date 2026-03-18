@@ -38,6 +38,7 @@
     "JNBE",
     "JNGE",
     "JNLE",
+    "laggy",
     "LAHF",
     "LODS",
     "LODSB",
