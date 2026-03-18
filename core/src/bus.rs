@@ -361,6 +361,8 @@ impl crate::ByteReader for Bus {
 /// so they can be logged at a lower level than truly unrecognised ports.
 fn unimplemented_port_hint(port: u16) -> Option<&'static str> {
     match port {
+        0x0050..=0x005F => Some("possible EMS/extended BIOS hardware probe"),
+        0x0066 => Some("keyboard controller range probe"),
         0x02F2..=0x02F7 => Some("possible secondary FDC/serial probe"),
         0x06F0..=0x06FF => Some("DOS 4.01 hardware probe"),
         0x31A0..=0x31AF => Some("unknown ISA card detection probe"),

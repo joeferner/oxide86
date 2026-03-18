@@ -18,9 +18,9 @@ impl Cpu {
 
         // Determine shift count
         let count = match opcode {
-            0xC0 | 0xC1 => self.fetch_byte(bus),    // imm8
-            0xD0 | 0xD1 => 1,                       // shift by 1
-            0xD2 | 0xD3 => self.get_reg8(1), // CL — 8086 does not mask the shift count
+            0xC0 | 0xC1 => self.fetch_byte(bus), // imm8
+            0xD0 | 0xD1 => 1,                    // shift by 1
+            0xD2 | 0xD3 => self.get_reg8(1),     // CL — 8086 does not mask the shift count
             _ => unreachable!(),
         };
 

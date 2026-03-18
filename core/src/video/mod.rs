@@ -31,14 +31,15 @@ pub const CGA_MEMORY_START: usize = 0xB8000;
 pub const CGA_MEMORY_END: usize = 0xBFFFF;
 pub const CGA_MEMORY_SIZE: usize = CGA_MEMORY_END - CGA_MEMORY_START + 1; // 32KB
 
-// EGA planar memory: 32KB per plane × 4 planes = 128KB total.
-// Mode 0Dh (320×200) uses 8000 bytes/plane; mode 10h (640×350) uses 28000 bytes/plane.
-// Tile storage at offsets 0x2000+ is preserved within the 32KB window.
-pub const EGA_PLANE_SIZE: usize = 0x8000; // 32KB per plane
+// EGA planar memory: 64KB per plane × 4 planes = 256KB total (real hardware).
+// Mode 0Dh (320×200) uses 8000 bytes/plane for the visible area.
+// Games like Commander Keen use the full 64KB window: tile data lives at offsets
+// above 0x8000 (e.g. A700:0000 = offset 0x7000, extending to 0xE4DF per plane).
+pub const EGA_PLANE_SIZE: usize = 0x10000; // 64KB per plane
 
-// Video RAM size: 64KB total — shared between EGA planar (4 × 16KB = 64KB)
-// and VGA mode 13h linear framebuffer (64000 bytes).
-pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 64KB
+// Video RAM size: 256KB total — 4 EGA planes × 64KB, also covers
+// VGA mode 13h linear framebuffer (64000 bytes).
+pub const VIDEO_MEMORY_SIZE: usize = EGA_PLANE_SIZE * 4; // 256KB
 
 // VGA mode 13h: 320×200 = 64000 bytes linear framebuffer at A000:0000
 pub const VGA_MODE_13_WIDTH: usize = 320;

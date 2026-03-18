@@ -1,7 +1,9 @@
 use crate::{
     Computer,
     bus::Bus,
-    cpu::bios::int21_dos_services::{DosFileHandleTable, PendingDosOpen, PendingDosRead, PendingDosSeek},
+    cpu::bios::int21_dos_services::{
+        DosFileHandleTable, PendingDosOpen, PendingDosRead, PendingDosSeek,
+    },
     cpu::instructions::decoder::Operand,
     cpu::{
         bios::BIOS_CODE_SEGMENT,
