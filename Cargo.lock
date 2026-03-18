@@ -2380,19 +2380,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "oxide86-disasm"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "clap",
- "env_logger",
- "log",
- "oxide86-core",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "oxide86-disktools"
 version = "0.1.0"
 dependencies = [

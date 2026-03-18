@@ -9,7 +9,6 @@ pub mod devices;
 pub mod dis;
 pub mod disk;
 pub mod memory;
-pub mod reverse_engineer;
 pub mod scan_code;
 pub mod video;
 

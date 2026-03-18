@@ -12,7 +12,6 @@ pub enum MenuAction {
     Reset,
     SaveScreenshot,
     ToggleExecutionLogging,
-    ToggleReverseEngineer,
     TogglePause,
     TogglePerformanceOverlay,
 }
@@ -37,7 +36,6 @@ impl MenuAction {
         matches!(
             self,
             MenuAction::ToggleExecutionLogging
-                | MenuAction::ToggleReverseEngineer
                 | MenuAction::TogglePause
                 | MenuAction::TogglePerformanceOverlay
                 | MenuAction::Reset
@@ -52,7 +50,6 @@ pub struct AppMenu {
     floppy_b_present: bool,
     // TODO cdrom_present: bool,
     exec_logging_enabled: bool,
-    reverse_engineer_enabled: bool,
     is_paused: bool,
     show_performance_overlay: bool,
 }
@@ -65,7 +62,6 @@ impl AppMenu {
             floppy_b_present: false,
             // TODO cdrom_present: false,
             exec_logging_enabled: false,
-            reverse_engineer_enabled: false,
             is_paused: false,
             show_performance_overlay: false,
         }
@@ -84,15 +80,8 @@ impl AppMenu {
     // }
 
     /// Update debug menu states
-    pub fn update_debug_states(
-        &mut self,
-        exec_logging: bool,
-        reverse_engineer: bool,
-        paused: bool,
-        show_overlay: bool,
-    ) {
+    pub fn update_debug_states(&mut self, exec_logging: bool, paused: bool, show_overlay: bool) {
         self.exec_logging_enabled = exec_logging;
-        self.reverse_engineer_enabled = reverse_engineer;
         self.is_paused = paused;
         self.show_performance_overlay = show_overlay;
     }
@@ -195,13 +184,6 @@ impl AppMenu {
                     let mut b = self.exec_logging_enabled;
                     if ui.checkbox(&mut b, "Execution Logging").clicked() {
                         action = Some(MenuAction::ToggleExecutionLogging);
-                        ui.close_menu();
-                    }
-
-                    // Reverse Engineering with checkbox
-                    let mut b = self.reverse_engineer_enabled;
-                    if ui.checkbox(&mut b, "Reverse Engineering").clicked() {
-                        action = Some(MenuAction::ToggleReverseEngineer);
                         ui.close_menu();
                     }
 

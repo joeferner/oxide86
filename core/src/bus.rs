@@ -58,10 +58,6 @@ pub(crate) struct Bus {
     /// Cycle count to accurately track CPU cycles
     cycle_count: u32,
 
-    /// Optional recorder for memory reads (used by reverse engineering mode).
-    /// Uses RefCell for interior mutability since memory_read_u8 takes &self.
-    data_reads_recorder: RefCell<Option<Vec<(usize, u8)>>>,
-
     /// A20 address line gate. When false, bit 20 of every memory address is
     /// masked out, causing the region 0x100000–0x10FFEF to alias 0x00000–0x0FFEF
     /// (classic 8086 wrap-around behaviour). Starts enabled because the emulator's
@@ -116,7 +112,6 @@ impl Bus {
             sound_card: None,
             cycle_count: 0,
             rtc,
-            data_reads_recorder: RefCell::new(None),
             a20_enabled: true,
         }
     }
@@ -203,35 +198,17 @@ impl Bus {
         self.sound_card = Some(rc);
     }
 
-    pub(crate) fn enable_read_recording(&self) {
-        *self.data_reads_recorder.borrow_mut() = Some(Vec::new());
-    }
-
-    pub(crate) fn drain_read_recording(&self) -> Vec<(usize, u8)> {
-        self.data_reads_recorder
-            .borrow_mut()
-            .take()
-            .unwrap_or_default()
-    }
-
     pub(crate) fn memory_read_u8(&self, addr: usize) -> u8 {
         let addr = self.apply_a20(addr);
         if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
             for device in &self.devices {
                 if let Some(val) = device.borrow_mut().memory_read_u8(addr, self.cycle_count) {
-                    if let Some(ref mut rec) = *self.data_reads_recorder.borrow_mut() {
-                        rec.push((addr, val));
-                    }
                     return val;
                 }
             }
         }
 
-        let val = self.memory.read_u8(addr);
-        if let Some(ref mut rec) = *self.data_reads_recorder.borrow_mut() {
-            rec.push((addr, val));
-        }
-        val
+        self.memory.read_u8(addr)
     }
 
     pub(crate) fn memory_write_u8(&mut self, addr: usize, val: u8) {

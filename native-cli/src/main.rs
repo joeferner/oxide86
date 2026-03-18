@@ -75,11 +75,6 @@ fn main() -> Result<()> {
     let (mut computer, audio_sink, mut gilrs_joystick) =
         create_computer(&cli.common, video_buffer.clone(), mouse.clone())?;
 
-    if cli.common.reverse_engineer {
-        computer.set_reverse_engineer_enabled(true);
-        log::info!("Reverse engineering enabled");
-    }
-
     let mut stdout = std::io::stdout();
     let mut last_modifiers = KeyModifiers::empty();
 
@@ -249,17 +244,6 @@ fn main() -> Result<()> {
                     break;
                 }
             }
-        }
-    }
-
-    // Write reverse engineer output if enabled
-    if let Some(asm) = computer.get_reverse_engineer_asm() {
-        match std::fs::write("oxide86.asm", &asm) {
-            Ok(()) => {
-                log::info!("Reverse engineer output written to oxide86.asm");
-                eprintln!("Reverse engineer output written to oxide86.asm");
-            }
-            Err(e) => log::error!("Failed to write oxide86.asm: {e}"),
         }
     }
 

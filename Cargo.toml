@@ -6,7 +6,6 @@ edition = "2024"
 [workspace]
 members = [
     "core",
-    "disassembler",
     "disktools",
     "native-cli",
     "native-common",

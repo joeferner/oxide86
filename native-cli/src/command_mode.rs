@@ -42,14 +42,6 @@ pub(crate) fn run_command_mode(computer: &mut Computer, stdout: &mut Stdout) -> 
                 "disabled"
             }
         );
-        println!(
-            "   re                        - Toggle reverse engineering [{}]\r",
-            if computer.reverse_engineer_enabled() {
-                "enabled"
-            } else {
-                "disabled"
-            }
-        );
         println!("   resume/enter              - Resume execution\r");
         println!("   reset                     - Reset computer\r");
         println!("   quit/q                    - Quit Emulator\r");
@@ -77,32 +69,6 @@ pub(crate) fn run_command_mode(computer: &mut Computer, stdout: &mut Stdout) -> 
                     let text = editor.get_text();
                     let cmd = Command::parse(text);
                     match cmd {
-                        Command::ToggleReverseEngineer => {
-                            let was_enabled = computer.reverse_engineer_enabled();
-                            if was_enabled && let Some(asm) = computer.get_reverse_engineer_asm() {
-                                match std::fs::write("oxide86.asm", &asm) {
-                                    Ok(()) => {
-                                        log::info!("Reverse engineer output written to oxide86.asm")
-                                    }
-                                    Err(e) => log::error!("Failed to write oxide86.asm: {e}"),
-                                }
-                            }
-                            computer.set_reverse_engineer_enabled(!was_enabled);
-                            editor = StringEditor::new();
-                            message = Some(format!(
-                                "Reverse engineering {}{}",
-                                if computer.reverse_engineer_enabled() {
-                                    "enabled"
-                                } else {
-                                    "disabled"
-                                },
-                                if was_enabled {
-                                    " — oxide86.asm written"
-                                } else {
-                                    ""
-                                },
-                            ));
-                        }
                         Command::ToggleLogExec => {
                             computer.set_exec_logging_enabled(!computer.exec_logging_enabled());
                             editor = StringEditor::new();
@@ -189,7 +155,6 @@ pub(crate) fn run_command_mode(computer: &mut Computer, stdout: &mut Stdout) -> 
 
 enum Command {
     ToggleLogExec,
-    ToggleReverseEngineer,
     Quit,
     Resume,
     EjectA,
@@ -209,8 +174,6 @@ impl Command {
             Self::Resume
         } else if text == "log exec" || text == "l" {
             Self::ToggleLogExec
-        } else if text == "re" {
-            Self::ToggleReverseEngineer
         } else if text == "eject a" {
             Self::EjectA
         } else if text == "eject b" {

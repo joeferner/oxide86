@@ -4,15 +4,12 @@ use crate::{
     cpu::bios::int21_dos_services::{
         DosFileHandleTable, PendingDosOpen, PendingDosRead, PendingDosSeek,
     },
-    cpu::instructions::decoder::Operand,
     cpu::{
         bios::BIOS_CODE_SEGMENT,
         instructions::{RepeatPrefix, decoder},
     },
-    dis::classify_instruction_flow,
     disk::DriveNumber,
     physical_address,
-    reverse_engineer::ReverseEngineer,
 };
 
 pub mod bios;
@@ -103,9 +100,6 @@ pub(crate) struct Cpu {
 
     /// if set to true, opcode execution will be logged as info level
     pub exec_logging_enabled: bool,
-
-    /// Optional reverse engineering recorder
-    pub(crate) reverse_engineer: Option<ReverseEngineer>,
 
     /// Set by INT 19h (bootstrap loader) to signal that the next reboot should
     /// try drives in boot order rather than only the configured boot drive.
@@ -207,7 +201,6 @@ impl Cpu {
             wait_for_key_press: false,
             wait_for_key_press_patch_flags: false,
             exec_logging_enabled: false,
-            reverse_engineer: None,
             bootstrap_request: false,
             pending_dos_read: None,
             pending_dos_open: None,
@@ -361,17 +354,13 @@ impl Cpu {
         let pre_cs = self.cs;
         let pre_ip = self.ip;
 
-        if self.reverse_engineer.is_some() {
-            bus.enable_read_recording();
-        }
-
         self.exec_instruction(bus);
 
         self.check_int21_dos_call(bus);
 
         // Decode after execution so register annotations reflect post-exec state.
         // Instruction bytes at pre_cs:pre_ip are still in memory (code is not modified).
-        let decoded = if self.exec_logging_enabled || self.reverse_engineer.is_some() {
+        let decoded = if self.exec_logging_enabled {
             Some(decoder::decode(
                 &CpuBusComputer { cpu: self, bus },
                 pre_cs,
@@ -380,36 +369,6 @@ impl Cpu {
         } else {
             None
         };
-
-        if let (Some(re), Some(instr)) = (&mut self.reverse_engineer, &decoded) {
-            let all_reads = bus.drain_read_recording();
-            let code_start = physical_address(pre_cs, pre_ip);
-            let code_end = physical_address(self.cs, self.ip);
-
-            let explicit_addrs: Vec<usize> = instr
-                .operands
-                .iter()
-                .filter_map(|op| match op {
-                    Operand::Mem8 { mem, .. } | Operand::Mem16 { mem, .. } => {
-                        Some(mem.phys() as usize)
-                    }
-                    _ => None,
-                })
-                .collect();
-
-            let mut data_refs = Vec::new();
-            for (addr, val) in all_reads {
-                if addr < 0xA0000 && !(code_start..code_end).contains(&addr) {
-                    re.record_data_read(addr, val);
-                    if !explicit_addrs.contains(&addr) {
-                        data_refs.push(addr);
-                    }
-                }
-            }
-
-            let flow = classify_instruction_flow(instr);
-            re.record_instruction(instr, &flow, data_refs);
-        }
 
         if self.exec_logging_enabled
             && let Some(ref instr) = decoded
