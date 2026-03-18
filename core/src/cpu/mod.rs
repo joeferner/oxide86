@@ -537,6 +537,9 @@ impl Cpu {
             0x1a => self.handle_int1a_time_services(bus),
             0x21 => self.handle_int21_dos_services(bus),
             0x74 => self.handle_int74_ps2_mouse_interrupt(bus),
+            // Default INT 06h handler (invalid opcode): no-op, just IRET.
+            // A real BIOS typically does nothing here; programs can install their own handler.
+            0x06 => {}
             // Default INT 1Ch handler (user timer tick): no-op, just IRET.
             0x1C => {}
             // INT 1Ch IRET trampoline — the chained INT 1Ch handler returned here.
