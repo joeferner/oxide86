@@ -1,18 +1,15 @@
 ; op8087_arith.asm - 8087 FPU arithmetic instruction tests
 ;
 ; Tests:
-;   FADD  - Add ST(0) + ST(1)
-;   FSUB  - Subtract ST(1) from ST(0)
-;   FMUL  - Multiply ST(0) * ST(1)
-;   FDIV  - Divide ST(0) / ST(1)
-;   FSQRT - Square root of ST(0)
-;   FABS  - Absolute value of ST(0)
-;   FCHS  - Change sign of ST(0)
-;   FRNDINT - Round ST(0) to integer
-;   FPTAN - Partial tangent: ST(0)=tan(x), pushes 1.0
-;   FPATAN - Partial arctangent: ST(0) = atan(ST(1)/ST(0)), pops
-;   F2XM1 - 2^ST(0) - 1  (ST(0) must be in [-1.0, 1.0])
-;   FYL2X - ST(1) * log2(ST(0)), pops
+;   FADD/FSUB/FSUBR/FMUL/FDIV/FDIVR (pop forms via DE prefix)
+;   FADD/FSUB/FSUBR/FMUL/FDIV/FDIVR m32 (memory operand, D8 prefix)
+;   FADD/FSUB/FMUL/FDIV ST,ST(i) (register non-pop, D8 prefix)
+;   FSQRT, FABS, FCHS, FRNDINT
+;   FPTAN, FPATAN, F2XM1, FYL2X
+;   FYL2XP1 - ST(1)*log2(ST(0)+1), pops
+;   FPREM   - partial remainder: ST(0) mod ST(1)
+;   FSCALE  - ST(0) *= 2^TRUNC(ST(1))
+;   FXTRACT - split ST(0) into significand and exponent
 ;
 ; All tests compare the result to a pre-computed expected value stored
 ; in the data section as an IEEE 754 double (64-bit).
@@ -41,6 +38,12 @@ start:
     call test_fpatan
     call test_f2xm1
     call test_fyl2x
+    call test_arith_mem
+    call test_arith_reg
+    call test_fyl2xp1
+    call test_fprem
+    call test_fscale
+    call test_fxtract
 
     cmp word [fail_count], 0
     jne .fail
@@ -236,6 +239,222 @@ test_fyl2x:
     ret
 
 ;=============================================================================
+; Test: arithmetic memory operand variants (D8 prefix, m32)
+; Each loads a value into ST(0) then applies a m32 operation.
+;   FADD  m32: ST(0) = ST(0) + m32   (D8 /0)
+;   FSUB  m32: ST(0) = ST(0) - m32   (D8 /4)
+;   FSUBR m32: ST(0) = m32 - ST(0)   (D8 /5)
+;   FMUL  m32: ST(0) = ST(0) * m32   (D8 /1)
+;   FDIV  m32: ST(0) = ST(0) / m32   (D8 /6)
+;   FDIVR m32: ST(0) = m32 / ST(0)   (D8 /7)
+;=============================================================================
+test_arith_mem:
+    ; FADD m32: 2.0 + 1.0 = 3.0
+    fninit
+    fld dword [val_2f32]
+    fadd dword [val_1f32]
+    fstp qword [scratch64]
+    mov si, val_3f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+
+    ; FSUB m32: 3.0 - 1.0 = 2.0
+    fninit
+    fld dword [val_3f32]
+    fsub dword [val_1f32]
+    fstp qword [scratch64]
+    mov si, val_2f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+
+    ; FSUBR m32: 3.0 - 1.0 = 2.0  (m32=3.0, ST(0)=1.0, result = m32 - ST(0))
+    fninit
+    fld dword [val_1f32]
+    fsubr dword [val_3f32]
+    fstp qword [scratch64]
+    mov si, val_2f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+
+    ; FMUL m32: 2.0 * 3.0 = 6.0
+    fninit
+    fld dword [val_2f32]
+    fmul dword [val_3f32]
+    fstp qword [scratch64]
+    mov si, val_6f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+
+    ; FDIV m32: 6.0 / 2.0 = 3.0
+    fninit
+    fld dword [val_6f32]
+    fdiv dword [val_2f32]
+    fstp qword [scratch64]
+    mov si, val_3f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+
+    ; FDIVR m32: 6.0 / 2.0 = 3.0  (m32=6.0, ST(0)=2.0, result = m32 / ST(0))
+    fninit
+    fld dword [val_2f32]
+    fdivr dword [val_6f32]
+    fstp qword [scratch64]
+    mov si, val_3f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    ret
+
+;=============================================================================
+; Test: arithmetic register non-pop variants (D8 prefix: ST,ST(i))
+; These modify ST(0) in place without popping.
+;   FADD ST0,ST1: ST(0) += ST(1)  → 2.0 + 1.0 = 3.0
+;   FSUB ST0,ST1: ST(0) -= ST(1)  → 3.0 - 1.0 = 2.0
+;   FMUL ST0,ST1: ST(0) *= ST(1)  → 3.0 * 2.0 = 6.0
+;   FDIV ST0,ST1: ST(0) /= ST(1)  → 6.0 / 2.0 = 3.0
+; Also tests one DC variant: FADD ST1,ST0 → ST(1) += ST(0)
+;=============================================================================
+test_arith_reg:
+    ; FADD ST0, ST1: 2.0 + 1.0 = 3.0
+    ; Result is in ST(0); compare before popping the unchanged ST(1).
+    fninit
+    fld qword [val_1f64]        ; ST(0)=1.0 → will be ST(1)
+    fld qword [val_2f64]        ; ST(0)=2.0, ST(1)=1.0
+    fadd st0, st1               ; D8 C1: ST(0) = 2.0 + 1.0 = 3.0, ST(1) unchanged
+    fstp qword [scratch64]      ; pop result ST(0)=3.0
+    mov si, val_3f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    fstp qword [scratch64]      ; discard ST(1)=1.0
+
+    ; FSUB ST0, ST1: 3.0 - 1.0 = 2.0
+    fninit
+    fld qword [val_1f64]        ; ST(0)=1.0 → will be ST(1)
+    fld qword [val_3f64]        ; ST(0)=3.0, ST(1)=1.0
+    fsub st0, st1               ; D8 E1: ST(0) = 3.0 - 1.0 = 2.0
+    fstp qword [scratch64]      ; pop result ST(0)=2.0
+    mov si, val_2f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    fstp qword [scratch64]      ; discard ST(1)=1.0
+
+    ; FMUL ST0, ST1: 3.0 * 2.0 = 6.0
+    fninit
+    fld qword [val_2f64]        ; ST(0)=2.0 → will be ST(1)
+    fld qword [val_3f64]        ; ST(0)=3.0, ST(1)=2.0
+    fmul st0, st1               ; D8 C9: ST(0) = 3.0 * 2.0 = 6.0
+    fstp qword [scratch64]      ; pop result ST(0)=6.0
+    mov si, val_6f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    fstp qword [scratch64]      ; discard ST(1)=2.0
+
+    ; FDIV ST0, ST1: 6.0 / 2.0 = 3.0
+    fninit
+    fld qword [val_2f64]        ; ST(0)=2.0 → will be ST(1)
+    fld qword [val_6f64]        ; ST(0)=6.0, ST(1)=2.0
+    fdiv st0, st1               ; D8 F1: ST(0) = 6.0 / 2.0 = 3.0
+    fstp qword [scratch64]      ; pop result ST(0)=3.0
+    mov si, val_3f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    fstp qword [scratch64]      ; discard ST(1)=2.0
+
+    ; FADD ST1, ST0 (DC variant): ST(1) += ST(0) → 1.0 + 2.0 = 3.0
+    ; Result is in ST(1); pop ST(0) first (discarded), then pop the result.
+    fninit
+    fld qword [val_1f64]        ; ST(0)=1.0 → will be ST(1)
+    fld qword [val_2f64]        ; ST(0)=2.0, ST(1)=1.0
+    fadd st1, st0               ; DC C1: ST(1) = 1.0 + 2.0 = 3.0, ST(0) unchanged
+    fstp qword [scratch64]      ; pop ST(0)=2.0 (discard)
+    fstp qword [scratch64]      ; pop result ST(1)→ST(0)=3.0
+    mov si, val_3f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    ret
+
+;=============================================================================
+; Test: FYL2XP1 — ST(1) * log2(ST(0) + 1), pop
+; Push x=1.0 (ST(1)), then y=3.0 (ST(0)).
+; Result = 3.0 * log2(1.0+1.0) = 3.0 * 1.0 = 3.0
+;=============================================================================
+test_fyl2xp1:
+    fninit
+    fld qword [val_3f64]        ; ST(0)=3.0 → will be ST(1) (y)
+    fld qword [val_1f64]        ; ST(0)=1.0 (x), ST(1)=3.0 (y)
+    fyl2xp1                     ; ST(0) = 3.0 * log2(1.0+1.0) = 3.0, pop
+    fstp qword [scratch64]
+    mov si, val_3f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    ret
+
+;=============================================================================
+; Test: FPREM — partial remainder: ST(0) = ST(0) mod ST(1)
+; 5.0 mod 3.0 = 2.0
+;=============================================================================
+test_fprem:
+    fninit
+    fld qword [val_3f64]        ; ST(0)=3.0 → will be ST(1) (divisor)
+    fld qword [val_5f64]        ; ST(0)=5.0 (dividend), ST(1)=3.0
+    fprem                       ; ST(0) = 5.0 - 1*3.0 = 2.0 (ST(1) unchanged)
+    fstp qword [scratch64]      ; pop result ST(0)=2.0
+    mov si, val_2f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes          ; compare before popping ST(1)
+    fstp qword [scratch64]      ; discard ST(1)=3.0
+    ret
+
+;=============================================================================
+; Test: FSCALE — ST(0) = ST(0) * 2^TRUNC(ST(1))
+; 1.0 * 2^3 = 8.0
+;=============================================================================
+test_fscale:
+    fninit
+    fld qword [val_3f64]        ; ST(0)=3.0 → will be ST(1) (scale exponent)
+    fld qword [val_1f64]        ; ST(0)=1.0 (value), ST(1)=3.0
+    fscale                      ; ST(0) = 1.0 * 2^3 = 8.0 (ST(1) unchanged)
+    fstp qword [scratch64]      ; pop result ST(0)=8.0
+    mov si, val_8f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes          ; compare before popping ST(1)
+    fstp qword [scratch64]      ; discard ST(1)=3.0
+    ret
+
+;=============================================================================
+; Test: FXTRACT — split ST(0) into significand and exponent
+; 4.0 = 1.0 * 2^2 → after FXTRACT: ST(0)=1.0 (significand), ST(1)=2.0 (exponent)
+;=============================================================================
+test_fxtract:
+    fninit
+    fld qword [val_4f64]        ; ST(0)=4.0
+    fxtract                     ; ST(0)=1.0 (significand), ST(1)=2.0 (exponent)
+    fstp qword [scratch64]      ; pop significand = 1.0
+    mov si, val_1f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    fstp qword [scratch64]      ; pop exponent = 2.0
+    mov si, val_2f64
+    mov di, scratch64
+    mov cx, 8
+    call compare_bytes
+    ret
+
+;=============================================================================
 ; compare_bytes — compare [SI] to [DI] for CX bytes
 ; Increments pass_count if all match, fail_count if any differ.
 ;=============================================================================
@@ -272,10 +491,17 @@ val_1f64:    dq 0x3FF0000000000000  ; 1.0
 val_2f64:    dq 0x4000000000000000  ; 2.0
 val_3f64:    dq 0x4008000000000000  ; 3.0
 val_4f64:    dq 0x4010000000000000  ; 4.0
+val_5f64:    dq 0x4014000000000000  ; 5.0
 val_6f64:    dq 0x4018000000000000  ; 6.0
+val_8f64:    dq 0x4020000000000000  ; 8.0
 val_neg2f64: dq 0xC000000000000000  ; -2.0
-val_2_7f64:  dq 0x4005999999999999  ; 2.7 (approx: 0x400599999999999A rounds to 3)
+val_2_7f64:  dq 0x4005999999999999  ; 2.7 (approx, rounds to 3)
 val_pi4f64:  dq 0x3FE921FB54442D18  ; pi/4
+; IEEE 754 single-precision constants for memory-operand tests
+val_1f32:    dd 0x3F800000          ; 1.0f
+val_2f32:    dd 0x40000000          ; 2.0f
+val_3f32:    dd 0x40400000          ; 3.0f
+val_6f32:    dd 0x40C00000          ; 6.0f
 
 section .bss
 scratch64:  resq 1

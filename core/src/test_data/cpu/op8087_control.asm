@@ -1,10 +1,16 @@
 ; op8087_control.asm - 8087 FPU control and state instruction tests
 ;
 ; Tests:
-;   FINIT   - Initialize (reset) FPU; verifies status word cleared
-;   FLDCW / FNSTCW - Load/Store control word round-trip
-;   FNSAVE / FRSTOR - Save/Restore full FPU state
-;   FXCH    - Exchange ST(0) with ST(i)
+;   FINIT        - Initialize (reset) FPU; verifies status word cleared
+;   FLDCW/FNSTCW - Load/Store control word round-trip
+;   FNSAVE/FRSTOR - Save/Restore full FPU state
+;   FXCH         - Exchange ST(0) with ST(i)
+;   FNCLEX       - Clear exceptions; verifies exception bits are cleared
+;   FDECSTP      - Decrement stack pointer (TOP)
+;   FINCSTP      - Increment stack pointer (TOP)
+;   FFREE        - Free a register (mark as empty)
+;   FNSTENV/FLDENV - Store/Load 14-byte FPU environment
+;   FNSTSW m16   - Store status word to memory
 ;
 ; Exit codes:
 ;   0x00 = all tests passed
@@ -22,6 +28,11 @@ start:
     call test_fldcw_fnstcw
     call test_fnsave_frstor
     call test_fxch
+    call test_fnclex
+    call test_fdecstp_fincstp
+    call test_ffree
+    call test_fldenv_fnstenv
+    call test_fnstsw_mem
 
     cmp word [fail_count], 0
     jne .fail
@@ -106,6 +117,100 @@ test_fxch:
     ret
 
 ;=============================================================================
+; Test: FNCLEX — clear FPU exception flags
+; After FNINIT, exception bits are already 0; FNCLEX must not disturb anything.
+; Verify bits 0-7 (exception flags) of the status word remain 0.
+;=============================================================================
+test_fnclex:
+    fninit
+    fnclex                  ; clear exceptions (DB E2)
+    db 0xDF, 0xE0           ; FNSTSW AX
+    and ax, 0x00FF          ; exception flags are bits 7-0
+    jnz .fail
+    inc word [pass_count]
+    ret
+.fail:
+    inc word [fail_count]
+    ret
+
+;=============================================================================
+; Test: FDECSTP / FINCSTP — adjust the FPU stack pointer
+; FNINIT → TOP=0. FINCSTP → TOP=1. FDECSTP → TOP=0 again.
+; Verify via the TOP field (bits 13-11) in the status word.
+;=============================================================================
+test_fdecstp_fincstp:
+    ; FINCSTP: TOP should become 1
+    fninit
+    fincstp
+    db 0xDF, 0xE0           ; FNSTSW AX
+    and ax, 0x3800          ; mask bits 13-11 (TOP field)
+    cmp ax, 0x0800          ; TOP=1 → bit 11 set → 0x0800
+    jne .fail
+
+    ; FDECSTP: TOP should wrap to 7
+    fninit
+    fdecstp
+    db 0xDF, 0xE0           ; FNSTSW AX
+    and ax, 0x3800
+    cmp ax, 0x3800          ; TOP=7 → bits 11-13 all set → 0x3800
+    jne .fail
+
+    inc word [pass_count]
+    ret
+.fail:
+    inc word [fail_count]
+    ret
+
+;=============================================================================
+; Test: FFREE ST(i) — free (mark as empty) a register
+; After FFREE, the register can be overwritten; verify subsequent push/pop works.
+;=============================================================================
+test_ffree:
+    fninit
+    fld dword [val_1f32]    ; push 1.0
+    ffree st0               ; mark ST(0) as empty
+    fld dword [val_2f32]    ; push 2.0
+    fstp dword [scratch32]
+    mov si, val_2f32
+    mov di, scratch32
+    mov cx, 4
+    call compare_bytes
+    ret
+
+;=============================================================================
+; Test: FNSTENV / FLDENV — store and restore the 14-byte FPU environment
+; Set a custom control word, save env, reset FPU, restore env, verify CW.
+;=============================================================================
+test_fldenv_fnstenv:
+    fninit
+    fldcw [cw_test]         ; set custom control word
+    fnstenv [env_buf]       ; save 14-byte environment (CW at offset 0)
+    fninit                  ; reset — control word back to default
+    fldenv [env_buf]        ; restore environment
+    fnstcw [scratch_cw]     ; read back the control word
+    mov si, cw_test
+    mov di, scratch_cw
+    mov cx, 2
+    call compare_bytes
+    ret
+
+;=============================================================================
+; Test: FNSTSW m16 — store status word to a memory location
+; After FNINIT, status word = 0x0000; verify memory word is also 0.
+;=============================================================================
+test_fnstsw_mem:
+    fninit
+    fnstsw [scratch_sw]     ; store status word to memory (DD /7)
+    mov ax, [scratch_sw]
+    test ax, ax
+    jnz .fail
+    inc word [pass_count]
+    ret
+.fail:
+    inc word [fail_count]
+    ret
+
+;=============================================================================
 ; compare_bytes — compare [SI] to [DI] for CX bytes
 ; Increments pass_count if all match, fail_count if any differ.
 ;=============================================================================
@@ -145,5 +250,8 @@ scratch32:  resd 1
 scratch_cw: resw 1
 ; FNSAVE state buffer: 14 bytes header + 8 x 10 bytes registers = 94 bytes
 state_buf:  resb 94
+; FNSTENV/FLDENV environment buffer: 14 bytes
+env_buf:    resb 14
+scratch_sw: resw 1
 pass_count: resw 1
 fail_count: resw 1

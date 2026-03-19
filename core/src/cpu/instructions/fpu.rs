@@ -301,6 +301,10 @@ impl Cpu {
                     (0xD9, 5, 5) => self.fpu_push(consts::LN_2),
                     // FLDZ (D9 EE: reg=5, rm=6)
                     (0xD9, 5, 6) => self.fpu_push(0.0),
+                    // FLDL2T (D9 E9: reg=5, rm=1): push log2(10)
+                    (0xD9, 5, 1) => self.fpu_push(consts::LOG2_10),
+                    // FLDLG2 (D9 EC: reg=5, rm=4): push log10(2)
+                    (0xD9, 5, 4) => self.fpu_push(consts::LOG10_2),
                     // FCHS (D9 E0: reg=4, rm=0)
                     (0xD9, 4, 0) => {
                         self.fpu_stack[self.fpu_top as usize] =
@@ -395,6 +399,160 @@ impl Cpu {
                         let dest = self.fpu_top.wrapping_add(i) as usize & 7;
                         self.fpu_stack[dest] /= self.fpu_stack[top];
                         self.fpu_pop();
+                    }
+                    // FCOMP ST(i) (D8 /3 rm=i): compare ST(0) vs ST(i), set CC, pop once
+                    (0xD8, 3, i) => {
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        let sti = self.fpu_stack[self.fpu_top.wrapping_add(i) as usize & 7];
+                        self.fpu_set_cc(st0, sti);
+                        self.fpu_pop();
+                    }
+                    // FCOMPP (DE D9: reg=3, rm=1): compare ST(0) vs ST(1), set CC, pop twice
+                    (0xDE, 3, 1) => {
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        let st1 = self.fpu_stack[self.fpu_top.wrapping_add(1) as usize & 7];
+                        self.fpu_set_cc(st0, st1);
+                        self.fpu_pop();
+                        self.fpu_pop();
+                    }
+                    // FXAM (D9 E5: reg=4, rm=5): classify ST(0) into C3/C2/C1/C0
+                    (0xD9, 4, 5) => {
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        self.fpu_status_word &= !0x4700; // clear C3/C2/C1/C0
+                        if st0.is_sign_negative() {
+                            self.fpu_status_word |= 0x0200; // C1 = sign bit
+                        }
+                        if st0.is_nan() {
+                            self.fpu_status_word |= 0x0100; // NaN: C0=1
+                        } else if st0.is_infinite() {
+                            self.fpu_status_word |= 0x0500; // Infinity: C2=1, C0=1
+                        } else if st0 == 0.0 {
+                            self.fpu_status_word |= 0x4000; // Zero: C3=1
+                        } else if st0.is_subnormal() {
+                            self.fpu_status_word |= 0x4400; // Denormal: C3=1, C2=1
+                        } else {
+                            self.fpu_status_word |= 0x0400; // Normal: C2=1
+                        }
+                    }
+                    // FNCLEX (DB E2: reg=4, rm=2): clear exception flags and busy flag
+                    (0xDB, 4, 2) => {
+                        self.fpu_status_word &= !0x80FF;
+                    }
+                    // FFREE ST(i) (DD C0+i: reg=0): mark register as empty (tag word not tracked)
+                    (0xDD, 0, _) => {}
+                    // FDECSTP (D9 F6: reg=6, rm=6): decrement TOP
+                    (0xD9, 6, 6) => {
+                        self.fpu_top = self.fpu_top.wrapping_sub(1) & 7;
+                        self.fpu_status_word =
+                            (self.fpu_status_word & !0x3800) | ((self.fpu_top as u16) << 11);
+                    }
+                    // FINCSTP (D9 F7: reg=6, rm=7): increment TOP
+                    (0xD9, 6, 7) => {
+                        self.fpu_top = self.fpu_top.wrapping_add(1) & 7;
+                        self.fpu_status_word =
+                            (self.fpu_status_word & !0x3800) | ((self.fpu_top as u16) << 11);
+                    }
+                    // FXTRACT (D9 F4: reg=6, rm=4): ST(0)=exponent, push significand
+                    (0xD9, 6, 4) => {
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        let exp = st0.abs().log2().floor();
+                        let sig = st0 / exp.exp2();
+                        self.fpu_stack[self.fpu_top as usize] = exp;
+                        self.fpu_push(sig);
+                    }
+                    // FPREM (D9 F8: reg=7, rm=0): ST(0) = ST(0) - TRUNC(ST(0)/ST(1))*ST(1)
+                    (0xD9, 7, 0) => {
+                        let top = self.fpu_top as usize;
+                        let st1 = self.fpu_top.wrapping_add(1) as usize & 7;
+                        let dividend = self.fpu_stack[top];
+                        let divisor = self.fpu_stack[st1];
+                        let q = (dividend / divisor).trunc();
+                        self.fpu_stack[top] = dividend - q * divisor;
+                    }
+                    // FYL2XP1 (D9 F9: reg=7, rm=1): ST(1) = ST(1)*log2(ST(0)+1), pop
+                    (0xD9, 7, 1) => {
+                        let top = self.fpu_top as usize;
+                        let st1 = self.fpu_top.wrapping_add(1) as usize & 7;
+                        self.fpu_stack[st1] *= (self.fpu_stack[top] + 1.0).log2();
+                        self.fpu_pop();
+                    }
+                    // FSCALE (D9 FD: reg=7, rm=5): ST(0) = ST(0) * 2^TRUNC(ST(1))
+                    (0xD9, 7, 5) => {
+                        let top = self.fpu_top as usize;
+                        let st1 = self.fpu_top.wrapping_add(1) as usize & 7;
+                        self.fpu_stack[top] *= self.fpu_stack[st1].trunc().exp2();
+                    }
+                    // FADD ST,ST(i) (D8 /0 rm=i): ST(0) = ST(0) + ST(i), no pop
+                    (0xD8, 0, i) => {
+                        let top = self.fpu_top as usize;
+                        let sti = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[top] += self.fpu_stack[sti];
+                    }
+                    // FMUL ST,ST(i) (D8 /1 rm=i): ST(0) = ST(0) * ST(i), no pop
+                    (0xD8, 1, i) => {
+                        let top = self.fpu_top as usize;
+                        let sti = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[top] *= self.fpu_stack[sti];
+                    }
+                    // FSUB ST,ST(i) (D8 /4 rm=i): ST(0) = ST(0) - ST(i), no pop
+                    (0xD8, 4, i) => {
+                        let top = self.fpu_top as usize;
+                        let sti = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[top] -= self.fpu_stack[sti];
+                    }
+                    // FSUBR ST,ST(i) (D8 /5 rm=i): ST(0) = ST(i) - ST(0), no pop
+                    (0xD8, 5, i) => {
+                        let top = self.fpu_top as usize;
+                        let sti = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[top] = self.fpu_stack[sti] - self.fpu_stack[top];
+                    }
+                    // FDIV ST,ST(i) (D8 /6 rm=i): ST(0) = ST(0) / ST(i), no pop
+                    (0xD8, 6, i) => {
+                        let top = self.fpu_top as usize;
+                        let sti = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[top] /= self.fpu_stack[sti];
+                    }
+                    // FDIVR ST,ST(i) (D8 /7 rm=i): ST(0) = ST(i) / ST(0), no pop
+                    (0xD8, 7, i) => {
+                        let top = self.fpu_top as usize;
+                        let sti = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[top] = self.fpu_stack[sti] / self.fpu_stack[top];
+                    }
+                    // FADD ST(i),ST (DC /0 rm=i): ST(i) = ST(i) + ST(0), no pop
+                    (0xDC, 0, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] += self.fpu_stack[top];
+                    }
+                    // FMUL ST(i),ST (DC /1 rm=i): ST(i) = ST(i) * ST(0), no pop
+                    (0xDC, 1, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] *= self.fpu_stack[top];
+                    }
+                    // FSUBR ST(i),ST (DC /4 rm=i): ST(i) = ST(0) - ST(i), no pop
+                    (0xDC, 4, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] = self.fpu_stack[top] - self.fpu_stack[dest];
+                    }
+                    // FSUB ST(i),ST (DC /5 rm=i): ST(i) = ST(i) - ST(0), no pop
+                    (0xDC, 5, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] -= self.fpu_stack[top];
+                    }
+                    // FDIVR ST(i),ST (DC /6 rm=i): ST(i) = ST(0) / ST(i), no pop
+                    (0xDC, 6, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] = self.fpu_stack[top] / self.fpu_stack[dest];
+                    }
+                    // FDIV ST(i),ST (DC /7 rm=i): ST(i) = ST(i) / ST(0), no pop
+                    (0xDC, 7, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] /= self.fpu_stack[top];
                     }
                     _ => log::warn!(
                         "unimplemented FPU register instruction: opcode={:#04X} reg={} rm={}",
@@ -508,6 +666,129 @@ impl Cpu {
                     // FRSTOR m94 (DD /4): restore state from memory
                     (0xDD, 4) => {
                         self.fpu_load_state(bus, addr);
+                    }
+                    // FADD m32 (D8 /0): ST(0) += m32
+                    (0xD8, 0) => {
+                        self.fpu_stack[self.fpu_top as usize] += Self::fpu_read_m32(bus, addr);
+                    }
+                    // FMUL m32 (D8 /1): ST(0) *= m32
+                    (0xD8, 1) => {
+                        self.fpu_stack[self.fpu_top as usize] *= Self::fpu_read_m32(bus, addr);
+                    }
+                    // FCOMP m32 (D8 /3): compare ST(0) vs m32, set CC, pop
+                    (0xD8, 3) => {
+                        let other = Self::fpu_read_m32(bus, addr);
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        self.fpu_set_cc(st0, other);
+                        self.fpu_pop();
+                    }
+                    // FSUB m32 (D8 /4): ST(0) -= m32
+                    (0xD8, 4) => {
+                        self.fpu_stack[self.fpu_top as usize] -= Self::fpu_read_m32(bus, addr);
+                    }
+                    // FSUBR m32 (D8 /5): ST(0) = m32 - ST(0)
+                    (0xD8, 5) => {
+                        let m = Self::fpu_read_m32(bus, addr);
+                        self.fpu_stack[self.fpu_top as usize] =
+                            m - self.fpu_stack[self.fpu_top as usize];
+                    }
+                    // FDIV m32 (D8 /6): ST(0) /= m32
+                    (0xD8, 6) => {
+                        self.fpu_stack[self.fpu_top as usize] /= Self::fpu_read_m32(bus, addr);
+                    }
+                    // FDIVR m32 (D8 /7): ST(0) = m32 / ST(0)
+                    (0xD8, 7) => {
+                        let m = Self::fpu_read_m32(bus, addr);
+                        self.fpu_stack[self.fpu_top as usize] =
+                            m / self.fpu_stack[self.fpu_top as usize];
+                    }
+                    // FADD m64 (DC /0): ST(0) += m64
+                    (0xDC, 0) => {
+                        self.fpu_stack[self.fpu_top as usize] += Self::fpu_read_m64(bus, addr);
+                    }
+                    // FMUL m64 (DC /1): ST(0) *= m64
+                    (0xDC, 1) => {
+                        self.fpu_stack[self.fpu_top as usize] *= Self::fpu_read_m64(bus, addr);
+                    }
+                    // FCOMP m64 (DC /3): compare ST(0) vs m64, set CC, pop
+                    (0xDC, 3) => {
+                        let other = Self::fpu_read_m64(bus, addr);
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        self.fpu_set_cc(st0, other);
+                        self.fpu_pop();
+                    }
+                    // FSUBR m64 (DC /4): ST(0) = m64 - ST(0)
+                    (0xDC, 4) => {
+                        let m = Self::fpu_read_m64(bus, addr);
+                        self.fpu_stack[self.fpu_top as usize] =
+                            m - self.fpu_stack[self.fpu_top as usize];
+                    }
+                    // FSUB m64 (DC /5): ST(0) -= m64
+                    (0xDC, 5) => {
+                        self.fpu_stack[self.fpu_top as usize] -= Self::fpu_read_m64(bus, addr);
+                    }
+                    // FDIVR m64 (DC /6): ST(0) = m64 / ST(0)
+                    (0xDC, 6) => {
+                        let m = Self::fpu_read_m64(bus, addr);
+                        self.fpu_stack[self.fpu_top as usize] =
+                            m / self.fpu_stack[self.fpu_top as usize];
+                    }
+                    // FDIV m64 (DC /7): ST(0) /= m64
+                    (0xDC, 7) => {
+                        self.fpu_stack[self.fpu_top as usize] /= Self::fpu_read_m64(bus, addr);
+                    }
+                    // FLD m80 (DB /5): load 80-bit extended float and push
+                    (0xDB, 5) => {
+                        let mut bytes = [0u8; 10];
+                        for (i, b) in bytes.iter_mut().enumerate() {
+                            *b = bus.memory_read_u8(addr + i);
+                        }
+                        self.fpu_push(Self::f80_to_f64(bytes));
+                    }
+                    // FSTP m80 (DB /7): store 80-bit extended float and pop
+                    (0xDB, 7) => {
+                        let bytes = Self::f64_to_f80(self.fpu_stack[self.fpu_top as usize]);
+                        for (i, &b) in bytes.iter().enumerate() {
+                            bus.memory_write_u8(addr + i, b);
+                        }
+                        self.fpu_pop();
+                    }
+                    // FILD m64 (DF /5): load 64-bit signed integer and push as float
+                    (0xDF, 5) => {
+                        let w0 = bus.memory_read_u16(addr) as u64;
+                        let w1 = bus.memory_read_u16(addr + 2) as u64;
+                        let w2 = bus.memory_read_u16(addr + 4) as u64;
+                        let w3 = bus.memory_read_u16(addr + 6) as u64;
+                        let bits = w0 | (w1 << 16) | (w2 << 32) | (w3 << 48);
+                        self.fpu_push(bits as i64 as f64);
+                    }
+                    // FISTP m64 (DF /7): store ST(0) as 64-bit signed integer and pop
+                    (0xDF, 7) => {
+                        let i = self.fpu_stack[self.fpu_top as usize].round() as i64 as u64;
+                        bus.memory_write_u32(addr, i as u32);
+                        bus.memory_write_u32(addr + 4, (i >> 32) as u32);
+                        self.fpu_pop();
+                    }
+                    // FLDENV m14 (D9 /4): restore 14-byte FPU environment from memory
+                    (0xD9, 4) => {
+                        self.fpu_control_word = bus.memory_read_u16(addr);
+                        let sw = bus.memory_read_u16(addr + 2);
+                        self.fpu_status_word = sw;
+                        self.fpu_top = ((sw >> 11) & 7) as u8;
+                    }
+                    // FNSTENV m14 (D9 /6): save 14-byte FPU environment to memory
+                    (0xD9, 6) => {
+                        bus.memory_write_u16(addr, self.fpu_control_word);
+                        bus.memory_write_u16(addr + 2, self.fpu_status_word);
+                        bus.memory_write_u16(addr + 4, 0xFFFF); // tag word: all empty
+                        bus.memory_write_u16(addr + 6, 0); // IP offset (not tracked)
+                        bus.memory_write_u16(addr + 8, 0); // CS/opcode
+                        bus.memory_write_u16(addr + 10, 0); // operand offset
+                        bus.memory_write_u16(addr + 12, 0); // operand CS
+                    }
+                    // FNSTSW m16 (DD /7): store status word to memory
+                    (0xDD, 7) => {
+                        bus.memory_write_u16(addr, self.fpu_status_word);
                     }
                     _ => log::warn!(
                         "unimplemented FPU memory instruction: opcode={:#04X} reg={}",
