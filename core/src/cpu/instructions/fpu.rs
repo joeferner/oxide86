@@ -36,15 +36,13 @@ impl Cpu {
     fn fpu_push(&mut self, value: f64) {
         self.fpu_top = self.fpu_top.wrapping_sub(1) & 7;
         self.fpu_stack[self.fpu_top as usize] = value;
-        self.fpu_status_word =
-            (self.fpu_status_word & !0x3800) | ((self.fpu_top as u16) << 11);
+        self.fpu_status_word = (self.fpu_status_word & !0x3800) | ((self.fpu_top as u16) << 11);
     }
 
     /// Pop the FPU stack, incrementing TOP.
     fn fpu_pop(&mut self) {
         self.fpu_top = self.fpu_top.wrapping_add(1) & 7;
-        self.fpu_status_word =
-            (self.fpu_status_word & !0x3800) | ((self.fpu_top as u16) << 11);
+        self.fpu_status_word = (self.fpu_status_word & !0x3800) | ((self.fpu_top as u16) << 11);
     }
 
     /// Reset the FPU to its power-on state (used by FNINIT and FNSAVE).
@@ -184,7 +182,11 @@ impl Cpu {
         }
         if exp80 == 0x7FFF {
             return if mantissa80 & 0x7FFF_FFFF_FFFF_FFFF == 0 {
-                if sign != 0 { f64::NEG_INFINITY } else { f64::INFINITY }
+                if sign != 0 {
+                    f64::NEG_INFINITY
+                } else {
+                    f64::INFINITY
+                }
             } else {
                 f64::NAN
             };
@@ -195,7 +197,11 @@ impl Cpu {
             return if sign != 0 { -0.0f64 } else { 0.0f64 };
         }
         if exp64 >= 0x7FF {
-            return if sign != 0 { f64::NEG_INFINITY } else { f64::INFINITY };
+            return if sign != 0 {
+                f64::NEG_INFINITY
+            } else {
+                f64::INFINITY
+            };
         }
 
         let mantissa64 = (mantissa80 >> 11) & 0x000F_FFFF_FFFF_FFFF;
@@ -217,10 +223,10 @@ impl Cpu {
         bus.memory_write_u16(addr, self.fpu_control_word);
         bus.memory_write_u16(addr + 2, self.fpu_status_word);
         bus.memory_write_u16(addr + 4, 0xFFFF); // tag word: all empty
-        bus.memory_write_u16(addr + 6, 0);      // IP offset (not tracked)
-        bus.memory_write_u16(addr + 8, 0);      // CS / opcode
-        bus.memory_write_u16(addr + 10, 0);     // operand offset
-        bus.memory_write_u16(addr + 12, 0);     // operand CS
+        bus.memory_write_u16(addr + 6, 0); // IP offset (not tracked)
+        bus.memory_write_u16(addr + 8, 0); // CS / opcode
+        bus.memory_write_u16(addr + 10, 0); // operand offset
+        bus.memory_write_u16(addr + 12, 0); // operand CS
         // Physical registers R0-R7
         for i in 0..8usize {
             let f80 = Self::f64_to_f80(self.fpu_stack[i]);
@@ -295,6 +301,101 @@ impl Cpu {
                     (0xD9, 5, 5) => self.fpu_push(consts::LN_2),
                     // FLDZ (D9 EE: reg=5, rm=6)
                     (0xD9, 5, 6) => self.fpu_push(0.0),
+                    // FCHS (D9 E0: reg=4, rm=0)
+                    (0xD9, 4, 0) => {
+                        self.fpu_stack[self.fpu_top as usize] =
+                            -self.fpu_stack[self.fpu_top as usize];
+                    }
+                    // FABS (D9 E1: reg=4, rm=1)
+                    (0xD9, 4, 1) => {
+                        self.fpu_stack[self.fpu_top as usize] =
+                            self.fpu_stack[self.fpu_top as usize].abs();
+                    }
+                    // FSQRT (D9 FA: reg=7, rm=2)
+                    (0xD9, 7, 2) => {
+                        self.fpu_stack[self.fpu_top as usize] =
+                            self.fpu_stack[self.fpu_top as usize].sqrt();
+                    }
+                    // FRNDINT (D9 FC: reg=7, rm=4) — round using RC from control word
+                    (0xD9, 7, 4) => {
+                        let rc = (self.fpu_control_word >> 10) & 0x3;
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        self.fpu_stack[self.fpu_top as usize] = match rc {
+                            0 => st0.round(), // round to nearest
+                            1 => st0.floor(), // round down
+                            2 => st0.ceil(),  // round up
+                            _ => st0.trunc(), // truncate toward zero
+                        };
+                    }
+                    // F2XM1 (D9 F0: reg=6, rm=0): ST(0) = 2^ST(0) - 1
+                    (0xD9, 6, 0) => {
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        self.fpu_stack[self.fpu_top as usize] = st0.exp2() - 1.0;
+                    }
+                    // FYL2X (D9 F1: reg=6, rm=1): ST(1) = ST(1) * log2(ST(0)), pop
+                    (0xD9, 6, 1) => {
+                        let top = self.fpu_top as usize;
+                        let st1 = self.fpu_top.wrapping_add(1) as usize & 7;
+                        self.fpu_stack[st1] *= self.fpu_stack[top].log2();
+                        self.fpu_pop();
+                    }
+                    // FPTAN (D9 F2: reg=6, rm=2): ST(0) = tan(ST(0)), push 1.0
+                    (0xD9, 6, 2) => {
+                        self.fpu_stack[self.fpu_top as usize] =
+                            self.fpu_stack[self.fpu_top as usize].tan();
+                        self.fpu_push(1.0);
+                    }
+                    // FPATAN (D9 F3: reg=6, rm=3): ST(1) = atan2(ST(1), ST(0)), pop
+                    (0xD9, 6, 3) => {
+                        let top = self.fpu_top as usize;
+                        let st1 = self.fpu_top.wrapping_add(1) as usize & 7;
+                        let y = self.fpu_stack[st1];
+                        let x = self.fpu_stack[top];
+                        self.fpu_stack[st1] = y.atan2(x);
+                        self.fpu_pop();
+                    }
+                    // FADDP ST(i),ST (DE /0): ST(i) = ST(i) + ST(0), pop
+                    (0xDE, 0, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] += self.fpu_stack[top];
+                        self.fpu_pop();
+                    }
+                    // FMULP ST(i),ST (DE /1): ST(i) = ST(i) * ST(0), pop
+                    (0xDE, 1, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] *= self.fpu_stack[top];
+                        self.fpu_pop();
+                    }
+                    // FSUBRP ST(i),ST (DE /4): ST(i) = ST(0) - ST(i), pop
+                    (0xDE, 4, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] = self.fpu_stack[top] - self.fpu_stack[dest];
+                        self.fpu_pop();
+                    }
+                    // FSUBP ST(i),ST (DE /5): ST(i) = ST(i) - ST(0), pop
+                    (0xDE, 5, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] -= self.fpu_stack[top];
+                        self.fpu_pop();
+                    }
+                    // FDIVRP ST(i),ST (DE /6): ST(i) = ST(0) / ST(i), pop
+                    (0xDE, 6, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] = self.fpu_stack[top] / self.fpu_stack[dest];
+                        self.fpu_pop();
+                    }
+                    // FDIVP ST(i),ST (DE /7): ST(i) = ST(i) / ST(0), pop
+                    (0xDE, 7, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] /= self.fpu_stack[top];
+                        self.fpu_pop();
+                    }
                     _ => log::warn!(
                         "unimplemented FPU register instruction: opcode={:#04X} reg={} rm={}",
                         opcode,

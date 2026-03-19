@@ -37,6 +37,17 @@ pub(crate) fn op8087_control() {
 }
 
 #[test_log::test]
+pub(crate) fn op8087_arith() {
+    run_test(
+        "cpu/op8087_arith",
+        make_computer!(math_coprocessor: true),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn op8087_compare() {
     run_test(
         "cpu/op8087_compare",
