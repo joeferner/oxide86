@@ -61,10 +61,10 @@
   - [X] Test FBLD / FBSTP: Packed BCD (Binary Coded Decimal) Load/Store, used for high-precision financial calculations
   - [X] Test FLDPI: Load the value of $\pi$ (Pi) with 80-bit precision
   - [X] Test FLDL2E / FLDLN2: Load constants like $\log_2(e)$ or $\ln(2)$.
-  - [ ] Test FINIT: Initialize (reset) the coprocessor
-  - [ ] Test FLDCW / FSTCW: Load/Store the "Control Word" (used to set rounding modes or precision).
-  - [ ] Test FNSAVE / FRSTOR: Save and Restore the entire state of the 8087 (crucial when switching between different running programs).
-  - [ ] Test FXCH: Exchange the contents of two registers
+  - [X] Test FINIT: Initialize (reset) the coprocessor
+  - [X] Test FLDCW / FSTCW: Load/Store the "Control Word" (used to set rounding modes or precision).
+  - [X] Test FNSAVE / FRSTOR: Save and Restore the entire state of the 8087 (crucial when switching between different running programs).
+  - [X] Test FXCH: Exchange the contents of two registers
   - [ ] Test FADD / FSUB: Addition and Subtraction
   - [ ] Test FMUL / FDIV: Multiplication and Division
   - [ ] Test FSQRT: Square root (a very powerful single-instruction operation at the time).

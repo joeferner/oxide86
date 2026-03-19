@@ -15,9 +15,20 @@ pub(crate) fn op8086() {
 }
 
 #[test_log::test]
-pub(crate) fn op8087() {
+pub(crate) fn op8087_load_store() {
     run_test(
         "cpu/op8087_load_store",
+        make_computer!(math_coprocessor: true),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
+pub(crate) fn op8087_control() {
+    run_test(
+        "cpu/op8087_control",
         make_computer!(math_coprocessor: true),
         |computer, _video_buffer| {
             computer.run();

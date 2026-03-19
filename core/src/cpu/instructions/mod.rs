@@ -8,7 +8,7 @@ mod comparison;
 mod control_flow;
 mod data_transfer;
 pub(crate) mod decoder;
-mod fpu;
+pub(super) mod fpu;
 mod io;
 mod logical;
 mod shift_rotate;
@@ -311,6 +311,9 @@ impl Cpu {
 
             // CALL far (9A)
             0x9A => self.call_far(bus),
+
+            // FWAIT / WAIT (9B): synchronize CPU with FPU — NOP in emulator
+            0x9B => bus.increment_cycle_count(4),
 
             // PUSHF - Push Flags (9C)
             0x9C => self.pushf(bus),

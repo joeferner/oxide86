@@ -6,7 +6,7 @@ use crate::{
     },
     cpu::{
         bios::BIOS_CODE_SEGMENT,
-        instructions::{RepeatPrefix, decoder},
+        instructions::{RepeatPrefix, decoder, fpu::FPU_DEFAULT_CONTROL_WORD},
     },
     disk::DriveNumber,
 };
@@ -123,6 +123,9 @@ pub(crate) struct Cpu {
     /// 8087 math coprocessor present
     math_coprocessor: bool,
 
+    /// 8087 control word (CW). Reset to 0x037F by FNINIT.
+    fpu_control_word: u16,
+
     /// 8087 status word (SW). Reset to 0x0000 by FNINIT.
     fpu_status_word: u16,
 
@@ -219,6 +222,7 @@ impl Cpu {
             dos_file_handles: DosFileHandleTable::new(),
             teletype_log_buffer: String::new(),
             math_coprocessor,
+            fpu_control_word: FPU_DEFAULT_CONTROL_WORD,
             fpu_status_word: 0,
             fpu_stack: [0.0_f64; 8],
             fpu_top: 0,
@@ -509,6 +513,7 @@ impl Cpu {
         self.pending_exception = None;
         self.wait_for_key_press = false;
         self.wait_for_key_press_patch_flags = false;
+        self.fpu_control_word = FPU_DEFAULT_CONTROL_WORD;
         self.fpu_status_word = 0;
         self.fpu_stack = [0.0_f64; 8];
         self.fpu_top = 0;
