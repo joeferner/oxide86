@@ -312,7 +312,6 @@ impl Cpu {
         }
     }
 
-
     /// ENTER - Make Stack Frame (opcode C8, 80186+)
     /// Creates a procedure stack frame for high-level language support.
     /// Encoding: C8 iw ib (imm16 = local frame size, imm8 = nesting level 0-31)

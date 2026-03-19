@@ -55,12 +55,12 @@
 - [X] Add extended memory/A20 line support
 - [ ] Emulate 8087 math coprocessor see core/src/cpu/instructions/control_flow.rs:esc
   - [X] Test FLD / FST / FSTP: Load, Store, and Store-and-Pop
-  - [ ] Test FCOM / FTST: Compare or Test against zero. This would set flags that the CPU could then read to make branching decisions (like IF statements).
-  - [ ] Test FLDZ / FLD1: Load constant 0.0 or 1.0.
-  - [ ] Test FILD / FIST: Integer Load/Store (automatically converted integers to floating-point).
-  - [ ] Test FBLD / FBSTP: Packed BCD (Binary Coded Decimal) Load/Store, used for high-precision financial calculations
-  - [ ] Test FLDPI: Load the value of $\pi$ (Pi) with 80-bit precision
-  - [ ] Test FLDL2E / FLDLN2: Load constants like $\log_2(e)$ or $\ln(2)$.
+  - [X] Test FCOM / FTST: Compare or Test against zero. This would set flags that the CPU could then read to make branching decisions (like IF statements).
+  - [X] Test FLDZ / FLD1: Load constant 0.0 or 1.0.
+  - [X] Test FILD / FIST: Integer Load/Store (automatically converted integers to floating-point).
+  - [X] Test FBLD / FBSTP: Packed BCD (Binary Coded Decimal) Load/Store, used for high-precision financial calculations
+  - [X] Test FLDPI: Load the value of $\pi$ (Pi) with 80-bit precision
+  - [X] Test FLDL2E / FLDLN2: Load constants like $\log_2(e)$ or $\ln(2)$.
   - [ ] Test FINIT: Initialize (reset) the coprocessor
   - [ ] Test FLDCW / FSTCW: Load/Store the "Control Word" (used to set rounding modes or precision).
   - [ ] Test FNSAVE / FRSTOR: Save and Restore the entire state of the 8087 (crucial when switching between different running programs).
