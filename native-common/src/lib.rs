@@ -10,6 +10,7 @@ pub mod throttle;
 use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result, anyhow};
+use oxide86_core::debugger::DebugShared;
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
@@ -111,6 +112,13 @@ pub fn create_computer(
             "Could not parse sound card type: {}",
             cli.sound_card
         ));
+    }
+
+    if let Some(port) = cli.debug_mcp_port {
+        let debug = Arc::new(DebugShared::new());
+        computer.set_debug(Arc::clone(&debug));
+        oxide86_debugger::server::start_mcp_server(port, debug);
+        log::info!("MCP debug server started on port {port}");
     }
 
     if cli.exec_log {

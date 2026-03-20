@@ -8,6 +8,7 @@ use crate::{
         bios::BIOS_CODE_SEGMENT,
         instructions::{RepeatPrefix, decoder, fpu::FPU_DEFAULT_CONTROL_WORD},
     },
+    debugger::DebugSnapshot,
     disk::DriveNumber,
 };
 
@@ -239,6 +240,35 @@ impl Cpu {
 
     pub(crate) fn clock_speed(&self) -> u32 {
         self.clock_speed
+    }
+
+    pub(crate) fn cs(&self) -> u16 {
+        self.cs
+    }
+
+    pub(crate) fn ip(&self) -> u16 {
+        self.ip
+    }
+
+    pub(crate) fn snapshot(&self) -> DebugSnapshot {
+        DebugSnapshot {
+            cs: self.cs,
+            ip: self.ip,
+            ax: self.ax,
+            bx: self.bx,
+            cx: self.cx,
+            dx: self.dx,
+            si: self.si,
+            di: self.di,
+            sp: self.sp,
+            bp: self.bp,
+            ds: self.ds,
+            es: self.es,
+            ss: self.ss,
+            fs: self.fs,
+            gs: self.gs,
+            flags: self.flags,
+        }
     }
 
     /// Set a specific flag

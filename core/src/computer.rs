@@ -1,6 +1,8 @@
+use std::sync::atomic::Ordering;
 use std::sync::{Arc, RwLock};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
+use crate::debugger::{DebugCommand, DebugResponse, DebugShared};
 use crate::devices::game_port::GamePortDevice;
 use crate::devices::pc_speaker::PcSpeaker;
 use crate::devices::uart::ComPortDevice;
@@ -70,6 +72,7 @@ pub struct Computer {
     key_presses: VecDeque<u8>,
     boot_drive: Option<DriveNumber>,
     loaded_program: Option<(Vec<u8>, u16, u16)>,
+    debug: Option<Arc<DebugShared>>,
 }
 
 impl Computer {
@@ -101,9 +104,15 @@ impl Computer {
             key_presses: VecDeque::new(),
             boot_drive: None,
             loaded_program: None,
+            debug: None,
         };
         computer.reset();
         computer
+    }
+
+    pub fn set_debug(&mut self, debug: Arc<DebugShared>) {
+        self.bus.set_debug(Arc::clone(&debug));
+        self.debug = Some(debug);
     }
 
     pub fn add_device<T: Device + 'static>(&mut self, device: T) {
@@ -167,6 +176,9 @@ impl Computer {
     }
 
     pub fn step(&mut self) {
+        if let Some(debug) = &self.debug {
+            self.debug_check(&debug.clone());
+        }
         self.process_key_presses();
         self.cpu.step(&mut self.bus);
         if self.cpu.at_reset_vector() {
@@ -472,5 +484,95 @@ impl Computer {
 
     pub fn log_cpu_state(&self) {
         self.cpu.log_state();
+    }
+
+    fn debug_check(&mut self, dbg: &Arc<DebugShared>) {
+        if dbg.paused.load(Ordering::Relaxed) {
+            self.service_debug_commands(dbg);
+            return;
+        }
+
+        if dbg.pause_requested.load(Ordering::Relaxed) {
+            dbg.pause_requested.store(false, Ordering::Relaxed);
+            self.do_pause(dbg);
+            return;
+        }
+
+        if dbg.has_breakpoints.load(Ordering::Relaxed) {
+            let cs = self.cpu.cs();
+            let ip = self.cpu.ip();
+            let hit = dbg.breakpoints.lock().unwrap().contains(&(cs, ip));
+            if hit {
+                self.do_pause(dbg);
+            }
+        }
+    }
+
+    fn do_pause(&mut self, dbg: &Arc<DebugShared>) {
+        // Fill in cs/ip on any pending watchpoint hit
+        if let Some(ref mut hit) = *dbg.watchpoint_hit.lock().unwrap() {
+            hit.2 = self.cpu.cs();
+            hit.3 = self.cpu.ip();
+        }
+
+        *dbg.snapshot.lock().unwrap() = Some(self.cpu.snapshot());
+        dbg.paused.store(true, Ordering::SeqCst);
+        dbg.cond_paused.notify_all();
+
+        self.service_debug_commands(dbg);
+    }
+
+    fn service_debug_commands(&mut self, dbg: &Arc<DebugShared>) {
+        loop {
+            let cmd = {
+                let mut lock = dbg.pending_command.lock().unwrap();
+                while lock.is_none() {
+                    lock = dbg.cond_command.wait(lock).unwrap();
+                }
+                lock.take().unwrap()
+            };
+
+            match cmd {
+                DebugCommand::Continue => {
+                    dbg.paused.store(false, Ordering::SeqCst);
+                    *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Ok);
+                    dbg.cond_paused.notify_all();
+                    break;
+                }
+                DebugCommand::Step(n) => {
+                    for _ in 0..n {
+                        self.cpu.step(&mut self.bus);
+                    }
+                    *dbg.snapshot.lock().unwrap() = Some(self.cpu.snapshot());
+                    *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Ok);
+                    dbg.cond_paused.notify_all();
+                    // Stay paused — wait for next command
+                }
+                DebugCommand::ReadMemory { addr, len } => {
+                    let bytes: Vec<u8> = (addr..addr + len)
+                        .map(|a| self.bus.memory_read_u8(a as usize))
+                        .collect();
+                    *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Memory(bytes));
+                    dbg.cond_paused.notify_all();
+                    // Stay paused — wait for next command
+                }
+                DebugCommand::SendKey(scan_code) => {
+                    self.push_key_press(scan_code);
+                    *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Ok);
+                    dbg.cond_paused.notify_all();
+                    // Stay paused — wait for next command
+                }
+                DebugCommand::AddWriteWatchpoint(addr) => {
+                    dbg.add_write_watchpoint(addr);
+                    *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Ok);
+                    dbg.cond_paused.notify_all();
+                }
+                DebugCommand::RemoveWriteWatchpoint(addr) => {
+                    dbg.remove_write_watchpoint(addr);
+                    *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Ok);
+                    dbg.cond_paused.notify_all();
+                }
+            }
+        }
     }
 }

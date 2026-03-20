@@ -1,8 +1,11 @@
 use std::{
     cell::{Ref, RefCell, RefMut},
     rc::Rc,
+    sync::Arc,
+    sync::atomic::Ordering,
 };
 
+use crate::debugger::DebugShared;
 use anyhow::Result;
 
 use crate::{
@@ -72,6 +75,10 @@ pub(crate) struct Bus {
     /// each instruction so watch hit logs can report the originating address).
     watch_cs: u16,
     watch_ip: u16,
+
+    /// Optional debugger shared state. When set, write watchpoints are checked
+    /// in memory_write_u8 and can trigger a pause.
+    debug: Option<Arc<DebugShared>>,
 }
 
 impl Bus {
@@ -125,7 +132,12 @@ impl Bus {
             watchpoints: Vec::new(),
             watch_cs: 0,
             watch_ip: 0,
+            debug: None,
         }
+    }
+
+    pub(crate) fn set_debug(&mut self, debug: Arc<DebugShared>) {
+        self.debug = Some(debug);
     }
 
     pub(crate) fn has_rtc(&self) -> bool {
@@ -240,6 +252,21 @@ impl Bus {
                 self.watch_cs,
                 self.watch_ip,
             );
+        }
+
+        if let Some(ref dbg) = self.debug
+            && dbg.has_write_watchpoints.load(Ordering::Relaxed)
+        {
+            let hit = dbg
+                .write_watchpoints
+                .lock()
+                .unwrap()
+                .contains(&(addr as u32));
+            if hit {
+                // cs/ip filled in by Computer::do_pause after this returns
+                *dbg.watchpoint_hit.lock().unwrap() = Some((addr as u32, val, 0, 0));
+                dbg.pause_requested.store(true, Ordering::SeqCst);
+            }
         }
 
         self.memory.write_u8(addr, val);

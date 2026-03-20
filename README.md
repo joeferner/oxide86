@@ -59,10 +59,47 @@
 
 In both the CLI and GUI pressing F12 will exit exclusive mode.
 
-`
+```bash
 RUST_LOG=info cargo run -p oxide86-native-cli -- --boot --hdd hdd.img --boot-drive 0x80
 RUST_LOG=info cargo run -p oxide86-native-gui -- --boot --hdd hdd.img --boot-drive 0x80 --com1 mouse
-`
+```
+
+## Debugging with Claude Code
+
+The emulator can expose a live debug interface over MCP, letting Claude inspect registers, memory,
+and breakpoints while it is running.
+
+**1. Start the emulator with the MCP debug server**
+
+```bash
+# GUI
+RUST_LOG=info cargo run -p oxide86-native-gui -- --debug-mcp 7777 --boot --floppy-a game.img
+
+# CLI
+RUST_LOG=info cargo run -p oxide86-native-cli -- --debug-mcp 7777 --boot --floppy-a game.img
+```
+
+**2. Register the server with Claude Code (once per project)**
+
+```bash
+claude mcp add --transport http oxide86 http://127.0.0.1:7777/mcp
+```
+
+Then run `/mcp` in the Claude Code chat and click **Reconnect**.
+
+**3. Ask Claude to debug**
+
+| What you can ask Claude | Tool used |
+|---|---|
+| "What are the current register values?" | `get_registers` |
+| "Set a breakpoint at 160F:0042" | `set_breakpoint` |
+| "Show me 64 bytes at physical address 0x4064E" | `read_memory` |
+| "Pause the emulator" | `pause` |
+| "Step 10 instructions" | `step` |
+| "Watch for writes to address 0x4064E" | `set_write_watchpoint` |
+| "Resume execution" | `continue` |
+
+The server binds to `127.0.0.1` only and is not accessible over the network.
 
 # Creating a floppy with files
 

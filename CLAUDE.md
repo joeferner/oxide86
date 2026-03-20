@@ -11,6 +11,7 @@ Intel x86 CPU emulator in Rust with native and WebAssembly support.
 - logs are written to oxide86.log
 - when logging unimplemented features use log::warn!
 - when adding interrupt handlers or io device handling be sure to update decoder
+- `use` statements go at the top of the file, not inside functions (unless truly local to the function with no other option)
 
 ## Testing
 
@@ -135,6 +136,51 @@ When investigating "who wrote value X to address Y?":
 3. grep for `[WATCH]` in `oxide86.log`.
 
 **Important:** If you need to determine what wrote to a specific address but don't yet have watchpoints set, **stop and ask the user to re-run the program with the appropriate `--watch` flag** rather than trying to infer it from static analysis. The watchpoint log is the authoritative answer.
+
+## MCP Debug Server
+
+The emulator exposes a live debug interface over HTTP when started with `--debug-mcp <PORT>`.
+Use this to inspect a running emulator session interactively rather than relying solely on static
+analysis or log files.
+
+### Starting the server
+
+```bash
+cargo run -p oxide86-native-gui -- --debug-mcp 7777 --boot --floppy-a game.img
+```
+
+### Registering with Claude Code (one-time per project)
+
+```bash
+claude mcp add --transport http oxide86 http://127.0.0.1:7777/mcp
+```
+
+Then run `/mcp` in the chat panel and click **Reconnect**.
+
+### Available tools
+
+| Tool | When to use |
+|---|---|
+| `get_status` | Check whether the emulator is running or paused |
+| `get_registers` | Read all CPU registers (requires pause first) |
+| `pause` / `continue` | Halt and resume execution |
+| `step` | Execute N instructions while paused |
+| `set_breakpoint` / `clear_breakpoint` / `list_breakpoints` | Breakpoints by CS:IP |
+| `read_memory` | Dump bytes from a physical address (requires pause) |
+| `set_write_watchpoint` / `clear_write_watchpoint` / `list_write_watchpoints` | Pause on memory writes |
+| `send_key` | Inject a PC scan code into the keyboard buffer |
+
+### Debugging workflow
+
+When investigating a bug in a running program:
+1. Start the emulator with `--debug-mcp 7777` and register the server (if not already done).
+2. Use `set_breakpoint` or `set_write_watchpoint` to stop at the relevant point.
+3. Use `get_registers` and `read_memory` to inspect state.
+4. Use `step` / `continue` to advance execution.
+
+**Prefer the MCP server over static analysis when possible** — it gives authoritative runtime state.
+For write watchpoints you can also use the `--watch` CLI flag (logs to `oxide86.log` without
+pausing), but `set_write_watchpoint` via MCP pauses execution so you can inspect registers immediately.
 
 ## Resources
 - [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)

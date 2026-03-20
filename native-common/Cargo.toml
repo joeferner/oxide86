@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 clap = { workspace = true }
 oxide86-core = { path = "../core" }
+oxide86-debugger = { path = "../debugger" }
 anyhow = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }

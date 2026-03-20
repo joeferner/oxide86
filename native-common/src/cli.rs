@@ -93,4 +93,9 @@ pub struct CommonCli {
     /// Can be specified multiple times.
     #[arg(long = "watch", value_name = "ADDR", action = clap::ArgAction::Append)]
     pub watch: Vec<String>,
+
+    /// Start the MCP debug server on the given TCP port (e.g. 7777).
+    /// Allows Claude Code to inspect registers, memory, and set breakpoints.
+    #[arg(long = "debug-mcp", value_name = "PORT")]
+    pub debug_mcp_port: Option<u16>,
 }

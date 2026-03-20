@@ -269,24 +269,37 @@ needing the emulator to be paused (Mutex is sufficient).
 
 ## MCP Server (`oxide86-debugger/src/server.rs`)
 
-The MCP server runs on its own `std::thread`, bound to the configured TCP port.
-It speaks the [MCP protocol](https://modelcontextprotocol.io/docs/concepts/architecture) over a
-persistent TCP connection (stdio transport is also fine if preferred).
+The MCP server runs on its own `std::thread` and speaks the
+[MCP Streamable HTTP transport](https://modelcontextprotocol.io/docs/concepts/transports).
+Each POST to `/mcp` carries one JSON-RPC message in the body; the response carries one JSON-RPC
+reply. Each request gets its own thread so concurrent tool calls don't block each other.
+
+> **Why HTTP, not raw TCP?**
+> Claude Code's `claude mcp add` only supports `stdio` and `http` transports.
+> Raw TCP (newline-delimited JSON) is not supported by the CLI, so the server must speak HTTP.
 
 ### Startup (called from `native-common`)
 
 ```rust
 pub fn start_mcp_server(port: u16, debug: Arc<DebugShared>) {
     std::thread::spawn(move || {
-        let listener = TcpListener::bind(("127.0.0.1", port)).expect("MCP port in use");
-        log::info!("MCP debug server listening on port {port}");
-        for stream in listener.incoming() {
+        let server = Server::http(format!("127.0.0.1:{port}"))
+            .expect("MCP HTTP server failed to bind");
+        log::info!("MCP debug server listening on http://127.0.0.1:{port}/mcp");
+        for request in server.incoming_requests() {
             let debug = Arc::clone(&debug);
-            std::thread::spawn(move || handle_connection(stream.unwrap(), debug));
+            std::thread::spawn(move || handle_request(request, debug));
         }
     });
 }
 ```
+
+### HTTP request handling
+
+- `OPTIONS` → 204 with CORS headers (preflight)
+- `POST /mcp` → parse body as JSON-RPC, dispatch, return 200 with JSON body
+- Notification responses (null JSON-RPC result) → 204 No Content
+- Non-POST methods → 405
 
 ### MCP Tools Exposed
 
@@ -325,10 +338,11 @@ pub fn start_mcp_server(port: u16, debug: Arc<DebugShared>) {
 log = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tiny_http = "0.12"
 ```
 
-No async runtime needed — each connection gets its own thread, and the MCP tool calls are synchronous
-request/response that block until the emulator acks.
+No async runtime needed — each HTTP request gets its own thread, and the MCP tool calls are
+synchronous request/response that block until the emulator acks.
 
 ---
 
@@ -400,8 +414,9 @@ negligible overhead even in the breakpoint-armed case.
 
 ## Open Questions
 
-- **Transport: TCP** — bind to `127.0.0.1:<port>`. stdio transport is not used; it would require
-  spawning the emulator as a subprocess and is not suitable for an already-running process.
+- **Transport: HTTP** — `tiny_http` serves `POST /mcp` on `127.0.0.1:<port>`. stdio is not used
+  (requires the emulator to be spawned as a subprocess). Raw TCP was ruled out because
+  `claude mcp add` only supports `stdio` and `http` transports.
 - **`run_until_int` implementation**: Could be a temporary single-use breakpoint inserted at the INT
   dispatch site, or a separate `AtomicU8` checked only in the BIOS interrupt path. The latter is
   cleaner and avoids polluting the regular breakpoint set.
@@ -433,7 +448,7 @@ cargo run -p oxide86-cli -- --debug-mcp 7777 mygame.exe
 Add the server via the Claude Code CLI (run this once per port you want to use):
 
 ```bash
-claude mcp add --transport tcp oxide86 127.0.0.1:7777
+claude mcp add --transport http oxide86 http://127.0.0.1:7777/mcp
 ```
 
 Or edit `~/.claude/mcp.json` (global) / `.claude/mcp.json` (project) directly:
@@ -442,9 +457,8 @@ Or edit `~/.claude/mcp.json` (global) / `.claude/mcp.json` (project) directly:
 {
   "mcpServers": {
     "oxide86": {
-      "type": "tcp",
-      "host": "127.0.0.1",
-      "port": 7777
+      "type": "http",
+      "url": "http://127.0.0.1:7777/mcp"
     }
   }
 }
@@ -469,5 +483,5 @@ Once connected, Claude can call the debugger tools directly:
 **Notes**
 
 - The MCP server only binds to `127.0.0.1` — it is not accessible over the network.
-- The server accepts one connection at a time; reconnect if the session drops.
-- Starting a new emulator run requires re-registering or reusing the same port.
+- Each HTTP request is handled on its own thread; multiple tool calls can be in flight concurrently.
+- Starting a new emulator run on the same port works without re-registering the server in Claude.

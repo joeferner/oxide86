@@ -5,6 +5,7 @@ use anyhow::{Context, Result};
 pub mod bus;
 pub mod computer;
 pub mod cpu;
+pub mod debugger;
 pub mod devices;
 pub mod dis;
 pub mod disk;
