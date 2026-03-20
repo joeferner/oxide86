@@ -63,6 +63,15 @@ pub(crate) struct Bus {
     /// (classic 8086 wrap-around behaviour). Starts disabled, matching real
     /// hardware: the BIOS or OS (e.g. HIMEM.SYS) must explicitly enable it.
     a20_enabled: bool,
+
+    /// Physical addresses to watch for writes. When any write hits one of these
+    /// addresses, a [WATCH] log line is emitted with the value and CS:IP.
+    watchpoints: Vec<usize>,
+
+    /// CS:IP of the instruction currently executing (updated by the CPU before
+    /// each instruction so watch hit logs can report the originating address).
+    watch_cs: u16,
+    watch_ip: u16,
 }
 
 impl Bus {
@@ -113,6 +122,9 @@ impl Bus {
             cycle_count: 0,
             rtc,
             a20_enabled: false,
+            watchpoints: Vec::new(),
+            watch_cs: 0,
+            watch_ip: 0,
         }
     }
 
@@ -222,7 +234,28 @@ impl Bus {
             }
         }
 
+        if !self.watchpoints.is_empty() && self.watchpoints.contains(&addr) {
+            log::info!(
+                "[WATCH] 0x{addr:05X} written: 0x{val:02X} by {:04X}:{:04X}",
+                self.watch_cs,
+                self.watch_ip,
+            );
+        }
+
         self.memory.write_u8(addr, val);
+    }
+
+    /// Set the physical addresses to watch for writes.
+    pub(crate) fn set_watch_addresses(&mut self, addrs: Vec<usize>) {
+        self.watchpoints = addrs;
+    }
+
+    /// Called by the CPU before executing each instruction so that watch hits
+    /// can report the CS:IP of the responsible instruction.
+    #[inline(always)]
+    pub(crate) fn set_current_ip(&mut self, cs: u16, ip: u16) {
+        self.watch_cs = cs;
+        self.watch_ip = ip;
     }
 
     /// Read a 16-bit word (little-endian)
@@ -399,6 +432,7 @@ impl crate::ByteReader for Bus {
 /// so they can be logged at a lower level than truly unrecognised ports.
 fn unimplemented_port_hint(port: u16) -> Option<&'static str> {
     match port {
+        0x0070 | 0x0071 => Some("CMOS RTC (not present on 8086)"),
         0x0050..=0x005F => Some("possible EMS/extended BIOS hardware probe"),
         0x0066 => Some("keyboard controller range probe"),
         0x02F2..=0x02F7 => Some("possible secondary FDC/serial probe"),

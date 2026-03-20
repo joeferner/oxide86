@@ -442,6 +442,10 @@ impl Computer {
         seg != 0 || off != 0
     }
 
+    pub fn set_watch_addresses(&mut self, addrs: Vec<usize>) {
+        self.bus.set_watch_addresses(addrs);
+    }
+
     pub fn set_exec_logging_enabled(&mut self, enabled: bool) {
         log::info!(
             "exec logging {}",

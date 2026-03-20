@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    Device,
+    Device, byte_to_printable_char,
     video::{
         CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, EGA_MEMORY_END, EGA_MEMORY_START,
         EGA_PLANE_SIZE, MDA_MEMORY_END, MDA_MEMORY_SIZE, MDA_MEMORY_START, Mode,
@@ -706,6 +706,13 @@ impl Device for VideoCard {
             true
         } else if (CGA_MEMORY_START..=CGA_MEMORY_END).contains(&addr) {
             let offset = addr - CGA_MEMORY_START;
+            if offset.is_multiple_of(2) {
+                log::debug!(
+                    "CGA text write char='{}' offset={:#x}",
+                    byte_to_printable_char(val),
+                    offset,
+                );
+            }
             self.internal_write_u8(offset, val);
             true
         } else if matches!(self.card_type, VideoCardType::EGA | VideoCardType::VGA)

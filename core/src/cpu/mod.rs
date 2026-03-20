@@ -140,6 +140,10 @@ pub(crate) struct Cpu {
 struct CpuBusComputer<'a> {
     cpu: &'a Cpu,
     bus: &'a Bus,
+    /// Pre-execution CS — needed so segment-override annotations use the
+    /// segment that was active when the instruction ran, not the CS that
+    /// results from a FAR CALL/JMP changing CS.
+    pre_cs: u16,
 }
 
 impl Computer for CpuBusComputer<'_> {
@@ -168,7 +172,7 @@ impl Computer for CpuBusComputer<'_> {
         self.cpu.di
     }
     fn cs(&self) -> u16 {
-        self.cpu.cs
+        self.pre_cs
     }
     fn ds(&self) -> u16 {
         self.cpu.ds
@@ -377,6 +381,7 @@ impl Cpu {
         let pre_cs = self.cs;
         let pre_ip = self.ip;
 
+        bus.set_current_ip(pre_cs, pre_ip);
         self.exec_instruction(bus);
 
         self.check_int21_dos_call(bus);
@@ -385,7 +390,11 @@ impl Cpu {
         // Instruction bytes at pre_cs:pre_ip are still in memory (code is not modified).
         let decoded = if self.exec_logging_enabled {
             Some(decoder::decode(
-                &CpuBusComputer { cpu: self, bus },
+                &CpuBusComputer {
+                    cpu: self,
+                    bus,
+                    pre_cs,
+                },
                 pre_cs,
                 pre_ip,
             ))

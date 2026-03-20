@@ -111,6 +111,31 @@ cargo run -p oxide86-cli -- --reverse-engineer myprogram.exe
 
 Or toggle live in command mode (F12): type `re` to enable, `re` again to disable and write the file.
 
+## Memory Watchpoints
+
+The emulator supports physical-address write watchpoints for debugging. Every write to a watched address is logged to `oxide86.log`:
+
+```
+[WATCH] 0x4064E written: 0x64 by 19CD:03AE
+```
+
+### CLI usage
+
+```bash
+cargo run -p oxide86-cli -- --watch 0x4064E --watch 0x405DC --floppy-a disk.img
+```
+
+`--watch` accepts hex addresses (with or without `0x` prefix) and can be repeated for multiple addresses.
+
+### Debugging workflow
+
+When investigating "who wrote value X to address Y?":
+1. Convert the target to a physical address (segment × 16 + offset).
+2. Re-run the emulator with `--watch 0x<physaddr>`.
+3. grep for `[WATCH]` in `oxide86.log`.
+
+**Important:** If you need to determine what wrote to a specific address but don't yet have watchpoints set, **stop and ask the user to re-run the program with the appropriate `--watch` flag** rather than trying to infer it from static analysis. The watchpoint log is the authoritative answer.
+
 ## Resources
 - [8086 User Manual](https://edge.edx.org/c4x/BITSPilani/EEE231/asset/8086_family_Users_Manual_1_.pdf)
 - [x86 Reference](https://www.felixcloutier.com/x86/)

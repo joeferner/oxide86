@@ -53,7 +53,8 @@
   - [X] Decompressing graphics (see ai-analysis/commander-keen-1-error-investigation.md and ai-analysis/keen1_latch_decode.py)
   - [X] Splash screen not showing
 - [X] Add extended memory/A20 line support
-- [ ] Emulate 8087 math coprocessor see core/src/cpu/instructions/control_flow.rs:esc
+- [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
+  - [ ] Test CheckIt
   - [ ] Test Fractint Version 15.x and below
   - [ ] Emulate 80287
 - [ ] WASM

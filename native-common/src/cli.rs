@@ -87,4 +87,10 @@ pub struct CommonCli {
     /// Disable the 8087 math coprocessor
     #[arg(long = "no-fpu")]
     pub no_fpu: bool,
+
+    /// Physical memory addresses to watch for writes (hex, e.g. 0x4064E).
+    /// Each write to a watched address is logged: [WATCH] 0xADDR written: 0xVAL by CS:IP
+    /// Can be specified multiple times.
+    #[arg(long = "watch", value_name = "ADDR", action = clap::ArgAction::Append)]
+    pub watch: Vec<String>,
 }

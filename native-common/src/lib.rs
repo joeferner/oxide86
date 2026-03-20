@@ -117,6 +117,18 @@ pub fn create_computer(
         computer.set_exec_logging_enabled(true);
     }
 
+    if !cli.watch.is_empty() {
+        let mut addrs = Vec::with_capacity(cli.watch.len());
+        for s in &cli.watch {
+            let trimmed = s.trim().trim_start_matches("0x").trim_start_matches("0X");
+            let addr = usize::from_str_radix(trimmed, 16)
+                .map_err(|_| anyhow!("Invalid watch address: {s}"))?;
+            log::info!("Watching writes to physical address 0x{addr:05X}");
+            addrs.push(addr);
+        }
+        computer.set_watch_addresses(addrs);
+    }
+
     // Load floppy A:
     if let Some(spec) = &cli.floppy_a {
         let (path, read_only) = parse_disk_spec(spec);

@@ -91,6 +91,7 @@ impl Cpu {
             0x1A => self.int10_display_combination_code(bus),
             0x1B => self.int10_functionality_state_info(bus),
             0x4F => self.int10_vbe(),
+            0xEF => self.int10_hercules_detection(),
             0xFA => self.int10_installation_checks(),
             0xFE => self.int10_get_video_buffer(bus),
             _ => {
@@ -966,10 +967,11 @@ impl Cpu {
             }
             b'\n' => {
                 // Line feed - move to next line
-                let new_row = if cursor.row >= rows - 1 {
+                // bda_get_rows returns rows-1 (e.g. 24 for 25-row mode), so `rows` IS the last row index
+                let new_row = if cursor.row >= rows {
                     // Need to scroll
                     scroll_up(bus, 1);
-                    rows - 1
+                    rows
                 } else {
                     cursor.row + 1
                 };
@@ -1036,9 +1038,10 @@ impl Cpu {
                 let new_col = cursor.col + 1;
                 if new_col >= columns {
                     // Wrap to next line
-                    let new_row = if cursor.row >= rows - 1 {
+                    // bda_get_rows returns rows-1 (e.g. 24 for 25-row mode), so `rows` IS the last row index
+                    let new_row = if cursor.row >= rows {
                         scroll_up(bus, 1);
-                        rows - 1
+                        rows
                     } else {
                         cursor.row + 1
                     };
@@ -1868,6 +1871,13 @@ impl Cpu {
         );
         // AH=0x01 (failed), AL=0x4F (function recognized)
         self.ax = 0x014F;
+    }
+
+    /// INT 10h, AH=EFh - Hercules Graphics Card detection
+    /// Programs call this to detect an HGC; non-Hercules BIOSes return without
+    /// modifying registers, which callers interpret as "no Hercules card present".
+    fn int10_hercules_detection(&mut self) {
+        log::debug!("INT 10h/AH=EFh: Hercules detection - no HGC present");
     }
 
     /// INT 10h, AH=FAh - Installation Checks (EGA RIL / FASTBUFF.COM)
