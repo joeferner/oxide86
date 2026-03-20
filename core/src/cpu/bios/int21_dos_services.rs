@@ -31,6 +31,7 @@ pub(in crate::cpu) struct PendingDosRead {
     pub(in crate::cpu) ds: u16,
     pub(in crate::cpu) dx: u16,
     pub(in crate::cpu) handle: u16,
+    pub(in crate::cpu) file_pos: u32,
 }
 
 /// Side-table: DOS file handle → open file info.
@@ -166,14 +167,18 @@ impl Cpu {
                 self.dos_file_handles.remove(&bx);
             }
             0x3F => {
-                let ann = self.file_handle_annotation(bx);
-                log::debug!("[DOS] AH=3F read handle={bx}{ann} buf={ds:04X}:{dx:04X} max={cx}");
+                let file_pos = self
+                    .dos_file_handles
+                    .get(&bx)
+                    .map(|fh| fh.position)
+                    .unwrap_or(0);
                 self.pending_dos_read = Some(PendingDosRead {
                     ret_cs: self.cs,
                     ret_ip: self.ip,
                     ds,
                     dx,
                     handle: bx,
+                    file_pos,
                 });
             }
             0x40 => {
@@ -263,9 +268,23 @@ impl Cpu {
         }
         let bytes_read = self.ax as usize;
         let handle = pdr.handle;
-        let dump_len = bytes_read.min(16);
-        if dump_len > 0 {
-            let base = bus.physical_address(pdr.ds, pdr.dx);
+        let ds = pdr.ds;
+        let dx = pdr.dx;
+        let file_pos = pdr.file_pos;
+        let base = bus.physical_address(ds, dx);
+
+        let filename = self
+            .dos_file_handles
+            .get(&handle)
+            .map(|fh| fh.filename.clone())
+            .unwrap_or_default();
+
+        if bytes_read > 0 {
+            let phys_end = base + bytes_read - 1;
+            log::debug!(
+                "[DOS] AH=3F read \"{filename}\" pos={file_pos} → phys 0x{base:05X}–0x{phys_end:05X} ({bytes_read} bytes)"
+            );
+            let dump_len = bytes_read.min(16);
             let mut hex = String::new();
             let mut asc = String::new();
             for i in 0..dump_len {
@@ -277,12 +296,11 @@ impl Cpu {
                     '.'
                 });
             }
-            let ann = self.file_handle_annotation(handle);
-            log::debug!("[DOS] AH=3F{ann} → read={bytes_read}  {hex} {asc}");
+            log::debug!("[DOS] AH=3F   {hex} {asc}");
         } else {
-            let ann = self.file_handle_annotation(handle);
-            log::debug!("[DOS] AH=3F{ann} → read={bytes_read}");
+            log::debug!("[DOS] AH=3F read \"{filename}\" pos={file_pos} → 0 bytes");
         }
+
         if let Some(fh) = self.dos_file_handles.get_mut(&handle) {
             fh.position += bytes_read as u32;
         }
