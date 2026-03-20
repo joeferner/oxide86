@@ -282,7 +282,7 @@ impl Cpu {
         if bytes_read > 0 {
             let phys_end = base + bytes_read - 1;
             log::debug!(
-                "[DOS] AH=3F read \"{filename}\" pos={file_pos} → phys 0x{base:05X}–0x{phys_end:05X} ({bytes_read} bytes)"
+                "[DOS] AH=3F read \"{filename}\" pos={file_pos} → phys 0x{base:05X}-0x{phys_end:05X} ({bytes_read} bytes)"
             );
             let dump_len = bytes_read.min(16);
             let mut hex = String::new();
@@ -297,6 +297,15 @@ impl Cpu {
                 });
             }
             log::debug!("[DOS] AH=3F   {hex} {asc}");
+
+            for addr in bus.watchpoints_in_range(base, bytes_read) {
+                let val = bus.memory_read_u8(addr);
+                let offset = addr - base;
+                log::info!(
+                    "[WATCH] 0x{addr:05X} written: 0x{val:02X} by DOS AH=3F \"{filename}\" pos={} offset=0x{offset:X}",
+                    file_pos + offset as u32,
+                );
+            }
         } else {
             log::debug!("[DOS] AH=3F read \"{filename}\" pos={file_pos} → 0 bytes");
         }

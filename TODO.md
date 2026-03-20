@@ -53,8 +53,9 @@
   - [X] Decompressing graphics (see ai-analysis/commander-keen-1-error-investigation.md and ai-analysis/keen1_latch_decode.py)
   - [X] Splash screen not showing
 - [X] Add extended memory/A20 line support
+- [ ] MCP Debugging Service (see ai-analysis/mcp-debug-server-plan.md)
 - [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
-  - [ ] Test CheckIt
+  - [ ] Test CheckIt (see ai-analysis/checkit-8086-crash-investigation.md)
   - [ ] Test Fractint Version 15.x and below
   - [ ] Emulate 80287
 - [ ] WASM

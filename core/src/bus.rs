@@ -250,6 +250,15 @@ impl Bus {
         self.watchpoints = addrs;
     }
 
+    /// Return any watched addresses that fall within [base, base+len).
+    pub(crate) fn watchpoints_in_range(&self, base: usize, len: usize) -> Vec<usize> {
+        self.watchpoints
+            .iter()
+            .copied()
+            .filter(|&addr| addr >= base && addr < base + len)
+            .collect()
+    }
+
     /// Called by the CPU before executing each instruction so that watch hits
     /// can report the CS:IP of the responsible instruction.
     #[inline(always)]
