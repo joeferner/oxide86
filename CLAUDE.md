@@ -149,6 +149,12 @@ analysis or log files.
 cargo run -p oxide86-native-gui -- --debug-mcp 7777 --boot --floppy-a game.img
 ```
 
+Add `--debug-mcp-pause-on-start` to halt emulation on the very first instruction so you can inspect state before any code runs:
+
+```bash
+cargo run -p oxide86-native-gui -- --debug-mcp 7777 --debug-mcp-pause-on-start --boot --floppy-a game.img
+```
+
 ### Registering with Claude Code (one-time per project)
 
 ```bash

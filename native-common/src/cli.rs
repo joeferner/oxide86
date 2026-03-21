@@ -98,4 +98,8 @@ pub struct CommonCli {
     /// Allows Claude Code to inspect registers, memory, and set breakpoints.
     #[arg(long = "debug-mcp", value_name = "PORT")]
     pub debug_mcp_port: Option<u16>,
+
+    /// Pause emulation immediately on start (requires --debug-mcp).
+    #[arg(long = "debug-mcp-pause-on-start", requires = "debug_mcp_port")]
+    pub debug_mcp_pause_on_start: bool,
 }
