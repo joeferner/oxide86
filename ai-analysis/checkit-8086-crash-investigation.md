@@ -231,22 +231,58 @@ by CHECKIT's runtime use of that memory. The `0xFE` byte seen there during the
 live MCP session is **not** an original MCB byte — it was written by CHECKIT
 after load.
 
+### CHECKIT self-shrinks via AH=4A — CONFIRMED
+
+CHECKIT gets the full available free block at EXEC time (PSP:0002=`0xA000`, ~590 KB).
+Immediately on entry, the Borland overlay manager at `19CD:000E`–`19CD:0064`
+(log lines 854661–854689) computes:
+
+```
+DI = DS = 0x4033
+SI = [PSP:0002] = 0xA000
+SI = 0xA000 - 0x4033 = 0x5FCD   ; paragraphs available above DS
+SI capped to 0x1000              ; Borland OVR limits its "arena" to 64 KB
+new_top = SI + DI = 0x1000 + 0x4033 = 0x5033
+[PSP:0002] = 0x5033              ; update PSP before the call
+BX = 0x5033 - PSP(0x0F44) = 0x40EF
+INT 21h AH=4A, ES=0x0F44, BX=0x40EF   ; shrink CHECKIT's block
+```
+
+The `0x0021`-paragraph allocation from the free block at `0x5033` (log line 915672)
+is a subsequent small allocation by the overlay manager — likely a control structure.
+
+No `AH=48` calls occur after CHECKIT loads. The overlay buffer addresses
+(`0x29F9`, `0x39F8`) are set purely by EXE relocation at load time; the Borland
+OVR uses static pre-allocated buffers within BSS, not dynamically allocated ones.
+
+---
+
 ### Memory layout is identical for 286 and 8086 CPU modes
 
 In both CPU modes, COMMAND.COM's AUTOEXEC.BAT buffer lands at physical `0x9FFAF`
 (confirmed in both logs). The DOS kernel, COMMAND.COM, and CHECKIT load at the
-same addresses regardless of CPU type. The conventional memory shortage (CHECKIT
-getting only `0x40EF` paragraphs ≈ 260 KB) is **not** caused by the CPU mode.
+same addresses regardless of CPU type. CHECKIT's self-shrink to `0x40EF` paragraphs ≈ 260 KB (Borland OVR AH=4A) is
+**not** caused by the CPU mode — it happens identically in both modes.
 
-### MCB chain — what exists above CHECKIT's block
+### MCB chain — what exists above CHECKIT's block — REVISED
 
-Since the overlays do NOT reach `0x50330`, the `0xFE` at that address is from
-CHECKIT's own runtime. The MCB chain above CHECKIT's block at `0x5033` was
-almost certainly a valid free block (type `'Z'` or `'M'`) that CHECKIT corrupted
-during execution. The evidence strongly suggests:
+The MCB at `0x5033` is **not** COMMAND.COM's transient. It is the free remainder
+created when CHECKIT's own Borland overlay manager shrinks CHECKIT's allocation
+(see "CHECKIT self-shrinks via AH=4A" below).
 
-- Before CHECKIT ran: free MCB at `0x5033` extending toward `0xA000`
-- After CHECKIT ran: byte at `0x50330` overwritten by CHECKIT.CNF data or other use
+- Initial free block at `0x0F43`: size `0x90BC` paragraphs (owner = 0, type `'Z'`),
+  created by COMMAND.COM's AH=4B EXEC handler. `0x0F44 + 0x90BC = 0xA000` → full
+  640 KB available.
+- CHECKIT's OVR at `19CD:0064` calls `AH=4A` (BX=`0x40EF`, ES=`0x0F44`) to shrink
+  CHECKIT's block. The allocator writes MCB size `0x40EF` at `0x0F43:0003`, then
+  creates a **free** remainder MCB at `0x5033` with size `0x4FCC`, type `'Z'`,
+  owner `0` (log lines 854820–854825).
+- Subsequent overlay-manager AH=4A at log line 915672 allocates `0x0021` paragraphs
+  from the free block at `0x5033` (owner set to `0x0F44`), leaving a free block at
+  `0x5055`.
+
+Since the overlays do NOT reach `0x50330`, the `0xFE` byte seen there during the
+live MCP session is from CHECKIT's own runtime (CHECKIT.CNF data etc.).
 
 ---
 
@@ -256,18 +292,20 @@ during execution. The evidence strongly suggests:
    first two reads, 15664 for the third. The second read (`0x39F80`–`0x49F6F`)
    writes `0x64` to `[DS:031E]`. The overlays do not reach `0x50330`.
 
-2. **Why does CHECKIT only get `0x40EF` paragraphs (≈260 KB)?**
-   COMMAND.COM PSP top = `0xA000` ✓ but CHECKIT PSP top = `0x5033`. This means
-   the free block available at EXEC time was only `0x40F7` paragraphs (from
-   `0x0F3C` to `0x5032`). There must be another allocated MCB at `0x5033` — most
-   likely COMMAND.COM's transient portion — leaving only 260 KB free for CHECKIT.
-   **On real 640 KB DOS, COMMAND.COM's transient would be near `0xA000`, giving
-   CHECKIT ~580 KB and placing the Borland pool above DS.**
+2. ~~**Why does CHECKIT only get `0x40EF` paragraphs (≈260 KB)?**~~ **RESOLVED:**
+   COMMAND.COM does NOT call AH=4A before EXEC. CHECKIT receives the **full**
+   available free block (`0x90BC` paragraphs, PSP:0002=`0xA000`). CHECKIT's own
+   Borland overlay manager immediately shrinks itself: at `19CD:000E`–`19CD:0064`
+   (log ~line 854661) it reads `PSP:0002 = 0xA000`, computes
+   `new_top = DS(0x4033) + 0x1000 = 0x5033`, writes `0x5033` back to PSP:0002,
+   then calls `AH=4A` (BX=`0x40EF`, ES=PSP) to release the memory above `0x5033`.
+   The MCB at `0x5033` with size `0x4FCC` is the resulting **free block** — it is
+   not COMMAND.COM's transient. COMMAND.COM's resident block ends near `0x0E10`,
+   and its AUTOEXEC buffer is at `0x9FFAF` — both far from `0x5033`.
 
-3. **What is at segment `0x5033` before CHECKIT corrupts it?**
-   Likely COMMAND.COM's transient code block. If true, it explains the small
-   CHECKIT allocation and also explains why CHECKIT freely writes there — it
-   knows COMMAND.COM's transient is gone (overwritten by the child program).
+3. ~~**What is at segment `0x5033` before CHECKIT corrupts it?**~~ **RESOLVED:**
+   Free DOS memory, not COMMAND.COM's transient. See Q2 above. CHECKIT freely
+   writes beyond `0x5032F` because it treats the freed-back memory as its arena.
 
 4. **286 vs 8086 behavioral difference in CHECKIT.**
    Memory layout is identical in both modes. The observed difference is almost

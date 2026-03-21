@@ -1,624 +1,28 @@
-use std::fmt;
-
 use crate::Computer;
 
-// ─── Register types ───────────────────────────────────────────────────────────
+#[cfg(test)]
+mod tests;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Reg8 {
-    AL,
-    CL,
-    DL,
-    BL,
-    AH,
-    CH,
-    DH,
-    BH,
-}
+mod debug_info;
+use debug_info::{int_description, port_comment};
 
-impl Reg8 {
-    fn from_bits(bits: u8) -> Self {
-        match bits & 7 {
-            0 => Reg8::AL,
-            1 => Reg8::CL,
-            2 => Reg8::DL,
-            3 => Reg8::BL,
-            4 => Reg8::AH,
-            5 => Reg8::CH,
-            6 => Reg8::DH,
-            _ => Reg8::BH,
-        }
-    }
+mod registers;
+pub use registers::{Reg8, Reg16, SegReg};
 
-    fn value(self, cpu: &dyn Computer) -> u8 {
-        match self {
-            Reg8::AL => cpu.ax() as u8,
-            Reg8::CL => cpu.cx() as u8,
-            Reg8::DL => cpu.dx() as u8,
-            Reg8::BL => cpu.bx() as u8,
-            Reg8::AH => (cpu.ax() >> 8) as u8,
-            Reg8::CH => (cpu.cx() >> 8) as u8,
-            Reg8::DH => (cpu.dx() >> 8) as u8,
-            Reg8::BH => (cpu.bx() >> 8) as u8,
-        }
-    }
-}
+mod mem_addr;
+pub use mem_addr::{MemRef, RmBase};
 
-impl fmt::Display for Reg8 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Reg8::AL => "al",
-            Reg8::CL => "cl",
-            Reg8::DL => "dl",
-            Reg8::BL => "bl",
-            Reg8::AH => "ah",
-            Reg8::CH => "ch",
-            Reg8::DH => "dh",
-            Reg8::BH => "bh",
-        })
-    }
-}
+mod operand;
+pub use operand::Operand;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Reg16 {
-    AX,
-    CX,
-    DX,
-    BX,
-    SP,
-    BP,
-    SI,
-    DI,
-}
+mod mnemonic;
+pub use mnemonic::Mnemonic;
 
-impl Reg16 {
-    fn from_bits(bits: u8) -> Self {
-        match bits & 7 {
-            0 => Reg16::AX,
-            1 => Reg16::CX,
-            2 => Reg16::DX,
-            3 => Reg16::BX,
-            4 => Reg16::SP,
-            5 => Reg16::BP,
-            6 => Reg16::SI,
-            _ => Reg16::DI,
-        }
-    }
+mod instruction;
+pub use instruction::Instruction;
 
-    fn value(self, cpu: &dyn Computer) -> u16 {
-        match self {
-            Reg16::AX => cpu.ax(),
-            Reg16::CX => cpu.cx(),
-            Reg16::DX => cpu.dx(),
-            Reg16::BX => cpu.bx(),
-            Reg16::SP => cpu.sp(),
-            Reg16::BP => cpu.bp(),
-            Reg16::SI => cpu.si(),
-            Reg16::DI => cpu.di(),
-        }
-    }
-}
-
-impl fmt::Display for Reg16 {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            Reg16::AX => "ax",
-            Reg16::CX => "cx",
-            Reg16::DX => "dx",
-            Reg16::BX => "bx",
-            Reg16::SP => "sp",
-            Reg16::BP => "bp",
-            Reg16::SI => "si",
-            Reg16::DI => "di",
-        })
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum SegReg {
-    ES,
-    CS,
-    SS,
-    DS,
-}
-
-impl fmt::Display for SegReg {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            SegReg::ES => "es",
-            SegReg::CS => "cs",
-            SegReg::SS => "ss",
-            SegReg::DS => "ds",
-        })
-    }
-}
-
-// ─── Memory addressing ────────────────────────────────────────────────────────
-
-/// The base component of a ModRM memory reference (rm field, mod != 11).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RmBase {
-    BxSi,
-    BxDi,
-    BpSi,
-    BpDi,
-    Si,
-    Di,
-    Bp,
-    Bx,
-}
-
-impl RmBase {
-    fn from_bits(bits: u8) -> Self {
-        match bits & 7 {
-            0 => RmBase::BxSi,
-            1 => RmBase::BxDi,
-            2 => RmBase::BpSi,
-            3 => RmBase::BpDi,
-            4 => RmBase::Si,
-            5 => RmBase::Di,
-            6 => RmBase::Bp,
-            _ => RmBase::Bx,
-        }
-    }
-
-    fn compute(self, cpu: &dyn Computer) -> u16 {
-        match self {
-            RmBase::BxSi => cpu.bx().wrapping_add(cpu.si()),
-            RmBase::BxDi => cpu.bx().wrapping_add(cpu.di()),
-            RmBase::BpSi => cpu.bp().wrapping_add(cpu.si()),
-            RmBase::BpDi => cpu.bp().wrapping_add(cpu.di()),
-            RmBase::Si => cpu.si(),
-            RmBase::Di => cpu.di(),
-            RmBase::Bp => cpu.bp(),
-            RmBase::Bx => cpu.bx(),
-        }
-    }
-
-    /// Default segment register (BP-based addressing uses SS; others use DS).
-    fn default_seg(self, cpu: &dyn Computer) -> u16 {
-        match self {
-            RmBase::BpSi | RmBase::BpDi | RmBase::Bp => cpu.ss(),
-            _ => cpu.ds(),
-        }
-    }
-}
-
-/// A resolved memory reference: segment + effective address.
-#[derive(Debug, Clone)]
-pub struct MemRef {
-    pub seg: u16,
-    pub ea: u16,
-}
-
-impl MemRef {
-    pub fn phys(&self) -> u32 {
-        ((self.seg as u32) << 4).wrapping_add(self.ea as u32)
-    }
-}
-
-// ─── Operands ─────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub enum Operand {
-    Reg8(Reg8, u8),    // register + its value at decode time
-    Reg16(Reg16, u16), // register + its value at decode time
-    Seg(SegReg, u16),  // segment register + its value at decode time
-    Imm8(u8),
-    Imm16(u16),
-    Mem8 { mem: MemRef, value: u8 },
-    Mem16 { mem: MemRef, value: u16 },
-}
-
-impl Operand {
-    /// The text that goes inside the instruction mnemonic line, e.g. `bx`, `[0x7c11]`, `0x04`.
-    pub fn asm_str(&self) -> String {
-        match self {
-            Operand::Reg8(r, _) => r.to_string(),
-            Operand::Reg16(r, _) => r.to_string(),
-            Operand::Seg(r, _) => r.to_string(),
-            Operand::Imm8(v) => format!("0x{:02x}", v),
-            Operand::Imm16(v) => format!("0x{:04x}", v),
-            Operand::Mem8 { mem, .. } => format!("[0x{:04x}]", mem.ea),
-            Operand::Mem16 { mem, .. } => format!("[0x{:04x}]", mem.ea),
-        }
-    }
-
-    /// Extra data shown on the right side of the log line, or `None` for immediates.
-    pub fn annotation(&self) -> Option<String> {
-        match self {
-            Operand::Reg8(r, v) => Some(format!("{}={:02X}", r.to_string().to_uppercase(), v)),
-            Operand::Reg16(r, v) => Some(format!("{}={:04X}", r.to_string().to_uppercase(), v)),
-            Operand::Seg(r, v) => Some(format!("{}={:04X}", r.to_string().to_uppercase(), v)),
-            Operand::Imm8(_) | Operand::Imm16(_) => None,
-            Operand::Mem8 { mem, value } => Some(format!(
-                "[0x{:04x}]={:02x} @{:04X}:{:04X}({:05X})",
-                mem.ea,
-                value,
-                mem.seg,
-                mem.ea,
-                mem.phys()
-            )),
-            Operand::Mem16 { mem, value } => Some(format!(
-                "[0x{:04x}]={:04x} @{:04X}:{:04X}({:05X})",
-                mem.ea,
-                value,
-                mem.seg,
-                mem.ea,
-                mem.phys()
-            )),
-        }
-    }
-}
-
-// ─── Mnemonics ────────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Mnemonic {
-    // Data transfer
-    Mov,
-    Push,
-    Pop,
-    Xchg,
-    In,
-    Out,
-    Xlat,
-    Lea,
-    Lds,
-    Les,
-    Lahf,
-    Sahf,
-    Pushf,
-    Popf,
-    // Arithmetic
-    Add,
-    Adc,
-    Sub,
-    Sbb,
-    Inc,
-    Dec,
-    Neg,
-    Cmp,
-    Mul,
-    IMul,
-    Div,
-    IDiv,
-    Cbw,
-    Cwd,
-    Daa,
-    Das,
-    Aaa,
-    Aas,
-    Aam,
-    Aad,
-    // Logic
-    And,
-    Or,
-    Xor,
-    Not,
-    Test,
-    // Shift / rotate
-    Shl,
-    Shr,
-    Sar,
-    Rol,
-    Ror,
-    Rcl,
-    Rcr,
-    // String ops
-    Movsb,
-    Movsw,
-    Cmpsb,
-    Cmpsw,
-    Scasb,
-    Scasw,
-    Lodsb,
-    Lodsw,
-    Stosb,
-    Stosw,
-    // Control transfer
-    Call,
-    CallFar,
-    Ret,
-    RetFar,
-    Jmp,
-    JmpFar,
-    Ja,
-    Jae,
-    Jb,
-    Jbe,
-    Jcxz,
-    Je,
-    Jg,
-    Jge,
-    Jl,
-    Jle,
-    Jne,
-    Jno,
-    Jns,
-    Jo,
-    Jp,
-    Jnp,
-    Js,
-    Loop,
-    Loopz,
-    Loopnz,
-    // Interrupt
-    Int,
-    Int3,
-    Into,
-    Iret,
-    // Processor control
-    Nop,
-    Hlt,
-    Wait,
-    Lock,
-    Cli,
-    Sti,
-    Cld,
-    Std,
-    Clc,
-    Stc,
-    Cmc,
-    // Prefixes
-    Rep,
-    Repne,
-    // Unknown / unimplemented
-    Unknown(u8),
-}
-
-impl fmt::Display for Mnemonic {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let s = match self {
-            Mnemonic::Mov => "mov",
-            Mnemonic::Push => "push",
-            Mnemonic::Pop => "pop",
-            Mnemonic::Xchg => "xchg",
-            Mnemonic::In => "in",
-            Mnemonic::Out => "out",
-            Mnemonic::Xlat => "xlat",
-            Mnemonic::Lea => "lea",
-            Mnemonic::Lds => "lds",
-            Mnemonic::Les => "les",
-            Mnemonic::Lahf => "lahf",
-            Mnemonic::Sahf => "sahf",
-            Mnemonic::Pushf => "pushf",
-            Mnemonic::Popf => "popf",
-            Mnemonic::Add => "add",
-            Mnemonic::Adc => "adc",
-            Mnemonic::Sub => "sub",
-            Mnemonic::Sbb => "sbb",
-            Mnemonic::Inc => "inc",
-            Mnemonic::Dec => "dec",
-            Mnemonic::Neg => "neg",
-            Mnemonic::Cmp => "cmp",
-            Mnemonic::Mul => "mul",
-            Mnemonic::IMul => "imul",
-            Mnemonic::Div => "div",
-            Mnemonic::IDiv => "idiv",
-            Mnemonic::Cbw => "cbw",
-            Mnemonic::Cwd => "cwd",
-            Mnemonic::Daa => "daa",
-            Mnemonic::Das => "das",
-            Mnemonic::Aaa => "aaa",
-            Mnemonic::Aas => "aas",
-            Mnemonic::Aam => "aam",
-            Mnemonic::Aad => "aad",
-            Mnemonic::And => "and",
-            Mnemonic::Or => "or",
-            Mnemonic::Xor => "xor",
-            Mnemonic::Not => "not",
-            Mnemonic::Test => "test",
-            Mnemonic::Shl => "shl",
-            Mnemonic::Shr => "shr",
-            Mnemonic::Sar => "sar",
-            Mnemonic::Rol => "rol",
-            Mnemonic::Ror => "ror",
-            Mnemonic::Rcl => "rcl",
-            Mnemonic::Rcr => "rcr",
-            Mnemonic::Movsb => "movsb",
-            Mnemonic::Movsw => "movsw",
-            Mnemonic::Cmpsb => "cmpsb",
-            Mnemonic::Cmpsw => "cmpsw",
-            Mnemonic::Scasb => "scasb",
-            Mnemonic::Scasw => "scasw",
-            Mnemonic::Lodsb => "lodsb",
-            Mnemonic::Lodsw => "lodsw",
-            Mnemonic::Stosb => "stosb",
-            Mnemonic::Stosw => "stosw",
-            Mnemonic::Call => "call",
-            Mnemonic::CallFar => "call far",
-            Mnemonic::Ret => "ret",
-            Mnemonic::RetFar => "retf",
-            Mnemonic::Jmp => "jmp",
-            Mnemonic::JmpFar => "jmp far",
-            Mnemonic::Ja => "ja",
-            Mnemonic::Jae => "jae",
-            Mnemonic::Jb => "jb",
-            Mnemonic::Jbe => "jbe",
-            Mnemonic::Jcxz => "jcxz",
-            Mnemonic::Je => "je",
-            Mnemonic::Jg => "jg",
-            Mnemonic::Jge => "jge",
-            Mnemonic::Jl => "jl",
-            Mnemonic::Jle => "jle",
-            Mnemonic::Jne => "jne",
-            Mnemonic::Jno => "jno",
-            Mnemonic::Jns => "jns",
-            Mnemonic::Jo => "jo",
-            Mnemonic::Jp => "jp",
-            Mnemonic::Jnp => "jnp",
-            Mnemonic::Js => "js",
-            Mnemonic::Loop => "loop",
-            Mnemonic::Loopz => "loopz",
-            Mnemonic::Loopnz => "loopnz",
-            Mnemonic::Int => "int",
-            Mnemonic::Int3 => "int3",
-            Mnemonic::Into => "into",
-            Mnemonic::Iret => "iret",
-            Mnemonic::Nop => "nop",
-            Mnemonic::Hlt => "hlt",
-            Mnemonic::Wait => "wait",
-            Mnemonic::Lock => "lock",
-            Mnemonic::Cli => "cli",
-            Mnemonic::Sti => "sti",
-            Mnemonic::Cld => "cld",
-            Mnemonic::Std => "std",
-            Mnemonic::Clc => "clc",
-            Mnemonic::Stc => "stc",
-            Mnemonic::Cmc => "cmc",
-            Mnemonic::Rep => "rep",
-            Mnemonic::Repne => "repne",
-            Mnemonic::Unknown(b) => return write!(f, "db 0x{:02x}", b),
-        };
-        f.write_str(s)
-    }
-}
-
-// ─── Instruction ──────────────────────────────────────────────────────────────
-
-#[derive(Debug, Clone)]
-pub struct Instruction {
-    /// Segment the instruction was fetched from.
-    pub segment: u16,
-    /// Offset (within segment) of the first byte.
-    pub offset: u16,
-    /// Raw bytes that make up this instruction (including any prefix).
-    pub bytes: Vec<u8>,
-    pub mnemonic: Mnemonic,
-    /// Operands in source-order: [dst, src] where applicable.
-    pub operands: Vec<Operand>,
-    /// Segment override prefix, if present.
-    pub seg_override: Option<SegReg>,
-    /// Optional comment shown at the end of the line, prefixed with ";".
-    pub comment: Option<String>,
-}
-
-impl Instruction {
-    /// Format as a single log line:
-    /// `SSSS:OOOO  BB BB BB BB    mnemonic dst, src       ANNOTATIONS    ; comment`
-    pub fn format_line(&self) -> String {
-        let location = format!("{:04X}:{:04X}", self.segment, self.offset);
-
-        let byte_str: String = self
-            .bytes
-            .iter()
-            .map(|b| format!("{:02X}", b))
-            .collect::<Vec<_>>()
-            .join(" ");
-
-        let asm = match self.operands.len() {
-            0 => self.mnemonic.to_string(),
-            1 => format!("{} {}", self.mnemonic, self.operands[0].asm_str()),
-            _ => format!(
-                "{} {}, {}",
-                self.mnemonic,
-                self.operands[0].asm_str(),
-                self.operands[1].asm_str()
-            ),
-        };
-
-        let annotations: Vec<String> = self
-            .operands
-            .iter()
-            .filter_map(|op| op.annotation())
-            .collect();
-        let ann_str = annotations.join(" ");
-
-        let base = if ann_str.is_empty() {
-            format!("{} {:<20} {}", location, byte_str, asm)
-        } else {
-            format!("{} {:<20} {:<30} {}", location, byte_str, asm, ann_str)
-        };
-
-        match &self.comment {
-            Some(c) => format!("{}    ; {}", base, c),
-            None => base,
-        }
-    }
-}
-
-impl fmt::Display for Instruction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.format_line())
-    }
-}
-
-// ─── Decode cursor ────────────────────────────────────────────────────────────
-
-struct Cursor<'a> {
-    cpu: &'a dyn Computer,
-    /// Segment being fetched from.
-    seg: u16,
-    /// Current fetch offset (advances as bytes are consumed).
-    offset: u16,
-    /// Accumulated raw bytes.
-    bytes: Vec<u8>,
-    /// Active segment override prefix (if any).
-    seg_override: Option<SegReg>,
-}
-
-impl<'a> Cursor<'a> {
-    fn new(cpu: &'a dyn Computer, seg: u16, offset: u16) -> Self {
-        Self {
-            cpu,
-            seg,
-            offset,
-            bytes: Vec::new(),
-            seg_override: None,
-        }
-    }
-
-    /// Fetch the next instruction byte and advance the cursor.
-    fn fetch(&mut self) -> u8 {
-        let phys = ((self.seg as u32) << 4).wrapping_add(self.offset as u32);
-        let b = self.cpu.read_u8(phys);
-        self.bytes.push(b);
-        self.offset = self.offset.wrapping_add(1);
-        b
-    }
-
-    /// Fetch a little-endian 16-bit word.
-    fn fetch16(&mut self) -> u16 {
-        let lo = self.fetch() as u16;
-        let hi = self.fetch() as u16;
-        lo | (hi << 8)
-    }
-
-    fn read_mem_u8(&self, seg: u16, ea: u16) -> u8 {
-        self.cpu
-            .read_u8(((seg as u32) << 4).wrapping_add(ea as u32))
-    }
-
-    fn read_mem_u16(&self, seg: u16, ea: u16) -> u16 {
-        let lo = self.read_mem_u8(seg, ea) as u16;
-        let hi = self.read_mem_u8(seg, ea.wrapping_add(1)) as u16;
-        lo | (hi << 8)
-    }
-
-    /// Resolve which segment to use for a given RmBase (honouring any prefix override).
-    fn seg_for_base(&self, base: RmBase) -> u16 {
-        self.seg_override
-            .map(|s| self.seg_val(s))
-            .unwrap_or_else(|| base.default_seg(self.cpu))
-    }
-
-    /// Resolve which segment to use for a direct [imm16] address.
-    fn seg_for_direct(&self) -> u16 {
-        self.seg_override
-            .map(|s| self.seg_val(s))
-            .unwrap_or_else(|| self.cpu.ds())
-    }
-
-    fn seg_val(&self, s: SegReg) -> u16 {
-        match s {
-            SegReg::ES => self.cpu.es(),
-            SegReg::CS => self.cpu.cs(),
-            SegReg::SS => self.cpu.ss(),
-            SegReg::DS => self.cpu.ds(),
-        }
-    }
-}
+mod cursor;
+use cursor::Cursor;
 
 // ─── ModRM decoding ───────────────────────────────────────────────────────────
 
@@ -640,23 +44,38 @@ fn decode_rm(cur: &mut Cursor, modrm: u8, is16: bool) -> Operand {
     }
 
     // Memory operand
-    let (ea, seg) = if mod_ == 0 && rm == 6 {
+    let (ea, seg, expr) = if mod_ == 0 && rm == 6 {
         // Special case: [disp16] direct address
         let addr = cur.fetch16();
-        (addr, cur.seg_for_direct())
+        let expr = format!("0x{:04x}", addr);
+        (addr, cur.seg_for_direct(), expr)
     } else {
         let base = RmBase::from_bits(rm);
         let base_ea = base.compute(cur.cpu);
-        let ea = match mod_ {
-            0 => base_ea,
-            1 => base_ea.wrapping_add(cur.fetch() as i8 as u16),
-            2 => base_ea.wrapping_add(cur.fetch16()),
+        let (ea, expr) = match mod_ {
+            0 => (base_ea, base.asm_str().to_string()),
+            1 => {
+                let disp = cur.fetch() as i8;
+                let ea = base_ea.wrapping_add(disp as u16);
+                let expr = if disp >= 0 {
+                    format!("{}+0x{:02x}", base.asm_str(), disp as u8)
+                } else {
+                    format!("{}-0x{:02x}", base.asm_str(), disp.unsigned_abs())
+                };
+                (ea, expr)
+            }
+            2 => {
+                let disp = cur.fetch16();
+                let ea = base_ea.wrapping_add(disp);
+                let expr = format!("{}+0x{:04x}", base.asm_str(), disp);
+                (ea, expr)
+            }
             _ => unreachable!(),
         };
-        (ea, cur.seg_for_base(base))
+        (ea, cur.seg_for_base(base), expr)
     };
 
-    let mem = MemRef { seg, ea };
+    let mem = MemRef { seg, ea, expr };
     if is16 {
         let value = cur.read_mem_u16(seg, ea);
         Operand::Mem16 { mem, value }
@@ -822,7 +241,11 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
                 vec![
                     Operand::Reg8(Reg8::AL, cur.cpu.ax() as u8),
                     Operand::Mem8 {
-                        mem: MemRef { seg, ea },
+                        mem: MemRef {
+                            seg,
+                            ea,
+                            expr: format!("0x{:04x}", ea),
+                        },
                         value: v,
                     },
                 ],
@@ -838,7 +261,11 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
                 vec![
                     Operand::Reg16(Reg16::AX, cur.cpu.ax()),
                     Operand::Mem16 {
-                        mem: MemRef { seg, ea },
+                        mem: MemRef {
+                            seg,
+                            ea,
+                            expr: format!("0x{:04x}", ea),
+                        },
                         value: v,
                     },
                 ],
@@ -853,7 +280,11 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
                 Mnemonic::Mov,
                 vec![
                     Operand::Mem8 {
-                        mem: MemRef { seg, ea },
+                        mem: MemRef {
+                            seg,
+                            ea,
+                            expr: format!("0x{:04x}", ea),
+                        },
                         value: v,
                     },
                     Operand::Reg8(Reg8::AL, v),
@@ -869,7 +300,11 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
                 Mnemonic::Mov,
                 vec![
                     Operand::Mem16 {
-                        mem: MemRef { seg, ea },
+                        mem: MemRef {
+                            seg,
+                            ea,
+                            expr: format!("0x{:04x}", ea),
+                        },
                         value: v,
                     },
                     Operand::Reg16(Reg16::AX, v),
@@ -1534,199 +969,6 @@ fn default_comment(
                 None
             }
         }
-        _ => None,
-    }
-}
-
-/// Extract a port number from an IN/OUT port operand and look up its name.
-/// Handles both immediate ports (`imm8`) and DX-indirect ports (`Reg16(DX, value)`).
-fn port_comment(port_op: Option<&Operand>) -> Option<String> {
-    let port = match port_op? {
-        Operand::Imm8(p) => *p as u16,
-        Operand::Reg16(Reg16::DX, v) => *v,
-        _ => return None,
-    };
-    io_port_name(port).map(|s| s.to_string())
-}
-
-fn io_port_name(port: u16) -> Option<&'static str> {
-    match port {
-        // PIC
-        0x0020 => Some("PIC1 Command"),
-        0x0021 => Some("PIC1 Mask"),
-        0x00A0 => Some("PIC2 Command"),
-        0x00A1 => Some("PIC2 Mask"),
-        // PIT
-        0x0040 => Some("PIT Channel 0"),
-        0x0041 => Some("PIT Channel 1"),
-        0x0042 => Some("PIT Channel 2"),
-        0x0043 => Some("PIT Control"),
-        // System Control Port B
-        0x0061 => Some("System Control Port B"),
-        // Keyboard Controller
-        0x0060 => Some("KBC Data"),
-        0x0064 => Some("KBC Status/Command"),
-        // RTC
-        0x0070 => Some("RTC Register Select"),
-        0x0071 => Some("RTC Data"),
-        // CGA/VGA CRTC
-        0x03B4 => Some("MDA CRTC Address"),
-        0x03B5 => Some("MDA CRTC Data"),
-        0x03C0 => Some("VGA AC Address/Data"),
-        0x03C1 => Some("VGA AC Data Read"),
-        0x03C7 => Some("VGA DAC Read Index"),
-        0x03C8 => Some("VGA DAC Write Index"),
-        0x03C9 => Some("VGA DAC Data"),
-        0x03D4 => Some("CGA CRTC Address"),
-        0x03D5 => Some("CGA CRTC Data"),
-        0x03D9 => Some("CGA Color Select"),
-        0x03DA => Some("CGA Status"),
-        // FDC
-        0x03F2 => Some("FDC DOR"),
-        0x03F4 => Some("FDC Status"),
-        0x03F5 => Some("FDC Data"),
-        0x03F7 => Some("FDC DIR"),
-        // HDC
-        0x01F0 => Some("HDC Data"),
-        0x01F1 => Some("HDC Error/Features"),
-        0x01F2 => Some("HDC Sector Count"),
-        0x01F3 => Some("HDC Sector Number"),
-        0x01F4 => Some("HDC Cylinder Low"),
-        0x01F5 => Some("HDC Cylinder High"),
-        0x01F6 => Some("HDC Drive/Head"),
-        0x01F7 => Some("HDC Command/Status"),
-        0x03F6 => Some("HDC Device Control"),
-        // UART (COM ports)
-        0x03F8 => Some("COM1 Data"),
-        0x03F9 => Some("COM1 IER/DLM"),
-        0x03FA => Some("COM1 IIR/FCR"),
-        0x03FB => Some("COM1 LCR"),
-        0x03FC => Some("COM1 MCR"),
-        0x03FD => Some("COM1 LSR"),
-        0x03FE => Some("COM1 MSR"),
-        0x02F8 => Some("COM2 Data"),
-        0x02F9 => Some("COM2 IER/DLM"),
-        0x02FA => Some("COM2 IIR/FCR"),
-        0x02FB => Some("COM2 LCR"),
-        0x02FC => Some("COM2 MCR"),
-        0x02FD => Some("COM2 LSR"),
-        0x02FE => Some("COM2 MSR"),
-        0x03E8 => Some("COM3 Data"),
-        0x02E8 => Some("COM4 Data"),
-        _ => None,
-    }
-}
-
-fn int_description(int_num: u8, ah: u8) -> Option<(&'static str, bool)> {
-    match int_num {
-        0x08 => Some(("timer interrupt", false)),
-        0x09 => Some(("keyboard interrupt", false)),
-        0x10 => {
-            let desc = match ah {
-                0x00 => "set video mode",
-                0x01 => "set cursor shape",
-                0x02 => "set cursor position",
-                0x03 => "get cursor position",
-                0x05 => "select active page",
-                0x06 => "scroll up",
-                0x07 => "scroll down",
-                0x08 => "read char/attr",
-                0x09 => "write char/attr",
-                0x0A => "write char",
-                0x0B => "set color palette",
-                0x0E => "teletype output",
-                0x0F => "get video mode",
-                0x10 => "palette registers",
-                0x11 => "character generator",
-                0x12 => "alternate function select",
-                0x15 => "return physical display params",
-                0x1A => "display combination code",
-                _ => return None,
-            };
-            Some((desc, true))
-        }
-        0x11 => Some(("get equipment list", false)),
-        0x12 => Some(("get memory size", false)),
-        0x13 => {
-            let desc = match ah {
-                0x00 => "reset disk",
-                0x01 => "get disk status",
-                0x02 => "read sectors",
-                0x03 => "write sectors",
-                0x04 => "verify sectors",
-                0x08 => "get drive params",
-                0x15 => "get disk type",
-                0x16 => "detect disk change",
-                0x18 => "set DASD type",
-                _ => return None,
-            };
-            Some((desc, true))
-        }
-        0x14 => {
-            let desc = match ah {
-                0x00 => "initialize serial port",
-                0x01 => "write char",
-                0x02 => "read char",
-                0x03 => "get status",
-                _ => return None,
-            };
-            Some((desc, true))
-        }
-        0x15 => {
-            let desc = match ah {
-                0x10 => "TopView multi-DOS",
-                0x41 => "wait external event",
-                0x4F => "keyboard intercept",
-                0x88 => "get extended memory",
-                0x91 => "device interrupt complete",
-                0xC0 => "get system config",
-                0xC1 => "get EBDA segment",
-                0xC2 => "PS/2 mouse services",
-                _ => return None,
-            };
-            Some((desc, true))
-        }
-        0x16 => {
-            let desc = match ah {
-                0x00 => "read char",
-                0x01 => "check keystroke",
-                0x02 => "get shift flags",
-                0x55 => "word TSR check",
-                0x92 => "get keyboard capabilities",
-                0xA2 => "122-key capability check",
-                _ => return None,
-            };
-            Some((desc, true))
-        }
-        0x17 => {
-            let desc = match ah {
-                0x01 => "initialize printer",
-                _ => return None,
-            };
-            Some((desc, true))
-        }
-        0x1A => {
-            let desc = match ah {
-                0x00 => "get system time",
-                0x01 => "set system time",
-                0x02 => "read RTC time",
-                0x03 => "set RTC time",
-                0x04 => "read RTC date",
-                0x05 => "set RTC date",
-                _ => return None,
-            };
-            Some((desc, true))
-        }
-        0x21 => {
-            let desc = match ah {
-                0x02 => "write char",
-                0x09 => "write string",
-                0x4C => "exit",
-                _ => return None,
-            };
-            Some((desc, true))
-        }
-        0x74 => Some(("PS/2 mouse interrupt", false)),
         _ => None,
     }
 }

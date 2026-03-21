@@ -117,7 +117,9 @@ pub fn create_computer(
     if let Some(port) = cli.debug_mcp_port {
         let debug = Arc::new(DebugShared::new());
         if cli.debug_mcp_pause_on_start {
-            debug.pause_requested.store(true, std::sync::atomic::Ordering::Relaxed);
+            debug
+                .pause_requested
+                .store(true, std::sync::atomic::Ordering::Relaxed);
         }
         computer.set_debug(Arc::clone(&debug));
         oxide86_debugger::server::start_mcp_server(port, debug);
