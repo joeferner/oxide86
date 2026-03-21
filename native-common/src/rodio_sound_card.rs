@@ -62,7 +62,7 @@ impl Iterator for RodioSoundCard {
                     self.underrun_count
                 );
             }
-            log::debug!(
+            log::trace!(
                 "[PCM] {}/{} samples non-zero ({:.1}%), ring buffer available: {}",
                 self.log_nonzero,
                 self.log_samples,

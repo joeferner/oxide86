@@ -10,6 +10,14 @@ use crate::{
 /// collide with any real INT vector handled in step_bios_int.
 pub(in crate::cpu) const INT1C_RETURN_IP: u16 = 0xF5;
 
+/// IP within the BIOS code segment used as the IRET trampoline when a timer
+/// IRQ is inline-dispatched to a guest INT 08h handler (i.e. when a BIOS
+/// handler sets IF=1 and the timer fires, but IVT[0x08] points to guest code).
+/// After the guest handler IRETs here, patch_flags_and_iret finishes the
+/// original BIOS call's IRET to its caller.  Must not collide with any real
+/// INT vector handled in step_bios_int.
+pub(in crate::cpu) const TIMER_INLINE_RETURN_IP: u16 = 0xF6;
+
 impl Cpu {
     /// INT 0x08 - Timer Hardware Interrupt (IRQ 0)
     ///

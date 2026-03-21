@@ -52,7 +52,7 @@ impl PcmRingBuffer {
         let mut guard = self.inner.lock().unwrap();
         let available = guard.len().min(buf.len());
         if available == 0 && !buf.is_empty() {
-            log::debug!("PCM buffer underrun: needed {} samples, had 0", buf.len());
+            log::trace!("PCM buffer underrun: needed {} samples, had 0", buf.len());
         }
         for slot in buf[..available].iter_mut() {
             *slot = guard.pop_front().unwrap();

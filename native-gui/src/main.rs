@@ -905,8 +905,12 @@ fn step_emulator(
 ) -> bool {
     let mut halted = false;
 
-    // Skip execution if paused
-    if !is_paused {
+    // Skip execution if paused. When the computer is debug-paused (MCP breakpoint
+    // or watchpoint), still call step() once per frame so that debug_check()
+    // can service pending MCP commands (step/continue/read_memory).
+    if computer.is_debug_paused() {
+        computer.step();
+    } else if !is_paused {
         let current_cycles = computer.get_cycle_count();
         let frame_target = throttle
             .target_cycles()

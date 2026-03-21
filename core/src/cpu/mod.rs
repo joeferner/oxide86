@@ -363,48 +363,7 @@ impl Cpu {
 
         // service any bios routines
         if self.cs == BIOS_CODE_SEGMENT {
-            if self.ip > 0xff {
-                log::error!("Invalid BIOS handler 0x{:02X}", self.ip);
-                return;
-            }
-            self.step_bios_int(bus, self.ip as u8);
-            if self.wait_for_key_press {
-                self.wait_for_key_press_patch_flags = true;
-                return;
-            }
-            // If the BIOS handler did a FAR CALL into user code (e.g. the PS/2
-            // mouse callback) CS will no longer point to the BIOS segment.
-            // Skip patch_flags_and_iret — the callback will RETF to the
-            // trampoline at PS2_MOUSE_RETURN_IP, which then lets
-            // patch_flags_and_iret clean up the original INT frame.
-            if self.cs != BIOS_CODE_SEGMENT {
-                return;
-            }
-            // Terminal halt (e.g. INT 21h AH=4Ch with no parent): skip IRET so that
-            // IF=0 (set by int21_exit) is preserved and no pending IRQ can wake the
-            // CPU and resume execution in the terminated program.
-            if self.halted {
-                return;
-            }
-            // If the BIOS handler enabled interrupts (STI equivalent), check for a
-            // pending timer IRQ before IRET — mirrors real BIOS behaviour where the
-            // CPU can receive IRQs at instruction boundaries inside a handler with IF=1.
-            // This is critical when caller code runs with IF=0 (e.g. Verify386 clears
-            // IF and the caller never restores it) but the BIOS service handler does STI.
-            //
-            // We only inline-dispatch the timer IRQ here, and only when IVT[0x08] still
-            // points to our BIOS handler. If a guest OS has installed its own INT 08h
-            // handler the IRQ is left pending and delivered normally once IF is restored.
-            if self.get_flag(cpu_flag::INTERRUPT) {
-                let timer_ivt_seg =
-                    bus.memory_read_u16(crate::devices::pic::PIT_CPU_IRQ as usize * 4 + 2);
-                if timer_ivt_seg == BIOS_CODE_SEGMENT
-                    && bus.pic_mut().take_timer_irq(bus.cycle_count())
-                {
-                    self.step_bios_int(bus, crate::devices::pic::PIT_CPU_IRQ);
-                }
-            }
-            self.patch_flags_and_iret(bus);
+            self.step_bios_segment(bus);
             return;
         }
 
@@ -585,6 +544,67 @@ impl Cpu {
         self.set_flag(cpu_flag::INTERRUPT, true);
     }
 
+    fn step_bios_segment(&mut self, bus: &mut Bus) {
+        if self.ip > 0xff {
+            log::error!("Invalid BIOS handler 0x{:02X}", self.ip);
+            return;
+        }
+        self.step_bios_int(bus, self.ip as u8);
+        if self.wait_for_key_press {
+            self.wait_for_key_press_patch_flags = true;
+            return;
+        }
+        // If the BIOS handler did a FAR CALL into user code (e.g. the PS/2
+        // mouse callback) CS will no longer point to the BIOS segment.
+        // Skip patch_flags_and_iret — the callback will RETF to the
+        // trampoline at PS2_MOUSE_RETURN_IP, which then lets
+        // patch_flags_and_iret clean up the original INT frame.
+        if self.cs != BIOS_CODE_SEGMENT {
+            return;
+        }
+        // Terminal halt (e.g. INT 21h AH=4Ch with no parent): skip IRET so that
+        // IF=0 (set by int21_exit) is preserved and no pending IRQ can wake the
+        // CPU and resume execution in the terminated program.
+        if self.halted {
+            return;
+        }
+        // If the BIOS handler enabled interrupts (STI equivalent), check for a
+        // pending timer IRQ and deliver it — mirrors real BIOS behavior where the
+        // CPU takes IRQ0 at the next instruction boundary after STI inside the handler.
+        // This is critical when caller code runs with IF=0 but the BIOS service does STI.
+        //
+        // When IVT[0x08] still points to our BIOS handler we run it inline.
+        // When a guest has hooked INT 08h we push a trampoline return frame so the
+        // guest's handler IRETs back to BIOS_CODE_SEGMENT:TIMER_INLINE_RETURN_IP
+        // (a no-op), after which patch_flags_and_iret IRETs to the original caller.
+        if self.get_flag(cpu_flag::INTERRUPT) {
+            let timer_ivt_off = bus.memory_read_u16(crate::devices::pic::PIT_CPU_IRQ as usize * 4);
+            let timer_ivt_seg =
+                bus.memory_read_u16(crate::devices::pic::PIT_CPU_IRQ as usize * 4 + 2);
+            if bus.pic_mut().take_timer_irq(bus.cycle_count()) {
+                if timer_ivt_seg == BIOS_CODE_SEGMENT {
+                    self.step_bios_int(bus, crate::devices::pic::PIT_CPU_IRQ);
+                } else {
+                    // Guest has hooked INT 08h.  Push a trampoline return frame so
+                    // that when the guest's handler IRETs, execution resumes at the
+                    // BIOS no-op trampoline and then patch_flags_and_iret handles
+                    // the original caller's IRET frame.
+                    self.push(self.flags, bus);
+                    self.push(BIOS_CODE_SEGMENT, bus);
+                    self.push(
+                        crate::cpu::bios::int08_timer_interrupt::TIMER_INLINE_RETURN_IP,
+                        bus,
+                    );
+                    self.set_flag(cpu_flag::INTERRUPT, false);
+                    self.cs = timer_ivt_seg;
+                    self.ip = timer_ivt_off;
+                    return;
+                }
+            }
+        }
+        self.patch_flags_and_iret(bus);
+    }
+
     fn step_bios_int(&mut self, bus: &mut Bus, irq: u8) {
         if self.exec_logging_enabled {
             log::info!("running internal bios interrupt code 0x{irq:02X}");
@@ -613,6 +633,10 @@ impl Cpu {
             // Nothing to do; step() will call patch_flags_and_iret to IRET
             // back to wherever INT 08h originally interrupted.
             0xF5 => {}
+            // Timer inline-dispatch trampoline — guest INT 08h handler returned here.
+            // Nothing to do; step() will call patch_flags_and_iret to IRET
+            // back to wherever the original BIOS call interrupted.
+            0xF6 => {}
             // PS/2 mouse callback RETF trampoline — the application's handler
             // returned here.  Nothing to do; step() will call patch_flags_and_iret
             // to IRET back to wherever INT 74h originally interrupted.
