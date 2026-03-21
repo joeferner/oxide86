@@ -47,15 +47,8 @@ impl Cpu {
             // PUSH CS (0E)
             0x0E => self.push_segreg(opcode, bus),
 
-            // POP CS (0F) - 8086 only, repurposed as two-byte prefix on 80286+
-            0x0F => {
-                log::warn!(
-                    "POP CS at {:04X}:{:04X} (8086 instruction, dangerous!)",
-                    self.cs,
-                    self.ip.wrapping_sub(1)
-                );
-                self.pop_segreg(opcode, bus);
-            }
+            // POP CS (0F) on 8086; two-byte instruction prefix on 80286+
+            0x0F => self.exec_opcode_0f(bus),
 
             // ADC r/m to register (10-13)
             0x10..=0x13 => self.adc_rm_reg(opcode, bus),
@@ -446,8 +439,14 @@ impl Cpu {
             // IN AL, imm8 (E4)
             0xE4 => self.in_al_imm8(bus),
 
+            // IN AX, imm8 (E5)
+            0xE5 => self.in_ax_imm8(bus),
+
             // OUT imm8, AL (E6)
             0xE6 => self.out_imm8_al(bus),
+
+            // OUT imm8, AX (E7)
+            0xE7 => self.out_imm8_ax(bus),
 
             // CALL near relative (E8)
             0xE8 => self.call_near(bus),

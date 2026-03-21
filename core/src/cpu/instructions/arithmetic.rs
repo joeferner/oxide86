@@ -362,7 +362,16 @@ impl Cpu {
                     self.set_flag(cpu_flag::AUXILIARY, aux_carry);
                 }
             }
-            _ => panic!("Invalid INC/DEC operation: {}", operation),
+            _ => {
+                log::warn!(
+                    "Invalid INC/DEC operation {} at {:04X}:{:04X}",
+                    operation,
+                    self.cs,
+                    self.ip
+                );
+                self.dispatch_interrupt(bus, 6);
+                return;
+            }
         }
 
         // Calculate cycle timing

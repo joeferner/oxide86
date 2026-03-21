@@ -204,6 +204,13 @@ fn tool_get_registers(debug: &Arc<DebugShared>) -> String {
 
 fn tool_get_status(debug: &Arc<DebugShared>) -> String {
     if debug.paused.load(Ordering::Relaxed) {
+        // If paused by a write watchpoint, report the writing instruction's CS:IP
+        if let Some(hit) = debug.watchpoint_hit.lock().unwrap().as_ref() {
+            return format!(
+                "paused_at {:04X}:{:04X} (watchpoint: wrote 0x{:02X} to 0x{:05X})",
+                hit.2, hit.3, hit.1, hit.0
+            );
+        }
         let snap = debug.snapshot.lock().unwrap();
         if let Some(s) = snap.as_ref() {
             format!("paused_at {:04X}:{:04X}", s.cs, s.ip)

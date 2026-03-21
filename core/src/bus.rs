@@ -263,8 +263,8 @@ impl Bus {
                 .unwrap()
                 .contains(&(addr as u32));
             if hit {
-                // cs/ip filled in by Computer::do_pause after this returns
-                *dbg.watchpoint_hit.lock().unwrap() = Some((addr as u32, val, 0, 0));
+                *dbg.watchpoint_hit.lock().unwrap() =
+                    Some((addr as u32, val, self.watch_cs, self.watch_ip));
                 dbg.pause_requested.store(true, Ordering::SeqCst);
             }
         }

@@ -30,6 +30,7 @@ pub(in crate::cpu) struct PendingDosRead {
     pub(in crate::cpu) ret_ip: u16,
     pub(in crate::cpu) ds: u16,
     pub(in crate::cpu) dx: u16,
+    pub(in crate::cpu) cx: u16,
     pub(in crate::cpu) handle: u16,
     pub(in crate::cpu) file_pos: u32,
 }
@@ -177,6 +178,7 @@ impl Cpu {
                     ret_ip: self.ip,
                     ds,
                     dx,
+                    cx,
                     handle: bx,
                     file_pos,
                 });
@@ -270,6 +272,7 @@ impl Cpu {
         let handle = pdr.handle;
         let ds = pdr.ds;
         let dx = pdr.dx;
+        let cx = pdr.cx;
         let file_pos = pdr.file_pos;
         let base = bus.physical_address(ds, dx);
 
@@ -282,7 +285,7 @@ impl Cpu {
         if bytes_read > 0 {
             let phys_end = base + bytes_read - 1;
             log::debug!(
-                "[DOS] AH=3F read \"{filename}\" pos={file_pos} → phys 0x{base:05X}-0x{phys_end:05X} ({bytes_read} bytes)"
+                "[DOS] AH=3F read \"{filename}\" pos={file_pos} cx={cx} → phys 0x{base:05X}-0x{phys_end:05X} ({bytes_read} bytes)"
             );
             let dump_len = bytes_read.min(16);
             let mut hex = String::new();

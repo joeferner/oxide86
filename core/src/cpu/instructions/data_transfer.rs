@@ -321,6 +321,84 @@ impl Cpu {
         bus.increment_cycle_count(timing::cycles::POP_SEGREG)
     }
 
+    /// Handle opcode 0x0F:
+    /// - 8086: POP CS (dangerous but valid)
+    /// - 286+: two-byte instruction prefix
+    pub(in crate::cpu) fn exec_opcode_0f(&mut self, bus: &mut Bus) {
+        if self.cpu_type.is_286_or_later() {
+            let second = self.fetch_byte(bus);
+            match second {
+                // SGDT/SIDT/LGDT/LIDT/SMSW/LMSW — reg field in ModRM selects operation
+                0x01 => self.exec_0f_01(bus),
+
+                // CLTS — clear task-switched flag in CR0; no-op in real mode
+                0x06 => {
+                    log::debug!(
+                        "CLTS (0F 06) at {:04X}:{:04X} — no-op in real mode",
+                        self.cs,
+                        self.ip.wrapping_sub(2)
+                    );
+                }
+                _ => {
+                    log::warn!(
+                        "Unimplemented 286 two-byte opcode 0F {:02X} at {:04X}:{:04X} — firing INT 6",
+                        second,
+                        self.cs,
+                        self.ip.wrapping_sub(2)
+                    );
+                    self.dispatch_interrupt(bus, 6);
+                }
+            }
+        } else {
+            log::warn!(
+                "POP CS at {:04X}:{:04X} (8086 instruction, dangerous!)",
+                self.cs,
+                self.ip.wrapping_sub(1)
+            );
+            self.pop_segreg(0x0F, bus);
+        }
+    }
+
+    /// 0F 01 — SGDT/SIDT/LGDT/LIDT/SMSW/LMSW (286+)
+    /// Only SMSW and LMSW are implemented; others are rare in real-mode programs.
+    fn exec_0f_01(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
+        match reg {
+            // SMSW r/m16 — store Machine Status Word (CR0 low 16 bits) to r/m
+            // In real mode CR0 = 0x0000 (PE bit clear).
+            4 => {
+                log::debug!(
+                    "SMSW at {:04X}:{:04X} — returning MSW=0x0000",
+                    self.cs,
+                    self.ip.wrapping_sub(3)
+                );
+                if mode == 0b11 {
+                    self.set_reg16(rm, 0x0000);
+                } else {
+                    bus.memory_write_u16(addr, 0x0000);
+                }
+            }
+            // LMSW r/m16 — load Machine Status Word; no-op in real-mode emulation
+            6 => {
+                log::debug!(
+                    "LMSW at {:04X}:{:04X} — no-op in real mode",
+                    self.cs,
+                    self.ip.wrapping_sub(3)
+                );
+            }
+            _ => {
+                log::warn!(
+                    "Unimplemented 0F 01 /{} at {:04X}:{:04X} — firing INT 6",
+                    reg,
+                    self.cs,
+                    self.ip.wrapping_sub(3)
+                );
+                self.dispatch_interrupt(bus, 6);
+            }
+        }
+    }
+
     /// LES - Load Pointer using ES (opcode 0xC4)
     /// Loads far pointer from bus into register and ES
     pub(in crate::cpu) fn les(&mut self, bus: &mut Bus) {

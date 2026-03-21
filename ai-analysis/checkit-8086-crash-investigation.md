@@ -14,9 +14,28 @@ unexplained.
 |------|-------|
 | Program | `CHECKIT.EXE` |
 | PSP segment | `0x0F54` |
+| Load segment | `0x0F64` (PSP + 0x10) |
 | Global data segment | `DS = 4033` (throughout execution) |
 | Physical DS base | `0x40330` |
 | Failing step | Step 7 of 12 |
+
+### EXE Header
+
+| Field | Value |
+|-------|-------|
+| e_cblp | 0x01C0 (448) |
+| e_cp | 0x00BB (187) |
+| e_crlc | 0x04B8 (1208 reloc entries) |
+| e_cparhdr | 0x0140 (320 paragraphs = 5120-byte header) |
+| e_minalloc | 0x5A2A |
+| e_maxalloc | 0xFFFF |
+| e_ss | 0x763E, e_sp = 0x0020 |
+| e_cs | 0x1561, e_ip = 0x0322 |
+| Image size | 95680 bytes (header + image = 100800 bytes; overlays start here) |
+
+**DS is in BSS:** DS relative offset from load segment = `0x4033 − 0x0F64 = 0x30CF` paragraphs =
+197872 bytes. Image is only 95680 bytes. DS starts 102192 bytes past the end of the image → DS is
+entirely in BSS and should be zero-initialised on load.
 
 ---
 
@@ -44,108 +63,265 @@ would then have worked correctly.
 
 ---
 
-## Physical Address `0x4064E` — Timeline of Writes
+## Physical Address `0x4064E` — What Writes There
 
-| Log line | Event | Value written |
-|----------|-------|---------------|
-| 131634 | `[WATCH]` — written by `0070:079C` | `0x64` |
-| 132422 | DOS `AH=3F` read starts: `pos=275632`, buffer `0x39F80–0x49F6F` (65520 bytes) | — |
-| 132424 | `check_pending_dos_read` reports `0x4064E` in buffer at offset `0x66CE`, file pos `301950`, value `0x64` | `0x64` (current value) |
+The watchpoint on `0x4064E` fires **exactly once** in the live MCP run: during
+the overlay's `AH=3F` disk read. The write comes from `int13_read_sectors` in
+the emulator (which uses `bus.memory_write_u8` → properly fires watchpoints).
 
-**Key observation:** the buffer `0x39F80–0x49F6F` contains `0x4064E` (offset
-`0x66CE`), yet **no `[WATCH]` entry fires during the actual write**. The value
-`0x64` reported at line 132424 is the one left by the `0070:079C` write at
-line 131634.
+The reported CS:IP is `0070:079C`, which is the CALL FAR instruction in the DOS
+kernel that invokes INT 13h — see [Why watch_cs/watch_ip = 0070:079C](#why-watchcswatch_ip--007007) below.
 
----
-
-## The Watchpoint Gap
-
-The `check_pending_dos_read` implementation reads the **current** memory value
-when the `AH=3F` call returns, not what the DOS read itself wrote. This means:
-
-- If the DOS read wrote `0x00`, the current value would be `0x00` and we'd see
-  that — but only if no later write put `0x64` back.
-- If the DOS read wrote `0x64`, no observable difference from the prior
-  `0070:079C` write.
-- If the DOS read used a path that **bypasses `bus.memory_write_u8`**, no
-  `[WATCH]` entry fires at all — which is exactly what we observe.
-
-### Known bypass path
-
-`bus.load_at` → `memory.load_at` → `copy_from_slice` completely bypasses
-`memory_write_u8` and therefore bypasses all watchpoints. This path is used
-for boot sector loading and initial program loading; it is **not** supposed to
-be used for DOS file reads.
-
-### Checked — no gap found there
-
-- `bus.memory_write_u16` / `bus.memory_write_u32` → both call `memory_write_u8` ✓
-- REP MOVSB / MOVSW in `string.rs` → both call `bus.memory_write_u8` ✓
-- All `self.memory.*` call-sites in `bus.rs` — only `memory.write_u8` (has
-  watchpoints) and `memory.load_at` (no watchpoints, not used for DOS reads) ✓
+After the overlay loads and execution reaches `91C2:4D02`, the watchpoint does
+**not** fire again. Everything between overlay load and the init check is clean;
+the `0x64` at `0x4064E` is exactly what the overlay disk read wrote.
 
 ---
 
-## File Content at Offset 301950
+## The Root Cause
 
-```
-$ xxd -s 301950 target/CHECKIT.EXE | head -2
-000499be  64 20 72 61 6d 5f 62 61  73 65 62 65 67 09 30 78  |d ram_basebeg.0x|
-```
+### Buffer overlap
 
-Byte `0x64` = `'d'`, the first character of the format string
-`"d ram_basebeg\t0x%07lx\n"` in the overlay's data section. This is what gets
-written to `[4033:031E]` by the overlay load — confirming the init flag
-contains data, not a zeroed flag, after loading.
+The overlay is loaded by the Borland overlay manager via `AH=3F` into a 65520-byte
+staging buffer:
+
+| Item | Value |
+|------|-------|
+| Buffer base (DS:DX at AH=3F trap) | segment `39F8`, DX=0, physical `0x39F80` |
+| Buffer end | `0x39F80 + 0xFFF0 − 1 = 0x49F6F` |
+| DS base | `0x40330` |
+| DS base offset from buffer start | `0x40330 − 0x39F80 = 0x63B0` (25520 bytes) |
+| `[DS:031E]` offset in buffer | `0x63B0 + 0x031E = 0x66CE` (26318 bytes) |
+
+`0x66CE < 0xFFF0` → the init flag **is inside the overlay load buffer**.
+
+### What the overlay file contains at that position
+
+| File offset | Buffer offset | Value |
+|-------------|---------------|-------|
+| 301950 (`0x499BE`) | `0x66CE` | `0x64` = `'d'` |
+
+This is the first byte of the format string `"d ram_basebeg\t0x%07lx\n"` in
+the overlay's data section. The data section starts at buffer offset `0x66B2`;
+the init flag lands 28 bytes in.
+
+File offset 301950 is confirmed by:
+- `xxd -s 301950 target/CHECKIT.EXE | head -2` → `64 20 72 61 6d 5f 62 61...`
+- Live MCP `read_memory` of physical `0x4063E` → format strings visible at `0x4063E`
+- Buffer[0:7] matches file[275632:7] exactly; bytes 8-9 differ by a segment relocation
+  (`0x274B + PSP(0x0F54) = 0x369F` → stored as `9F 36` in memory), confirming
+  file position tracking is accurate.
+
+### Why this crashes
+
+The overlay data section is loaded into the buffer at `0x39F80`, but that buffer
+physically overlaps DS (at `0x40330`). The byte at file offset 301950 (`0x64`) is
+written to physical `0x4064E`, which is also `[DS:031E]` — the first-time init flag.
+
+Because the flag is non-zero, the init code that would populate `[CS:8D77]` is
+skipped. Later, `MOV DS,[CS:8D77]` loads garbage (`0x75E4`), and the subsequent
+far call crashes.
+
+### Why this doesn't happen on real DOS
+
+On real DOS the same EXE is loaded and the same buffer overlap geometry applies.
+The most likely explanation is that the requested byte count (CX in the `AH=3F`
+call) is **smaller on real DOS** — less than 26318 bytes (`0x66CE`) — so the
+data section never reaches `[DS:031E]`. The emulator may be passing a larger CX
+(e.g. the full 65520-byte buffer size) where real DOS would pass only the number
+of bytes remaining in the overlay.
+
+Alternatively, the buffer may be placed at a different physical address on real
+DOS (different `AH=48` allocation result), putting it clear of DS.
+
+CX is not currently logged for AH=3F calls — see [Open Questions](#open-questions).
 
 ---
 
-## Borland Overlay Relocation
+## Why watch_cs/watch_ip = 0070:079C
 
-At log line 223892, the relocation pass processes the third overlay buffer:
+The watchpoint fires inside the emulator's `int13_read_sectors`, which uses
+`bus.memory_write_u8`. At that point `bus.current_ip` contains the last address
+set by `bus.set_current_ip(pre_cs, pre_ip)` in `cpu/mod.rs`.
+
+**The BIOS early-return path** (`cpu/mod.rs` line 365):
+
+```rust
+if self.cs == BIOS_CODE_SEGMENT {
+    self.step_bios_int(bus, self.ip as u8);
+    // ... returns at line 408
+    return;   // ← returns HERE, before set_current_ip
+}
+// Only reached for non-BIOS instructions:
+let pre_cs = self.cs;
+let pre_ip = self.ip;
+bus.set_current_ip(pre_cs, pre_ip);   // line 414
+self.exec_instruction(bus);
+```
+
+When the overlay's AH=3F call causes the DOS kernel to call INT 13h:
+
+1. `0070:079C` = `CALL FAR [CS:00B4]`
+2. `CS:00B4` at physical `0x7B4` = `13 00 00 F0` → far pointer `F000:0013`
+3. `F000` = `BIOS_CODE_SEGMENT`; `set_current_ip` is never called for the BIOS path
+4. `bus.current_ip` stays at `0070:079C` (last non-BIOS instruction)
+5. Watchpoint fires → reports `0070:079C` as the writing instruction
+
+The write actually comes from `int13_read_sectors` inside the INT 13h handler,
+but the CS:IP attribution is one instruction too early.
+
+---
+
+## Emulator Debugger Bugs Found
+
+### 1. Breakpoint executes the instruction before pausing (on continue) — **FIXED**
+
+`debug_check` is called at the top of `step()` before `cpu.step`. When a breakpoint
+fires, `do_pause` blocks, the user sends Continue, `do_pause` returns, and then
+`step()` falls through to `cpu.step` — **executing the breakpoint instruction**.
+
+**Fix:** `debug_check` returns `bool`; `step()` skips `cpu.step` when `true`.
+
+### 2. Write watchpoint CS:IP reported one instruction late — **FIXED**
+
+`memory_write_u8` stores `(addr, val, 0, 0)` in `watchpoint_hit` and sets
+`pause_requested`. The CS:IP is filled in by `do_pause` on the *next* iteration —
+by which time IP has already advanced. The MCP watchpoint paused at `0070:07A1`
+instead of the actual writing instruction.
+
+**Fix:** Capture `watch_cs / watch_ip` at write time in `bus.rs` instead of
+deferring to `do_pause`.
+
+Both fixes implemented in `core/src/computer.rs` and `core/src/bus.rs`.
+
+### 3. BIOS path skips set_current_ip — **not yet fixed**
+
+See [Why watch_cs/watch_ip = 0070:079C](#why-watchcswatch_ip--007007) above.
+`bus.set_current_ip` should also be called for BIOS dispatches so watchpoint
+attribution is correct even during INT 13h execution.
+
+---
+
+## Confirmed Facts (from live MCP session + log analysis)
+
+### Overlay read sizes — CONFIRMED
+
+From the actual log (`oxide86.log` lines 1861–1865):
 
 ```
-add [0x089c], dx   ; ES=4BA0, value 0x4033 → 0x4F87
+AH=3F read "CHECKIT.EXE" pos=210112 cx=65520 → phys 0x29F90-0x39F7F (65520 bytes)
+AH=3F read "CHECKIT.EXE" pos=275632 cx=65520 → phys 0x39F80-0x49F6F (65520 bytes)
+AH=3F read "CHECKIT.EXE" pos=341152 cx=15664 → phys 0x49F70-0x4DC9F (15664 bytes)
 ```
 
-Physical address `0x4C29C` (inside the overlay buffer). The overlay manager
-adds PSP (`0x0F54`) to stored relative segment values. DS = `4033` is
-CHECKIT's permanent global data segment (set at `19CD:137C/13B3` via
-`push ds` / `pop ds`), not the relocated value.
+- CX = 65520 for the first two reads, **15664** for the third.
+- Overlay data covers physical `0x29F90`–`0x4DC9F`. The third read ends at
+  `0x4DC9F`, well **below** `0x50330` (the MCB boundary after CHECKIT's block).
+- The corrupting byte (`0x64` at `0x4064E`) is written by the **second** read
+  (`0x39F80`–`0x49F6F`), as previously confirmed.
+
+### CHECKIT accesses memory beyond its MCB
+
+`CHECKIT.CNF` is read into a buffer at physical `0x5034C` (= segment `0x5033`,
+offset `0x001C`). This is **28 bytes past** CHECKIT's MCB end (`0x5032F`).
+CHECKIT freely accesses this region at runtime; DOS has no memory protection.
+
+This means whatever is at segment `0x5033` (physical `0x50330`) is overwritten
+by CHECKIT's runtime use of that memory. The `0xFE` byte seen there during the
+live MCP session is **not** an original MCB byte — it was written by CHECKIT
+after load.
+
+### Memory layout is identical for 286 and 8086 CPU modes
+
+In both CPU modes, COMMAND.COM's AUTOEXEC.BAT buffer lands at physical `0x9FFAF`
+(confirmed in both logs). The DOS kernel, COMMAND.COM, and CHECKIT load at the
+same addresses regardless of CPU type. The conventional memory shortage (CHECKIT
+getting only `0x40EF` paragraphs ≈ 260 KB) is **not** caused by the CPU mode.
+
+### MCB chain — what exists above CHECKIT's block
+
+Since the overlays do NOT reach `0x50330`, the `0xFE` at that address is from
+CHECKIT's own runtime. The MCB chain above CHECKIT's block at `0x5033` was
+almost certainly a valid free block (type `'Z'` or `'M'`) that CHECKIT corrupted
+during execution. The evidence strongly suggests:
+
+- Before CHECKIT ran: free MCB at `0x5033` extending toward `0xA000`
+- After CHECKIT ran: byte at `0x50330` overwritten by CHECKIT.CNF data or other use
 
 ---
 
 ## Open Questions
 
-1. **Is there a remaining watchpoint gap in the DOS `AH=3F` path?**
-   The writes to `0x39F80–0x49F6F` do not trigger the watchpoint, even though
-   `0x4064E` falls in that range. Either:
-   - The actual write path uses `bus.load_at` somewhere, OR
-   - The saved DS:DX in `PendingDosRead` resolves to a different physical range
-     than where the data lands (possible if DS changes between INT 21h trap and
-     return).
+1. ~~**What is CX for the overlay AH=3F call?**~~ **RESOLVED:** CX=65520 for
+   first two reads, 15664 for the third. The second read (`0x39F80`–`0x49F6F`)
+   writes `0x64` to `[DS:031E]`. The overlays do not reach `0x50330`.
 
-2. **Does the DOS read write `0x64` or `0x00` to `0x4064E`?**
-   The correct answer determines whether:
-   - The file's content is the root cause (offset 301950 = `0x64` always sets
-     the flag), OR
-   - Some post-read code re-writes `0x64` back (e.g. the `0070:079C` write
-     survives because the DOS read writes to a different range).
+2. **Why does CHECKIT only get `0x40EF` paragraphs (≈260 KB)?**
+   COMMAND.COM PSP top = `0xA000` ✓ but CHECKIT PSP top = `0x5033`. This means
+   the free block available at EXEC time was only `0x40F7` paragraphs (from
+   `0x0F3C` to `0x5032`). There must be another allocated MCB at `0x5033` — most
+   likely COMMAND.COM's transient portion — leaving only 260 KB free for CHECKIT.
+   **On real 640 KB DOS, COMMAND.COM's transient would be near `0xA000`, giving
+   CHECKIT ~580 KB and placing the Borland pool above DS.**
 
-3. **What is `0070:079C`?**
-   Physical `0x0E9C` — this is in the low DOS data area. The write at line
-   131634 comes from here, but the context is not yet confirmed (suspected INT
-   13h or RAM test routine in early DOS init).
+3. **What is at segment `0x5033` before CHECKIT corrupts it?**
+   Likely COMMAND.COM's transient code block. If true, it explains the small
+   CHECKIT allocation and also explains why CHECKIT freely writes there — it
+   knows COMMAND.COM's transient is gone (overwritten by the child program).
 
-4. **Unrecognised opcodes at `19CD:1382` and `19CD:1396` (`db 0x8f`)**
-   These may affect program flow before the init check runs.
+4. **286 vs 8086 behavioral difference in CHECKIT.**
+   Memory layout is identical in both modes. The observed difference is almost
+   certainly **instruction compatibility**: CHECKIT.EXE was compiled for 286 and
+   uses 286-specific opcodes (C0/C1 shift-by-imm, 0x68 PUSH imm, PUSHA/POPA,
+   ENTER/LEAVE, etc.). On 8086 mode these trigger INT 6 (invalid opcode). Our
+   BIOS INT 6 handler is a no-op (just IRET), so control returns to MS-DOS's own
+   INT 6 handler, which terminates the program. On 286 mode those instructions
+   execute normally and CHECKIT reaches the `91C2:4D02` crash point.
+
+5. **Should `[4033:031E]` be `0x00` before the overlay runs?**
+   Yes — this is BSS (102,192 bytes past the EXE image). If the emulator doesn't
+   zero BSS on `AH=4B` EXEC, prior memory contents remain. However, the `0x64`
+   is demonstrably written by the second overlay AH=3F read, not by stale BSS.
+
+6. **Borland Overlay Relocation**
+   The relocation pass processes overlay buffers and adds PSP (`0x0F54` or
+   similar) to stored relative segment values. DS = `0x4033` is CHECKIT's
+   permanent global data segment — not itself a relocation target.
 
 ---
 
-## Debugging Tooling / Code Changes
+## Debugging Tooling / Suggested Code Changes
 
-### 1. Fix `check_pending_dos_read` — snapshot before the read
+### 1. Log CX in `log_int21_dos_call` for AH=3F
+
+**Problem:** We don't know the requested byte count passed to AH=3F.
+
+**Fix:** In `log_int21_dos_call` (int21_dos_services.rs), save `cx` in
+`PendingDosRead` and log it:
+
+```rust
+// Add to PendingDosRead struct:
+pub(in crate::cpu) cx: u16,   // requested byte count
+
+// In the AH=3F branch:
+self.pending_dos_read = Some(PendingDosRead {
+    ...
+    cx,
+    ...
+});
+```
+
+```rust
+// In check_pending_dos_read, change the log line to include cx:
+log::debug!(
+    "[DOS] AH=3F read \"{filename}\" pos={file_pos} cx={} → phys 0x{base:05X}-0x{phys_end:05X} ({bytes_read} bytes)",
+    pdr.cx
+);
+```
+
+---
+
+### 2. Fix `check_pending_dos_read` — snapshot before the read
 
 **Problem:** The current implementation reads the memory value *after* the DOS
 call returns, so it can't distinguish "DOS read wrote 0x64" from "the value was
@@ -178,15 +354,30 @@ for (addr, old_val) in &pdr.pre_read_values {
 }
 ```
 
-This tells us definitively whether the DOS read changed the value.
+---
+
+### 3. Fix BIOS path to call set_current_ip
+
+**Problem:** The BIOS early-return path in `cpu/mod.rs` returns before calling
+`bus.set_current_ip(pre_cs, pre_ip)`, so watchpoint hits during BIOS execution
+report the last non-BIOS instruction's address.
+
+**Fix:** Call `set_current_ip` at the top of the BIOS branch too:
+
+```rust
+if self.cs == BIOS_CODE_SEGMENT {
+    bus.set_current_ip(self.cs, self.ip);   // ← add this
+    self.step_bios_int(bus, self.ip as u8);
+    ...
+}
+```
 
 ---
 
-### 2. Add watchpoint coverage to `bus.load_at`
+### 4. Add watchpoint coverage to `bus.load_at`
 
 **Problem:** `bus.load_at` → `memory.load_at` → `copy_from_slice` bypasses
-`memory_write_u8` entirely. Any overlay data loaded this way is invisible to
-the watchpoint system.
+`memory_write_u8` entirely.
 
 **Fix:** After `self.memory.load_at(addr, data)` in `bus.rs`, scan for watched
 addresses in the written range:
@@ -205,45 +396,11 @@ pub fn load_at(&mut self, addr: usize, data: &[u8]) {
 
 ---
 
-### 3. Log the disassembled instruction at every watchpoint hit
+### 5. Verify INT 13h buffer addresses match AH=3F buffer
 
-**Problem:** `[WATCH] 0x4064E written: 0x64 by 0070:079C` tells us the CS:IP
-but not *what instruction* ran. For addresses like `0070:079C` in the DOS data
-area it's hard to tell whether this is code or a stray write.
-
-**Fix:** In `bus.memory_write_u8`, when a watchpoint fires, also log a few
-bytes of the instruction stream so the cause is self-documenting in the log.
-Alternatively, the CPU's existing instruction trace (if enabled) can be cross-
-referenced with the CS:IP — check `oxide86.log` for lines near 131634 with
-CS=0070 IP=079C.
-
----
-
-### 4. Confirm what `0070:079C` is
-
-The write at log line 131634 comes from physical `0x0E9C` (segment `0070`,
-offset `079C`). This is in the real-mode IVT/BDA/DOS data region.
-
-**Steps to identify it:**
-1. Enable instruction-level trace (`log::trace!` in the fetch/decode loop or
-   use the existing `--trace` flag if present).
-2. Search the log for `CS=0070 IP=079C` just before line 131634.
-3. Alternatively, add a **read-only snapshot** of the bytes at `0x0E9C` in
-   `bus.rs` to see if that address contains code or data at boot time.
-
----
-
-### 5. Verify the `PendingDosRead` buffer range is correct
-
-**Problem:** `PendingDosRead` saves DS:DX at the time of the INT 21h trap. If
-the actual DOS `AH=3F` handler modifies the buffer pointer before writing (some
-DOS kernels do pointer fixups), the saved address may not match where the bytes
-actually land.
-
-**Fix:** Cross-check the `phys` range printed by `check_pending_dos_read`
-(`0x39F80–0x49F6F`) against the INT 13h calls that happen *inside* the DOS
-read. The INT 13h ES:BX buffer address is the authoritative destination for
-disk-sector data. Add logging to `handle_int13_disk_services`:
+**Problem:** The INT 13h ES:BX is the authoritative destination for disk-sector
+data. Cross-checking it against the `AH=3F` DS:DX buffer would confirm the data
+actually lands where expected.
 
 ```rust
 log::debug!(
@@ -252,49 +409,25 @@ log::debug!(
 );
 ```
 
-Compare those physical addresses with `0x39F80–0x49F6F` to verify the overlay
-data actually lands in the expected range.
-
----
-
-### 6. Add a "first write only" watchpoint variant
-
-For tracking the init flag specifically: the current watchpoint fires on
-*every* write, including writes of the same value. A variant that only fires
-when the value *changes* would reduce noise and make it easier to see the
-transition that matters (e.g. `0x64` → `0x00` if the overlay load does zero
-the flag).
-
-This could be a separate `Vec<usize>` — `change_watchpoints` — checked in
-`memory_write_u8` as:
-
-```rust
-for &wp in &self.change_watchpoints {
-    if addr == wp {
-        let old = self.memory.read_u8(addr);  // read BEFORE the write
-        if old != val {
-            log::info!("[WATCH-CHANGE] 0x{wp:05X}: 0x{old:02X} → 0x{val:02X}");
-        }
-    }
-}
-```
-
 ---
 
 ## Summary
 
 The crash is caused by the init flag `[4033:031E]` (physical `0x4064E`) being
-non-zero (`0x64`) when the 91C2 overlay runs its first-time check. Because the
-flag is non-zero, the actual init code that would set up `[CS:8D77]` is
-skipped. Later code loads DS from the garbage value at `[CS:8D77]` and crashes.
+`0x64` when the 91C2 overlay runs its first-time init check. Because the flag is
+non-zero, the init code that would populate `[CS:8D77]` is skipped, a garbage DS
+value is loaded, and the subsequent far call crashes.
 
-The `0x64` value comes from the overlay file itself (file offset 301950 is
-`'d'`). A write from `0070:079C` also puts `0x64` there before the overlay
-load. The watchpoint implementation in `check_pending_dos_read` reads the
-current memory value on return rather than intercepting the actual write,
-making it impossible to distinguish which write is "last" from the logs alone.
+The `0x64` is written by the overlay load itself: the Borland overlay manager reads
+65520 bytes from disk into a buffer at segment `39F8` (physical `0x39F80`). That
+buffer physically overlaps DS=`4033` (physical `0x40330`), and the byte at file
+offset 301950 — the `'d'` in `"d ram_basebeg\t0x..."` — lands exactly at `[DS:031E]`.
 
-The most likely fix direction: the init flag should be zeroed before the 91C2
-overlay module runs. Either the emulator needs to correctly simulate whatever
-DOS/CHECKIT does to zero that region, or there is a bug in the overlay load
-that puts file data where the flag should be.
+DS is in BSS (102192 bytes past the EXE image) and should be zero on program load.
+The `0x64` is not supposed to be there; either the emulator doesn't zero BSS pages,
+or the AH=3F byte count (CX) is larger than it should be on real DOS, or the buffer
+is placed at an address that shouldn't overlap DS.
+
+**Most actionable next step:** log CX for AH=3F calls and compare against the
+`0x66CE` (26318-byte) threshold. If CX ≥ 26318 in the emulator but < 26318 on
+real DOS, that's the direct cause.

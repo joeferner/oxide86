@@ -176,8 +176,10 @@ impl Computer {
     }
 
     pub fn step(&mut self) {
-        if let Some(debug) = &self.debug {
-            self.debug_check(&debug.clone());
+        if let Some(debug) = &self.debug
+            && self.debug_check(&debug.clone())
+        {
+            return;
         }
         self.process_key_presses();
         self.cpu.step(&mut self.bus);
@@ -482,39 +484,50 @@ impl Computer {
         self.cpu.is_terminal_halt()
     }
 
+    /// Returns `true` when the MCP debug server has paused execution.
+    pub fn is_debug_paused(&self) -> bool {
+        self.debug
+            .as_ref()
+            .is_some_and(|d| d.paused.load(Ordering::Relaxed))
+    }
+
     pub fn log_cpu_state(&self) {
         self.cpu.log_state();
     }
 
-    fn debug_check(&mut self, dbg: &Arc<DebugShared>) {
+    /// Returns `true` if the emulator was paused this call (so the caller
+    /// should skip executing the next CPU instruction).
+    fn debug_check(&mut self, dbg: &Arc<DebugShared>) -> bool {
         if dbg.paused.load(Ordering::Relaxed) {
             self.service_debug_commands(dbg);
-            return;
+            return true;
         }
 
         if dbg.pause_requested.load(Ordering::Relaxed) {
             dbg.pause_requested.store(false, Ordering::Relaxed);
             self.do_pause(dbg);
-            return;
+            return true;
         }
 
-        if dbg.has_breakpoints.load(Ordering::Relaxed) {
-            let cs = self.cpu.cs();
-            let ip = self.cpu.ip();
-            let hit = dbg.breakpoints.lock().unwrap().contains(&(cs, ip));
-            if hit {
-                self.do_pause(dbg);
-            }
+        if self.check_breakpoint(dbg) {
+            self.do_pause(dbg);
+            return true;
         }
+
+        false
+    }
+
+    /// Returns `true` if the current CS:IP matches a breakpoint.
+    fn check_breakpoint(&self, dbg: &Arc<DebugShared>) -> bool {
+        if !dbg.has_breakpoints.load(Ordering::Relaxed) {
+            return false;
+        }
+        let cs = self.cpu.cs();
+        let ip = self.cpu.ip();
+        dbg.breakpoints.lock().unwrap().contains(&(cs, ip))
     }
 
     fn do_pause(&mut self, dbg: &Arc<DebugShared>) {
-        // Fill in cs/ip on any pending watchpoint hit
-        if let Some(ref mut hit) = *dbg.watchpoint_hit.lock().unwrap() {
-            hit.2 = self.cpu.cs();
-            hit.3 = self.cpu.ip();
-        }
-
         *dbg.snapshot.lock().unwrap() = Some(self.cpu.snapshot());
         dbg.paused.store(true, Ordering::SeqCst);
         dbg.cond_paused.notify_all();
@@ -526,14 +539,18 @@ impl Computer {
         loop {
             let cmd = {
                 let mut lock = dbg.pending_command.lock().unwrap();
-                while lock.is_none() {
-                    lock = dbg.cond_command.wait(lock).unwrap();
+                // Non-blocking: if no command is ready, return and let the
+                // caller (step()) yield back to the GUI event loop.  The next
+                // frame will call debug_check again and try once more.
+                match lock.take() {
+                    Some(cmd) => cmd,
+                    None => return,
                 }
-                lock.take().unwrap()
             };
 
             match cmd {
                 DebugCommand::Continue => {
+                    *dbg.watchpoint_hit.lock().unwrap() = None;
                     dbg.paused.store(false, Ordering::SeqCst);
                     *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Ok);
                     dbg.cond_paused.notify_all();
@@ -542,6 +559,12 @@ impl Computer {
                 DebugCommand::Step(n) => {
                     for _ in 0..n {
                         self.cpu.step(&mut self.bus);
+                        // Stop early if a watchpoint or breakpoint fired
+                        if dbg.pause_requested.load(Ordering::Relaxed) || self.check_breakpoint(dbg)
+                        {
+                            dbg.pause_requested.store(false, Ordering::Relaxed);
+                            break;
+                        }
                     }
                     *dbg.snapshot.lock().unwrap() = Some(self.cpu.snapshot());
                     *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Ok);

@@ -269,17 +269,34 @@ fn run(cli: Cli) -> Result<()> {
                             js.poll(&mut computer.joystick_mut());
                         }
 
+                        let any_paused = app_state.is_paused || computer.is_debug_paused();
+
+                        // Release/re-grab cursor when pause state changes in exclusive mode
+                        if exclusive_mode {
+                            if !was_paused && any_paused {
+                                exclusive_mode = false;
+                                window.set_cursor_visible(true);
+                                let _ = window.set_cursor_grab(CursorGrabMode::None);
+                                window.set_title(TITLE);
+                            } else if was_paused && !any_paused {
+                                window.set_cursor_visible(false);
+                                if window.set_cursor_grab(CursorGrabMode::Locked).is_err() {
+                                    let _ = window.set_cursor_grab(CursorGrabMode::Confined);
+                                }
+                            }
+                        }
+
                         // Reset throttle when resuming from pause to avoid burst catch-up
-                        if was_paused && !app_state.is_paused {
+                        if was_paused && !any_paused {
                             throttle.reset(computer.get_cycle_count());
                         }
-                        was_paused = app_state.is_paused;
+                        was_paused = any_paused;
 
                         let halted = step_emulator(
                             &mut computer,
                             &mut pixels,
                             &video_buffer,
-                            app_state.is_paused || app_state.halted,
+                            any_paused || app_state.halted,
                             &mut throttle,
                             max_cycles_per_frame,
                         );
@@ -909,6 +926,12 @@ fn step_emulator(
             // If waiting for a keypress, step() returns without advancing cycles,
             // which would spin this loop forever and lock up the window.
             if computer.wait_for_key_press() {
+                break;
+            }
+            // If a debug pause was triggered mid-frame (e.g. by MCP pause command or
+            // a breakpoint), step() returns without advancing cycles.  Break out now
+            // so the winit event loop stays responsive instead of spinning forever.
+            if computer.is_debug_paused() {
                 break;
             }
         }
