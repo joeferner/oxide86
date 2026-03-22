@@ -30,7 +30,6 @@ impl Cpu {
         let new_flags = self.pop(bus);
 
         let old_if = self.get_flag(cpu_flag::INTERRUPT);
-        let new_if = (new_flags & cpu_flag::INTERRUPT) != 0;
 
         self.ip = new_ip;
         self.cs = new_cs;
@@ -40,14 +39,22 @@ impl Cpu {
             _ => (new_flags & 0x7FFF) | 0x0002,
         };
 
-        if self.exec_logging_enabled && old_if != new_if {
+        if self.exec_logging_enabled {
+            log::info!("popped IP={:04X}", self.ip);
+            log::info!("popped CS={:04X}", self.cs);
             log::info!(
-                "IRET: IF {} -> {} (FLAGS={:04X}) -> {:04X}:{:04X}",
+                "popped flags={:04X}  CF={} PF={} AF={} ZF={} SF={} TF={} IF={}->{} DF={} OF={}",
+                self.flags,
+                self.get_flag(cpu_flag::CARRY) as u8,
+                self.get_flag(cpu_flag::PARITY) as u8,
+                self.get_flag(cpu_flag::AUXILIARY) as u8,
+                self.get_flag(cpu_flag::ZERO) as u8,
+                self.get_flag(cpu_flag::SIGN) as u8,
+                self.get_flag(cpu_flag::TRAP) as u8,
                 old_if as u8,
-                new_if as u8,
-                new_flags,
-                new_cs,
-                new_ip
+                self.get_flag(cpu_flag::INTERRUPT) as u8,
+                self.get_flag(cpu_flag::DIRECTION) as u8,
+                self.get_flag(cpu_flag::OVERFLOW) as u8,
             );
         }
 

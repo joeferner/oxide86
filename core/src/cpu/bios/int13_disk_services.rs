@@ -174,6 +174,11 @@ impl Cpu {
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
         let buffer_addr = bus.physical_address(self.es, self.bx);
 
+        log::debug!(
+            "[INT13] AH=02 drive={} C={} H={} S={} count={} → ES:BX={:04X}:{:04X} phys=0x{:05X}",
+            drive, cylinder, head, sector, count, self.es, self.bx, buffer_addr
+        );
+
         if drive.is_floppy() {
             let drive_index = drive.as_floppy_index() as u8;
             let eot = sector + count - 1;
@@ -194,12 +199,16 @@ impl Cpu {
 
             // NDM bit set in MSR means PIO data transfer (execution) phase is active
             let msr = bus.io_read_u8(FDC_MSR);
+            log::debug!("[INT13] FDC MSR=0x{:02X} NDM={}", msr, (msr & FDC_MSR_NDM != 0) as u8);
             if msr & FDC_MSR_NDM != 0 {
                 let total_bytes = (count as usize) * 512;
                 for i in 0..total_bytes {
                     let byte = bus.io_read_u8(FDC_DATA);
                     bus.memory_write_u8(buffer_addr + i, byte);
                 }
+                log::debug!("[INT13] FDC read {} bytes to phys 0x{:05X}-0x{:05X}", total_bytes, buffer_addr, buffer_addr + total_bytes - 1);
+            } else {
+                log::warn!("[INT13] FDC NDM not set — skipped writing {} bytes to phys 0x{:05X}", (count as usize) * 512, buffer_addr);
             }
 
             // Read 7 result bytes; ST0 is first
@@ -269,6 +278,7 @@ impl Cpu {
                 let byte = bus.io_read_u8(HDC_DATA);
                 bus.memory_write_u8(buffer_addr + i, byte);
             }
+            log::debug!("[INT13] HDC read {} bytes to phys 0x{:05X}-0x{:05X}", total_bytes, buffer_addr, buffer_addr + total_bytes - 1);
 
             self.ax = (self.ax & 0xFF00) | (count as u16); // AL = sectors read
             self.ax &= 0x00FF; // AH = 0 (success)

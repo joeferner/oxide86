@@ -437,6 +437,8 @@ impl Cpu {
                 self.get_flag(cpu_flag::DIRECTION) as u8,
                 self.get_flag(cpu_flag::OVERFLOW) as u8,
             );
+            log::info!("pushing CS={:04X}", self.cs);
+            log::info!("pushing IP={:04X}", self.ip);
         }
         self.halted = false;
         self.push(self.flags, bus);

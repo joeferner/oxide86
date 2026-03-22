@@ -286,6 +286,71 @@ live MCP session is from CHECKIT's own runtime (CHECKIT.CNF data etc.).
 
 ---
 
+## Log Comparison Analysis (oxide86.log vs oxide86-working-hdd.log)
+
+`python3 scripts/compare_logs.py oxide86.log oxide86-working-hdd.log`
+
+Found **26 divergences**:
+- Divergences 1–25: minor log-format differences only — `F3` (REP prefix) is
+  logged as a separate instruction in one emulator and combined with the following
+  byte in the other. Both logs execute the same code; these are not real behavioral
+  differences.
+- **Divergence 26** (permanent — no resync): at `oxide86.log` line 2741 /
+  `oxide86-working-hdd.log` line 2665. Both are at address `0070:23BB`.
+
+### INT 1Ah AH=02h divergence
+
+DOS boot code at `0070:23AE`–`0070:23CB`:
+
+```
+xor cx, cx          ; CX = 0
+xor dx, dx          ; DX = 0
+mov ah, 0x02
+int 0x1a            ; AH=02h: read RTC time
+cmp cx, 0x0000
+jne 0x23cd          ; ← jumps in working emulator, falls through in ours
+cmp dx, 0x0000
+jne 0x23cd
+cmp bp, 0x0001      ; retry counter
+je  0x23e1          ; give up if already retried
+inc bp
+mov cx, 0x4000
+loop 0x23c9         ; delay, then retry INT 1Ah
+jmp 0x23ae
+```
+
+- **Our emulator (8086 CPU):** `has_rtc()` = false (no RTC for 8086 mode) →
+  INT 1Ah AH=02h sets CF=1, leaves CX=DX=0. Both `jne` branches fall through.
+  After one retry still gets zeros; BP=1 → `je 0x23e1` gives up. The byte at
+  `cs:[0x04F3]` (physical `0x0BF3`) is **never** written with `0x01`.
+- **Working emulator (also 8086 CPU):** returns CX≠0 from INT 1Ah AH=02h.
+  `jne 0x23cd` is taken. Writes `0x01` to `cs:[0x04F3]` and continues normal
+  init.
+
+This is non-standard behavior by the working emulator: on a real 8086/XT with
+no RTC, INT 1Ah AH=02h would return CF=1 without touching CX/DX, giving the
+same CX=DX=0 result. The working emulator appears to return BDA timer ticks
+in CX:DX (non-zero after a few seconds of boot) even in 8086 mode.
+
+The byte at `cs:[0x04F3]` is a DOS internal RTC-valid flag. Its absence may
+affect how DOS initialises the file system or memory arena, but the impact on
+CHECKIT's load address and overlay buffer placement is **not yet determined**.
+
+### In our 286 mode
+
+With `--cpu 286` (the default), the RTC is created and returns real system
+time. INT 1Ah AH=02h returns non-zero CX (e.g. `0x0816` for 8:22 AM), the
+`jne 0x23cd` is taken, and DOS takes the same path as the working emulator.
+Despite this, CHECKIT still crashes at `91C2:4D02` — the buffer overlap writes
+`0x64` to `[DS:031E]` regardless of CPU mode, because CHECKIT's load address
+and the Borland OVR buffer address are identical in both 286 and 8086 modes.
+
+The INT 1Ah divergence is therefore a **separate bug** (our emulator returns
+the wrong values for 8086 + no RTC) but it is **not the root cause** of the
+`91C2:4D02` crash.
+
+---
+
 ## Open Questions
 
 1. ~~**What is CX for the overlay AH=3F call?**~~ **RESOLVED:** CX=65520 for
@@ -325,6 +390,34 @@ live MCP session is from CHECKIT's own runtime (CHECKIT.CNF data etc.).
    The relocation pass processes overlay buffers and adds PSP (`0x0F54` or
    similar) to stored relative segment values. DS = `0x4033` is CHECKIT's
    permanent global data segment — not itself a relocation target.
+
+7. **Why does running from floppy work but from HDD fail?**
+   Confirmed: both `checkit-floppy.exe` and `checkit-hdd.exe` (which differ by
+   only 41 bytes in overlay string data, neither at DS:031E) work from floppy
+   A: but fail when run from HDD C:. The disk read paths (floppy INT 13h and
+   HDD ATA) were audited and are both correct — the data read from the file is
+   identical in both cases.
+
+   The most likely explanation is **hardware detection**: when CHECKIT is run
+   from floppy without an HDD attached, it detects no hard disk (INT 13h AH=15h
+   or AH=08h returns "not present" for drive 0x80) and skips the HDD diagnostic
+   overlays entirely. The crashing overlay module is only loaded when CHECKIT
+   decides to run HDD tests.
+
+   **Verification test:** run the emulator with both `--hdd tmp/hdd.img` AND
+   `--floppy-a disk.img`, then run `a:checkit` (from floppy). If it crashes,
+   this confirms the crash is triggered by HDD detection, not by where the EXE
+   resides.
+
+8. **Why does the working emulator (separate codebase) not have the buffer overlap?**
+   Unknown. Possible explanations: (a) the Borland OVR buffer lands at a different
+   physical address (different DOS kernel size, different PSP allocation), (b) the
+   working emulator's CHECKIT.EXE is a different build (8086-compiled, smaller BSS,
+   different overlay geometry), or (c) the working emulator's EXEC implementation
+   allocates memory differently so the buffer does not overlap DS. The INT 1Ah
+   divergence could indirectly affect the load address if the RTC-valid flag at
+   `cs:[0x04F3]` changes how DOS sizes the transient area — but this has not been
+   confirmed.
 
 ---
 
