@@ -55,7 +55,7 @@
 - [X] Add extended memory/A20 line support
 - [X] MCP Debugging Service (see ai-analysis/mcp-debug-server-plan.md)
 - [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
-  - [ ] Test CheckIt
+  - [ ] Test CheckIt (see ai-analysis/f80-extended-precision.md)
   - [ ] Test Fractint Version 15.x and below
   - [ ] Emulate 80287
 - [ ] WASM

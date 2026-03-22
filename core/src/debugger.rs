@@ -135,6 +135,11 @@ pub struct DebugSnapshot {
     pub fs: u16,
     pub gs: u16,
     pub flags: u16,
+    // FPU state
+    pub fpu_top: u8,
+    pub fpu_stack: [f64; 8],
+    pub fpu_status_word: u16,
+    pub fpu_control_word: u16,
 }
 
 pub enum DebugCommand {

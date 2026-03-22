@@ -14,6 +14,7 @@ use crate::{
 
 pub mod bios;
 mod cpu_type;
+pub(crate) mod f80;
 pub(crate) mod instructions;
 mod timing;
 
@@ -130,8 +131,8 @@ pub(crate) struct Cpu {
     /// 8087 status word (SW). Reset to 0x0000 by FNINIT.
     fpu_status_word: u16,
 
-    /// 8087 register stack (8 x 80-bit stored as f64)
-    fpu_stack: [f64; 8],
+    /// 8087 register stack (8 x 80-bit extended precision)
+    fpu_stack: [f80::F80; 8],
 
     /// 8087 stack top pointer (0-7). ST(i) = fpu_stack[(fpu_top + i) & 7].
     fpu_top: u8,
@@ -234,7 +235,7 @@ impl Cpu {
             math_coprocessor,
             fpu_control_word: FPU_DEFAULT_CONTROL_WORD,
             fpu_status_word: 0,
-            fpu_stack: [0.0_f64; 8],
+            fpu_stack: [f80::F80::ZERO; 8],
             fpu_top: 0,
         }
     }
@@ -273,6 +274,16 @@ impl Cpu {
             fs: self.fs,
             gs: self.gs,
             flags: self.flags,
+            fpu_top: self.fpu_top,
+            fpu_stack: {
+                let mut arr = [0.0f64; 8];
+                for (i, v) in self.fpu_stack.iter().enumerate() {
+                    arr[i] = v.to_f64();
+                }
+                arr
+            },
+            fpu_status_word: self.fpu_status_word,
+            fpu_control_word: self.fpu_control_word,
         }
     }
 
@@ -535,7 +546,7 @@ impl Cpu {
         self.wait_for_key_press_patch_flags = false;
         self.fpu_control_word = FPU_DEFAULT_CONTROL_WORD;
         self.fpu_status_word = 0;
-        self.fpu_stack = [0.0_f64; 8];
+        self.fpu_stack = [f80::F80::ZERO; 8];
         self.fpu_top = 0;
 
         // Set CPU to start at this location

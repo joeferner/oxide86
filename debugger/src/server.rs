@@ -131,6 +131,7 @@ fn handle_tools_list(id: Value) -> Value {
                 tool_def("clear_write_watchpoint", "Remove a write watchpoint",
                     json!({"type":"object","properties":{"addr":{"type":"integer"}},"required":["addr"]})),
                 tool_def("list_write_watchpoints", "List all write watchpoints", no_params.clone()),
+                tool_def("get_fpu_registers", "Get FPU stack registers ST(0)–ST(7), control word, and status word", no_params.clone()),
             ]
         }
     })
@@ -156,6 +157,7 @@ fn handle_tools_call(id: Value, params: &Value, debug: &Arc<DebugShared>) -> Val
         "set_write_watchpoint" => tool_set_write_watchpoint(args, debug),
         "clear_write_watchpoint" => tool_clear_write_watchpoint(args, debug),
         "list_write_watchpoints" => tool_list_write_watchpoints(debug),
+        "get_fpu_registers" => tool_get_fpu_registers(debug),
         _ => format!("Unknown tool: {tool}"),
     };
     json!({
@@ -359,6 +361,26 @@ fn tool_list_write_watchpoints(debug: &Arc<DebugShared>) -> String {
             .map(|a| format!("0x{a:05X}"))
             .collect::<Vec<_>>()
             .join("\n")
+    }
+}
+
+fn tool_get_fpu_registers(debug: &Arc<DebugShared>) -> String {
+    let snap = debug.snapshot.lock().unwrap();
+    if let Some(s) = snap.as_ref() {
+        let top = s.fpu_top as usize;
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "TOP={} SW={:04X} CW={:04X}",
+            top, s.fpu_status_word, s.fpu_control_word
+        ));
+        for i in 0..8usize {
+            let phys = (top + i) & 7;
+            let val = s.fpu_stack[phys];
+            lines.push(format!("ST({i}) [{phys}] = {val:e}  ({val})"));
+        }
+        lines.join("\n")
+    } else {
+        "No snapshot available — pause the emulator first".to_string()
     }
 }
 

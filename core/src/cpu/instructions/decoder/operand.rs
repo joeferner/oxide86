@@ -7,8 +7,21 @@ pub enum Operand {
     Seg(SegReg, u16),  // segment register + its value at decode time
     Imm8(u8),
     Imm16(u16),
-    Mem8 { mem: MemRef, value: u8 },
-    Mem16 { mem: MemRef, value: u16 },
+    Mem8 {
+        mem: MemRef,
+        value: u8,
+    },
+    Mem16 {
+        mem: MemRef,
+        value: u16,
+    },
+    /// FPU stack register ST(i)
+    FpuReg(u8),
+    /// FPU memory operand; `bytes` is the operand size (2, 4, 8, 10, 14, or 94)
+    FpuMem {
+        mem: MemRef,
+        bytes: u8,
+    },
 }
 
 impl Operand {
@@ -22,6 +35,17 @@ impl Operand {
             Operand::Imm16(v) => format!("0x{:04x}", v),
             Operand::Mem8 { mem, .. } => format!("[{}]", mem.expr),
             Operand::Mem16 { mem, .. } => format!("[{}]", mem.expr),
+            Operand::FpuReg(i) => format!("st({})", i),
+            Operand::FpuMem { mem, bytes } => {
+                let size = match bytes {
+                    2 => "word",
+                    4 => "dword",
+                    8 => "qword",
+                    10 => "tword",
+                    _ => "ptr",
+                };
+                format!("{} [{}]", size, mem.expr)
+            }
         }
     }
 
@@ -44,6 +68,13 @@ impl Operand {
                 "[0x{:04x}]={:04x} @{:04X}:{:04X}({:05X})",
                 mem.ea,
                 value,
+                mem.seg,
+                mem.ea,
+                mem.phys()
+            )),
+            Operand::FpuReg(_) => None,
+            Operand::FpuMem { mem, .. } => Some(format!(
+                "@{:04X}:{:04X}({:05X})",
                 mem.seg,
                 mem.ea,
                 mem.phys()

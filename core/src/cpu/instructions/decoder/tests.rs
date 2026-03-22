@@ -528,3 +528,136 @@ fn jmp_near() {
     assert!(line.contains("jmp 0x0006"), "asm column: {line}");
     assert!(!line.contains("short"), "should not say short: {line}");
 }
+
+// ─── FPU: mod=11 (register operands) ─────────────────────────────────────────
+
+#[test]
+fn fpu_fninit_no_operands() {
+    // DB E3  →  fninit   (mod=11, reg=4, rm=3 → no operands)
+    let cpu = FakeCpu::new(&[0xDB, 0xE3]);
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fninit"), "asm column: {line}");
+}
+
+#[test]
+fn fpu_fld_st2_single_reg_operand() {
+    // D9 C2  →  fld st(2)   (mod=11, reg=0, rm=2)
+    let cpu = FakeCpu::new(&[0xD9, 0xC2]);
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fld st(2)"), "asm column: {line}");
+}
+
+#[test]
+fn fpu_fadd_d8_st0_sti_operand_order() {
+    // D8 C2  →  fadd st(0), st(2)   (D8: dest=st(0), src=st(i))
+    let cpu = FakeCpu::new(&[0xD8, 0xC2]);
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fadd st(0), st(2)"), "asm column: {line}");
+}
+
+#[test]
+fn fpu_fadd_dc_sti_st0_operand_order() {
+    // DC C3  →  fadd st(3), st(0)   (DC: dest=st(i), src=st(0) — reversed from D8)
+    let cpu = FakeCpu::new(&[0xDC, 0xC3]);
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fadd st(3), st(0)"), "asm column: {line}");
+}
+
+#[test]
+fn fpu_fnstsw_ax_reg16_operand() {
+    // DF E0  →  fnstsw ax   (mod=11, reg=4, rm=0 → Reg16 operand)
+    let mut cpu = FakeCpu::new(&[0xDF, 0xE0]);
+    cpu.ax = 0x4200;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fnstsw ax"), "asm column: {line}");
+    assert!(line.contains("AX=4200"), "AX annotation: {line}");
+}
+
+#[test]
+fn fpu_fcompp_no_operand_special_encoding() {
+    // DE D9  →  fcompp   (mod=11, reg=3, rm=1 — only one valid rm in this slot)
+    let cpu = FakeCpu::new(&[0xDE, 0xD9]);
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fcompp"), "asm column: {line}");
+}
+
+// ─── FPU: mod!=11 (memory operands, various widths) ───────────────────────────
+
+#[test]
+fn fpu_fadd_dword_mem() {
+    // D8 07  →  fadd dword [bx]   (D8/reg=0 → 4-byte float)
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xD8;
+    mem[1] = 0x07; // modrm: mod=00, reg=0, rm=7 (BX)
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.bx = 0x0200;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fadd dword [bx]"), "asm column: {line}");
+    assert!(line.contains("@0000:0200"), "EA annotation: {line}");
+}
+
+#[test]
+fn fpu_fadd_qword_mem() {
+    // DC 07  →  fadd qword [bx]   (DC/reg=0 → 8-byte float, same mnemonic as D8)
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xDC;
+    mem[1] = 0x07;
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.bx = 0x0300;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fadd qword [bx]"), "asm column: {line}");
+    assert!(line.contains("@0000:0300"), "EA annotation: {line}");
+}
+
+#[test]
+fn fpu_fldcw_word_mem() {
+    // D9 2F  →  fldcw word [bx]   (D9/reg=5 → 2-byte control word)
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xD9;
+    mem[1] = 0x2F; // modrm: mod=00, reg=5, rm=7 (BX)
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.bx = 0x0100;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fldcw word [bx]"), "asm column: {line}");
+    assert!(line.contains("@0000:0100"), "EA annotation: {line}");
+}
+
+#[test]
+fn fpu_fld_tword_mem() {
+    // DB 2F  →  fld tword [bx]   (DB/reg=5 → 10-byte extended float)
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xDB;
+    mem[1] = 0x2F; // modrm: mod=00, reg=5, rm=7 (BX)
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.bx = 0x0400;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fld tword [bx]"), "asm column: {line}");
+    assert!(line.contains("@0000:0400"), "EA annotation: {line}");
+}
+
+#[test]
+fn fpu_fnsave_ptr_mem() {
+    // DD 37  →  fnsave ptr [bx]   (DD/reg=6 → 94-byte FPU state)
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xDD;
+    mem[1] = 0x37; // modrm: mod=00, reg=6, rm=7 (BX)
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.bx = 0x0500;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fnsave ptr [bx]"), "asm column: {line}");
+    assert!(line.contains("@0000:0500"), "EA annotation: {line}");
+}
+
+#[test]
+fn fpu_fld_dword_mem_with_disp8() {
+    // D9 47 04  →  fld dword [bx+0x04]   (mod=01 disp8)
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xD9;
+    mem[1] = 0x47; // modrm: mod=01, reg=0, rm=7
+    mem[2] = 0x04;
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.bx = 0x0100;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fld dword [bx+0x04]"), "asm column: {line}");
+    assert!(line.contains("@0000:0104"), "EA annotation: {line}");
+}

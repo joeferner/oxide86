@@ -169,6 +169,7 @@ Then run `/mcp` in the chat panel and click **Reconnect**.
 |---|---|
 | `get_status` | Check whether the emulator is running or paused |
 | `get_registers` | Read all CPU registers (requires pause first) |
+| `get_fpu_registers` | Read FPU stack ST(0)–ST(7), control word, and status word (requires pause) |
 | `pause` / `continue` | Halt and resume execution |
 | `step` | Execute N instructions while paused |
 | `set_breakpoint` / `clear_breakpoint` / `list_breakpoints` | Breakpoints by CS:IP |

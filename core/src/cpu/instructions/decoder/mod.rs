@@ -6,6 +6,8 @@ mod tests;
 mod debug_info;
 use debug_info::{int_description, port_comment};
 
+mod fpu;
+
 mod registers;
 pub use registers::{Reg8, Reg16, SegReg};
 
@@ -26,26 +28,13 @@ use cursor::Cursor;
 
 // ─── ModRM decoding ───────────────────────────────────────────────────────────
 
-/// Decode the `rm` field of a ModRM byte into an Operand.
-/// Any displacement bytes are consumed from `cur`.
-fn decode_rm(cur: &mut Cursor, modrm: u8, is16: bool) -> Operand {
+/// Decode the memory address portion of a ModRM byte (mode must not be 3).
+/// Reads any displacement bytes from `cur` and returns a `MemRef`.
+pub(super) fn decode_mem_ref(cur: &mut Cursor, modrm: u8) -> MemRef {
     let mod_ = (modrm >> 6) & 3;
     let rm = modrm & 7;
 
-    if mod_ == 3 {
-        // Register operand
-        return if is16 {
-            let r = Reg16::from_bits(rm);
-            Operand::Reg16(r, r.value(cur.cpu))
-        } else {
-            let r = Reg8::from_bits(rm);
-            Operand::Reg8(r, r.value(cur.cpu))
-        };
-    }
-
-    // Memory operand
     let (ea, seg, expr) = if mod_ == 0 && rm == 6 {
-        // Special case: [disp16] direct address
         let addr = cur.fetch16();
         let expr = format!("0x{:04x}", addr);
         (addr, cur.seg_for_direct(), expr)
@@ -74,13 +63,31 @@ fn decode_rm(cur: &mut Cursor, modrm: u8, is16: bool) -> Operand {
         };
         (ea, cur.seg_for_base(base), expr)
     };
+    MemRef { seg, ea, expr }
+}
 
-    let mem = MemRef { seg, ea, expr };
+/// Decode the `rm` field of a ModRM byte into an Operand.
+/// Any displacement bytes are consumed from `cur`.
+fn decode_rm(cur: &mut Cursor, modrm: u8, is16: bool) -> Operand {
+    let mod_ = (modrm >> 6) & 3;
+    let rm = modrm & 7;
+
+    if mod_ == 3 {
+        return if is16 {
+            let r = Reg16::from_bits(rm);
+            Operand::Reg16(r, r.value(cur.cpu))
+        } else {
+            let r = Reg8::from_bits(rm);
+            Operand::Reg8(r, r.value(cur.cpu))
+        };
+    }
+
+    let mem = decode_mem_ref(cur, modrm);
     if is16 {
-        let value = cur.read_mem_u16(seg, ea);
+        let value = cur.read_mem_u16(mem.seg, mem.ea);
         Operand::Mem16 { mem, value }
     } else {
-        let value = cur.read_mem_u8(seg, ea);
+        let value = cur.read_mem_u8(mem.seg, mem.ea);
         Operand::Mem8 { mem, value }
     }
 }
@@ -884,6 +891,9 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
             cur.fetch();
             (Mnemonic::Aad, vec![])
         }
+
+        // ESC — 8087 FPU instructions (D8–DF)
+        0xD8..=0xDF => fpu::decode_fpu(cur, op),
 
         _ => (Mnemonic::Unknown(op), vec![]),
     }
