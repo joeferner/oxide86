@@ -78,6 +78,12 @@ impl Cpu {
         let value = self.read_rm16(mode, rm, addr, bus);
         self.set_segreg(seg_reg, value);
 
+        // Loading SS suppresses the single-step trap for the next instruction so
+        // the paired SP load runs atomically (8086/286 behaviour).
+        if seg_reg == 2 {
+            self.suppress_trap = true;
+        }
+
         // Calculate cycle timing
         bus.increment_cycle_count(if mode == 0b11 {
             // MOV segreg, reg: 2 cycles
@@ -316,6 +322,12 @@ impl Cpu {
         };
         let value = self.pop(bus);
         self.set_segreg(seg, value);
+
+        // POP SS suppresses the single-step trap for the next instruction so
+        // the paired SP load runs atomically (8086/286 behaviour).
+        if seg == 2 {
+            self.suppress_trap = true;
+        }
 
         // POP segment register: 8 cycles
         bus.increment_cycle_count(timing::cycles::POP_SEGREG)

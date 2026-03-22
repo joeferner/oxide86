@@ -320,10 +320,10 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
             (Mnemonic::Push, vec![Operand::Reg16(r, r.value(cur.cpu))])
         }
         // PUSH Sreg
-        0x06 => (Mnemonic::Push, vec![Operand::Imm16(cur.cpu.es())]),
-        0x0E => (Mnemonic::Push, vec![Operand::Imm16(cur.cpu.cs())]),
-        0x16 => (Mnemonic::Push, vec![Operand::Imm16(cur.cpu.ss())]),
-        0x1E => (Mnemonic::Push, vec![Operand::Imm16(cur.cpu.ds())]),
+        0x06 => (Mnemonic::Push, vec![Operand::Seg(SegReg::ES, cur.cpu.es())]),
+        0x0E => (Mnemonic::Push, vec![Operand::Seg(SegReg::CS, cur.cpu.cs())]),
+        0x16 => (Mnemonic::Push, vec![Operand::Seg(SegReg::SS, cur.cpu.ss())]),
+        0x1E => (Mnemonic::Push, vec![Operand::Seg(SegReg::DS, cur.cpu.ds())]),
         // 68  PUSH imm16  (186+)
         0x68 => {
             let imm = cur.fetch16();
@@ -698,7 +698,7 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
         0xEB => {
             let rel = cur.fetch() as i8 as i16;
             let tgt = cur.offset.wrapping_add(rel as u16);
-            (Mnemonic::Jmp, vec![Operand::Imm16(tgt)])
+            (Mnemonic::JmpShort, vec![Operand::Imm16(tgt)])
         }
         // E9 cw  JMP rel16
         0xE9 => {

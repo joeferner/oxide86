@@ -135,6 +135,10 @@ pub(crate) struct Cpu {
 
     /// 8087 stack top pointer (0-7). ST(i) = fpu_stack[(fpu_top + i) & 7].
     fpu_top: u8,
+
+    /// When true, the single-step trap (INT 1) is suppressed for the next instruction.
+    /// Set after `mov ss, ...` or `pop ss` to allow the paired SP load to run atomically.
+    suppress_trap: bool,
 }
 
 /// Adapter that implements `Computer` by combining a `Cpu` and a `Bus`.
@@ -226,6 +230,7 @@ impl Cpu {
             pending_dos_seek: None,
             dos_file_handles: DosFileHandleTable::new(),
             teletype_log_buffer: String::new(),
+            suppress_trap: false,
             math_coprocessor,
             fpu_control_word: FPU_DEFAULT_CONTROL_WORD,
             fpu_status_word: 0,
@@ -370,6 +375,9 @@ impl Cpu {
         let pre_cs = self.cs;
         let pre_ip = self.ip;
 
+        // Capture TF before execution — it may be cleared by the instruction (e.g. POPF).
+        let trap_before = self.get_flag(cpu_flag::TRAP);
+
         bus.set_current_ip(pre_cs, pre_ip);
         self.exec_instruction(bus);
 
@@ -395,6 +403,17 @@ impl Cpu {
             && let Some(ref instr) = decoded
         {
             log::info!("{}", instr.format_line());
+        }
+
+        // Single-step trap: if TF was set before the instruction, fire INT 1 now
+        // unless this instruction was a SS-load (pop ss / mov ss,...) which inhibits
+        // the trap for the immediately following instruction (8086/286 behaviour).
+        if trap_before {
+            if self.suppress_trap {
+                self.suppress_trap = false;
+            } else {
+                self.dispatch_interrupt(bus, 0x01);
+            }
         }
     }
 
@@ -507,6 +526,7 @@ impl Cpu {
             0x0002
         };
         self.halted = false;
+        self.suppress_trap = false;
         self.exit_code = None;
         self.segment_override = None;
         self.repeat_prefix = None;

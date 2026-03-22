@@ -23,6 +23,7 @@ struct FakeCpu<'a> {
     bp: u16,
     si: u16,
     di: u16,
+    cs: u16,
     ds: u16,
     ss: u16,
     es: u16,
@@ -40,6 +41,7 @@ impl<'a> FakeCpu<'a> {
             bp: 0,
             si: 0,
             di: 0,
+            cs: 0,
             ds: 0,
             ss: 0,
             es: 0,
@@ -73,7 +75,7 @@ impl Computer for FakeCpu<'_> {
         self.di
     }
     fn cs(&self) -> u16 {
-        0
+        self.cs
     }
     fn ds(&self) -> u16 {
         self.ds
@@ -455,4 +457,74 @@ fn lds_bx_direct() {
     assert!(line.contains("lds bx, [0x03be]"), "asm column: {line}");
     assert!(line.contains("BX=0D1B"), "BX annotation: {line}");
     assert!(line.contains("[0x03be]=0d1b"), "EA annotation: {line}");
+}
+
+// ─── PUSH/POP segment registers ───────────────────────────────────────────────
+
+#[test]
+fn push_cs() {
+    // 0E  →  push cs   (was incorrectly shown as `push 0x275d`)
+    let mut mem = vec![0u8; 0x28000];
+    let phys: usize = (0x275Du32 << 4) as usize + 0x01B1;
+    mem[phys] = 0x0E;
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.cs = 0x275D;
+    let line = decode_line(&cpu, 0x275D, 0x01B1);
+    assert!(line.contains("push cs"), "asm column: {line}");
+    assert!(line.contains("CS=275D"), "CS annotation: {line}");
+}
+
+#[test]
+fn push_es() {
+    // 06  →  push es
+    let mut cpu = FakeCpu::new(&[0x06]);
+    cpu.es = 0x1234;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("push es"), "asm column: {line}");
+    assert!(line.contains("ES=1234"), "ES annotation: {line}");
+}
+
+#[test]
+fn push_ss() {
+    // 16  →  push ss
+    let mut cpu = FakeCpu::new(&[0x16]);
+    cpu.ss = 0xABCD;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("push ss"), "asm column: {line}");
+    assert!(line.contains("SS=ABCD"), "SS annotation: {line}");
+}
+
+#[test]
+fn push_ds() {
+    // 1E  →  push ds
+    let mut cpu = FakeCpu::new(&[0x1E]);
+    cpu.ds = 0x5678;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("push ds"), "asm column: {line}");
+    assert!(line.contains("DS=5678"), "DS annotation: {line}");
+}
+
+// ─── JMP short vs near ────────────────────────────────────────────────────────
+
+#[test]
+fn jmp_short() {
+    // EB 01  →  jmp short 0x01b1   (was shown as `jmp 0x01b1`, indistinct from near)
+    // At 275D:01AE: after fetching 2 bytes IP=01B0, target=01B0+01=01B1
+    let mut mem = vec![0u8; 0x28000];
+    let phys: usize = (0x275Du32 << 4) as usize + 0x01AE;
+    mem[phys] = 0xEB;
+    mem[phys + 1] = 0x01;
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.cs = 0x275D;
+    let line = decode_line(&cpu, 0x275D, 0x01AE);
+    assert!(line.contains("jmp short 0x01b1"), "asm column: {line}");
+}
+
+#[test]
+fn jmp_near() {
+    // E9 03 00  →  jmp 0x0006   (near jump — no "short")
+    let cpu = FakeCpu::new(&[0xE9, 0x03, 0x00]);
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("jmp 0x0006"), "asm column: {line}");
+    assert!(!line.contains("short"), "should not say short: {line}");
 }
