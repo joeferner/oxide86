@@ -155,7 +155,14 @@ impl HardDiskController {
                 let sector = self.sector_num;
                 let count = self.sector_count;
 
-                // Cylinder is truncated to u8 due to current Disk trait limit (255 cylinders max)
+                if let Some(disk) = self.disks.get(drive_index)
+                    && cylinder >= disk.disk_geometry().cylinders
+                {
+                    log::warn!("HDC READ_SECTORS: cylinder {cylinder} out of range");
+                    self.error = HDC_ERR_ABRT;
+                    return;
+                }
+
                 let result = self
                     .disks
                     .get(drive_index)
@@ -183,6 +190,14 @@ impl HardDiskController {
                 let head = self.drive_head & 0x0F;
                 let sector = self.sector_num;
                 let count = self.sector_count;
+
+                if let Some(disk) = self.disks.get(drive_index)
+                    && cylinder >= disk.disk_geometry().cylinders
+                {
+                    log::warn!("HDC VERIFY_SECTORS: cylinder {cylinder} out of range");
+                    self.error = HDC_ERR_ABRT;
+                    return;
+                }
 
                 let result = self
                     .disks
@@ -214,6 +229,11 @@ impl HardDiskController {
 
                 if drive_index >= self.disks.len() {
                     log::warn!("HDC WRITE_SECTORS: no disk at index {drive_index}");
+                    self.error = HDC_ERR_ABRT;
+                    return;
+                }
+                if cylinder >= self.disks[drive_index].disk_geometry().cylinders {
+                    log::warn!("HDC WRITE_SECTORS: cylinder {cylinder} out of range");
                     self.error = HDC_ERR_ABRT;
                     return;
                 }

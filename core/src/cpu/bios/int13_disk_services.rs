@@ -168,15 +168,24 @@ impl Cpu {
     ///   CF = clear if success, set if error
     fn int13_read_sectors(&mut self, bus: &mut Bus) {
         let count = (self.ax & 0xFF) as u8; // AL
-        let cylinder = (self.cx >> 8) as u8; // CH (8-bit cylinder for 8086 compatibility)
+        let cylinder_low = (self.cx >> 8) as u8; // CH = cylinder bits 7:0
+        let cylinder_high = ((self.cx & 0x00C0) >> 6) as u8; // CL bits 7:6 = cylinder bits 9:8
         let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
         let head = (self.dx >> 8) as u8; // DH
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
         let buffer_addr = bus.physical_address(self.es, self.bx);
 
+        let cylinder = ((cylinder_high as u16) << 8) | (cylinder_low as u16);
         log::debug!(
             "[INT13] AH=02 drive={} C={} H={} S={} count={} → ES:BX={:04X}:{:04X} phys=0x{:05X}",
-            drive, cylinder, head, sector, count, self.es, self.bx, buffer_addr
+            drive,
+            cylinder,
+            head,
+            sector,
+            count,
+            self.es,
+            self.bx,
+            buffer_addr
         );
 
         if drive.is_floppy() {
@@ -189,7 +198,7 @@ impl Cpu {
             // Send READ DATA command (9 bytes: 1 command byte + 8 parameter bytes)
             bus.io_write_u8(FDC_DATA, 0x46); // READ DATA: MFM=1, MT=0, SK=0
             bus.io_write_u8(FDC_DATA, (head << 2) | drive_index); // HD, US1, US0
-            bus.io_write_u8(FDC_DATA, cylinder); // C
+            bus.io_write_u8(FDC_DATA, cylinder_low); // C
             bus.io_write_u8(FDC_DATA, head); // H
             bus.io_write_u8(FDC_DATA, sector); // R (starting sector, 1-based)
             bus.io_write_u8(FDC_DATA, 0x02); // N (512 bytes/sector)
@@ -199,16 +208,29 @@ impl Cpu {
 
             // NDM bit set in MSR means PIO data transfer (execution) phase is active
             let msr = bus.io_read_u8(FDC_MSR);
-            log::debug!("[INT13] FDC MSR=0x{:02X} NDM={}", msr, (msr & FDC_MSR_NDM != 0) as u8);
+            log::debug!(
+                "[INT13] FDC MSR=0x{:02X} NDM={}",
+                msr,
+                (msr & FDC_MSR_NDM != 0) as u8
+            );
             if msr & FDC_MSR_NDM != 0 {
                 let total_bytes = (count as usize) * 512;
                 for i in 0..total_bytes {
                     let byte = bus.io_read_u8(FDC_DATA);
                     bus.memory_write_u8(buffer_addr + i, byte);
                 }
-                log::debug!("[INT13] FDC read {} bytes to phys 0x{:05X}-0x{:05X}", total_bytes, buffer_addr, buffer_addr + total_bytes - 1);
+                log::debug!(
+                    "[INT13] FDC read {} bytes to phys 0x{:05X}-0x{:05X}",
+                    total_bytes,
+                    buffer_addr,
+                    buffer_addr + total_bytes - 1
+                );
             } else {
-                log::warn!("[INT13] FDC NDM not set — skipped writing {} bytes to phys 0x{:05X}", (count as usize) * 512, buffer_addr);
+                log::warn!(
+                    "[INT13] FDC NDM not set — skipped writing {} bytes to phys 0x{:05X}",
+                    (count as usize) * 512,
+                    buffer_addr
+                );
             }
 
             // Read 7 result bytes; ST0 is first
@@ -245,8 +267,8 @@ impl Cpu {
             let drive_head = 0xA0 | ((drive.as_hard_drive_index() as u8) << 4) | (head & 0x0F);
             bus.io_write_u8(HDC_SECTOR_COUNT, count);
             bus.io_write_u8(HDC_SECTOR_NUM, sector);
-            bus.io_write_u8(HDC_CYLINDER_LOW, cylinder);
-            bus.io_write_u8(HDC_CYLINDER_HIGH, 0x00); // high 2 bits of cylinder
+            bus.io_write_u8(HDC_CYLINDER_LOW, cylinder_low);
+            bus.io_write_u8(HDC_CYLINDER_HIGH, cylinder_high);
             bus.io_write_u8(HDC_DRIVE_HEAD, drive_head);
             bus.io_write_u8(HDC_COMMAND, HDC_CMD_READ_SECTORS);
 
@@ -278,7 +300,12 @@ impl Cpu {
                 let byte = bus.io_read_u8(HDC_DATA);
                 bus.memory_write_u8(buffer_addr + i, byte);
             }
-            log::debug!("[INT13] HDC read {} bytes to phys 0x{:05X}-0x{:05X}", total_bytes, buffer_addr, buffer_addr + total_bytes - 1);
+            log::debug!(
+                "[INT13] HDC read {} bytes to phys 0x{:05X}-0x{:05X}",
+                total_bytes,
+                buffer_addr,
+                buffer_addr + total_bytes - 1
+            );
 
             self.ax = (self.ax & 0xFF00) | (count as u16); // AL = sectors read
             self.ax &= 0x00FF; // AH = 0 (success)
@@ -301,7 +328,8 @@ impl Cpu {
     ///   CF = clear if success, set if error
     fn int13_write_sectors(&mut self, bus: &mut Bus) {
         let count = (self.ax & 0xFF) as u8; // AL
-        let cylinder = (self.cx >> 8) as u8; // CH (8-bit cylinder for 8086 compatibility)
+        let cylinder_low = (self.cx >> 8) as u8; // CH = cylinder bits 7:0
+        let cylinder_high = ((self.cx & 0x00C0) >> 6) as u8; // CL bits 7:6 = cylinder bits 9:8
         let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
         let head = (self.dx >> 8) as u8; // DH
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
@@ -317,7 +345,7 @@ impl Cpu {
             // Send WRITE DATA command (9 bytes: 1 command byte + 8 parameter bytes)
             bus.io_write_u8(FDC_DATA, 0x45); // WRITE DATA: MFM=1, MT=0, SK=0
             bus.io_write_u8(FDC_DATA, (head << 2) | drive_index); // HD, US1, US0
-            bus.io_write_u8(FDC_DATA, cylinder); // C
+            bus.io_write_u8(FDC_DATA, cylinder_low); // C
             bus.io_write_u8(FDC_DATA, head); // H
             bus.io_write_u8(FDC_DATA, sector); // R (starting sector, 1-based)
             bus.io_write_u8(FDC_DATA, 0x02); // N (512 bytes/sector)
@@ -372,8 +400,8 @@ impl Cpu {
             let drive_head = 0xA0 | ((drive.as_hard_drive_index() as u8) << 4) | (head & 0x0F);
             bus.io_write_u8(HDC_SECTOR_COUNT, count);
             bus.io_write_u8(HDC_SECTOR_NUM, sector);
-            bus.io_write_u8(HDC_CYLINDER_LOW, cylinder);
-            bus.io_write_u8(HDC_CYLINDER_HIGH, 0x00);
+            bus.io_write_u8(HDC_CYLINDER_LOW, cylinder_low);
+            bus.io_write_u8(HDC_CYLINDER_HIGH, cylinder_high);
             bus.io_write_u8(HDC_DRIVE_HEAD, drive_head);
             bus.io_write_u8(HDC_COMMAND, HDC_CMD_WRITE_SECTORS);
 
@@ -442,7 +470,8 @@ impl Cpu {
     ///   CF = clear if success, set if error
     fn int13_verify_sectors(&mut self, bus: &mut Bus) {
         let count = (self.ax & 0xFF) as u8; // AL
-        let cylinder = (self.cx >> 8) as u8; // CH (8-bit cylinder for 8086 compatibility)
+        let cylinder_low = (self.cx >> 8) as u8; // CH = cylinder bits 7:0
+        let cylinder_high = ((self.cx & 0x00C0) >> 6) as u8; // CL bits 7:6 = cylinder bits 9:8
         let sector = (self.cx & 0x3F) as u8; // CL bits 0-5
         let head = (self.dx >> 8) as u8; // DH
         let drive = DriveNumber::from_standard((self.dx & 0xFF) as u8); // DL
@@ -457,7 +486,7 @@ impl Cpu {
             // Send VERIFY command (0x56): same parameters as READ DATA but no data transfer
             bus.io_write_u8(FDC_DATA, 0x56); // VERIFY: MFM=1, MT=0, SK=0
             bus.io_write_u8(FDC_DATA, (head << 2) | drive_index); // HD, US1, US0
-            bus.io_write_u8(FDC_DATA, cylinder); // C
+            bus.io_write_u8(FDC_DATA, cylinder_low); // C
             bus.io_write_u8(FDC_DATA, head); // H
             bus.io_write_u8(FDC_DATA, sector); // R (starting sector, 1-based)
             bus.io_write_u8(FDC_DATA, 0x02); // N (512 bytes/sector)
@@ -498,8 +527,8 @@ impl Cpu {
             let drive_head = 0xA0 | ((drive.as_hard_drive_index() as u8) << 4) | (head & 0x0F);
             bus.io_write_u8(HDC_SECTOR_COUNT, count);
             bus.io_write_u8(HDC_SECTOR_NUM, sector);
-            bus.io_write_u8(HDC_CYLINDER_LOW, cylinder);
-            bus.io_write_u8(HDC_CYLINDER_HIGH, 0x00);
+            bus.io_write_u8(HDC_CYLINDER_LOW, cylinder_low);
+            bus.io_write_u8(HDC_CYLINDER_HIGH, cylinder_high);
             bus.io_write_u8(HDC_DRIVE_HEAD, drive_head);
             bus.io_write_u8(HDC_COMMAND, HDC_CMD_VERIFY_SECTORS);
 
@@ -585,6 +614,7 @@ impl Cpu {
                     let cl = max_sector & 0x3F;
                     self.cx = ((max_cylinder as u16) << 8) | (cl as u16);
                     self.dx = ((max_head as u16) << 8) | 1u16; // DH = max head, DL = drive count
+                    self.bx = drive_type as u16; // BL = drive type (BH = 0)
                     self.ax &= 0x00FF; // AH = 0 (success)
                     self.set_flag(cpu_flag::CARRY, false);
                     self.last_disk_status = DiskError::Success as u8;

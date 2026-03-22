@@ -14,6 +14,14 @@ from dataclasses import dataclass
 #   ] SSSS:OOOO HH HH ...      (newer oxide86_core::cpu format, no "OP")
 OP_RE = re.compile(r'\] (?:OP )?([0-9A-Fa-f]{4}:[0-9A-Fa-f]{4})')
 
+# Bytes mode: captures the hex bytes between address and mnemonic.
+# The mnemonic is separated from the bytes by 2+ spaces.
+# Example: ] 36AC:50C0 83 C6 02             add si, 0x0002
+BYTES_RE = re.compile(
+    r'\] (?:OP )?[0-9A-Fa-f]{4}:[0-9A-Fa-f]{4} '
+    r'((?:[0-9A-Fa-f]{2} )*[0-9A-Fa-f]{2})\s{2,}'
+)
+
 
 @dataclass
 class Op:
@@ -21,14 +29,28 @@ class Op:
     line_no: int
 
 
-def parse_log(path: str) -> list[Op]:
+def parse_path_with_line(arg: str) -> tuple[str, int]:
+    """Split 'file.log:452' into ('file.log', 452). Colon-less args return start=1."""
+    if ':' in arg:
+        # Handle Windows-style absolute paths like C:\foo by only splitting on the last colon
+        # if what follows looks like a number
+        parts = arg.rsplit(':', 1)
+        if parts[1].isdigit():
+            return parts[0], int(parts[1])
+    return arg, 1
+
+
+def parse_log(path: str, start_line: int = 1, mode: str = 'addr') -> list[Op]:
+    regex = BYTES_RE if mode == 'bytes' else OP_RE
     ops = []
     with open(path, 'r', errors='replace') as f:
         for i, line in enumerate(f, 1):
-            m = OP_RE.search(line)
+            if i < start_line:
+                continue
+            m = regex.search(line)
             if m:
-                addr = m.group(1).upper()
-                ops.append(Op(addr, i))
+                key = m.group(1).upper()
+                ops.append(Op(key, i))
     return ops
 
 
@@ -158,18 +180,24 @@ def main():
                         help='Look-ahead window for resync search (default: 200)')
     parser.add_argument('--max-divergences', type=int, default=0,
                         help='Stop after N divergences (0 = unlimited)')
+    parser.add_argument('-m', '--mode', choices=['addr', 'bytes'], default='addr',
+                        help='Comparison mode: addr (default) or bytes')
     args = parser.parse_args()
 
     if not args.log_a or not args.log_b:
         parser.print_help()
         sys.exit(1)
 
-    print(f"Loading {args.log_a}...", end=' ', flush=True)
-    a_ops = parse_log(args.log_a)
+    log_a_path, log_a_start = parse_path_with_line(args.log_a)
+    log_b_path, log_b_start = parse_path_with_line(args.log_b)
+
+    print(f"Mode: {args.mode}")
+    print(f"Loading {log_a_path} (from line {log_a_start})...", end=' ', flush=True)
+    a_ops = parse_log(log_a_path, log_a_start, args.mode)
     print(f"{len(a_ops)} ops")
 
-    print(f"Loading {args.log_b}...", end=' ', flush=True)
-    b_ops = parse_log(args.log_b)
+    print(f"Loading {log_b_path} (from line {log_b_start})...", end=' ', flush=True)
+    b_ops = parse_log(log_b_path, log_b_start, args.mode)
     print(f"{len(b_ops)} ops")
 
     if not a_ops:
