@@ -147,6 +147,8 @@ pub enum Mnemonic {
     Fdivp,
     Fdivr,
     Fdivrp,
+    // Integer arithmetic
+    Fimul,
     // Integer memory transfer
     Fild,
     Fist,
@@ -317,6 +319,7 @@ impl fmt::Display for Mnemonic {
             Mnemonic::Fdivp => "fdivp",
             Mnemonic::Fdivr => "fdivr",
             Mnemonic::Fdivrp => "fdivrp",
+            Mnemonic::Fimul => "fimul",
             Mnemonic::Fild => "fild",
             Mnemonic::Fist => "fist",
             Mnemonic::Fistp => "fistp",

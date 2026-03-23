@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, f80::F80, timing},
+    cpu::{Cpu, f80::F80, f80_trig, timing},
 };
 
 /// Default 8087 control word after FNINIT/FINIT:
@@ -258,19 +258,28 @@ impl Cpu {
                         self.fpu_pop();
                     }
                     // FPTAN (D9 F2: reg=6, rm=2): ST(0) = tan(ST(0)), push 1.0
+                    // Uses float128 polynomial (BOCHS algorithm) for 8087-compatible precision.
                     (0xD9, 6, 2) => {
                         let top = self.fpu_top as usize;
-                        let v = self.fpu_stack[top].to_f64().tan();
-                        self.fpu_stack[top] = F80::from_f64(v);
-                        self.fpu_push(F80::ONE);
+                        match f80_trig::ftan(self.fpu_stack[top]) {
+                            Some(result) => {
+                                self.fpu_stack[top] = result;
+                                self.fpu_push(F80::ONE);
+                            }
+                            None => {
+                                // Argument out of range: set C2 flag, leave ST(0) unchanged
+                                self.fpu_status_word |= 0x0400; // C2 = 1
+                            }
+                        }
                     }
                     // FPATAN (D9 F3: reg=6, rm=3): ST(1) = atan2(ST(1), ST(0)), pop
+                    // Uses float128 polynomial (BOCHS algorithm) for 8087-compatible precision.
                     (0xD9, 6, 3) => {
                         let top = self.fpu_top as usize;
                         let st1 = self.fpu_top.wrapping_add(1) as usize & 7;
-                        let y = self.fpu_stack[st1].to_f64();
-                        let x = self.fpu_stack[top].to_f64();
-                        self.fpu_stack[st1] = F80::from_f64(y.atan2(x));
+                        let x = self.fpu_stack[top]; // ST(0) = x
+                        let y = self.fpu_stack[st1]; // ST(1) = y
+                        self.fpu_stack[st1] = f80_trig::fpatan(x, y);
                         self.fpu_pop();
                     }
                     // FADDP ST(i),ST (DE /0): ST(i) = ST(i) + ST(0), pop
@@ -352,6 +361,13 @@ impl Cpu {
                     // FNCLEX (DB E2: reg=4, rm=2): clear exception flags and busy flag
                     (0xDB, 4, 2) => {
                         self.fpu_status_word &= !0x80FF;
+                    }
+                    // FSTP ST(i) (DD /3 rm=i): copy ST(0) to ST(i), pop
+                    (0xDD, 3, i) => {
+                        let top = self.fpu_top as usize;
+                        let dest = self.fpu_top.wrapping_add(i) as usize & 7;
+                        self.fpu_stack[dest] = self.fpu_stack[top];
+                        self.fpu_pop();
                     }
                     // FFREE ST(i) (DD C0+i: reg=0): mark register as empty (tag word not tracked)
                     (0xDD, 0, _) => {}
@@ -613,6 +629,18 @@ impl Cpu {
                     // FRSTOR m94 (DD /4): restore state from memory
                     (0xDD, 4) => {
                         self.fpu_load_state(bus, addr);
+                    }
+                    // FIMUL m16 (DE /1): ST(0) *= m16int
+                    (0xDE, 1) => {
+                        let top = self.fpu_top as usize;
+                        self.fpu_stack[top] =
+                            self.fpu_stack[top].mul(Self::fpu_read_m16int(bus, addr));
+                    }
+                    // FIMUL m32 (DA /1): ST(0) *= m32int
+                    (0xDA, 1) => {
+                        let top = self.fpu_top as usize;
+                        self.fpu_stack[top] =
+                            self.fpu_stack[top].mul(Self::fpu_read_m32int(bus, addr));
                     }
                     // FADD m32 (D8 /0): ST(0) += m32
                     (0xD8, 0) => {

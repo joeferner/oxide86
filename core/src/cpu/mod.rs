@@ -15,6 +15,7 @@ use crate::{
 pub mod bios;
 mod cpu_type;
 pub(crate) mod f80;
+pub(crate) mod f80_trig;
 pub(crate) mod instructions;
 mod timing;
 

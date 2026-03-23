@@ -59,6 +59,17 @@ pub(crate) fn op8087_int64() {
 }
 
 #[test_log::test]
+pub(crate) fn op8087_trig() {
+    run_test(
+        "cpu/op8087_trig",
+        make_computer!(math_coprocessor: true),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn op8087_compare() {
     run_test(
         "cpu/op8087_compare",
