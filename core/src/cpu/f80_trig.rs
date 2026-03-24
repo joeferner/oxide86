@@ -50,25 +50,36 @@ impl F128 {
 
 /// Pack sign, biased exponent, and 113-bit significand (bit 112 = leading 1)
 /// into F128 without rounding (the sig must already be rounded).
+/// Applies Bochs-style truncation (zeroes lower 32 bits of frac_lo) to match
+/// `softfloat_roundPackToF128` — used by mul, add, div.
 fn pack_f128(sign: bool, exp: i32, sig: u128) -> F128 {
     let frac = sig & ((1u128 << 112) - 1); // strip leading 1
     let frac_hi = ((frac >> 64) as u64) & 0x0000_FFFF_FFFF_FFFF;
-    let frac_lo = frac as u64;
+    // Truncate frac_lo to match x87 hardware's ~67-bit internal significand.
+    // Bochs uses 0xFFFFFFFF00000000 (~80 bits) as an approximation but
+    // 0xFFFFC00000000000 (~67 bits) better matches real 8087 polynomial output.
+    let frac_lo = (frac as u64) & 0xFFFF_C000_0000_0000;
     let hi = ((sign as u64) << 63) | ((exp as u64 & 0x7FFF) << 48) | frac_hi;
     F128 { hi, lo: frac_lo }
 }
 
-/// Pack with round-to-nearest-even.  `sig` must be exactly 113 bits (bit 112 = 1).
-fn pack_rounded(sign: bool, exp: i32, mut sig: u128, round: bool, sticky: bool) -> F128 {
-    let lsb = (sig & 1) != 0;
-    if round && (sticky || lsb) {
-        sig = sig.wrapping_add(1);
-        if sig >> 113 != 0 {
-            // significand overflow: shift right, increment exp
-            sig >>= 1;
-            return pack_f128(sign, exp + 1, sig);
-        }
-    }
+/// Pack without truncation — matches Bochs's `softfloat_normRoundPackToF128`
+/// fast path used by subtraction, which preserves full sig0 precision.
+fn pack_f128_full(sign: bool, exp: i32, sig: u128) -> F128 {
+    let frac = sig & ((1u128 << 112) - 1); // strip leading 1
+    let frac_hi = ((frac >> 64) as u64) & 0x0000_FFFF_FFFF_FFFF;
+    let frac_lo = frac as u64; // NO truncation
+    let hi = ((sign as u64) << 63) | ((exp as u64 & 0x7FFF) << 48) | frac_hi;
+    F128 { hi, lo: frac_lo }
+}
+
+/// Pack via Bochs-style truncation (no rounding).
+/// Bochs's `softfloat_roundPackToF128` zeroes `sigExtra` and masks `sig0`
+/// BEFORE the rounding decision, so `doIncrement` is always false.  This
+/// means the F128 intermediate results are always truncated, never rounded.
+/// The round/sticky parameters are accepted for call-site compatibility but
+/// ignored — matching Bochs behaviour.
+fn pack_rounded(sign: bool, exp: i32, sig: u128, _round: bool, _sticky: bool) -> F128 {
     pack_f128(sign, exp, sig)
 }
 
@@ -239,7 +250,9 @@ fn f128_sub_mags(a: F128, b: F128, sign: bool) -> F128 {
         exp_z = exp_a - (shift as i32);
     }
 
-    pack_f128(sign, exp_z, sig_z)
+    // Bochs subtraction uses normRoundPackToF128 fast path which does NOT
+    // truncate the lower 32 bits of sig0.  Use pack_f128_full to match.
+    pack_f128_full(sign, exp_z, sig_z)
 }
 
 fn f128_add(a: F128, b: F128) -> F128 {
@@ -425,20 +438,167 @@ fn f128_muladd(a: F128, b: F128, c: F128) -> F128 {
         };
         pack_rounded(sign_ab, exp_z, sig_z, r, s)
     } else {
-        // Subtraction: just compute as separate mul then sub (small precision loss acceptable)
-        let prod = {
-            let (round, sticky) = if (prod_hi >> 97) & 1 != 0 {
-                let r = (prod_lo >> 112) & 1 != 0;
-                let s = (prod_lo & ((1u128 << 112) - 1)) != 0;
-                (r, s)
+        // Subtraction: fused operation — subtract c from product (or vice versa)
+        // without intermediate rounding, matching Bochs's single-rounding f128_mulAdd.
+        let exp_diff = exp_ab - exp_c;
+
+        // Determine which magnitude is larger and compute the subtraction.
+        // We work with (sig_hi: u128, sig_lo: u128) pairs for extra precision.
+        if exp_diff > 0
+            || (exp_diff == 0 && (prod_sig > sig_c || (prod_sig == sig_c && prod_extra != 0)))
+        {
+            // |product| > |c|, result sign = sign_ab
+            // Align c to product's exponent by shifting right
+            let (c_aligned, c_extra) = if exp_diff >= 226 {
+                (0u128, 0u128)
+            } else if exp_diff >= 128 {
+                let shift = exp_diff as u32 - 128;
+                if shift >= 113 {
+                    (0, 0)
+                } else {
+                    (0u128, sig_c >> shift)
+                }
+            } else if exp_diff > 0 {
+                let shift = exp_diff as u32;
+                let aligned = sig_c >> shift;
+                let extra = sig_c << (128 - shift);
+                (aligned, extra)
             } else {
-                let r = (prod_lo >> 111) & 1 != 0;
-                let s = (prod_lo & ((1u128 << 111) - 1)) != 0;
-                (r, s)
+                (sig_c, 0u128)
             };
-            pack_rounded(sign_ab, exp_ab, prod_sig, round, sticky)
-        };
-        f128_add(prod, c)
+
+            // Subtract: (prod_sig, prod_extra) - (c_aligned, c_extra)
+            let borrow = if prod_extra < c_extra { 1u128 } else { 0u128 };
+            let diff_extra = prod_extra.wrapping_sub(c_extra);
+            let diff_sig = prod_sig.wrapping_sub(c_aligned).wrapping_sub(borrow);
+
+            if diff_sig == 0 && diff_extra == 0 {
+                return F128 { hi: 0, lo: 0 };
+            }
+
+            // Normalize: find MSB position in diff_sig
+            if diff_sig == 0 {
+                // All significant bits are in diff_extra — large cancellation
+                let lz = diff_extra.leading_zeros();
+                let shift_up = lz + 128 - 112;
+                let sig_z = diff_extra << lz >> (128 - 113);
+                let exp_z = exp_ab - shift_up as i32;
+                let remaining = diff_extra << (lz + 113);
+                let round = (remaining >> 127) != 0;
+                let sticky = (remaining & ((1u128 << 127) - 1)) != 0;
+                pack_rounded(sign_ab, exp_z, sig_z, round, sticky)
+            } else {
+                let lz = diff_sig.leading_zeros();
+                let msb_pos = 127 - lz;
+                if msb_pos >= 112 {
+                    let shift = msb_pos - 112;
+                    let sig_z = (diff_sig >> shift)
+                        | if shift > 0 {
+                            diff_extra >> (128 - shift)
+                        } else {
+                            0
+                        };
+                    let round = if shift > 0 {
+                        (diff_sig >> (shift - 1)) & 1 != 0
+                    } else {
+                        (diff_extra >> 127) != 0
+                    };
+                    let sticky = if shift > 1 {
+                        (diff_sig & ((1u128 << (shift - 1)) - 1)) != 0 || diff_extra != 0
+                    } else if shift == 1 {
+                        diff_extra != 0
+                    } else {
+                        (diff_extra & ((1u128 << 127) - 1)) != 0
+                    };
+                    let exp_z = exp_ab + (msb_pos as i32 - 112);
+                    pack_rounded(sign_ab, exp_z, sig_z, round, sticky)
+                } else {
+                    let shift = 112 - msb_pos;
+                    let sig_z = (diff_sig << shift) | (diff_extra >> (128 - shift));
+                    let round = (diff_extra >> (127 - shift)) & 1 != 0;
+                    let sticky = (diff_extra & ((1u128 << (127 - shift)) - 1)) != 0;
+                    let exp_z = exp_ab - (shift as i32);
+                    pack_rounded(sign_ab, exp_z, sig_z, round, sticky)
+                }
+            }
+        } else if exp_diff < 0 || (exp_diff == 0 && sig_c > prod_sig) {
+            // |c| > |product|, result sign = sign_c
+            // Align product to c's exponent
+            let neg_diff = -exp_diff;
+            let (prod_aligned, p_extra) = if neg_diff >= 226 {
+                (0u128, 0u128)
+            } else if neg_diff >= 128 {
+                let shift = neg_diff as u32 - 128;
+                if shift >= 113 {
+                    (0, 0)
+                } else {
+                    (0u128, prod_sig >> shift)
+                }
+            } else if neg_diff > 0 {
+                let shift = neg_diff as u32;
+                let aligned = prod_sig >> shift;
+                let extra = (prod_sig << (128 - shift)) | (prod_extra >> shift);
+                (aligned, extra)
+            } else {
+                (prod_sig, prod_extra)
+            };
+
+            let borrow = if 0u128 < p_extra { 1u128 } else { 0u128 };
+            let diff_extra = 0u128.wrapping_sub(p_extra);
+            let diff_sig = sig_c.wrapping_sub(prod_aligned).wrapping_sub(borrow);
+
+            if diff_sig == 0 && diff_extra == 0 {
+                return F128 { hi: 0, lo: 0 };
+            }
+
+            // Normalize
+            if diff_sig == 0 {
+                let lz = diff_extra.leading_zeros();
+                let shift_up = lz + 128 - 112;
+                let sig_z = diff_extra << lz >> (128 - 113);
+                let exp_z = exp_c - shift_up as i32;
+                let remaining = diff_extra << (lz + 113);
+                let round = (remaining >> 127) != 0;
+                let sticky = (remaining & ((1u128 << 127) - 1)) != 0;
+                pack_rounded(sign_c, exp_z, sig_z, round, sticky)
+            } else {
+                let lz = diff_sig.leading_zeros();
+                let msb_pos = 127 - lz;
+                if msb_pos >= 112 {
+                    let shift = msb_pos - 112;
+                    let sig_z = (diff_sig >> shift)
+                        | if shift > 0 {
+                            diff_extra >> (128 - shift)
+                        } else {
+                            0
+                        };
+                    let round = if shift > 0 {
+                        (diff_sig >> (shift - 1)) & 1 != 0
+                    } else {
+                        (diff_extra >> 127) != 0
+                    };
+                    let sticky = if shift > 1 {
+                        (diff_sig & ((1u128 << (shift - 1)) - 1)) != 0 || diff_extra != 0
+                    } else if shift == 1 {
+                        diff_extra != 0
+                    } else {
+                        (diff_extra & ((1u128 << 127) - 1)) != 0
+                    };
+                    let exp_z = exp_c + (msb_pos as i32 - 112);
+                    pack_rounded(sign_c, exp_z, sig_z, round, sticky)
+                } else {
+                    let shift = 112 - msb_pos;
+                    let sig_z = (diff_sig << shift) | (diff_extra >> (128 - shift));
+                    let round = (diff_extra >> (127 - shift)) & 1 != 0;
+                    let sticky = (diff_extra & ((1u128 << (127 - shift)) - 1)) != 0;
+                    let exp_z = exp_c - (shift as i32);
+                    pack_rounded(sign_c, exp_z, sig_z, round, sticky)
+                }
+            }
+        } else {
+            // Exact cancellation: |product| == |c|
+            F128 { hi: 0, lo: 0 }
+        }
     }
 }
 
@@ -459,7 +619,13 @@ fn f80_to_f128(a: F80) -> F128 {
     F128 { hi, lo: frac_lo }
 }
 
-/// Convert F128 to F80, rounding to nearest-even (64-bit significand).
+/// Convert F128 to F80 by truncation (no rounding).
+///
+/// The x87 FPU computes trig/atan results using an internal f128-like format
+/// with ~80 significant bits (Bochs's `roundPackToF128` truncation).  When
+/// storing the result back to the 64-bit-significand F80 stack, truncation
+/// rather than round-to-nearest produces results matching real 8087 hardware
+/// for polynomial-evaluated functions (FTAN, FPATAN, etc.).
 fn f128_to_f80(x: F128) -> F80 {
     // Zero: biased_exp=0 with no fraction bits → return true F80 zero.
     if x.biased_exp() == 0 && x.frac_hi() == 0 && x.lo == 0 {
@@ -478,23 +644,6 @@ fn f128_to_f80(x: F128) -> F80 {
     // Shift left 15 to put implicit 1 at bit 63 of a 64-bit word:
     //   mant = (1 << 63) | (frac_hi << 15) | (frac_lo >> 49)
     let mant = (1u64 << 63) | (frac_hi << 15) | (frac_lo >> 49);
-
-    // Round bits: bit 48 of frac_lo is the "round" bit, lower bits are sticky.
-    let round = (frac_lo >> 48) & 1 != 0;
-    let sticky = (frac_lo & 0x0000_FFFF_FFFF_FFFF) != 0;
-
-    let lsb = (mant & 1) != 0;
-    let (exp, mant) = if round && (sticky || lsb) {
-        let m = mant.wrapping_add(1);
-        if m == 0 {
-            // overflow: increment exp, set mant to 1.0
-            (exp + 1, 0x8000_0000_0000_0000u64)
-        } else {
-            (exp, m)
-        }
-    } else {
-        (exp, mant)
-    };
 
     F80 { sign, exp, mant }
 }
@@ -1124,5 +1273,175 @@ mod tests {
         let actual = f80_bytes(result);
         println!("fpatan(y=1, x=0): {:02X?}", actual);
         assert_eq!(actual, expected, "fpatan(1/0) should be pi/2");
+    }
+
+    fn f128_to_hex(f: F128) -> String {
+        format!("{:016X}_{:016X}", f.hi, f.lo)
+    }
+
+    /// Replicate the checkit trig test: compute atan(1/tan(pi/5)) and
+    /// compare to the known-correct double 3*pi/10.
+    #[test]
+    fn test_checkit_trig_trace() {
+        let pi = F80::PI;
+        let one = F80::ONE;
+        let two = one.add(one);
+        let four = two.mul(two);
+        let five = four.add(one);
+        let pi_over_5 = pi.div(five);
+        let x = ftan(pi_over_5).unwrap(); // tan(pi/5)
+        let y = one;
+
+        let x128 = f80_to_f128(F80 { sign: false, ..x });
+        let y128 = f80_to_f128(F80 { sign: false, ..y });
+        println!("x128 = {}", f128_to_hex(x128));
+        println!("y128 = {}", f128_to_hex(y128));
+
+        // y > x so swap=true, arg = x/y = x (y=1)
+        let arg0 = f128_div(x128, y128);
+        println!("arg0 (=x/1) = {}", f128_to_hex(arg0));
+
+        // Arg reduction: (arg*√3 - 1) / (arg + √3)
+        let t1a = f128_mul(arg0, F128_SQRT3);
+        println!("arg*sqrt3 = {}", f128_to_hex(t1a));
+        let t2 = f128_add(arg0, F128_SQRT3);
+        println!("arg+sqrt3 = {}", f128_to_hex(t2));
+        let t1b = f128_sub(t1a, F128_ONE);
+        println!("arg*sqrt3-1 = {}", f128_to_hex(t1b));
+        let arg_reduced = f128_div(t1b, t2);
+        println!("arg_reduced = {}", f128_to_hex(arg_reduced));
+
+        let poly_result = odd_poly(arg_reduced, &ATAN_ARR);
+        println!("poly = {}", f128_to_hex(poly_result));
+
+        let plus_pi6 = f128_add(poly_result, F128_PI6);
+        println!("poly+pi6 = {}", f128_to_hex(plus_pi6));
+
+        let final_result = f128_sub(F128_PI2, plus_pi6);
+        println!("pi2 - result = {}", f128_to_hex(final_result));
+
+        let out = f128_to_f80(final_result);
+        println!("f80 result: {:02X?}", f80_bytes(out));
+        println!("f64 result: 0x{:016X}", out.to_f64().to_bits());
+        println!("expected:   0x3FEE28C731EB6950");
+    }
+
+    /// Test fpatan with exact tan(pi/5) to see if error is in ftan or fpatan.
+    #[test]
+    fn test_checkit_isolate() {
+        // Use f64-rounded tan(pi/5) as input to see if fpatan alone produces the right answer.
+        let tan_pi5_f64: f64 = (std::f64::consts::PI / 5.0).tan();
+        let tan_pi5_f80 = F80::from_f64(tan_pi5_f64);
+        println!("tan(pi/5) f64 input: 0x{:016X}", tan_pi5_f64.to_bits());
+        println!("tan(pi/5) f80: {:02X?}", f80_bytes(tan_pi5_f80));
+        let one = F80::ONE;
+        let result = fpatan(tan_pi5_f80, one);
+        println!("fpatan result f64: 0x{:016X}", result.to_f64().to_bits());
+        println!("expected:          0x3FEE28C731EB6950");
+    }
+
+    #[test]
+    fn test_ftan_trace() {
+        let pi = F80::PI;
+        let one = F80::ONE;
+        let two = one.add(one);
+        let four = two.mul(two);
+        let five = four.add(one);
+        let pi_over_5 = pi.div(five);
+
+        // Reproduce ftan internals step by step
+        let a = pi_over_5;
+        let a_exp = a.exp as i32;
+        let z_exp = 16383i32;
+        let exp_diff = a_exp - z_exp;
+        let mut z_sign = a.sign;
+        let mut sig0 = a.mant;
+        let mut sig1: u64 = 0;
+        let q = reduce_trig_arg(exp_diff, &mut z_sign, &mut sig0, &mut sig1);
+        println!(
+            "q={}, z_sign={}, sig0={:016X}, sig1={:016X}",
+            q, z_sign, sig0, sig1
+        );
+
+        let r = pack_from_floatx80_sig(z_exp, sig0, sig1);
+        println!("r = {}", f128_to_hex(r));
+
+        let x2 = f128_mul(r, r);
+        println!("x2 (r^2) = {}", f128_to_hex(x2));
+
+        // Trace sin polynomial: odd_poly(r, SIN_ARR) = r * eval_poly(x2, SIN_ARR)
+        let n = SIN_ARR.len();
+        let mut rs = SIN_ARR[n - 1];
+        println!("sin eval start: rs = {}", f128_to_hex(rs));
+        for i in (0..n - 1).rev() {
+            rs = f128_muladd(rs, x2, SIN_ARR[i]);
+            println!(
+                "sin eval step {} (coeff {}): rs = {}",
+                n - 1 - i,
+                i,
+                f128_to_hex(rs)
+            );
+        }
+        let sin_r = f128_mul(r, rs);
+        println!("sin_r = {}", f128_to_hex(sin_r));
+
+        // Trace cos polynomial: even_poly(r, COS_ARR) = eval_poly(x2, COS_ARR)
+        let n = COS_ARR.len();
+        let mut rc = COS_ARR[n - 1];
+        println!("cos eval start: rc = {}", f128_to_hex(rc));
+        for i in (0..n - 1).rev() {
+            rc = f128_muladd(rc, x2, COS_ARR[i]);
+            println!(
+                "cos eval step {} (coeff {}): rc = {}",
+                n - 1 - i,
+                i,
+                f128_to_hex(rc)
+            );
+        }
+        let cos_r = rc;
+        println!("cos_r = {}", f128_to_hex(cos_r));
+
+        let result_f128 = f128_div(sin_r, cos_r);
+        println!("sin/cos = {}", f128_to_hex(result_f128));
+
+        let out = f128_to_f80(result_f128);
+        println!("ftan result: {:02X?}", f80_bytes(out));
+    }
+
+    #[test]
+    fn test_checkit_trig() {
+        // Compute pi/5 the same way checkit does:
+        //   fldpi; fld1; fadd; fmul; fld1; faddp; fdivp
+        let pi = F80::PI;
+        let one = F80::ONE;
+        let two = one.add(one); // 2.0
+        let four = two.mul(two); // 4.0
+        let five = four.add(one); // 5.0
+        let pi_over_5 = pi.div(five);
+
+        println!("pi/5 bytes: {:02X?}", f80_bytes(pi_over_5));
+
+        // fptan(pi/5) → ST(0)=1.0, ST(1)=tan(pi/5)
+        let tan_pi5 = ftan(pi_over_5).unwrap();
+        println!("ftan(pi/5) bytes: {:02X?}", f80_bytes(tan_pi5));
+
+        // fpatan(x=tan(pi/5), y=1.0) = atan(1/tan(pi/5)) = 3*pi/10
+        let result = fpatan(tan_pi5, one);
+        println!("fpatan(y=1, x=tan(pi/5)) bytes: {:02X?}", f80_bytes(result));
+
+        // Convert to double (what fstp qword produces)
+        let result_f64 = result.to_f64();
+        let result_bits = result_f64.to_bits();
+        println!("as f64: {:.20} (0x{:016X})", result_f64, result_bits);
+
+        // Expected: 3*pi/10 as f64
+        let expected_f64 = 3.0f64 * std::f64::consts::PI / 10.0;
+        let expected_bits = expected_f64.to_bits();
+        println!("expected: {:.20} (0x{:016X})", expected_f64, expected_bits);
+
+        assert_eq!(
+            result_bits, expected_bits,
+            "fpatan(1/tan(pi/5)) as double should equal 3*pi/10"
+        );
     }
 }

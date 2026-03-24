@@ -143,14 +143,19 @@ pub(crate) struct Cpu {
     suppress_trap: bool,
 }
 
+/// Snapshot of CPU state captured before instruction execution, used by the
+/// decoder so that annotations can show pre-execution values where needed
+/// (e.g. CS before a far jump, FPU ST(0) before a store-and-pop).
+struct PreExecState {
+    cs: u16,
+    fpu_st0: ([u8; 10], f64),
+}
+
 /// Adapter that implements `Computer` by combining a `Cpu` and a `Bus`.
 struct CpuBusComputer<'a> {
     cpu: &'a Cpu,
     bus: &'a Bus,
-    /// Pre-execution CS — needed so segment-override annotations use the
-    /// segment that was active when the instruction ran, not the CS that
-    /// results from a FAR CALL/JMP changing CS.
-    pre_cs: u16,
+    pre: PreExecState,
 }
 
 impl Computer for CpuBusComputer<'_> {
@@ -179,7 +184,7 @@ impl Computer for CpuBusComputer<'_> {
         self.cpu.di
     }
     fn cs(&self) -> u16 {
-        self.pre_cs
+        self.pre.cs
     }
     fn ds(&self) -> u16 {
         self.cpu.ds
@@ -192,6 +197,18 @@ impl Computer for CpuBusComputer<'_> {
     }
     fn read_u8(&self, phys: u32) -> u8 {
         self.bus.memory_read_u8(phys as usize)
+    }
+    fn fpu_st(&self, i: u8) -> ([u8; 10], f64) {
+        let idx = (self.cpu.fpu_top.wrapping_add(i)) as usize & 7;
+        let val = self.cpu.fpu_stack[idx];
+        (val.to_bytes(), val.to_f64())
+    }
+    fn fpu_st_pre(&self, i: u8) -> ([u8; 10], f64) {
+        if i == 0 {
+            self.pre.fpu_st0
+        } else {
+            self.fpu_st(i)
+        }
     }
 }
 
@@ -384,12 +401,22 @@ impl Cpu {
             return;
         }
 
-        let pre_cs = self.cs;
         let pre_ip = self.ip;
+        let pre = if self.exec_logging_enabled {
+            let idx = self.fpu_top as usize & 7;
+            let val = self.fpu_stack[idx];
+            Some(PreExecState {
+                cs: self.cs,
+                fpu_st0: (val.to_bytes(), val.to_f64()),
+            })
+        } else {
+            None
+        };
 
         // Capture TF before execution — it may be cleared by the instruction (e.g. POPF).
         let trap_before = self.get_flag(cpu_flag::TRAP);
 
+        let pre_cs = self.cs;
         bus.set_current_ip(pre_cs, pre_ip);
         self.exec_instruction(bus);
 
@@ -397,12 +424,12 @@ impl Cpu {
 
         // Decode after execution so register annotations reflect post-exec state.
         // Instruction bytes at pre_cs:pre_ip are still in memory (code is not modified).
-        let decoded = if self.exec_logging_enabled {
+        let decoded = if let Some(pre) = pre {
             Some(decoder::decode(
                 &CpuBusComputer {
                     cpu: self,
                     bus,
-                    pre_cs,
+                    pre,
                 },
                 pre_cs,
                 pre_ip,

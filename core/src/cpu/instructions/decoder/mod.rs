@@ -111,6 +111,9 @@ fn decode_reg(cur: &Cursor, reg_bits: u8, is16: bool) -> Operand {
 pub fn decode(cpu: &dyn Computer, seg: u16, offset: u16) -> Instruction {
     let mut cur = Cursor::new(cpu, seg, offset);
     let (mnemonic, operands) = decode_inner(&mut cur);
+    // FPU implicit-operand instructions: move annotation-only operands out of
+    // the main operand list so they appear in annotations but not the asm column.
+    let (operands, implicit_operands) = split_fpu_implicit(&mnemonic, operands);
     let comment = default_comment(&mnemonic, &operands, cpu);
     Instruction {
         segment: seg,
@@ -118,8 +121,35 @@ pub fn decode(cpu: &dyn Computer, seg: u16, offset: u16) -> Instruction {
         bytes: cur.bytes,
         mnemonic,
         operands,
+        implicit_operands,
         seg_override: cur.seg_override,
         comment,
+    }
+}
+
+/// For FPU instructions with no explicit operands (e.g. fptan, fpatan, fchs),
+/// move all FpuReg operands to implicit so they show only in annotations.
+/// For FPU store-to-memory instructions (fst, fstp, etc.), the ST(0) operand
+/// is moved to implicit so it appears as an annotation but not in the asm text.
+fn split_fpu_implicit(mnemonic: &Mnemonic, operands: Vec<Operand>) -> (Vec<Operand>, Vec<Operand>) {
+    use Mnemonic::*;
+    match mnemonic {
+        Fchs | Fabs | Ftst | Fxam | Fld1 | Fldl2t | Fldl2e | Fldpi | Fldlg2 | Fldln2
+        | Fldz | F2xm1 | Fyl2x | Fptan | Fpatan | Fxtract | Fprem | Fyl2xp1 | Fsqrt
+        | Frndint | Fscale => (vec![], operands),
+        // Store-to-memory: keep FpuMem as explicit, move FpuReg(ST0) to implicit
+        Fst | Fstp | Fist | Fistp | Fbstp => {
+            let mut explicit = vec![];
+            let mut implicit = vec![];
+            for op in operands {
+                match op {
+                    Operand::FpuReg(..) => implicit.push(op),
+                    _ => explicit.push(op),
+                }
+            }
+            (explicit, implicit)
+        }
+        _ => (operands, vec![]),
     }
 }
 

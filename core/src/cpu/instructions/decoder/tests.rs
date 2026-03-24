@@ -27,6 +27,8 @@ struct FakeCpu<'a> {
     ds: u16,
     ss: u16,
     es: u16,
+    /// FPU ST values: (raw 10-byte representation, f64 approximation)
+    fpu_st: [([u8; 10], f64); 8],
 }
 
 impl<'a> FakeCpu<'a> {
@@ -45,6 +47,7 @@ impl<'a> FakeCpu<'a> {
             ds: 0,
             ss: 0,
             es: 0,
+            fpu_st: [([0; 10], 0.0); 8],
         }
     }
 }
@@ -88,6 +91,9 @@ impl Computer for FakeCpu<'_> {
     }
     fn read_u8(&self, phys: u32) -> u8 {
         self.mem.get(phys as usize).copied().unwrap_or(0)
+    }
+    fn fpu_st(&self, i: u8) -> ([u8; 10], f64) {
+        self.fpu_st[i as usize & 7]
     }
 }
 
@@ -660,4 +666,81 @@ fn fpu_fld_dword_mem_with_disp8() {
     let line = decode_line(&cpu, 0, 0);
     assert!(line.contains("fld dword [bx+0x04]"), "asm column: {line}");
     assert!(line.contains("@0000:0104"), "EA annotation: {line}");
+}
+
+// ─── FPU: register annotations showing ST values after execution ─────────────
+
+/// Build the 10-byte LE representation and f64 for a known F80 value.
+/// F80 layout: bytes[0..8] = mantissa LE, bytes[8..10] = (sign|exponent) LE.
+fn make_fpu_st(sign: bool, exp: u16, mant: u64) -> ([u8; 10], f64) {
+    let mut raw = [0u8; 10];
+    raw[0..8].copy_from_slice(&mant.to_le_bytes());
+    let exp_sign = exp | (if sign { 0x8000 } else { 0 });
+    raw[8..10].copy_from_slice(&exp_sign.to_le_bytes());
+    use crate::cpu::f80::F80;
+    let f = F80 { sign, exp, mant }.to_f64();
+    (raw, f)
+}
+
+#[test]
+fn fpu_faddp_shows_st_annotations() {
+    // DE C1  →  faddp st(1), st(0)   (mod=11, opcode=DE, reg=0, rm=1)
+    // After execution, st(0) and st(1) should appear in annotations.
+    let mut cpu = FakeCpu::new(&[0xDE, 0xC1]);
+    // ST(0) = 1.0:  exp=0x3FFF, mant=0x8000000000000000
+    cpu.fpu_st[0] = make_fpu_st(false, 0x3FFF, 0x8000_0000_0000_0000);
+    // ST(1) = 3.5:  exp=0x4000, mant=0xE000000000000000
+    cpu.fpu_st[1] = make_fpu_st(false, 0x4000, 0xE000_0000_0000_0000);
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("faddp st(1), st(0)"), "asm column: {line}");
+    // ST(1) annotation: raw hex = 0x4000E000000000000000(3.5)
+    assert!(line.contains("st(1)=0x4000E000000000000000"), "st(1) raw: {line}");
+    assert!(line.contains("(3.5"), "st(1) f64 value: {line}");
+    // ST(0) annotation: raw hex = 0x3FFF8000000000000000(1.0)
+    assert!(line.contains("st(0)=0x3FFF8000000000000000"), "st(0) raw: {line}");
+    assert!(line.contains("(1.0"), "st(0) f64 value: {line}");
+}
+
+#[test]
+fn fpu_fmul_d8_shows_st_annotations() {
+    // D8 C9  →  fmul st(0), st(1)   (mod=11, opcode=D8, reg=1, rm=1)
+    let mut cpu = FakeCpu::new(&[0xD8, 0xC9]);
+    // ST(0) = -2.0:  sign=true, exp=0x4000, mant=0x8000000000000000
+    cpu.fpu_st[0] = make_fpu_st(true, 0x4000, 0x8000_0000_0000_0000);
+    // ST(1) = 0.0 (all zeros)
+    cpu.fpu_st[1] = ([0u8; 10], 0.0);
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("fmul st(0), st(1)"), "asm column: {line}");
+    // ST(0) = -2.0: sign bit set → 0xC000...
+    assert!(line.contains("st(0)=0xC0008000000000000000"), "st(0) raw: {line}");
+    assert!(line.contains("(-2.0"), "st(0) f64 value: {line}");
+    // ST(1) = 0.0: all zeros
+    assert!(line.contains("st(1)=0x00000000000000000000"), "st(1) raw: {line}");
+    assert!(line.contains("(0.0"), "st(1) f64 value: {line}");
+}
+
+#[test]
+fn fpu_fstp_qword_mem_shows_st0_annotation() {
+    // DD 1E 68 6E  →  fstp qword [0x6e68]
+    // ST(0) should appear as an implicit annotation (not in the asm column).
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xDD;
+    mem[1] = 0x1E;
+    mem[2] = 0x68;
+    mem[3] = 0x6E;
+    let mut cpu = FakeCpu::new(&mem);
+    // ST(0) = ~0.942478 (some representative value)
+    cpu.fpu_st[0] = make_fpu_st(false, 0x3FFE, 0xF146398F5B4A846A);
+
+    let line = decode_line(&cpu, 0, 0);
+    // Asm column should show only the memory operand, not st(0)
+    assert!(line.contains("fstp qword [0x6e68]"), "asm column: {line}");
+    assert!(!line.contains("fstp qword [0x6e68], st"), "st(0) should NOT be in asm column: {line}");
+    // Memory address annotation
+    assert!(line.contains("@0000:6E68"), "memory address annotation: {line}");
+    // ST(0) value annotation
+    assert!(line.contains("st(0)=0x3FFEF146398F5B4A846A"), "st(0) raw: {line}");
+    assert!(line.contains("(0.942"), "st(0) f64 approx: {line}");
 }

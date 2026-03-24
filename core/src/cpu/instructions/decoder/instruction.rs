@@ -13,6 +13,8 @@ pub struct Instruction {
     pub mnemonic: Mnemonic,
     /// Operands in source-order: [dst, src] where applicable.
     pub operands: Vec<Operand>,
+    /// Implicit operands shown only in the annotation column (not in the asm mnemonic).
+    pub implicit_operands: Vec<Operand>,
     /// Segment override prefix, if present.
     pub seg_override: Option<SegReg>,
     /// Optional comment shown at the end of the line, prefixed with ";".
@@ -46,6 +48,7 @@ impl Instruction {
         let annotations: Vec<String> = self
             .operands
             .iter()
+            .chain(self.implicit_operands.iter())
             .filter_map(|op| op.annotation())
             .collect();
         let ann_str = annotations.join(" ");

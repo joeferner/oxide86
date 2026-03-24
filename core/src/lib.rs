@@ -84,6 +84,15 @@ pub trait Computer {
     fn es(&self) -> u16;
     /// Read one byte from a physical (20-bit) address.
     fn read_u8(&self, phys: u32) -> u8;
+    /// Return the raw 10-byte 80-bit representation and f64 approximation of FPU ST(i).
+    fn fpu_st(&self, _i: u8) -> ([u8; 10], f64) {
+        ([0; 10], 0.0)
+    }
+    /// Pre-execution FPU ST(i) — used by the decoder to annotate store instructions
+    /// with the value that was stored (before a pop moved the stack).
+    fn fpu_st_pre(&self, i: u8) -> ([u8; 10], f64) {
+        self.fpu_st(i)
+    }
 }
 
 pub trait Device {

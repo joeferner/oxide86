@@ -15,8 +15,8 @@ pub enum Operand {
         mem: MemRef,
         value: u16,
     },
-    /// FPU stack register ST(i)
-    FpuReg(u8),
+    /// FPU stack register ST(i) with raw 80-bit bytes and f64 approximation
+    FpuReg(u8, [u8; 10], f64),
     /// FPU memory operand; `bytes` is the operand size (2, 4, 8, 10, 14, or 94)
     FpuMem {
         mem: MemRef,
@@ -35,7 +35,7 @@ impl Operand {
             Operand::Imm16(v) => format!("0x{:04x}", v),
             Operand::Mem8 { mem, .. } => format!("[{}]", mem.expr),
             Operand::Mem16 { mem, .. } => format!("[{}]", mem.expr),
-            Operand::FpuReg(i) => format!("st({})", i),
+            Operand::FpuReg(i, _, _) => format!("st({})", i),
             Operand::FpuMem { mem, bytes } => {
                 let size = match bytes {
                     2 => "word",
@@ -72,7 +72,12 @@ impl Operand {
                 mem.ea,
                 mem.phys()
             )),
-            Operand::FpuReg(_) => None,
+            Operand::FpuReg(i, raw, f) => {
+                // Display raw 80-bit value as hex (big-endian order: exp+sign then mantissa)
+                let exp_sign = u16::from_le_bytes([raw[8], raw[9]]);
+                let mant = u64::from_le_bytes(raw[0..8].try_into().unwrap());
+                Some(format!("st({})=0x{:04X}{:016X}({:.6})", i, exp_sign, mant, f))
+            }
             Operand::FpuMem { mem, .. } => Some(format!(
                 "@{:04X}:{:04X}({:05X})",
                 mem.seg,
