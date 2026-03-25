@@ -49,6 +49,33 @@ pub(crate) fn bios_reset(bus: &mut Bus) {
     bda_reset(bus);
     bios_int15_system_config_reset(bus);
     bios_font_reset(bus);
+    bios_dma_reset(bus);
+}
+
+/// Programs DMA1 channel 0 for memory refresh, matching real IBM PC BIOS POST behaviour.
+///
+/// Channel 0 is the memory-refresh channel; its DREQ line is permanently
+/// asserted by hardware.  The BIOS initialises it so that diagnostic programs
+/// (e.g. CheckIt) can verify the DMA controller is alive by polling the
+/// current-address / current-count registers and expecting them to advance.
+///
+/// Setup: single transfer, address increment, auto-init, verify mode.
+/// Count = 0xFFFF so the channel cycles continuously without masking itself.
+fn bios_dma_reset(bus: &mut Bus) {
+    // Master clear — resets flip-flop, command, status, and masks all channels.
+    bus.io_write_u8(0x000D, 0x00);
+    // Clear byte-pointer flip-flop so subsequent writes start at the low byte.
+    bus.io_write_u8(0x000C, 0x00);
+    // Channel 0 base/current address = 0x0000.
+    bus.io_write_u8(0x0000, 0x00); // low byte
+    bus.io_write_u8(0x0000, 0x00); // high byte
+    // Channel 0 base/current count = 0xFFFF (65 536 bytes per refresh cycle).
+    bus.io_write_u8(0x0001, 0xFF); // low byte
+    bus.io_write_u8(0x0001, 0xFF); // high byte
+    // Mode: single transfer | address increment | auto-init | verify | channel 0.
+    bus.io_write_u8(0x000B, 0x58);
+    // Unmask channel 0 (bit 2 = 0 = unmask, bits 1-0 = 00 = channel 0).
+    bus.io_write_u8(0x000A, 0x00);
 }
 
 /// Writes the IBM 8x8 CGA font and IBM 8x14 EGA font into the BIOS ROM area and

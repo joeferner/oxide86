@@ -187,8 +187,13 @@ impl Uart {
     pub(crate) fn take_pending_irq(&self, port_idx: usize) -> bool {
         let p = &self.ports[port_idx];
         if p.ier & 0x01 == 0 {
-            return false;
+            return false; // ERBFI not enabled
         }
+        // Data Ready set — covers loopback and direct RBR writes
+        if p.lsr & LSR_DR != 0 {
+            return true;
+        }
+        // Fall back to device-level IRQ check
         let Some(ref dev) = p.device else {
             return false;
         };
@@ -274,6 +279,11 @@ impl Device for Uart {
             0 => {
                 if dlab {
                     p.dll = val;
+                } else if p.mcr & 0x10 != 0 {
+                    // MCR loopback mode: byte written to THR loops back directly to RBR.
+                    // THRE/TEMT remain set (no physical transmission).
+                    p.rbr = val;
+                    p.lsr |= LSR_DR;
                 } else {
                     // THR write: try to forward byte to the attached device.
                     // If the device isn't ready, buffer the byte and clear THRE/TEMT
@@ -301,7 +311,14 @@ impl Device for Uart {
             4 => {
                 let prev = p.mcr;
                 p.mcr = val;
-                if val != prev
+                if val & 0x10 != 0 {
+                    // Loopback mode: output modem lines feed back to MSR inputs.
+                    // DTR(bit0)→DSR(bit5), RTS(bit1)→CTS(bit4), OUT1(bit2)→RI(bit6), OUT2(bit3)→DCD(bit7)
+                    p.msr = ((val & 0x01) << 5) // DTR → DSR
+                          | ((val & 0x02) << 3) // RTS → CTS
+                          | ((val & 0x04) << 4) // OUT1 → RI
+                          | ((val & 0x08) << 4); // OUT2 → DCD
+                } else if val != prev
                     && let Some(ref dev) = p.device
                 {
                     let lines = ModemControlLines::from_mcr(val);

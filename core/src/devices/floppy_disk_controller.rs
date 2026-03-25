@@ -56,8 +56,17 @@ enum FdcPhase {
         received: usize,
         total: usize,
     },
-    /// PIO data transfer: serving sector data bytes to the CPU, then result bytes
+    /// PIO data transfer: serving sector data bytes to the CPU, then result bytes.
+    /// Used when the READ DATA command byte has modifier flags set (e.g. MFM=1).
     Execution {
+        data: Vec<u8>,
+        index: usize,
+        result: [u8; 7],
+    },
+    /// DMA data transfer: sector data is served byte-by-byte via `dma_read_u8`.
+    /// Used when the READ DATA command byte has no modifier flags (bare 0x06).
+    /// MSR shows only CB (no RQM/DIO/NDM) while this phase is active.
+    DmaExecution {
         data: Vec<u8>,
         index: usize,
         result: [u8; 7],
@@ -99,6 +108,9 @@ pub(crate) struct FloppyDiskController {
     /// Pending interrupt result from RECALIBRATE or reset recovery: (ST0, PCN).
     /// Consumed by SENSE INTERRUPT STATUS.
     pending_interrupt: Option<(u8, u8)>,
+    /// Pending DMA channel 2 request state change for the Bus to drain.
+    /// `Some(true)` = assert DREQ 2; `Some(false)` = deassert; `None` = no change.
+    pending_dreq: Option<bool>,
 }
 
 impl FloppyDiskController {
@@ -110,7 +122,15 @@ impl FloppyDiskController {
             phase: FdcPhase::Idle,
             in_reset: false,
             pending_interrupt: None,
+            pending_dreq: None,
         }
+    }
+
+    /// Take and return any pending DMA channel 2 request state change.
+    /// Called by the Bus after each I/O write and after each DMA transfer so it
+    /// can update the DMA controller's DREQ line for channel 2.
+    pub(crate) fn take_dreq_request(&mut self) -> Option<bool> {
+        self.pending_dreq.take()
     }
 
     /// Insert or eject the disk for the given drive (A: or B:). Returns the previous disk if any.
@@ -160,14 +180,24 @@ impl FloppyDiskController {
             FdcPhase::Idle => FDC_MSR_RQM,
             FdcPhase::Command { .. } => FDC_MSR_RQM | FDC_MSR_CB,
             FdcPhase::Execution { .. } => FDC_MSR_RQM | FDC_MSR_DIO | FDC_MSR_NDM | FDC_MSR_CB,
+            // DMA execution: controller is busy but CPU has nothing to do (no RQM, DIO, NDM).
+            // The DMA controller transfers data autonomously; MSR shows CB only.
+            FdcPhase::DmaExecution { .. } => FDC_MSR_CB,
             FdcPhase::WriteExecution { .. } => FDC_MSR_RQM | FDC_MSR_NDM | FDC_MSR_CB,
             FdcPhase::Result { .. } => FDC_MSR_RQM | FDC_MSR_DIO | FDC_MSR_CB,
         }
     }
 
-    /// Execute a READ DATA command given the 8 parameter bytes.
-    /// Returns the next FdcPhase (Execution on success, Result on error).
-    fn execute_read_data(&self, params: &[u8; 8]) -> FdcPhase {
+    /// Execute a READ DATA command given the full command byte and 8 parameter bytes.
+    ///
+    /// Transfer mode is determined by the command byte's modifier flags (bits 7:5):
+    /// - `cmd & 0xE0 == 0` (bare 0x06, no MT/MF/SK): **DMA mode** → `DmaExecution`.
+    ///   The DMA controller transfers data autonomously via `dma_read_u8`.
+    /// - `cmd & 0xE0 != 0` (e.g. 0x46 with MFM=1, as sent by the BIOS): **PIO mode**
+    ///   → `Execution`.  The CPU reads bytes one at a time from port 0x3F5.
+    ///
+    /// Returns the next FdcPhase (DmaExecution/Execution on success, Result on error).
+    fn execute_read_data(&self, cmd: u8, params: &[u8; 8]) -> FdcPhase {
         let drive_head = params[0]; // HD<<2 | US1:US0
         let cylinder = params[1];
         let head = params[2];
@@ -181,16 +211,18 @@ impl FloppyDiskController {
 
         let drive = DriveNumber::from_standard(drive_index);
 
+        // cmd & 0xE0 == 0: bare command (no MT/MF/SK) → DMA mode
+        // cmd & 0xE0 != 0: has modifier flags (e.g. BIOS sends 0x46 with MFM=1) → PIO mode
+        let use_dma = cmd & 0xE0 == 0;
+
         match self
             .drives
             .get(drive.as_floppy_index())
             .and_then(|d| d.as_ref())
         {
             Some(disk) => match disk.read_sectors(cylinder, head, sector, count) {
-                Ok(data) => FdcPhase::Execution {
-                    data,
-                    index: 0,
-                    result: [
+                Ok(data) => {
+                    let result = [
                         0x00,                // ST0: normal termination
                         0x00,                // ST1
                         0x00,                // ST2
@@ -198,8 +230,21 @@ impl FloppyDiskController {
                         head,                // H
                         eot.wrapping_add(1), // R (next sector after last)
                         0x02,                // N (512 bytes/sector)
-                    ],
-                },
+                    ];
+                    if use_dma {
+                        FdcPhase::DmaExecution {
+                            data,
+                            index: 0,
+                            result,
+                        }
+                    } else {
+                        FdcPhase::Execution {
+                            data,
+                            index: 0,
+                            result,
+                        }
+                    }
+                }
                 Err(_) => FdcPhase::Result {
                     bytes: [
                         0x40 | (drive_head & 0x07), // ST0: abnormal termination
@@ -376,6 +421,7 @@ impl Device for FloppyDiskController {
         self.phase = FdcPhase::Idle;
         self.in_reset = false;
         self.pending_interrupt = None;
+        self.pending_dreq = None;
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -544,7 +590,13 @@ impl Device for FloppyDiskController {
                             // All parameter bytes received; execute the command
                             let cmd_code = cmd & 0x1F;
                             match cmd_code {
-                                FDC_CMD_READ_DATA => self.execute_read_data(&params),
+                                FDC_CMD_READ_DATA => {
+                                    let phase = self.execute_read_data(cmd, &params);
+                                    if matches!(phase, FdcPhase::DmaExecution { .. }) {
+                                        self.pending_dreq = Some(true);
+                                    }
+                                    phase
+                                }
                                 FDC_CMD_VERIFY => self.execute_verify(&params),
                                 FDC_CMD_WRITE_DATA => {
                                     // Transition to write execution: wait for sector data from CPU
@@ -590,6 +642,54 @@ impl Device for FloppyDiskController {
                 true
             }
             _ => false,
+        }
+    }
+
+    /// Called by the DMA controller for each byte of a channel 2 DMA transfer
+    /// (device → memory direction).  Serves the next byte from the `DmaExecution`
+    /// sector buffer, advancing the internal index.  When the last byte is served
+    /// the FDC transitions to the Result phase and signals DREQ deassert.
+    fn dma_read_u8(&mut self) -> Option<u8> {
+        let current = std::mem::replace(&mut self.phase, FdcPhase::Idle);
+        match current {
+            FdcPhase::DmaExecution {
+                data,
+                index,
+                result,
+            } => {
+                if index < data.len() {
+                    let byte = data[index];
+                    let next = index + 1;
+                    if next >= data.len() {
+                        // Last byte: move to Result phase and release DREQ.
+                        self.phase = FdcPhase::Result {
+                            bytes: result,
+                            index: 0,
+                            len: 7,
+                        };
+                        self.pending_dreq = Some(false);
+                    } else {
+                        self.phase = FdcPhase::DmaExecution {
+                            data,
+                            index: next,
+                            result,
+                        };
+                    }
+                    Some(byte)
+                } else {
+                    // Buffer exhausted without TC — shouldn't happen with correct count setup.
+                    self.phase = FdcPhase::Result {
+                        bytes: result,
+                        index: 0,
+                        len: 7,
+                    };
+                    None
+                }
+            }
+            other => {
+                self.phase = other;
+                None
+            }
         }
     }
 }

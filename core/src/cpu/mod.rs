@@ -424,8 +424,8 @@ impl Cpu {
 
         // Decode after execution so register annotations reflect post-exec state.
         // Instruction bytes at pre_cs:pre_ip are still in memory (code is not modified).
-        let decoded = if let Some(pre) = pre {
-            Some(decoder::decode(
+        let decoded = pre.map(|pre| {
+            decoder::decode(
                 &CpuBusComputer {
                     cpu: self,
                     bus,
@@ -433,10 +433,8 @@ impl Cpu {
                 },
                 pre_cs,
                 pre_ip,
-            ))
-        } else {
-            None
-        };
+            )
+        });
 
         if self.exec_logging_enabled
             && let Some(ref instr) = decoded

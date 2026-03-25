@@ -105,4 +105,3 @@ impl Device for ParallelPort {
         true
     }
 }
-

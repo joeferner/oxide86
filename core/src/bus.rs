@@ -13,15 +13,15 @@ use crate::{
     cpu::bios::bios_reset,
     devices::{
         SoundCard, SoundCardRef,
-        dma::DmaController,
+        dma::{DmaController, DmaTransfer},
         floppy_disk_controller::FloppyDiskController,
-        printer::ParallelPort,
         game_port::GamePortDevice,
         hard_disk_controller::HardDiskController,
         keyboard_controller::KeyboardController,
         pc_speaker::PcSpeaker,
         pic::Pic,
         pit::Pit,
+        printer::ParallelPort,
         rtc::{Clock, Rtc},
         uart::Uart,
     },
@@ -59,6 +59,10 @@ pub(crate) struct Bus {
     rtc: Option<Rc<RefCell<Rtc>>>,
     video_card: Rc<RefCell<VideoCard>>,
     sound_card: Option<SoundCardRef>,
+    dma: Rc<RefCell<DmaController>>,
+    /// Devices connected to DMA channels, indexed by global channel number (0–7).
+    /// The Bus calls `dma_read_u8` / `dma_write_u8` on these when executing transfers.
+    dma_devices: [Option<DeviceRef>; 8],
 
     /// Cycle count to accurately track CPU cycles
     cycle_count: u32,
@@ -111,7 +115,7 @@ impl Bus {
             hard_disk_controller.clone(),
             config.video_card.clone(),
             game_port.clone(),
-            dma,
+            dma.clone(),
             parallel_port,
         ];
         let rtc = if let Some(clock) = config.clock {
@@ -121,6 +125,9 @@ impl Bus {
         } else {
             None
         };
+        let mut dma_devices: [Option<DeviceRef>; 8] = Default::default();
+        dma_devices[2] = Some(floppy_controller.clone());
+
         Self {
             memory: config.memory,
             devices,
@@ -132,6 +139,8 @@ impl Bus {
             uart,
             video_card: config.video_card,
             sound_card: None,
+            dma,
+            dma_devices,
             cycle_count: 0,
             rtc,
             a20_enabled: false,
@@ -156,6 +165,10 @@ impl Bus {
 
     pub(crate) fn increment_cycle_count(&mut self, cycles: u32) {
         self.cycle_count = self.cycle_count.wrapping_add(cycles);
+        let transfers = self.dma.borrow_mut().tick(self.cycle_count);
+        for transfer in transfers {
+            self.execute_dma_transfer(transfer);
+        }
         if let Some(sc) = &self.sound_card
             && wrapping_ge(self.cycle_count, sc.borrow().next_sample_cycle())
         {
@@ -215,6 +228,43 @@ impl Bus {
 
     pub(crate) fn game_port_mut(&self) -> RefMut<'_, GamePortDevice> {
         self.game_port.borrow_mut()
+    }
+
+    /// Assert a DMA request on the given global channel (0–7).
+    #[allow(dead_code)]
+    pub(crate) fn dma_request(&mut self, channel: u8) {
+        self.dma.borrow_mut().set_dreq(channel, true);
+    }
+
+    /// Deassert a DMA request on the given global channel (0–7).
+    #[allow(dead_code)]
+    pub(crate) fn dma_release(&mut self, channel: u8) {
+        self.dma.borrow_mut().set_dreq(channel, false);
+    }
+
+    /// Execute one DMA data transfer op produced by `DmaController::tick`.
+    fn execute_dma_transfer(&mut self, transfer: DmaTransfer) {
+        let ch = transfer.channel as usize;
+        let device = self.dma_devices[ch].clone();
+        if transfer.write_to_memory {
+            // Device → memory: ask device for a byte, write it to memory.
+            if let Some(dev) = device
+                && let Some(byte) = dev.borrow_mut().dma_read_u8()
+            {
+                self.memory_write_u8(transfer.phys_addr as usize, byte);
+            }
+        } else {
+            // Memory → device: read from memory, push byte to device.
+            if let Some(dev) = device {
+                let byte = self.memory_read_u8(transfer.phys_addr as usize);
+                dev.borrow_mut().dma_write_u8(byte);
+            }
+        }
+        // Drain any DREQ state change the FDC signalled during dma_read_u8
+        // (e.g. deassert on last byte when FDC transitions to Result phase).
+        if let Some(dreq) = self.floppy_controller.borrow_mut().take_dreq_request() {
+            self.dma.borrow_mut().set_dreq(2, dreq);
+        }
     }
 
     pub(crate) fn add_device<T: Device + 'static>(&mut self, device: T) {
@@ -383,6 +433,11 @@ impl Bus {
                 if let Some(enabled) = a20_request {
                     self.set_a20_enabled(enabled);
                 }
+                // Drain any DMA channel 2 request state change from the FDC.
+                // This is how the FDC asserts DREQ when it enters DMA execution phase.
+                if let Some(dreq) = self.floppy_controller.borrow_mut().take_dreq_request() {
+                    self.dma.borrow_mut().set_dreq(2, dreq);
+                }
                 return;
             }
         }
@@ -401,10 +456,10 @@ impl Bus {
 
     pub(crate) fn reset(&mut self) {
         self.cycle_count = 0;
-        bios_reset(self);
         for device in &self.devices {
             device.borrow_mut().reset();
         }
+        bios_reset(self);
     }
 
     /// Get extended memory size in KB

@@ -134,9 +134,10 @@ pub fn decode(cpu: &dyn Computer, seg: u16, offset: u16) -> Instruction {
 fn split_fpu_implicit(mnemonic: &Mnemonic, operands: Vec<Operand>) -> (Vec<Operand>, Vec<Operand>) {
     use Mnemonic::*;
     match mnemonic {
-        Fchs | Fabs | Ftst | Fxam | Fld1 | Fldl2t | Fldl2e | Fldpi | Fldlg2 | Fldln2
-        | Fldz | F2xm1 | Fyl2x | Fptan | Fpatan | Fxtract | Fprem | Fyl2xp1 | Fsqrt
-        | Frndint | Fscale => (vec![], operands),
+        Fchs | Fabs | Ftst | Fxam | Fld1 | Fldl2t | Fldl2e | Fldpi | Fldlg2 | Fldln2 | Fldz
+        | F2xm1 | Fyl2x | Fptan | Fpatan | Fxtract | Fprem | Fyl2xp1 | Fsqrt | Frndint | Fscale => {
+            (vec![], operands)
+        }
         // Store-to-memory: keep FpuMem as explicit, move FpuReg(ST0) to implicit
         Fst | Fstp | Fist | Fistp | Fbstp => {
             let mut explicit = vec![];

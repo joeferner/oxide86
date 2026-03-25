@@ -85,7 +85,12 @@ fn fpu_reg_decode(opcode: u8, reg: u8, rm: u8, cpu: &dyn Computer) -> (Mnemonic,
     }
 }
 
-fn fpu_mem_decode(opcode: u8, reg: u8, mem: MemRef, cpu: &dyn Computer) -> (Mnemonic, Vec<Operand>) {
+fn fpu_mem_decode(
+    opcode: u8,
+    reg: u8,
+    mem: MemRef,
+    cpu: &dyn Computer,
+) -> (Mnemonic, Vec<Operand>) {
     use Mnemonic::*;
     let (mnemonic, bytes): (Mnemonic, u8) = match (opcode, reg) {
         (0xD8, 0) => (Fadd, 4),

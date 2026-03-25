@@ -105,6 +105,18 @@ pub trait Device {
 
     fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8>;
     fn io_write_u8(&mut self, port: u16, val: u8, cycle_count: u32) -> bool;
+
+    /// Called by the DMA controller during a device→memory transfer.
+    /// Returns `Some(byte)` when data is available; `None` to stall the transfer.
+    fn dma_read_u8(&mut self) -> Option<u8> {
+        None
+    }
+
+    /// Called by the DMA controller during a memory→device transfer.
+    /// Returns `true` if the byte was accepted by the device.
+    fn dma_write_u8(&mut self, _val: u8) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]

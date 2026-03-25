@@ -695,10 +695,16 @@ fn fpu_faddp_shows_st_annotations() {
     let line = decode_line(&cpu, 0, 0);
     assert!(line.contains("faddp st(1), st(0)"), "asm column: {line}");
     // ST(1) annotation: raw hex = 0x4000E000000000000000(3.5)
-    assert!(line.contains("st(1)=0x4000E000000000000000"), "st(1) raw: {line}");
+    assert!(
+        line.contains("st(1)=0x4000E000000000000000"),
+        "st(1) raw: {line}"
+    );
     assert!(line.contains("(3.5"), "st(1) f64 value: {line}");
     // ST(0) annotation: raw hex = 0x3FFF8000000000000000(1.0)
-    assert!(line.contains("st(0)=0x3FFF8000000000000000"), "st(0) raw: {line}");
+    assert!(
+        line.contains("st(0)=0x3FFF8000000000000000"),
+        "st(0) raw: {line}"
+    );
     assert!(line.contains("(1.0"), "st(0) f64 value: {line}");
 }
 
@@ -714,10 +720,16 @@ fn fpu_fmul_d8_shows_st_annotations() {
     let line = decode_line(&cpu, 0, 0);
     assert!(line.contains("fmul st(0), st(1)"), "asm column: {line}");
     // ST(0) = -2.0: sign bit set → 0xC000...
-    assert!(line.contains("st(0)=0xC0008000000000000000"), "st(0) raw: {line}");
+    assert!(
+        line.contains("st(0)=0xC0008000000000000000"),
+        "st(0) raw: {line}"
+    );
     assert!(line.contains("(-2.0"), "st(0) f64 value: {line}");
     // ST(1) = 0.0: all zeros
-    assert!(line.contains("st(1)=0x00000000000000000000"), "st(1) raw: {line}");
+    assert!(
+        line.contains("st(1)=0x00000000000000000000"),
+        "st(1) raw: {line}"
+    );
     assert!(line.contains("(0.0"), "st(1) f64 value: {line}");
 }
 
@@ -737,10 +749,19 @@ fn fpu_fstp_qword_mem_shows_st0_annotation() {
     let line = decode_line(&cpu, 0, 0);
     // Asm column should show only the memory operand, not st(0)
     assert!(line.contains("fstp qword [0x6e68]"), "asm column: {line}");
-    assert!(!line.contains("fstp qword [0x6e68], st"), "st(0) should NOT be in asm column: {line}");
+    assert!(
+        !line.contains("fstp qword [0x6e68], st"),
+        "st(0) should NOT be in asm column: {line}"
+    );
     // Memory address annotation
-    assert!(line.contains("@0000:6E68"), "memory address annotation: {line}");
+    assert!(
+        line.contains("@0000:6E68"),
+        "memory address annotation: {line}"
+    );
     // ST(0) value annotation
-    assert!(line.contains("st(0)=0x3FFEF146398F5B4A846A"), "st(0) raw: {line}");
+    assert!(
+        line.contains("st(0)=0x3FFEF146398F5B4A846A"),
+        "st(0) raw: {line}"
+    );
     assert!(line.contains("(0.942"), "st(0) f64 approx: {line}");
 }

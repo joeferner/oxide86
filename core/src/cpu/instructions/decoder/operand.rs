@@ -76,7 +76,10 @@ impl Operand {
                 // Display raw 80-bit value as hex (big-endian order: exp+sign then mantissa)
                 let exp_sign = u16::from_le_bytes([raw[8], raw[9]]);
                 let mant = u64::from_le_bytes(raw[0..8].try_into().unwrap());
-                Some(format!("st({})=0x{:04X}{:016X}({:.6})", i, exp_sign, mant, f))
+                Some(format!(
+                    "st({})=0x{:04X}{:016X}({:.6})",
+                    i, exp_sign, mant, f
+                ))
             }
             Operand::FpuMem { mem, .. } => Some(format!(
                 "@{:04X}:{:04X}({:05X})",
