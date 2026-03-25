@@ -765,3 +765,79 @@ fn fpu_fstp_qword_mem_shows_st0_annotation() {
     );
     assert!(line.contains("(0.942"), "st(0) f64 approx: {line}");
 }
+
+#[test]
+fn wait_fpu_folds_onto_one_line() {
+    // 9B D9 EB  →  wait fldpi
+    // WAIT followed by a FPU escape should be combined: "wait fldpi"
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0x9B; // WAIT
+    mem[1] = 0xD9; // FPU escape
+    mem[2] = 0xEB; // fldpi (reg-form: modrm=0xEB, mode=11 reg=5 rm=3)
+    let cpu = FakeCpu::new(&mem);
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("wait fldpi"), "asm column: {line}");
+}
+
+#[test]
+fn wait_alone_stays_on_own_line() {
+    // 9B  →  wait  (not followed by FPU escape)
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0x9B; // WAIT
+    mem[1] = 0x90; // nop (not a FPU escape)
+    let cpu = FakeCpu::new(&mem);
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("wait"), "asm column: {line}");
+    assert!(!line.contains("wait nop"), "should not fold nop: {line}");
+}
+
+#[test]
+fn rep_movsb_folds_onto_one_line() {
+    // F3 A4  →  rep movsb
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xF3; // REP
+    mem[1] = 0xA4; // movsb
+    let cpu = FakeCpu::new(&mem);
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("rep movsb"), "asm column: {line}");
+}
+
+#[test]
+fn repne_scasb_folds_onto_one_line() {
+    // F2 AE  →  repne scasb
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xF2; // REPNE
+    mem[1] = 0xAE; // scasb
+    let cpu = FakeCpu::new(&mem);
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("repne scasb"), "asm column: {line}");
+}
+
+#[test]
+fn rep_cmpsb_folds_as_repe() {
+    // F3 A6  →  repe cmpsb  (0xF3 + CMPS/SCAS means "repeat while equal")
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xF3; // REP/REPE
+    mem[1] = 0xA6; // cmpsb
+    let cpu = FakeCpu::new(&mem);
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("repe cmpsb"), "asm column: {line}");
+}
+
+#[test]
+fn rep_alone_stays_on_own_line() {
+    // F3 90  →  rep  (nop is not a string op)
+    let mut mem = vec![0u8; 0x10000];
+    mem[0] = 0xF3; // REP
+    mem[1] = 0x90; // nop
+    let cpu = FakeCpu::new(&mem);
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("rep"), "asm column: {line}");
+    assert!(!line.contains("rep nop"), "should not fold nop: {line}");
+}

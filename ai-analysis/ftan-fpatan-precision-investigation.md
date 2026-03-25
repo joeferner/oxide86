@@ -134,6 +134,8 @@ void fpu_test(int test_number) {
 
     if (test_number != 3) {
         // Compare 8-byte result at [0x6E68] vs expected at [0x6E60]
+        // DS:SI 4033:6E60 (reference): 3F F6 05 A9 0C 73 AB 79 → 0x3FF605A90C73AB79 ≈ 1.376
+        // ES:DI 4033:6E68 (computed): 3F EE 28 C7 31 EB 69 51 → 0x3FEE28C731EB6951 ≈ 0.942478
         if (memcmp([0x6E68], [0x6E60], 8) != 0)
             goto fail;
     }

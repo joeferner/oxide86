@@ -124,6 +124,8 @@ fn handle_tools_list(id: Value) -> Value {
                 tool_def("list_breakpoints", "List all current breakpoints", no_params.clone()),
                 tool_def("read_memory", "Read bytes from a flat physical address",
                     json!({"type":"object","properties":{"addr":{"type":"integer"},"len":{"type":"integer"}},"required":["addr","len"]})),
+                tool_def("read_memory_seg", "Read bytes from a segmented address (seg:off), computing physical = seg*16+off",
+                    json!({"type":"object","properties":{"seg":{"type":"string"},"off":{"type":"string"},"len":{"type":"integer"}},"required":["seg","off","len"]})),
                 tool_def("send_key", "Inject a PC scan code into the keyboard buffer",
                     json!({"type":"object","properties":{"scan_code":{"type":"integer"}},"required":["scan_code"]})),
                 tool_def("set_write_watchpoint", "Pause when this physical address is written",
@@ -153,6 +155,7 @@ fn handle_tools_call(id: Value, params: &Value, debug: &Arc<DebugShared>) -> Val
         "clear_breakpoint" => tool_clear_breakpoint(args, debug),
         "list_breakpoints" => tool_list_breakpoints(debug),
         "read_memory" => tool_read_memory(args, debug),
+        "read_memory_seg" => tool_read_memory_seg(args, debug),
         "send_key" => tool_send_key(args, debug),
         "set_write_watchpoint" => tool_set_write_watchpoint(args, debug),
         "clear_write_watchpoint" => tool_clear_write_watchpoint(args, debug),
@@ -314,6 +317,25 @@ fn tool_read_memory(args: &Value, debug: &Arc<DebugShared>) -> String {
             }
         }
         _ => "Invalid arguments: addr and len must be integers".to_string(),
+    }
+}
+
+fn tool_read_memory_seg(args: &Value, debug: &Arc<DebugShared>) -> String {
+    if !debug.paused.load(Ordering::Relaxed) {
+        return "Not paused — use 'pause' first".to_string();
+    }
+    let seg = args["seg"].as_str().and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok());
+    let off = args["off"].as_str().and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok());
+    let len = args["len"].as_u64().map(|v| v as u32);
+    match (seg, off, len) {
+        (Some(s), Some(o), Some(l)) => {
+            let addr = s * 16 + o;
+            match debug.send_command(DebugCommand::ReadMemory { addr, len: l }) {
+                DebugResponse::Memory(bytes) => format!("{s:04X}:{o:04X} (0x{addr:05X})\n{}", format_hex_dump(addr as usize, &bytes)),
+                DebugResponse::Ok => String::new(),
+            }
+        }
+        _ => "Invalid arguments: seg and off must be hex strings, len must be an integer".to_string(),
     }
 }
 

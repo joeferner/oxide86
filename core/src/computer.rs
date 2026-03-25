@@ -551,6 +551,10 @@ impl Computer {
             match cmd {
                 DebugCommand::Continue => {
                     *dbg.watchpoint_hit.lock().unwrap() = None;
+                    // Execute one step first so CS:IP advances past the breakpoint
+                    // before resuming; otherwise the same breakpoint fires again
+                    // immediately on the next debug_check call.
+                    self.cpu.step(&mut self.bus);
                     dbg.paused.store(false, Ordering::SeqCst);
                     *dbg.pending_response.lock().unwrap() = Some(DebugResponse::Ok);
                     dbg.cond_paused.notify_all();

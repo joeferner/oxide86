@@ -141,6 +141,10 @@ pub(crate) struct Cpu {
     /// When true, the single-step trap (INT 1) is suppressed for the next instruction.
     /// Set after `mov ss, ...` or `pop ss` to allow the paired SP load to run atomically.
     suppress_trap: bool,
+    /// When true, skip exec-log output for the next instruction.
+    /// Set when a prefix (WAIT, REP, REPNE) is folded with the following instruction
+    /// in the log so that instruction doesn't get logged a second time on its own step.
+    suppress_next_exec_log: bool,
 }
 
 /// Snapshot of CPU state captured before instruction execution, used by the
@@ -250,6 +254,7 @@ impl Cpu {
             dos_file_handles: DosFileHandleTable::new(),
             teletype_log_buffer: String::new(),
             suppress_trap: false,
+            suppress_next_exec_log: false,
             math_coprocessor,
             fpu_control_word: FPU_DEFAULT_CONTROL_WORD,
             fpu_status_word: 0,
@@ -439,7 +444,17 @@ impl Cpu {
         if self.exec_logging_enabled
             && let Some(ref instr) = decoded
         {
-            log::info!("{}", instr.format_line());
+            if self.suppress_next_exec_log {
+                self.suppress_next_exec_log = false;
+            } else {
+                log::info!("{}", instr.format_line());
+                // If this instruction folded a prefix+body (e.g. "wait fpatan",
+                // "rep movsb"), the body will execute as the next step — suppress
+                // that log entry so it doesn't appear twice.
+                if instr.prefix.is_some() {
+                    self.suppress_next_exec_log = true;
+                }
+            }
         }
 
         // Single-step trap: if TF was set before the instruction, fire INT 1 now

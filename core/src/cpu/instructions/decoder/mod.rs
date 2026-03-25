@@ -111,6 +111,53 @@ fn decode_reg(cur: &Cursor, reg_bits: u8, is16: bool) -> Operand {
 pub fn decode(cpu: &dyn Computer, seg: u16, offset: u16) -> Instruction {
     let mut cur = Cursor::new(cpu, seg, offset);
     let (mnemonic, operands) = decode_inner(&mut cur);
+    // Fold prefix-only mnemonics with the following instruction onto one line.
+    // - WAIT (0x9B) + FPU escape (0xD8-0xDF)  → "wait <fpu>"
+    // - REP  (0xF3) + MOVS/LODS/STOS          → "rep <string>"
+    // - REP  (0xF3) + CMPS/SCAS               → "repe <string>"  (repeats while ZF=1)
+    // - REPNE(0xF2) + string op               → "repne <string>"
+    let string_op = |b: u8| {
+        matches!(
+            b,
+            0xA4 | 0xA5 | 0xA6 | 0xA7 | 0xAA | 0xAB | 0xAC | 0xAD | 0xAE | 0xAF
+        )
+    };
+    // CMPS and SCAS test ZF, so 0xF3 with these ops means REPE not REP.
+    let repe_op = |b: u8| matches!(b, 0xA6 | 0xA7 | 0xAE | 0xAF);
+    let (mnemonic, operands, prefix) = match &mnemonic {
+        Mnemonic::Wait => {
+            let next = cur.peek();
+            if matches!(next, 0xD8..=0xDF) {
+                cur.fetch();
+                let (fpu_mnem, fpu_ops) = fpu::decode_fpu(&mut cur, next);
+                (fpu_mnem, fpu_ops, Some("wait"))
+            } else {
+                (mnemonic, operands, None)
+            }
+        }
+        Mnemonic::Rep => {
+            let next = cur.peek();
+            if string_op(next) {
+                cur.fetch();
+                let (str_mnem, str_ops) = decode_string_op(next);
+                let label = if repe_op(next) { "repe" } else { "rep" };
+                (str_mnem, str_ops, Some(label))
+            } else {
+                (mnemonic, operands, None)
+            }
+        }
+        Mnemonic::Repne => {
+            let next = cur.peek();
+            if string_op(next) {
+                cur.fetch();
+                let (str_mnem, str_ops) = decode_string_op(next);
+                (str_mnem, str_ops, Some("repne"))
+            } else {
+                (mnemonic, operands, None)
+            }
+        }
+        _ => (mnemonic, operands, None),
+    };
     // FPU implicit-operand instructions: move annotation-only operands out of
     // the main operand list so they appear in annotations but not the asm column.
     let (operands, implicit_operands) = split_fpu_implicit(&mnemonic, operands);
@@ -124,6 +171,7 @@ pub fn decode(cpu: &dyn Computer, seg: u16, offset: u16) -> Instruction {
         implicit_operands,
         seg_override: cur.seg_override,
         comment,
+        prefix,
     }
 }
 
@@ -931,6 +979,24 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
 }
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
+
+/// Decode a string-operation opcode that has already been consumed from the cursor.
+/// Used when folding a REP/REPNE prefix with its following string instruction.
+fn decode_string_op(op: u8) -> (Mnemonic, Vec<Operand>) {
+    match op {
+        0xA4 => (Mnemonic::Movsb, vec![]),
+        0xA5 => (Mnemonic::Movsw, vec![]),
+        0xA6 => (Mnemonic::Cmpsb, vec![]),
+        0xA7 => (Mnemonic::Cmpsw, vec![]),
+        0xAA => (Mnemonic::Stosb, vec![]),
+        0xAB => (Mnemonic::Stosw, vec![]),
+        0xAC => (Mnemonic::Lodsb, vec![]),
+        0xAD => (Mnemonic::Lodsw, vec![]),
+        0xAE => (Mnemonic::Scasb, vec![]),
+        0xAF => (Mnemonic::Scasw, vec![]),
+        _ => unreachable!("decode_string_op called with non-string opcode {:#04X}", op),
+    }
+}
 
 /// ALU with r/m and r — direction and size encoded in low 2 bits of `op`.
 fn alu_rm_r(cur: &mut Cursor, op: u8, mnemo: Mnemonic) -> (Mnemonic, Vec<Operand>) {

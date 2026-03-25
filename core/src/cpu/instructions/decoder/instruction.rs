@@ -19,6 +19,8 @@ pub struct Instruction {
     pub seg_override: Option<SegReg>,
     /// Optional comment shown at the end of the line, prefixed with ";".
     pub comment: Option<String>,
+    /// A prefix instruction folded into this one (e.g. "wait", "rep", "repne").
+    pub prefix: Option<&'static str>,
 }
 
 impl Instruction {
@@ -34,12 +36,17 @@ impl Instruction {
             .collect::<Vec<_>>()
             .join(" ");
 
+        let mnem = if let Some(p) = self.prefix {
+            format!("{} {}", p, self.mnemonic)
+        } else {
+            self.mnemonic.to_string()
+        };
         let asm = match self.operands.len() {
-            0 => self.mnemonic.to_string(),
-            1 => format!("{} {}", self.mnemonic, self.operands[0].asm_str()),
+            0 => mnem,
+            1 => format!("{} {}", mnem, self.operands[0].asm_str()),
             _ => format!(
                 "{} {}, {}",
-                self.mnemonic,
+                mnem,
                 self.operands[0].asm_str(),
                 self.operands[1].asm_str()
             ),

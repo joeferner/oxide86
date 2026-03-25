@@ -163,12 +163,17 @@ pub fn classify_instruction_flow(instr: &Instruction) -> FlowKind {
 
 /// Format just the mnemonic + operands portion of an instruction (no location/bytes/annotations).
 pub fn asm_text(instr: &Instruction) -> String {
+    let mnem = if let Some(p) = instr.prefix {
+        format!("{} {}", p, instr.mnemonic)
+    } else {
+        instr.mnemonic.to_string()
+    };
     match instr.operands.len() {
-        0 => instr.mnemonic.to_string(),
-        1 => format!("{} {}", instr.mnemonic, instr.operands[0].asm_str()),
+        0 => mnem,
+        1 => format!("{} {}", mnem, instr.operands[0].asm_str()),
         _ => format!(
             "{} {}, {}",
-            instr.mnemonic,
+            mnem,
             instr.operands[0].asm_str(),
             instr.operands[1].asm_str()
         ),
