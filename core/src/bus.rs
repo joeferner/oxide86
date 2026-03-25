@@ -13,7 +13,9 @@ use crate::{
     cpu::bios::bios_reset,
     devices::{
         SoundCard, SoundCardRef,
+        dma::DmaController,
         floppy_disk_controller::FloppyDiskController,
+        printer::ParallelPort,
         game_port::GamePortDevice,
         hard_disk_controller::HardDiskController,
         keyboard_controller::KeyboardController,
@@ -98,6 +100,8 @@ impl Bus {
         let hard_disk_controller =
             Rc::new(RefCell::new(HardDiskController::new(config.hard_disks)));
         let game_port = Rc::new(RefCell::new(GamePortDevice::new(config.cpu_clock_speed)));
+        let dma = Rc::new(RefCell::new(DmaController::new()));
+        let parallel_port = Rc::new(RefCell::new(ParallelPort::new()));
         let mut devices: Vec<DeviceRef> = vec![
             pic.clone(),
             pit,
@@ -107,6 +111,8 @@ impl Bus {
             hard_disk_controller.clone(),
             config.video_card.clone(),
             game_port.clone(),
+            dma,
+            parallel_port,
         ];
         let rtc = if let Some(clock) = config.clock {
             let rtc = Rc::new(RefCell::new(Rtc::new(clock)));

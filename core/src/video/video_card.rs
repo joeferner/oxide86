@@ -708,8 +708,9 @@ impl Device for VideoCard {
             let offset = addr - CGA_MEMORY_START;
             if offset.is_multiple_of(2) {
                 log::debug!(
-                    "CGA text write char='{}' offset={:#x}",
+                    "CGA text write char='{}' 0x{:02X} offset={:#x}",
                     byte_to_printable_char(val),
+                    val,
                     offset,
                 );
             }

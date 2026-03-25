@@ -6,6 +6,7 @@ use std::{
 };
 
 pub mod adlib;
+pub mod dma;
 pub mod floppy_disk_controller;
 pub mod game_port;
 pub mod hard_disk_controller;
