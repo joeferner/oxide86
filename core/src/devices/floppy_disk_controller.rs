@@ -111,6 +111,9 @@ pub(crate) struct FloppyDiskController {
     /// Pending DMA channel 2 request state change for the Bus to drain.
     /// `Some(true)` = assert DREQ 2; `Some(false)` = deassert; `None` = no change.
     pending_dreq: Option<bool>,
+    /// IRQ 6 pending: set when the FDC completes a command (READ DATA, WRITE DATA,
+    /// RECALIBRATE, etc.).  Consumed by the PIC's `take_irq` poll.
+    pending_irq: bool,
 }
 
 impl FloppyDiskController {
@@ -123,6 +126,7 @@ impl FloppyDiskController {
             in_reset: false,
             pending_interrupt: None,
             pending_dreq: None,
+            pending_irq: false,
         }
     }
 
@@ -131,6 +135,14 @@ impl FloppyDiskController {
     /// can update the DMA controller's DREQ line for channel 2.
     pub(crate) fn take_dreq_request(&mut self) -> Option<bool> {
         self.pending_dreq.take()
+    }
+
+    /// Take and return a pending IRQ 6 condition (command completion).
+    /// Called by the PIC on each IRQ poll.
+    pub(crate) fn take_pending_irq(&mut self) -> bool {
+        let v = self.pending_irq;
+        self.pending_irq = false;
+        v
     }
 
     /// Insert or eject the disk for the given drive (A: or B:). Returns the previous disk if any.
@@ -422,6 +434,7 @@ impl Device for FloppyDiskController {
         self.in_reset = false;
         self.pending_interrupt = None;
         self.pending_dreq = None;
+        self.pending_irq = false;
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -447,6 +460,7 @@ impl Device for FloppyDiskController {
                             let b = data[index];
                             let next_idx = index + 1;
                             if next_idx >= data.len() {
+                                self.pending_irq = true;
                                 (
                                     b,
                                     FdcPhase::Result {
@@ -592,12 +606,23 @@ impl Device for FloppyDiskController {
                             match cmd_code {
                                 FDC_CMD_READ_DATA => {
                                     let phase = self.execute_read_data(cmd, &params);
-                                    if matches!(phase, FdcPhase::DmaExecution { .. }) {
-                                        self.pending_dreq = Some(true);
+                                    match &phase {
+                                        FdcPhase::DmaExecution { .. } => {
+                                            self.pending_dreq = Some(true)
+                                        }
+                                        // Error path: command failed immediately
+                                        FdcPhase::Result { .. } => self.pending_irq = true,
+                                        _ => {}
                                     }
                                     phase
                                 }
-                                FDC_CMD_VERIFY => self.execute_verify(&params),
+                                FDC_CMD_VERIFY => {
+                                    let phase = self.execute_verify(&params);
+                                    if matches!(phase, FdcPhase::Result { .. }) {
+                                        self.pending_irq = true;
+                                    }
+                                    phase
+                                }
                                 FDC_CMD_WRITE_DATA => {
                                     // Transition to write execution: wait for sector data from CPU
                                     let count = params[5].saturating_sub(params[3]) + 1;
@@ -613,6 +638,7 @@ impl Device for FloppyDiskController {
                                     // ST0: IC=00b (normal), SE=1, drive number in bits 1:0
                                     let drive = params[0] & 0x03;
                                     self.pending_interrupt = Some((0x20 | drive, 0));
+                                    self.pending_irq = true;
                                     FdcPhase::Idle
                                 }
                                 _ => FdcPhase::Idle,
@@ -626,6 +652,7 @@ impl Device for FloppyDiskController {
                     } => {
                         data.push(val);
                         if data.len() >= expected {
+                            self.pending_irq = true;
                             self.execute_write_data(&params, &data)
                         } else {
                             FdcPhase::WriteExecution {
@@ -668,6 +695,7 @@ impl Device for FloppyDiskController {
                             len: 7,
                         };
                         self.pending_dreq = Some(false);
+                        self.pending_irq = true;
                     } else {
                         self.phase = FdcPhase::DmaExecution {
                             data,

@@ -2,7 +2,10 @@ use std::{any::Any, cell::RefCell, rc::Rc};
 
 use crate::{
     Device,
-    devices::{keyboard_controller::KeyboardController, pit::Pit, uart::Uart},
+    devices::{
+        floppy_disk_controller::FloppyDiskController, keyboard_controller::KeyboardController,
+        pit::Pit, uart::Uart,
+    },
 };
 
 // PIC1 (master) ports
@@ -26,6 +29,9 @@ pub const COM2_CPU_IRQ: u8 = 0x0B;
 /// IRQ that COM1/COM3 interrupts map to on the CPU (IRQ4 → INT 0x0C)
 pub const COM1_CPU_IRQ: u8 = 0x0C;
 
+/// IRQ that the FDC maps to (IRQ6 → INT 0x0E)
+pub const FDC_CPU_IRQ: u8 = 0x0E;
+
 /// IRQ that the PS/2 mouse maps to (IRQ12 → INT 0x74, via PIC2)
 pub const PS2_MOUSE_CPU_IRQ: u8 = 0x74;
 
@@ -37,6 +43,8 @@ const KEYBOARD_IRQ_LINE: u8 = 1;
 const COM2_IRQ_LINE: u8 = 3;
 /// IRQ line for COM1/COM3 (IRQ4, PIC1 bit 4)
 const COM1_IRQ_LINE: u8 = 4;
+/// IRQ line for the FDC (IRQ6, PIC1 bit 6)
+const FDC_IRQ_LINE: u8 = 6;
 
 /// IRQ12 occupies bit 4 of PIC2 (PIC2 handles IRQ8–IRQ15, so IRQ12 = bit 4)
 const PS2_MOUSE_PIC2_BIT: u8 = 4;
@@ -50,6 +58,7 @@ pub(crate) struct Pic {
     pit: Rc<RefCell<Pit>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     uart: Rc<RefCell<Uart>>,
+    fdc: Rc<RefCell<FloppyDiskController>>,
 
     // PIC1 (master) state
     mask: u8,
@@ -70,11 +79,13 @@ impl Pic {
         pit: Rc<RefCell<Pit>>,
         keyboard_controller: Rc<RefCell<KeyboardController>>,
         uart: Rc<RefCell<Uart>>,
+        fdc: Rc<RefCell<FloppyDiskController>>,
     ) -> Self {
         Self {
             pit,
             keyboard_controller,
             uart,
+            fdc,
             mask: 0,
             in_service: 0,
             pic2_mask: 0,
@@ -182,6 +193,18 @@ impl Pic {
                     self.in_service |= bit;
                     return Some(COM1_CPU_IRQ);
                 }
+            }
+        }
+
+        // FDC (IRQ6) — signals command completion (READ DATA, WRITE DATA, RECALIBRATE, etc.)
+        {
+            let bit = 1u8 << FDC_IRQ_LINE;
+            let masked = self.mask & bit != 0;
+            let in_service = self.in_service & bit != 0;
+
+            if !masked && !in_service && self.fdc.borrow_mut().take_pending_irq() {
+                self.in_service |= bit;
+                return Some(FDC_CPU_IRQ);
             }
         }
 

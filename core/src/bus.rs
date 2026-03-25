@@ -95,12 +95,13 @@ impl Bus {
             config.pc_speaker,
         )));
         let uart = Rc::new(RefCell::new(Uart::new()));
+        let floppy_controller = Rc::new(RefCell::new(FloppyDiskController::new()));
         let pic = Rc::new(RefCell::new(Pic::new(
             pit.clone(),
             keyboard_controller.clone(),
             uart.clone(),
+            floppy_controller.clone(),
         )));
-        let floppy_controller = Rc::new(RefCell::new(FloppyDiskController::new()));
         let hard_disk_controller =
             Rc::new(RefCell::new(HardDiskController::new(config.hard_disks)));
         let game_port = Rc::new(RefCell::new(GamePortDevice::new(config.cpu_clock_speed)));
@@ -264,6 +265,10 @@ impl Bus {
         // (e.g. deassert on last byte when FDC transitions to Result phase).
         if let Some(dreq) = self.floppy_controller.borrow_mut().take_dreq_request() {
             self.dma.borrow_mut().set_dreq(2, dreq);
+            if !dreq {
+                // DMA transfer complete — FDC has raised IRQ 6; fast-track the PIC scan.
+                self.notify_irq_pending();
+            }
         }
     }
 

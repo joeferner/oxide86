@@ -169,6 +169,13 @@ pub trait ComPortDevice {
     /// Called whenever the MCR is written and the modem control lines change.
     /// The default implementation does nothing.
     fn modem_control_changed(&mut self, lines: ModemControlLines);
+
+    /// Returns the current modem status bits 7:4 (DCD/RI/DSR/CTS) driven by this device.
+    /// These are OR'd into MSR bits 7:4 when the UART is not in internal loopback mode.
+    /// The default implementation returns 0 (no modem lines asserted).
+    fn modem_status(&mut self) -> u8 {
+        0
+    }
 }
 
 pub(crate) struct Uart {
@@ -263,7 +270,29 @@ impl Device for Uart {
                 p.poll_rx();
                 p.lsr
             }
-            6 => p.msr,
+            6 => {
+                // MSR read: bits 7:4 (DCD/RI/DSR/CTS) are driven either by the UART's
+                // internal loopback (MCR bit 4) or by the attached device's modem status.
+                // Bits 3:0 are delta bits (cleared on read — real UART behavior).
+                let val = if p.mcr & 0x10 != 0 {
+                    // Internal loopback: MCR output lines feed back to MSR inputs.
+                    // DTR(bit0)→DSR(bit5), RTS(bit1)→CTS(bit4), OUT1(bit2)→RI(bit6), OUT2(bit3)→DCD(bit7)
+                    let loopback_high = ((p.mcr & 0x01) << 5) // DTR  → DSR (bit 5)
+                        | ((p.mcr & 0x02) << 3) // RTS  → CTS (bit 4)
+                        | ((p.mcr & 0x04) << 4) // OUT1 → RI  (bit 6)
+                        | ((p.mcr & 0x08) << 4); // OUT2 → DCD (bit 7)
+                    (p.msr & 0x0F) | loopback_high
+                } else if let Some(ref dev) = p.device {
+                    // External device: modem_status returns bits 7:4 (modem lines) and
+                    // bits 3:0 (delta bits, cleared on read inside the device).
+                    let dev_msr = dev.write().map_or(0, |mut g| g.modem_status());
+                    (p.msr & 0x0F) | dev_msr
+                } else {
+                    p.msr
+                };
+                p.msr &= !0x0F; // delta bits are cleared on read
+                val
+            }
             _ => return None,
         };
         Some(val)
@@ -303,12 +332,13 @@ impl Device for Uart {
                 if dlab {
                     p.dlm = val;
                 } else {
-                    p.ier = val;
+                    p.ier = val & 0x0F; // IER only implements bits 3:0 on real 8250/16550
                 }
             }
             2 => p.fcr = val, // FCR: FIFO control (stored but not acted on)
             3 => p.lcr = val,
             4 => {
+                let val = val & 0x1F; // MCR only implements bits 4:0 on real 8250/16550
                 let prev = p.mcr;
                 p.mcr = val;
                 if val & 0x10 != 0 {

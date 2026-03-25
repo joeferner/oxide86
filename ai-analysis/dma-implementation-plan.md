@@ -151,13 +151,16 @@ move without any data transfer.
 
 4. ✅ **Test:** `devices/dma/floppy_read_dma` — programs DMA ch2 directly, sends READ DATA (0x06, DMA mode), verifies 512 zeroed bytes landed in buffer. All 158 tests pass.
 
-### Phase 5: IRQ on terminal count
+### ✅ Phase 5: IRQ on terminal count — COMPLETE
 
-**Files:** `core/src/devices/dma.rs`, `core/src/bus.rs`
+**Files:** `core/src/devices/floppy_disk_controller.rs`, `core/src/devices/pic.rs`, `core/src/bus.rs`
 
-- When TC is reached on a channel, optionally trigger an interrupt
-- For floppy: FDC handles its own IRQ 6 on completion
-- For other devices: DMA TC can trigger IRQ via the PIC
+- ✅ FDC raises IRQ 6 (INT 0x0E) on command completion: READ DATA (DMA and PIO), WRITE DATA, VERIFY, RECALIBRATE.
+  - `pending_irq: bool` field set at each completion point; `take_pending_irq()` consumed by PIC.
+  - SENSE INTERRUPT STATUS does NOT re-raise IRQ (it's the acknowledgment).
+- ✅ PIC polls FDC in `take_irq()` on IRQ line 6; delivers INT 0x0E when unmasked and not in-service.
+- ✅ Bus calls `notify_irq_pending()` when DREQ is deasserted (DMA done), fast-tracking the PIC scan.
+- All 158 tests pass.
 
 ## Testing Strategy
 
@@ -165,8 +168,8 @@ move without any data transfer.
 2. ✅ **Floppy read/write tests** — existing `int13::floppy_read()` and
    `int13::floppy_write()` tests continue to pass (PIO path preserved).
 3. ✅ **`devices/dma/counter_advances`** — ASM test programs channel 0, polls count until it changes. Passes.
-4. **Unit test for verify mode** — ensure no memory is written during verify transfers.
-5. **Unit test for auto-init** — verify registers reload after TC.
+4. ✅ **`devices/dma/dma_verify_mode`** — channel 1 in verify mode with count=0xFFFF; buffer pre-filled 0xCC; verifies all bytes untouched after DMA runs.
+5. ✅ **`devices/dma/dma_auto_init`** — channel 1 with count=0 and auto-init; after many TC events, mask register bit 1 must be clear (channel still running).
 
 ## Implementation Order
 
@@ -174,8 +177,8 @@ move without any data transfer.
 |---|---|---|
 | 1 | ✅ Phase 1 + Phase 3 | Fixes CheckIt immediately — just needs counters to advance |
 | 2 | ✅ Phase 2 | Infrastructure for device↔DMA communication |
-| 3 | Phase 4 | Real floppy DMA — needed for programs that bypass BIOS |
-| 4 | Phase 5 | Polish — most programs don't depend on DMA TC interrupts |
+| 3 | ✅ Phase 4 | Real floppy DMA — needed for programs that bypass BIOS |
+| 4 | ✅ Phase 5 | Polish — most programs don't depend on DMA TC interrupts |
 
 ## Key Files
 

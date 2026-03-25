@@ -14,6 +14,17 @@ pub(crate) fn uart_loopback() {
 }
 
 #[test_log::test]
+pub(crate) fn uart_register_bits() {
+    run_test(
+        "devices/uart/uart_register_bits",
+        create_computer(),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
+#[test_log::test]
 pub(crate) fn uart_hello_world() {
     run_test(
         "devices/uart/uart_hello_world",

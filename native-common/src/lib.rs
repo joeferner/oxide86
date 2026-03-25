@@ -18,6 +18,7 @@ use oxide86_core::{
         SoundCardType,
         adlib::Adlib,
         pc_speaker::{NullPcSpeaker, PcSpeaker},
+        serial_loopback::SerialLoopback,
         serial_mouse::SerialMouse,
         uart::ComPortDevice,
     },
@@ -234,6 +235,8 @@ fn create_com_device(
             } else {
                 Err(anyhow!("Serial mouse not initialized"))
             }
+        } else if device_name == "loopback" {
+            Ok(Some(Arc::new(RwLock::new(SerialLoopback::new()))))
         } else {
             Err(anyhow!("Invalid COM device name: {device_name}"))
         }

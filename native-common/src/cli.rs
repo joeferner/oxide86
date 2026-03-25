@@ -64,19 +64,19 @@ pub struct CommonCli {
     #[arg(long = "ps2-mouse")]
     pub ps2_mouse: bool,
 
-    /// Device to attach to COM1 (e.g., "mouse")
+    /// Device to attach to COM1 (e.g., "mouse", "loopback")
     #[arg(long = "com1", value_name = "DEVICE")]
     pub com1_device: Option<String>,
 
-    /// Device to attach to COM2 (e.g., "mouse")
+    /// Device to attach to COM2 (e.g., "mouse", "loopback")
     #[arg(long = "com2", value_name = "DEVICE")]
     pub com2_device: Option<String>,
 
-    /// Device to attach to COM3 (e.g., "mouse")
+    /// Device to attach to COM3 (e.g., "mouse", "loopback")
     #[arg(long = "com3", value_name = "DEVICE")]
     pub com3_device: Option<String>,
 
-    /// Device to attach to COM4 (e.g., "mouse")
+    /// Device to attach to COM4 (e.g., "mouse", "loopback")
     #[arg(long = "com4", value_name = "DEVICE")]
     pub com4_device: Option<String>,
 
