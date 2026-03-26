@@ -5,8 +5,12 @@ use crate::{
         Cpu,
         bios::bda::{
             BDA_KEYBOARD_FLAGS1_ALT, BDA_KEYBOARD_FLAGS1_CTRL, BDA_KEYBOARD_FLAGS1_LEFT_SHIFT,
-            BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT, bda_add_key_to_buffer, bda_get_keyboard_flags1,
-            bda_set_keyboard_flags1,
+            BDA_KEYBOARD_FLAGS1_RIGHT_SHIFT, BDA_KEYBOARD_FLAGS3_E1_CTRL_SEEN,
+            BDA_KEYBOARD_FLAGS3_E1_PENDING, BDA_KEYBOARD_FLAGS3_EXTENDED_PENDING,
+            BDA_KEYBOARD_FLAGS3_LEFT_ALT, BDA_KEYBOARD_FLAGS3_LEFT_CTRL,
+            BDA_KEYBOARD_FLAGS3_RIGHT_ALT, BDA_KEYBOARD_FLAGS3_RIGHT_CTRL, bda_add_key_to_buffer,
+            bda_get_keyboard_flags1, bda_get_keyboard_flags3, bda_set_keyboard_flags1,
+            bda_set_keyboard_flags3,
         },
     },
     devices::{
@@ -14,9 +18,10 @@ use crate::{
         pic::{PIC_COMMAND_EOI, PIC_IO_PORT_COMMAND},
     },
     scan_code::{
-        SCAN_CODE_LEFT_ALT, SCAN_CODE_LEFT_ALT_RELEASE, SCAN_CODE_LEFT_CTRL,
-        SCAN_CODE_LEFT_CTRL_RELEASE, SCAN_CODE_LEFT_SHIFT, SCAN_CODE_LEFT_SHIFT_RELEASE,
-        SCAN_CODE_RIGHT_SHIFT, SCAN_CODE_RIGHT_SHIFT_RELEASE,
+        SCAN_CODE_E1_PREFIX, SCAN_CODE_EXTENDED_PREFIX, SCAN_CODE_LEFT_ALT,
+        SCAN_CODE_LEFT_ALT_RELEASE, SCAN_CODE_LEFT_CTRL, SCAN_CODE_LEFT_CTRL_RELEASE,
+        SCAN_CODE_LEFT_SHIFT, SCAN_CODE_LEFT_SHIFT_RELEASE, SCAN_CODE_RIGHT_SHIFT,
+        SCAN_CODE_RIGHT_SHIFT_RELEASE,
     },
 };
 
@@ -33,8 +38,97 @@ impl Cpu {
 
         let scan_code = bus.io_read_u8(KEYBOARD_IO_PORT_DATA);
 
+        // Check if the previous scan code was the E0 extended prefix
+        let flags3 = bda_get_keyboard_flags3(bus);
+        let extended = flags3 & BDA_KEYBOARD_FLAGS3_EXTENDED_PENDING != 0;
+        if extended {
+            bda_set_keyboard_flags3(bus, flags3 & !BDA_KEYBOARD_FLAGS3_EXTENDED_PENDING);
+            match scan_code {
+                SCAN_CODE_LEFT_ALT => {
+                    // 0xE0 0x38 = Right Alt press
+                    let f3 = bda_get_keyboard_flags3(bus) | BDA_KEYBOARD_FLAGS3_RIGHT_ALT;
+                    bda_set_keyboard_flags3(bus, f3);
+                    let f1 = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_ALT;
+                    bda_set_keyboard_flags1(bus, f1);
+                    log::debug!("INT 0x09 (BIOS): Right Alt pressed, flags3=0x{:02X}", f3);
+                    return;
+                }
+                SCAN_CODE_LEFT_ALT_RELEASE => {
+                    // 0xE0 0xB8 = Right Alt release
+                    let f3 = bda_get_keyboard_flags3(bus) & !BDA_KEYBOARD_FLAGS3_RIGHT_ALT;
+                    bda_set_keyboard_flags3(bus, f3);
+                    if f3 & BDA_KEYBOARD_FLAGS3_LEFT_ALT == 0 {
+                        let f1 = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_ALT;
+                        bda_set_keyboard_flags1(bus, f1);
+                    }
+                    log::debug!("INT 0x09 (BIOS): Right Alt released, flags3=0x{:02X}", f3);
+                    return;
+                }
+                SCAN_CODE_LEFT_CTRL => {
+                    // 0xE0 0x1D = Right Ctrl press
+                    let f3 = bda_get_keyboard_flags3(bus) | BDA_KEYBOARD_FLAGS3_RIGHT_CTRL;
+                    bda_set_keyboard_flags3(bus, f3);
+                    let f1 = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_CTRL;
+                    bda_set_keyboard_flags1(bus, f1);
+                    log::debug!("INT 0x09 (BIOS): Right Ctrl pressed, flags3=0x{:02X}", f3);
+                    return;
+                }
+                SCAN_CODE_LEFT_CTRL_RELEASE => {
+                    // 0xE0 0x9D = Right Ctrl release
+                    let f3 = bda_get_keyboard_flags3(bus) & !BDA_KEYBOARD_FLAGS3_RIGHT_CTRL;
+                    bda_set_keyboard_flags3(bus, f3);
+                    if f3 & BDA_KEYBOARD_FLAGS3_LEFT_CTRL == 0 {
+                        let f1 = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_CTRL;
+                        bda_set_keyboard_flags1(bus, f1);
+                    }
+                    log::debug!("INT 0x09 (BIOS): Right Ctrl released, flags3=0x{:02X}", f3);
+                    return;
+                }
+                _ => {
+                    // Other extended keys — fall through to normal processing
+                }
+            }
+        }
+
+        // Handle the E1 prefix sequence used by the Pause key (E1 1D 45 / E1 9D C5).
+        // Consume all bytes in the sequence without buffering or modifying modifier flags.
+        let f3 = bda_get_keyboard_flags3(bus);
+        if f3 & BDA_KEYBOARD_FLAGS3_E1_CTRL_SEEN != 0 {
+            // Third byte of E1 sequence (0x45 press or 0xC5 release) — consume and finish.
+            bda_set_keyboard_flags3(bus, f3 & !BDA_KEYBOARD_FLAGS3_E1_CTRL_SEEN);
+            log::debug!(
+                "INT 0x09 (BIOS): Pause key E1 sequence complete (0x{:02X})",
+                scan_code
+            );
+            return;
+        }
+        if f3 & BDA_KEYBOARD_FLAGS3_E1_PENDING != 0 {
+            // Second byte of E1 sequence (0x1D or 0x9D) — advance state.
+            bda_set_keyboard_flags3(
+                bus,
+                (f3 & !BDA_KEYBOARD_FLAGS3_E1_PENDING) | BDA_KEYBOARD_FLAGS3_E1_CTRL_SEEN,
+            );
+            log::debug!(
+                "INT 0x09 (BIOS): Pause key E1 sequence byte 2 (0x{:02X})",
+                scan_code
+            );
+            return;
+        }
+
         // Handle modifier key press/release - update BDA flags but don't buffer
         match scan_code {
+            SCAN_CODE_E1_PREFIX => {
+                let f3 = bda_get_keyboard_flags3(bus) | BDA_KEYBOARD_FLAGS3_E1_PENDING;
+                bda_set_keyboard_flags3(bus, f3);
+                log::debug!("INT 0x09 (BIOS): E1 prefix (Pause sequence) received");
+                return;
+            }
+            SCAN_CODE_EXTENDED_PREFIX => {
+                let f3 = bda_get_keyboard_flags3(bus) | BDA_KEYBOARD_FLAGS3_EXTENDED_PENDING;
+                bda_set_keyboard_flags3(bus, f3);
+                log::debug!("INT 0x09 (BIOS): Extended key prefix (E0) received");
+                return;
+            }
             SCAN_CODE_LEFT_SHIFT => {
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_LEFT_SHIFT;
                 bda_set_keyboard_flags1(bus, flags);
@@ -69,27 +163,39 @@ impl Cpu {
                 return;
             }
             SCAN_CODE_LEFT_CTRL => {
+                let f3 = bda_get_keyboard_flags3(bus) | BDA_KEYBOARD_FLAGS3_LEFT_CTRL;
+                bda_set_keyboard_flags3(bus, f3);
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_CTRL;
                 bda_set_keyboard_flags1(bus, flags);
                 log::debug!("INT 0x09 (BIOS): Left Ctrl pressed, flags=0x{:02X}", flags);
                 return;
             }
             SCAN_CODE_LEFT_CTRL_RELEASE => {
-                let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_CTRL;
-                bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 0x09 (BIOS): Left Ctrl released, flags=0x{:02X}", flags);
+                let f3 = bda_get_keyboard_flags3(bus) & !BDA_KEYBOARD_FLAGS3_LEFT_CTRL;
+                bda_set_keyboard_flags3(bus, f3);
+                if f3 & BDA_KEYBOARD_FLAGS3_RIGHT_CTRL == 0 {
+                    let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_CTRL;
+                    bda_set_keyboard_flags1(bus, flags);
+                }
+                log::debug!("INT 0x09 (BIOS): Left Ctrl released, flags3=0x{:02X}", f3);
                 return;
             }
             SCAN_CODE_LEFT_ALT => {
+                let f3 = bda_get_keyboard_flags3(bus) | BDA_KEYBOARD_FLAGS3_LEFT_ALT;
+                bda_set_keyboard_flags3(bus, f3);
                 let flags = bda_get_keyboard_flags1(bus) | BDA_KEYBOARD_FLAGS1_ALT;
                 bda_set_keyboard_flags1(bus, flags);
                 log::debug!("INT 0x09 (BIOS): Left Alt pressed, flags=0x{:02X}", flags);
                 return;
             }
             SCAN_CODE_LEFT_ALT_RELEASE => {
-                let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_ALT;
-                bda_set_keyboard_flags1(bus, flags);
-                log::debug!("INT 0x09 (BIOS): Left Alt released, flags=0x{:02X}", flags);
+                let f3 = bda_get_keyboard_flags3(bus) & !BDA_KEYBOARD_FLAGS3_LEFT_ALT;
+                bda_set_keyboard_flags3(bus, f3);
+                if f3 & BDA_KEYBOARD_FLAGS3_RIGHT_ALT == 0 {
+                    let flags = bda_get_keyboard_flags1(bus) & !BDA_KEYBOARD_FLAGS1_ALT;
+                    bda_set_keyboard_flags1(bus, flags);
+                }
+                log::debug!("INT 0x09 (BIOS): Left Alt released, flags3=0x{:02X}", f3);
                 return;
             }
             _ => {}

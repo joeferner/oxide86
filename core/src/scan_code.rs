@@ -1,4 +1,6 @@
 pub const SCAN_CODE_RELEASE: u8 = 0x80;
+pub const SCAN_CODE_EXTENDED_PREFIX: u8 = 0xE0;
+pub const SCAN_CODE_E1_PREFIX: u8 = 0xE1;
 
 pub const SCAN_CODE_LEFT_SHIFT: u8 = 0x2A;
 pub const SCAN_CODE_RIGHT_SHIFT: u8 = 0x36;

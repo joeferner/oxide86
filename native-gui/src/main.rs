@@ -8,7 +8,10 @@ use oxide86_core::computer::Computer;
 use oxide86_core::devices::serial_mouse::SerialMouse;
 use oxide86_core::disk::BackedDisk;
 use oxide86_core::disk::DriveNumber;
-use oxide86_core::scan_code::SCAN_CODE_RELEASE;
+use oxide86_core::scan_code::{
+    SCAN_CODE_E1_PREFIX, SCAN_CODE_EXTENDED_PREFIX, SCAN_CODE_LEFT_ALT, SCAN_CODE_LEFT_ALT_RELEASE,
+    SCAN_CODE_LEFT_CTRL, SCAN_CODE_LEFT_CTRL_RELEASE, SCAN_CODE_RELEASE,
+};
 use oxide86_core::video::TEXT_MODE_COLS;
 use oxide86_core::video::TEXT_MODE_ROWS;
 use oxide86_core::video::VideoBuffer;
@@ -27,7 +30,7 @@ use std::sync::{Arc, RwLock};
 use winit::dpi::LogicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
-use winit::keyboard::{Key, KeyCode, NamedKey, PhysicalKey};
+use winit::keyboard::{Key, KeyCode, KeyLocation, NamedKey, PhysicalKey};
 use winit::window::{CursorGrabMode, WindowBuilder};
 
 use crate::mouse_motion_state::MouseMotionState;
@@ -451,8 +454,54 @@ fn handle_keyboard_input(
     // Repeat events are forwarded as additional make codes — this matches real
     // hardware where the keyboard controller generates typematic repeats.
     // Key-release events are never repeated by the OS, so no break code duplication occurs.
+
+    // Right Alt and Right Ctrl are extended keys: send E0 prefix + scan code.
+    // Physical key codes on Linux are unreliable (e.g. RightAlt reports as ArrowLeft,
+    // RightCtrl as ControlRight for PageDown, etc.), so identify solely by logical
+    // key + location.
+    let is_right_alt = matches!(&input.logical_key, Key::Named(NamedKey::Alt))
+        && input.location == KeyLocation::Right;
+    let is_right_ctrl = matches!(&input.logical_key, Key::Named(NamedKey::Control))
+        && input.location == KeyLocation::Right;
+    // Pause key: real hardware sends E1 1D 45 (press only, no break code).
+    if matches!(&input.logical_key, Key::Named(NamedKey::Pause)) {
+        if input.state == ElementState::Pressed {
+            computer.push_key_press(SCAN_CODE_E1_PREFIX);
+            computer.push_key_press(0x1D);
+            computer.push_key_press(0x45);
+        }
+        return;
+    }
+
+    if is_right_alt || is_right_ctrl {
+        let (make, brk) = if is_right_alt {
+            (SCAN_CODE_LEFT_ALT, SCAN_CODE_LEFT_ALT_RELEASE)
+        } else {
+            (SCAN_CODE_LEFT_CTRL, SCAN_CODE_LEFT_CTRL_RELEASE)
+        };
+        computer.push_key_press(SCAN_CODE_EXTENDED_PREFIX);
+        match input.state {
+            ElementState::Pressed => computer.push_key_press(make),
+            ElementState::Released => computer.push_key_press(brk),
+        }
+        return;
+    }
+
     let scan_code = keycode_to_scan_code(input);
     if scan_code != 0 {
+        // Keys that share scan codes with other keys but require the E0 extended prefix:
+        //   - Dedicated cursor cluster (arrows, Home/End/PgUp/PgDn/Ins/Del): same scan codes
+        //     as numpad, distinguished by location: Standard vs Numpad.
+        //   - Numpad Enter (0xE0 0x1C) vs main Enter (0x1C): location: Numpad.
+        let needs_extended_prefix = (input.location == KeyLocation::Standard
+            && matches!(
+                scan_code,
+                0x47 | 0x48 | 0x49 | 0x4B | 0x4D | 0x4F | 0x50 | 0x51 | 0x52 | 0x53
+            ))
+            || (input.location == KeyLocation::Numpad && matches!(scan_code, 0x1C | 0x35));
+        if needs_extended_prefix {
+            computer.push_key_press(SCAN_CODE_EXTENDED_PREFIX);
+        }
         match input.state {
             ElementState::Pressed => computer.push_key_press(scan_code),
             ElementState::Released => computer.push_key_press(SCAN_CODE_RELEASE | scan_code),
@@ -462,7 +511,26 @@ fn handle_keyboard_input(
 
 /// Map a winit KeyEvent to an IBM PC XT scan code.
 /// Tries the physical key first; falls back to logical key for non-standard layouts.
+/// Exception: numpad character keys (NumLock on) are matched by logical key first because
+/// the physical key codes reported by the OS for numpad keys are unreliable on some Linux setups.
 fn keycode_to_scan_code(input: &winit::event::KeyEvent) -> u8 {
+    // Handle keys whose physical code is wrong on some Linux setups before the physical lookup.
+    if let Key::Named(NamedKey::PrintScreen) = &input.logical_key {
+        return 0x54;
+    }
+
+    if input.location == KeyLocation::Numpad
+        && let Key::Character(c) = &input.logical_key
+    {
+        return match c.as_str() {
+            "/" => 0x35,
+            "*" => 0x37,
+            "-" => 0x4A,
+            "+" => 0x4E,
+            "5" => 0x4C,
+            _ => 0x00,
+        };
+    }
     if let PhysicalKey::Code(key_code) = input.physical_key {
         let sc = physical_keycode_to_scan_code(key_code);
         if sc != 0 {
@@ -545,7 +613,7 @@ fn physical_keycode_to_scan_code(key: KeyCode) -> u8 {
         KeyCode::BracketLeft => 0x1A,
         KeyCode::BracketRight => 0x1B,
         KeyCode::Enter => 0x1C,
-        KeyCode::ControlLeft | KeyCode::ControlRight => 0x1D,
+        KeyCode::ControlLeft => 0x1D,
         KeyCode::KeyA => 0x1E,
         KeyCode::KeyS => 0x1F,
         KeyCode::KeyD => 0x20,
@@ -572,7 +640,7 @@ fn physical_keycode_to_scan_code(key: KeyCode) -> u8 {
         KeyCode::Slash => 0x35,
         KeyCode::ShiftRight => 0x36,
         KeyCode::NumpadMultiply => 0x37,
-        KeyCode::AltLeft | KeyCode::AltRight => 0x38,
+        KeyCode::AltLeft => 0x38,
         KeyCode::Space => 0x39,
         KeyCode::CapsLock => 0x3A,
         KeyCode::F1 => 0x3B,

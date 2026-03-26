@@ -3,7 +3,10 @@ use crate::{
     byte_to_printable_char,
     cpu::{
         Cpu,
-        bios::bda::{bda_get_keyboard_flags1, bda_peek_key, bda_read_key},
+        bios::bda::{
+            BDA_KEYBOARD_FLAGS3_RIGHT_ALT, BDA_KEYBOARD_FLAGS3_RIGHT_CTRL, bda_get_keyboard_flags1,
+            bda_get_keyboard_flags3, bda_peek_key, bda_read_key,
+        },
         cpu_flag,
     },
 };
@@ -25,9 +28,10 @@ impl Cpu {
         let function = (self.ax >> 8) as u8; // Get AH
 
         match function {
-            0x00 => self.int16_read_char(bus),
-            0x01 => self.int16_check_keystroke(bus),
+            0x00 | 0x10 => self.int16_read_char(bus),
+            0x01 | 0x11 => self.int16_check_keystroke(bus),
             0x02 => self.int16_get_shift_flags(bus),
+            0x12 => self.int16_get_extended_shift_flags(bus),
             0x55 => self.int16_word_tsr_check(),
             0x92 => self.int16_get_keyboard_capabilities(),
             0xA2 => self.int16_122_key_capability_check(),
@@ -104,6 +108,26 @@ impl Cpu {
 
         // Return flags in AL
         self.ax = (self.ax & 0xFF00) | (flags as u16);
+    }
+
+    /// INT 16h, AH=12h - Get Extended Shift Flags (AT/PS2 extension)
+    /// Output:
+    ///   AL = keyboard flags 1 (same as AH=02h)
+    ///   AH = extended keyboard flags
+    ///     Bit 0: Right Ctrl pressed
+    ///     Bit 1: Right Alt pressed
+    fn int16_get_extended_shift_flags(&mut self, bus: &Bus) {
+        let flags1 = bda_get_keyboard_flags1(bus);
+        let flags3 = bda_get_keyboard_flags3(bus);
+        // AT extended shift flags in AH: bit 0 = Right Ctrl, bit 1 = Right Alt.
+        let mut ext_flags: u8 = 0;
+        if flags3 & BDA_KEYBOARD_FLAGS3_RIGHT_CTRL != 0 {
+            ext_flags |= 0x01;
+        }
+        if flags3 & BDA_KEYBOARD_FLAGS3_RIGHT_ALT != 0 {
+            ext_flags |= 0x02;
+        }
+        self.ax = ((ext_flags as u16) << 8) | (flags1 as u16);
     }
 
     /// INT 16h, AH=55h - Microsoft Word TSR Detection

@@ -90,6 +90,17 @@ pub const BDA_KEYBOARD_FLAGS1_LEFT_SHIFT: u8 = 0x02; // Left Shift key pressed
 pub const BDA_KEYBOARD_FLAGS1_CTRL: u8 = 0x04; // Either Ctrl key pressed
 pub const BDA_KEYBOARD_FLAGS1_ALT: u8 = 0x08; // Either Alt key pressed
 
+// BDA extended keyboard state byte (0x40:0096) — AT/PS2 extension
+// Tracks right-side modifiers and extended key prefix state.
+const BDA_KEYBOARD_FLAGS3: usize = 0x96;
+pub const BDA_KEYBOARD_FLAGS3_LEFT_ALT: u8 = 0x01; // Left Alt specifically pressed
+pub const BDA_KEYBOARD_FLAGS3_RIGHT_ALT: u8 = 0x02; // Right Alt specifically pressed
+pub const BDA_KEYBOARD_FLAGS3_RIGHT_CTRL: u8 = 0x04; // Right Ctrl specifically pressed
+pub const BDA_KEYBOARD_FLAGS3_LEFT_CTRL: u8 = 0x08; // Left Ctrl specifically pressed
+pub const BDA_KEYBOARD_FLAGS3_EXTENDED_PENDING: u8 = 0x10; // E0 extended prefix received
+pub const BDA_KEYBOARD_FLAGS3_E1_PENDING: u8 = 0x20; // E1 prefix received (Pause sequence)
+pub const BDA_KEYBOARD_FLAGS3_E1_CTRL_SEEN: u8 = 0x40; // E1+0x1D received (Pause mid-sequence)
+
 /// Timer ticks per 24-hour day at 18.2065 Hz (1,193,182 Hz ÷ 65,536)
 const TICKS_PER_DAY: u32 = 0x0018_00B0; // 1,573,040
 
@@ -353,6 +364,14 @@ pub(crate) fn bda_get_keyboard_flags1(bus: &Bus) -> u8 {
 
 pub(crate) fn bda_set_keyboard_flags1(bus: &mut Bus, flags: u8) {
     bus.memory_write_u8(BDA_START + BDA_KEYBOARD_FLAGS1, flags);
+}
+
+pub(crate) fn bda_get_keyboard_flags3(bus: &Bus) -> u8 {
+    bus.memory_read_u8(BDA_START + BDA_KEYBOARD_FLAGS3)
+}
+
+pub(crate) fn bda_set_keyboard_flags3(bus: &mut Bus, flags: u8) {
+    bus.memory_write_u8(BDA_START + BDA_KEYBOARD_FLAGS3, flags);
 }
 
 pub(crate) fn bda_get_crt_controller_port_address(bus: &Bus) -> u16 {
