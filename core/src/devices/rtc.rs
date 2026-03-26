@@ -16,6 +16,12 @@ pub const RTC_REG_DAY: u8 = 0x07;
 pub const RTC_REG_MONTH: u8 = 0x08;
 pub const RTC_REG_YEAR: u8 = 0x09;
 pub const RTC_REG_CENTURY: u8 = 0x32;
+/// CMOS alarm registers (seconds, minutes, hours)
+pub const RTC_REG_ALARM_SECONDS: u8 = 0x01;
+pub const RTC_REG_ALARM_MINUTES: u8 = 0x03;
+pub const RTC_REG_ALARM_HOURS: u8 = 0x05;
+/// Status Register B: bit 5 = AIE (alarm interrupt enable), bit 1 = 24h mode
+pub const RTC_REG_STATUS_B: u8 = 0x0B;
 /// CMOS floppy drive type register.
 /// Bits 7:4 = drive A type, bits 3:0 = drive B type.
 /// Values: 0=none, 1=360KB 5.25", 2=1.2MB 5.25", 3=720KB 3.5", 4=1.44MB 3.5", 5=2.88MB 3.5"
@@ -54,6 +60,14 @@ pub(crate) struct Rtc {
     selected_register: u8,
     /// CMOS register 0x10: floppy drive types (bits 7:4 = A, bits 3:0 = B)
     floppy_types: u8,
+    /// CMOS alarm registers (seconds=0x01, minutes=0x03, hours=0x05) — writable RAM
+    alarm: [u8; 3],
+    /// Status Register B (0x0B): bit 5 = AIE (alarm interrupt enable), bit 1 = 24h mode
+    status_b: u8,
+    /// Status Register C flags: bit 5 = AF (alarm flag), bit 7 = IRQF. Cleared on read.
+    status_c: u8,
+    /// BCD seconds value at which the alarm last fired, to prevent re-firing within the same second.
+    last_alarm_second: u8,
 }
 
 impl Rtc {
@@ -62,6 +76,42 @@ impl Rtc {
             clock,
             selected_register: 0,
             floppy_types: 0,
+            alarm: [0u8; 3],
+            status_b: 0x02, // 24h mode, BCD format
+            status_c: 0,
+            last_alarm_second: 0xFF, // invalid sentinel
+        }
+    }
+
+    /// Check if the RTC alarm interrupt is pending and consume it.
+    /// Fires at most once per second when the current time matches the alarm
+    /// registers and AIE (bit 5 of Status Register B) is set.
+    pub(crate) fn take_pending_alarm(&mut self) -> bool {
+        // AIE = bit 5 of Status Register B
+        if self.status_b & 0x20 == 0 {
+            return false;
+        }
+
+        let time = self.clock.get_local_time();
+        let current_sec = to_bcd(time.seconds);
+
+        // Avoid firing multiple times in the same second
+        if current_sec == self.last_alarm_second {
+            return false;
+        }
+
+        // Bit 7 of an alarm byte = "don't care" (match any value)
+        let sec_match = self.alarm[0] & 0x80 != 0 || self.alarm[0] == current_sec;
+        let min_match = self.alarm[1] & 0x80 != 0 || self.alarm[1] == to_bcd(time.minutes);
+        let hour_match = self.alarm[2] & 0x80 != 0 || self.alarm[2] == to_bcd(time.hours);
+
+        if sec_match && min_match && hour_match {
+            self.last_alarm_second = current_sec;
+            // Set AF (bit 5) and IRQF (bit 7) in Status Register C
+            self.status_c = 0xA0;
+            true
+        } else {
+            false
         }
     }
 
@@ -115,8 +165,20 @@ impl Device for Rtc {
             0x09 => to_bcd(self.clock.get_local_date().year),
             // Status Register A: bit 7 = 0 (update not in progress)
             0x0A => 0x00,
-            // Status Register B: bit 1 = 24h mode, BCD format (not binary)
-            0x0B => 0x02,
+            // Status Register B: writable; bit 5 = AIE, bit 1 = 24h mode
+            0x0B => self.status_b,
+            // Status Register C: alarm/interrupt flags; cleared on read
+            0x0C => {
+                let val = self.status_c;
+                self.status_c = 0;
+                val
+            }
+            // Status Register D: bit 7 (VRT) = battery good / RTC present; bits 6-0 reserved (must be 0)
+            0x0D => 0x80,
+            // Seconds alarm / minutes alarm / hours alarm — readable CMOS RAM
+            0x01 => self.alarm[0],
+            0x03 => self.alarm[1],
+            0x05 => self.alarm[2],
             CMOS_REG_FLOPPY_TYPES => self.floppy_types,
             0x32 => to_bcd(self.clock.get_local_date().century),
             reg => {
@@ -136,10 +198,14 @@ impl Device for Rtc {
                 true
             }
             RTC_IO_PORT_DATA => {
-                if self.selected_register == CMOS_REG_FLOPPY_TYPES {
-                    self.floppy_types = val;
+                match self.selected_register {
+                    CMOS_REG_FLOPPY_TYPES => self.floppy_types = val,
+                    0x01 => self.alarm[0] = val,
+                    0x03 => self.alarm[1] = val,
+                    0x05 => self.alarm[2] = val,
+                    0x0B => self.status_b = val,
+                    _ => {} // All other CMOS data writes are ignored; we use the real system clock
                 }
-                // All other CMOS data writes are ignored; we use the real system clock
                 true
             }
             _ => false,

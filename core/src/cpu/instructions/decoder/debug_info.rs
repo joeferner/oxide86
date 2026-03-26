@@ -175,6 +175,8 @@ pub fn int_description(int_num: u8, ah: u8) -> Option<(&'static str, bool)> {
                 0x03 => "set RTC time",
                 0x04 => "read RTC date",
                 0x05 => "set RTC date",
+                0x06 => "set RTC alarm",
+                0x07 => "cancel RTC alarm",
                 _ => return None,
             };
             Some((desc, true))
@@ -188,6 +190,7 @@ pub fn int_description(int_num: u8, ah: u8) -> Option<(&'static str, bool)> {
             };
             Some((desc, true))
         }
+        0x4A => Some(("user alarm interrupt", false)),
         0x74 => Some(("PS/2 mouse interrupt", false)),
         _ => None,
     }

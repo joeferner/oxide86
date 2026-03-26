@@ -9,8 +9,9 @@ use crate::{
         cpu_flag,
     },
     devices::rtc::{
-        RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT, RTC_REG_CENTURY, RTC_REG_DAY, RTC_REG_HOURS,
-        RTC_REG_MINUTES, RTC_REG_MONTH, RTC_REG_SECONDS, RTC_REG_YEAR,
+        RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT, RTC_REG_ALARM_HOURS, RTC_REG_ALARM_MINUTES,
+        RTC_REG_ALARM_SECONDS, RTC_REG_CENTURY, RTC_REG_DAY, RTC_REG_HOURS, RTC_REG_MINUTES,
+        RTC_REG_MONTH, RTC_REG_SECONDS, RTC_REG_STATUS_B, RTC_REG_YEAR,
     },
 };
 
@@ -35,6 +36,8 @@ impl Cpu {
             0x03 => self.int1a_set_rtc_time(bus),
             0x04 => self.int1a_read_rtc_date(bus),
             0x05 => self.int1a_set_rtc_date(bus),
+            0x06 => self.int1a_set_rtc_alarm(bus),
+            0x07 => self.int1a_cancel_rtc_alarm(bus),
             _ => {
                 log::warn!("Unhandled INT 0x1A function: AH=0x{:02X}", function);
             }
@@ -205,6 +208,59 @@ impl Cpu {
 
         bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, RTC_REG_DAY);
         bus.io_write_u8(RTC_IO_PORT_DATA, day_bcd);
+
+        self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 1Ah, AH=06h - Set Real Time Clock Alarm
+    /// Input:
+    ///   CH = hours (BCD)
+    ///   CL = minutes (BCD)
+    ///   DH = seconds (BCD)
+    /// Output:
+    ///   CF = 0 if successful, CF = 1 if RTC not present
+    fn int1a_set_rtc_alarm(&mut self, bus: &mut Bus) {
+        if !bus.has_rtc() {
+            self.set_flag(cpu_flag::CARRY, true);
+            return;
+        }
+
+        let hours_bcd = (self.cx >> 8) as u8; // CH
+        let minutes_bcd = (self.cx & 0xFF) as u8; // CL
+        let seconds_bcd = (self.dx >> 8) as u8; // DH
+
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, RTC_REG_ALARM_HOURS);
+        bus.io_write_u8(RTC_IO_PORT_DATA, hours_bcd);
+
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, RTC_REG_ALARM_MINUTES);
+        bus.io_write_u8(RTC_IO_PORT_DATA, minutes_bcd);
+
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, RTC_REG_ALARM_SECONDS);
+        bus.io_write_u8(RTC_IO_PORT_DATA, seconds_bcd);
+
+        // Enable alarm interrupt (AIE = bit 5) in Status Register B, preserving other bits
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, RTC_REG_STATUS_B);
+        let status_b = bus.io_read_u8(RTC_IO_PORT_DATA);
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, RTC_REG_STATUS_B);
+        bus.io_write_u8(RTC_IO_PORT_DATA, status_b | 0x20);
+
+        self.set_flag(cpu_flag::CARRY, false);
+    }
+
+    /// INT 1Ah, AH=07h - Cancel Real Time Clock Alarm
+    /// Input: None
+    /// Output: CF = 0 always
+    fn int1a_cancel_rtc_alarm(&mut self, bus: &mut Bus) {
+        if !bus.has_rtc() {
+            self.set_flag(cpu_flag::CARRY, false);
+            return;
+        }
+
+        // Clear AIE (bit 5) in Status Register B
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, RTC_REG_STATUS_B);
+        let status_b = bus.io_read_u8(RTC_IO_PORT_DATA);
+        bus.io_write_u8(RTC_IO_PORT_REGISTER_SELECT, RTC_REG_STATUS_B);
+        bus.io_write_u8(RTC_IO_PORT_DATA, status_b & !0x20);
 
         self.set_flag(cpu_flag::CARRY, false);
     }

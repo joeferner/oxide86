@@ -97,17 +97,21 @@ impl Bus {
         )));
         let uart = Rc::new(RefCell::new(Uart::new()));
         let floppy_controller = Rc::new(RefCell::new(FloppyDiskController::new()));
-        let pic = Rc::new(RefCell::new(Pic::new(
-            pit.clone(),
-            keyboard_controller.clone(),
-            uart.clone(),
-            floppy_controller.clone(),
-        )));
         let hard_disk_controller =
             Rc::new(RefCell::new(HardDiskController::new(config.hard_disks)));
         let game_port = Rc::new(RefCell::new(GamePortDevice::new(config.cpu_clock_speed)));
         let dma = Rc::new(RefCell::new(DmaController::new()));
         let parallel_port = Rc::new(RefCell::new(ParallelPort::new()));
+        let rtc = config
+            .clock
+            .map(|clock| Rc::new(RefCell::new(Rtc::new(clock))));
+        let pic = Rc::new(RefCell::new(Pic::new(
+            pit.clone(),
+            keyboard_controller.clone(),
+            uart.clone(),
+            floppy_controller.clone(),
+            rtc.clone(),
+        )));
         let mut devices: Vec<DeviceRef> = vec![
             pic.clone(),
             pit,
@@ -120,13 +124,9 @@ impl Bus {
             dma.clone(),
             parallel_port.clone(),
         ];
-        let rtc = if let Some(clock) = config.clock {
-            let rtc = Rc::new(RefCell::new(Rtc::new(clock)));
+        if let Some(ref rtc) = rtc {
             devices.push(rtc.clone());
-            Some(rtc)
-        } else {
-            None
-        };
+        }
         let mut dma_devices: [Option<DeviceRef>; 8] = Default::default();
         dma_devices[2] = Some(floppy_controller.clone());
 

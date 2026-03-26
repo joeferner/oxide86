@@ -697,12 +697,16 @@ impl Cpu {
             0x19 => self.handle_int19_bootstrap_loader(),
             0x1a => self.handle_int1a_time_services(bus),
             0x21 => self.handle_int21_dos_services(bus),
+            0x70 => self.handle_int70_rtc_alarm_interrupt(bus),
             0x74 => self.handle_int74_ps2_mouse_interrupt(bus),
             // Default INT 06h handler (invalid opcode): no-op, just IRET.
             // A real BIOS typically does nothing here; programs can install their own handler.
             0x06 => {}
             // Default INT 1Ch handler (user timer tick): no-op, just IRET.
             0x1C => {}
+            // Default INT 4Ah handler (user alarm interrupt): no-op, just IRET.
+            // Programs that need alarm notification install their own INT 4Ah handler.
+            0x4A => {}
             // INT 1Ch IRET trampoline — the chained INT 1Ch handler returned here.
             // Nothing to do; step() will call patch_flags_and_iret to IRET
             // back to wherever INT 08h originally interrupted.
@@ -715,6 +719,10 @@ impl Cpu {
             // returned here.  Nothing to do; step() will call patch_flags_and_iret
             // to IRET back to wherever INT 74h originally interrupted.
             0xF4 => {}
+            // INT 4Ah IRET trampoline — the chained INT 4Ah user alarm handler returned here.
+            // Nothing to do; step() will call patch_flags_and_iret to IRET
+            // back to wherever INT 70h originally interrupted.
+            0xF3 => {}
             _ => log::error!("unhandled BIOS interrupt 0x{irq:02X}"),
         }
     }

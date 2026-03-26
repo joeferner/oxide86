@@ -4,7 +4,7 @@ use crate::{
     Device,
     devices::{
         floppy_disk_controller::FloppyDiskController, keyboard_controller::KeyboardController,
-        pit::Pit, uart::Uart,
+        pit::Pit, rtc::Rtc, uart::Uart,
     },
 };
 
@@ -46,6 +46,12 @@ const COM1_IRQ_LINE: u8 = 4;
 /// IRQ line for the FDC (IRQ6, PIC1 bit 6)
 const FDC_IRQ_LINE: u8 = 6;
 
+/// IRQ that RTC alarm interrupts map to on the CPU (IRQ8 → INT 0x70, via PIC2)
+pub const RTC_CPU_IRQ: u8 = 0x70;
+
+/// IRQ8 occupies bit 0 of PIC2
+const RTC_PIC2_BIT: u8 = 0;
+
 /// IRQ12 occupies bit 4 of PIC2 (PIC2 handles IRQ8–IRQ15, so IRQ12 = bit 4)
 const PS2_MOUSE_PIC2_BIT: u8 = 4;
 
@@ -59,6 +65,7 @@ pub(crate) struct Pic {
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     uart: Rc<RefCell<Uart>>,
     fdc: Rc<RefCell<FloppyDiskController>>,
+    rtc: Option<Rc<RefCell<Rtc>>>,
 
     // PIC1 (master) state
     mask: u8,
@@ -80,12 +87,14 @@ impl Pic {
         keyboard_controller: Rc<RefCell<KeyboardController>>,
         uart: Rc<RefCell<Uart>>,
         fdc: Rc<RefCell<FloppyDiskController>>,
+        rtc: Option<Rc<RefCell<Rtc>>>,
     ) -> Self {
         Self {
             pit,
             keyboard_controller,
             uart,
             fdc,
+            rtc,
             mask: 0,
             in_service: 0,
             pic2_mask: 0,
@@ -205,6 +214,18 @@ impl Pic {
             if !masked && !in_service && self.fdc.borrow_mut().take_pending_irq() {
                 self.in_service |= bit;
                 return Some(FDC_CPU_IRQ);
+            }
+        }
+
+        // RTC alarm — IRQ8 via PIC2 bit 0 (INT 0x70)
+        if let Some(ref rtc) = self.rtc {
+            let pic2_bit = RTC_PIC2_BIT;
+            let masked = self.pic2_mask & (1 << pic2_bit) != 0;
+            let in_service = self.pic2_in_service & (1 << pic2_bit) != 0;
+
+            if !masked && !in_service && rtc.borrow_mut().take_pending_alarm() {
+                self.pic2_in_service |= 1 << pic2_bit;
+                return Some(RTC_CPU_IRQ);
             }
         }
 

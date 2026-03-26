@@ -18,6 +18,7 @@ pub mod int17_printer_services;
 pub mod int1a_time_services;
 pub mod int21_dos_services;
 pub mod int43_font_services;
+pub mod int70_rtc_alarm_interrupt;
 pub mod int74_ps2_mouse_interrupt;
 
 // BIOS code segment
