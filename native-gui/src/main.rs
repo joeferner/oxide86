@@ -463,12 +463,18 @@ fn handle_keyboard_input(
         && input.location == KeyLocation::Right;
     let is_right_ctrl = matches!(&input.logical_key, Key::Named(NamedKey::Control))
         && input.location == KeyLocation::Right;
-    // Pause key: real hardware sends E1 1D 45 (press only, no break code).
+    // Pause key: E1 1D 45 on press, E1 9D C5 on release.
     if matches!(&input.logical_key, Key::Named(NamedKey::Pause)) {
-        if input.state == ElementState::Pressed {
-            computer.push_key_press(SCAN_CODE_E1_PREFIX);
-            computer.push_key_press(0x1D);
-            computer.push_key_press(0x45);
+        computer.push_key_press(SCAN_CODE_E1_PREFIX);
+        match input.state {
+            ElementState::Pressed => {
+                computer.push_key_press(0x1D);
+                computer.push_key_press(0x45);
+            }
+            ElementState::Released => {
+                computer.push_key_press(0x9D);
+                computer.push_key_press(0xC5);
+            }
         }
         return;
     }
