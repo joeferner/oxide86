@@ -185,7 +185,26 @@ pub fn int_description(int_num: u8, ah: u8) -> Option<(&'static str, bool)> {
             let desc = match ah {
                 0x02 => "write char",
                 0x09 => "write string",
+                0x3C => "create file",
+                0x3D => "open file",
+                0x3E => "close handle",
+                0x3F => "read from handle",
+                0x40 => "write to handle",
+                0x41 => "delete file",
+                0x42 => "seek",
                 0x4C => "exit",
+                0x4E => "find first",
+                0x4F => "find next",
+                _ => return None,
+            };
+            Some((desc, true))
+        }
+        0x2A => {
+            let desc = match ah {
+                0x00 => "network installation check",
+                0x80 => "begin critical section",
+                0x81 => "end critical section",
+                0x82 => "begin critical section 2",
                 _ => return None,
             };
             Some((desc, true))
