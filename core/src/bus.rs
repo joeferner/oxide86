@@ -18,10 +18,10 @@ use crate::{
         game_port::GamePortDevice,
         hard_disk_controller::HardDiskController,
         keyboard_controller::KeyboardController,
+        parallel_port::ParallelPort,
         pc_speaker::PcSpeaker,
         pic::Pic,
         pit::Pit,
-        printer::ParallelPort,
         rtc::{Clock, Rtc},
         uart::Uart,
     },
@@ -56,6 +56,7 @@ pub(crate) struct Bus {
     pic: Rc<RefCell<Pic>>,
     keyboard_controller: Rc<RefCell<KeyboardController>>,
     uart: Rc<RefCell<Uart>>,
+    parallel_port: Rc<RefCell<ParallelPort>>,
     rtc: Option<Rc<RefCell<Rtc>>>,
     video_card: Rc<RefCell<VideoCard>>,
     sound_card: Option<SoundCardRef>,
@@ -117,7 +118,7 @@ impl Bus {
             config.video_card.clone(),
             game_port.clone(),
             dma.clone(),
-            parallel_port,
+            parallel_port.clone(),
         ];
         let rtc = if let Some(clock) = config.clock {
             let rtc = Rc::new(RefCell::new(Rtc::new(clock)));
@@ -138,6 +139,7 @@ impl Bus {
             pic,
             keyboard_controller,
             uart,
+            parallel_port,
             video_card: config.video_card,
             sound_card: None,
             dma,
@@ -193,6 +195,10 @@ impl Bus {
 
     pub(crate) fn uart_mut(&self) -> RefMut<'_, Uart> {
         self.uart.borrow_mut()
+    }
+
+    pub(crate) fn parallel_port_mut(&self) -> RefMut<'_, ParallelPort> {
+        self.parallel_port.borrow_mut()
     }
 
     pub(crate) fn is_keyboard_irq_in_service(&self) -> bool {

@@ -58,6 +58,7 @@
 - [X] DMA Device (see ai-analysis/dma-implementation-plan.md)
   - [X] Test Checkit
 - [X] COM loopback
+- [X] Parallel Port/LPT loopback
 - [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
   - [ ] Test CheckIt (see ai-analysis/f80-extended-precision.md)
   - [ ] Test Fractint Version 15.x and below

@@ -122,7 +122,7 @@ void fpu_test(int test_number) {
     // fmul st0,st0   → ST(0) = 4.0, ST(1) = pi
     // fld1           → ST(0) = 1.0, ST(1) = 4.0, ST(2) = pi
     // faddp st1,st0  → ST(0) = 5.0, ST(1) = pi
-    // fdivp st1,st0  → ST(0) = pi / 5.0
+    // fdivp st1,st0  → ST(0) = pi / 5.0 (0.6283185307179586 or 36 degrees)
     // fptan          → ST(0) = 1.0 (pushed), ST(1) = tan(pi/5) (replaced)
     // fxch st1       → ST(0) = tan(pi/5), ST(1) = 1.0
     // fpatan         → ST(0) = atan(ST(1)/ST(0)) = atan(1.0/tan(pi/5)) = atan(cot(pi/5))
@@ -134,7 +134,7 @@ void fpu_test(int test_number) {
 
     if (test_number != 3) {
         // Compare 8-byte result at [0x6E68] vs expected at [0x6E60]
-        // DS:SI 4033:6E60 (reference): 3F F6 05 A9 0C 73 AB 79 → 0x3FF605A90C73AB79 ≈ 1.376
+        // DS:SI 4033:6E60 (reference): 3F F6 05 A9 0C 73 AB 79 → 0x3FF605A90C73AB79 ≈ 1.376 (78.8 degrees)
         // ES:DI 4033:6E68 (computed): 3F EE 28 C7 31 EB 69 51 → 0x3FEE28C731EB6951 ≈ 0.942478
         if (memcmp([0x6E68], [0x6E60], 8) != 0)
             goto fail;

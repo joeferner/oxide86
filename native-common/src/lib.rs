@@ -17,6 +17,8 @@ use oxide86_core::{
     devices::{
         SoundCardType,
         adlib::Adlib,
+        parallel_port::LptPortDevice,
+        parallel_port_loopback::ParallelLoopback,
         pc_speaker::{NullPcSpeaker, PcSpeaker},
         serial_loopback::SerialLoopback,
         serial_mouse::SerialMouse,
@@ -168,6 +170,10 @@ pub fn create_computer(
     computer.set_com_port_device(3, create_com_device(&cli.com3_device, &serial_mouse)?);
     computer.set_com_port_device(4, create_com_device(&cli.com4_device, &serial_mouse)?);
 
+    computer.set_lpt_device(1, create_lpt_device(&cli.lpt1_device)?);
+    computer.set_lpt_device(2, create_lpt_device(&cli.lpt2_device)?);
+    computer.set_lpt_device(3, create_lpt_device(&cli.lpt3_device)?);
+
     if let Some(program_path) = &cli.program {
         // Load program from file
         let program_data = std::fs::read(program_path)
@@ -239,6 +245,23 @@ fn create_com_device(
             Ok(Some(Arc::new(RwLock::new(SerialLoopback::new()))))
         } else {
             Err(anyhow!("Invalid COM device name: {device_name}"))
+        }
+    } else {
+        Ok(None)
+    }
+}
+
+fn create_lpt_device(
+    device_name: &Option<String>,
+) -> Result<Option<Arc<RwLock<dyn LptPortDevice>>>> {
+    if let Some(device_name) = device_name {
+        let device_name = device_name.trim().to_lowercase();
+        if device_name == "none" || device_name == "null" {
+            Ok(None)
+        } else if device_name == "loopback" {
+            Ok(Some(Arc::new(RwLock::new(ParallelLoopback::new()))))
+        } else {
+            Err(anyhow!("Invalid LPT device name: {device_name}"))
         }
     } else {
         Ok(None)

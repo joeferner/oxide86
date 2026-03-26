@@ -324,18 +324,27 @@ fn tool_read_memory_seg(args: &Value, debug: &Arc<DebugShared>) -> String {
     if !debug.paused.load(Ordering::Relaxed) {
         return "Not paused — use 'pause' first".to_string();
     }
-    let seg = args["seg"].as_str().and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok());
-    let off = args["off"].as_str().and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok());
+    let seg = args["seg"]
+        .as_str()
+        .and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok());
+    let off = args["off"]
+        .as_str()
+        .and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok());
     let len = args["len"].as_u64().map(|v| v as u32);
     match (seg, off, len) {
         (Some(s), Some(o), Some(l)) => {
             let addr = s * 16 + o;
             match debug.send_command(DebugCommand::ReadMemory { addr, len: l }) {
-                DebugResponse::Memory(bytes) => format!("{s:04X}:{o:04X} (0x{addr:05X})\n{}", format_hex_dump(addr as usize, &bytes)),
+                DebugResponse::Memory(bytes) => format!(
+                    "{s:04X}:{o:04X} (0x{addr:05X})\n{}",
+                    format_hex_dump(addr as usize, &bytes)
+                ),
                 DebugResponse::Ok => String::new(),
             }
         }
-        _ => "Invalid arguments: seg and off must be hex strings, len must be an integer".to_string(),
+        _ => {
+            "Invalid arguments: seg and off must be hex strings, len must be an integer".to_string()
+        }
     }
 }
 

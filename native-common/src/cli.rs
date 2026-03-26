@@ -80,6 +80,18 @@ pub struct CommonCli {
     #[arg(long = "com4", value_name = "DEVICE")]
     pub com4_device: Option<String>,
 
+    /// Device to attach to LPT1 (e.g., "loopback")
+    #[arg(long = "lpt1", value_name = "DEVICE")]
+    pub lpt1_device: Option<String>,
+
+    /// Device to attach to LPT2 (e.g., "loopback")
+    #[arg(long = "lpt2", value_name = "DEVICE")]
+    pub lpt2_device: Option<String>,
+
+    /// Device to attach to LPT3 (e.g., "loopback")
+    #[arg(long = "lpt3", value_name = "DEVICE")]
+    pub lpt3_device: Option<String>,
+
     /// Enable joystick/gamepad input on the game port (0x201). Uses the first connected gamepad.
     #[arg(long = "joystick")]
     pub joystick: bool,

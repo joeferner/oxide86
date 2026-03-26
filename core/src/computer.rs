@@ -4,6 +4,7 @@ use std::{cell::RefCell, collections::VecDeque, rc::Rc};
 
 use crate::debugger::{DebugCommand, DebugResponse, DebugShared};
 use crate::devices::game_port::GamePortDevice;
+use crate::devices::parallel_port::LptPortDevice;
 use crate::devices::pc_speaker::PcSpeaker;
 use crate::devices::uart::ComPortDevice;
 use crate::{
@@ -430,6 +431,10 @@ impl Computer {
         device: Option<Arc<RwLock<dyn ComPortDevice>>>,
     ) {
         self.bus.uart_mut().set_com_port_device(port, device)
+    }
+
+    pub fn set_lpt_device(&mut self, port: u8, device: Option<Arc<RwLock<dyn LptPortDevice>>>) {
+        self.bus.parallel_port_mut().set_lpt_device(port, device)
     }
 
     /// Inject a PS/2 mouse event.  The event is encoded as a 3-byte PS/2 packet

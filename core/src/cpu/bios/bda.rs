@@ -108,10 +108,11 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
     bus.memory_write_u16(BDA_START + BDA_COM_PORTS + 6, COM4_ADDR); // COM4
 
     // LPT port addresses (0x0040:0008 - 4 words)
-    // Standard LPT (parallel) port I/O addresses
-    bus.memory_write_u16(BDA_START + BDA_LPT_PORTS, 0x0378); // LPT1
-    bus.memory_write_u16(BDA_START + BDA_LPT_PORTS + 2, 0x0278); // LPT2
-    bus.memory_write_u16(BDA_START + BDA_LPT_PORTS + 4, 0x03BC); // LPT3
+    // IBM PC BIOS probes in order 0x03BC → 0x0378 → 0x0278 and fills slots
+    // in detection order. The MDA card's port (0x03BC) is always LPT1.
+    bus.memory_write_u16(BDA_START + BDA_LPT_PORTS, 0x03BC); // LPT1 (MDA card)
+    bus.memory_write_u16(BDA_START + BDA_LPT_PORTS + 2, 0x0378); // LPT2
+    bus.memory_write_u16(BDA_START + BDA_LPT_PORTS + 4, 0x0278); // LPT3
     bus.memory_write_u16(BDA_START + BDA_LPT_PORTS + 6, 0x0000); // LPT4 (not installed)
 
     // Equipment list word (0x0040:0010)
