@@ -428,6 +428,11 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
             let r = Reg16::from_bits(op & 7);
             (Mnemonic::Pop, vec![Operand::Reg16(r, r.value(cur.cpu))])
         }
+        // 8F /0  POP r/m16
+        0x8F => {
+            let m = cur.fetch();
+            (Mnemonic::Pop, vec![decode_rm(cur, m, false)])
+        }
         // POP Sreg
         0x07 => (Mnemonic::Pop, vec![Operand::Seg(SegReg::ES, cur.cpu.es())]),
         0x17 => (Mnemonic::Pop, vec![Operand::Seg(SegReg::SS, cur.cpu.ss())]),

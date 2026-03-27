@@ -1,0 +1,112 @@
+{
+    "functions": {
+        "0019:423F": {
+            "label": "restore_regs_and_return",
+            "comment": "Epilogue trampoline for INT 21h handler. Restores SS from CS:[0x3DD7], stashes the return IP into ES:[0x05EE], then pops all saved registers (ax/bx/cx/dx/si/di/bp/ds) and jumps to the saved IP — returning to the original caller without touching any register."
+        },
+        "0019:4275": {
+            "label": "get_caller_reg_frame",
+            "comment": "Sets up DS:SI pointing at the caller's saved register frame on the interrupt stack. Loads SS from CS:[0x3DD7], then LDS SI from SS:[0x0584:0x0586] — the SS:SP pair saved at INT 21h entry. After return: DS = caller's SS, SI = caller's SP at interrupt time (bottom of the 9 pushed registers). Sub-handlers use [SI+offset] to write return values (AX=+0, BX=+2, CX=+4, DX=+6) and to modify the caller's FLAGS (+0x16, e.g. clearing carry for success)."
+        },
+        "0019:4256": {
+            "label": "build_register_frame",
+            "comment": "Prologue helper. Restores SS from CS:[0x3DD7], stashes return IP in ES:[0x05EE], then pushes ds/bp/di/si/dx/cx/bx/ax to build a frame. Re-pushes the return IP and sets BP=SP so caller can address saved regs via [BP+offset]. Loads SS from [BP+0x14] (the word already on the stack before the call, i.e. caller's SS). Pair/inverse of restore_regs_and_return (0019:423F)."
+        },
+        "0250:0486": {
+            "label": "read_tick_count",
+            "comment": "Reads the BIOS system timer tick count via INT 1Ah AH=0. Returns CX:DX = 32-bit tick count since midnight, AL = 1 if midnight has crossed since last read. Called by the tick-to-time conversion code at 0250:0435."
+        },
+        "12E0:013F": {
+            "label": "bios_rtc_call",
+            "comment": "C-callable far wrapper for INT 1Ah subfunctions 2–5 (RTC read/set time and date). [bp+6]=AH subfunction; four far byte pointers at [bp+8/c/10/14] are in/out for CH (hours or century), CL (minutes or year), DH (seconds or month), DL (DST flag or day), all BCD. Clears CF before calling. On success (CF clear) writes results back through the pointers and returns AX=0; on error (CF set) skips write-back."
+        },
+        "1582:0AD4": {
+            "label": "rtc_read_datetime",
+            "comment": "Reads the full RTC date and time into a caller-supplied struct (far ptr at [bp+6:8]). Calls bios_rtc_call(AH=2) for time (CH=hours, CL=minutes, DH=seconds) and bios_rtc_call(AH=4) for date (CH=century, CL=year, DH=month, DL=day). Converts each BCD field to binary via bcd_to_bin and writes into the struct: [+0]=1 (valid flag), [+2]=century, [+4]=year, [+6]=month, [+8]=day, [+0a]=hours, [+0c]=minutes, [+0e]=seconds. Returns AX=0 on success."
+        },
+        "1582:0C4A": {
+            "label": "bin_to_bcd",
+            "comment": "Converts a binary byte in [bp+6] to packed BCD. Divides by 10 twice to extract tens and units digits, then packs them as (tens<<4)|units. Returns the BCD byte in AL. Inverse of bcd_to_bin (1582:0C6F)."
+        },
+        "1582:0C6F": {
+            "label": "bcd_to_bin",
+            "comment": "Converts a packed BCD byte in [bp+6] to binary. Shifts right 4 to get the tens digit, multiplies by 10, then adds the low nibble (units digit). Returns binary value in AX. Inverse of bin_to_bcd (1582:0C4A)."
+        },
+        "1582:0D1B": {
+            "label": "cmos_read_reg",
+            "comment": "Reads one raw CMOS/RTC register directly via I/O ports 0x70/0x71. Acquires hardware lock (func_36C5_0744), then writes ([bp+6] | 0x80) to port 0x70 (selects register and disables NMI), reads the result from port 0x71 via io_read_with_delay, then writes 0x0D to port 0x70 to re-enable NMI, and releases the lock (func_36C5_06D0). Returns raw register byte in AX."
+        },
+        "1582:1197": {
+            "label": "io_read_with_delay",
+            "comment": "Busy-waits 40 iterations then reads one byte from the I/O port passed in [bp+6] via func_36C5_0A22 (inp). Returns the byte in AX. The delay gives slow hardware (e.g. CMOS) time to settle after an address write to port 0x70."
+        },
+        "1582:11BC": {
+            "label": "io_write_with_delay",
+            "comment": "Busy-waits 40 iterations then writes the byte in [bp+8] to the I/O port in [bp+6] via func_36C5_06EE (IO out). The delay gives slow hardware (e.g. CMOS) time to settle before the next access."
+        },
+        "1582:1427": {
+            "label": "read_bios_timer_direct",
+            "comment": "Reads the 32-bit BIOS tick counter directly from memory at 0x0000:0x046C (low word in AX, high word in DX), bypassing INT 1Ah. Does not update the midnight-crossed flag. Used by elapsed_ticks_ge for fast polling."
+        },
+        "1582:1445": {
+            "label": "elapsed_ticks_ge",
+            "comment": "Checks whether at least [bp+0a] ticks have elapsed since the tick value in [bp+6]. Reads the current tick count via read_bios_timer_direct, subtracts the start tick, and compares against the threshold. Returns AX=0 if not yet elapsed (jl taken); the unexecuted gap at 145D–1461 presumably returns nonzero when the threshold is reached."
+        },
+        "1D76:0340": {
+            "label": "rtc_test_main",
+            "comment": "RTC test main routine. Entry stub calls func_1CF4_02EC for init then far-jumps to 1E88:0000 where the real body lives. Creates a full-screen (mode 0) or windowed (mode 1) dialog, polls rtc_read_datetime in a tight loop (~497x), and drives a 7-state machine via a jump table at CS:0x0BA3 (indexed by [bp-0x1a]*2). States: 0=read+FPU-compare timestamp against bounds [0xbcc8]/[0xbcd0]; 1=continue polling; 2=verify alarm registers (hours/day/min*100+sec); 3=check 12-entry result table. Pass counts clamped to 2; results displayed via func_1354 text routines."
+        },
+        "36C5:06D2": {
+            "label": "longjmp",
+            "comment": "C runtime longjmp. Takes two arguments pushed before the far call: ES:[0x0364] (saved IP) and ES:[0x0366] (saved CS) from a setjmp jump buffer. Resets SP to the caller's saved BP (unwinding the stack), overwrites the saved return CS:IP at [bp+0x12]/[bp+0x10] with the jump-buffer values, then pops the full saved register context (es/ds/di/si/bp/bx/bx/dx) and retf's to the saved address. Never returns to its call site (1306:0335 is dead code)."
+        },
+        "1E88:1174": {
+            "label": "rtc_cancel_or_set_alarm",
+            "comment": "First cancels any pending RTC alarm by calling bios_rtc_call(AH=7, scratch×4). If [bp+0a] is nonzero and the datetime struct at [bp+6:8] is valid (struct[0]!=0), reads hours/minutes/seconds from the struct (fields +0a/+0c/+0e), converts each to BCD via bin_to_bcd, then calls bios_rtc_call(AH=6) to program the new alarm. Returns AX=0 on success."
+        },
+        "1306:0300": {
+            "label": "int08h_hook",
+            "comment": "CheckIt's INT 08h (timer IRQ0) hook. Saves all registers (pusha-style: ax/cx/dx/bx/sp/bp/si/di/ds/es), sets DS=0x48A2, increments its own 32-bit internal tick counter at [DS:0x0C7A/0x0C7C] (+1 low word, +carry high), then calls longjmp (36C5:06D2) to chain to the original INT 08h vector stored at [0x0366]:[0x0364] (should be F000:0008, the BIOS handler). Never returns to 1306:0335 — longjmp unwinds the stack and retfs directly to the original BIOS handler, which increments the BDA tick counter at 0x0000:0x046C and sends EOI."
+        },
+        "1E88:0844": {
+            "label": "state3_alarm_wait",
+            "comment": "State 3 handler: waits for the RTC alarm to fire while optionally checking elapsed BDA ticks. Each iteration calls func_1354_12E5 (always returns AX=0), then checks [0x8206]: if zero (alarm not yet fired) falls through to elapsed_ticks_ge at 1E88:0898 with start=[bp+0xfe2e] threshold=[bp+0xfe28]; if nonzero (alarm fired) transitions to state 4. Observed: elapsed check ran 59 times, never elapsed; alarm fired on the 60th iteration."
+        },
+        "1E88:0910": {
+            "label": "state5_elapsed_check",
+            "comment": "State 5 handler — the hung state in the Compare Elapsed Time test. Each iteration calls func_1354_12E5 (always AX=0), then calls elapsed_ticks_ge(start_low=[bp+0xfe2a], start_high=[bp+0xfe2c], threshold=[bp-0x16]). elapsed_ticks_ge reads the BDA timer counter directly from 0x0000:0x046C using only the low 16 bits. Returns 0 (not elapsed) → loops back to lbl_1E88_0292. Root cause: RTC alarm fires based on real wall-clock time, but the BDA counter advances based on emulated CPU cycles; if the emulator runs faster than real-time the alarm fires before enough BDA ticks have accumulated, causing a slow loop that appears as a hang."
+        }
+    },
+    "lineComments": {
+        "12E0:0163 72 05": "CF set = INT 1Ah error (clock not operating); skip write-back",
+        "12E0:0165 B8 00 00": "success: return AX=0",
+        "1582:0D29 0C 80": "set bit 7 to disable NMI during CMOS access (standard protocol)",
+        "1582:0D47 B8 0D 00": "write 0x0D to port 0x70: re-enables NMI (bit 7 clear) and selects a safe register",
+        "1582:142D C7 46 FE 00 00": "far pointer segment = 0x0000 (BIOS data area)",
+        "1582:1432 C7 46 FC 6C 04": "far pointer offset 0x046C = BIOS tick counter low word at 0x0000:0x046C",
+        "1E88:0033 75 12": "ES:[0x01a2] is test mode: 0=full-screen 80x25 dialog, nonzero=44x18 windowed dialog at row 6 col 3",
+        "1E88:0287 C7 86 28 FE 7F 00": "timeout threshold = 0x7F BIOS ticks (~4 sec) for initial RTC read",
+        "1E88:028D C7 46 EA DA 00": "max polling iterations = 0xDA (218) before giving up",
+        "1E88:02CF 77 C1": "state > 6: no matching handler, continue polling loop",
+        "1E88:02D4 2E FF A7 A3 0B": "7-state jump table at CS:0x0BA3; index = [bp-0x1a] * 2",
+        "1E88:0369 DC 16 C8 BC": "FPU: compare loaded datetime (as float) against upper bound at [0xbcc8]",
+        "1E88:0384 DC 16 D0 BC": "FPU: compare loaded datetime (as float) against lower bound at [0xbcd0]",
+        "1E88:044F 7E 03": "clamp pass/fail result count: if ax <= 2 keep it, else force ax=2",
+        "1E88:0528 B8 64 00": "expected alarm ticks = minutes*100 + seconds; compare against [0xcf4c]",
+        "1E88:118E B8 07 00": "INT 1Ah AH=7: cancel RTC alarm; all four output pointers point to scratch",
+        "1E88:11F8 B8 06 00": "INT 1Ah AH=6: set RTC alarm to CH=hours, CL=minutes, DH=seconds (BCD)",
+        "1306:0316 26 83 06 7A 0C 01": "increment CheckIt's own internal 32-bit tick counter low word at [DS:0x0C7A]",
+        "1306:031C 26 83 16 7C 0C 00": "carry into high word of CheckIt's internal tick counter at [DS:0x0C7C]",
+        "1306:0330 9A D2 06 C5 36": "chain to original INT 08h via longjmp (36C5:06D2); never returns here — stack is unwound and retf jumps to F000:0008 (BIOS timer handler)",
+        "1E88:0871 83 3E 06 82 00": "[0x8206]: RTC alarm-fired flag. 0 = alarm not yet fired (fall through to elapsed check); nonzero = alarm has fired (take state-4 transition path)",
+        "1E88:0876 74 14": "alarm not yet fired → check elapsed BDA ticks; when alarm fires this falls through instead",
+        "1E88:083C C7 46 E6 03 00": "state = 3: enter alarm-wait / elapsed-ticks polling loop",
+        "1E88:08D0 C7 46 E6 04 00": "state = 4: alarm has fired; immediate transition to state 5",
+        "1E88:0908 C7 46 E6 05 00": "state = 5: begin Compare Elapsed Time check against BDA tick counter",
+        "1E88:0940 FF 76 EA": "push threshold ([bp-0x16]) for elapsed_ticks_ge — ticks required since start",
+        "1E88:0943 FF B6 2C FE": "push start tick high word ([bp+0xfe2c]) for elapsed_ticks_ge",
+        "1E88:0947 FF B6 2A FE": "push start tick low word ([bp+0xfe2a]) for elapsed_ticks_ge — BDA counter value captured at test start",
+        "1582:144F 2B 46 06": "elapsed_low = current_low - start_low; only 16-bit subtraction, ignores high word wraparound",
+        "1582:145B 7C 05": "jl: elapsed < threshold (signed 16-bit) → return AX=0; fall-through to gap at 145D–1461 returns AX≠0 (never reached in trace)"
+    }
+}

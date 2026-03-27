@@ -636,11 +636,54 @@ impl Cpu {
                         self.fpu_stack[top] =
                             self.fpu_stack[top].mul(Self::fpu_read_m16int(bus, addr));
                     }
+                    // FIADD m32 (DA /0): ST(0) += m32int
+                    (0xDA, 0) => {
+                        let top = self.fpu_top as usize;
+                        self.fpu_stack[top] =
+                            self.fpu_stack[top].add(Self::fpu_read_m32int(bus, addr));
+                    }
                     // FIMUL m32 (DA /1): ST(0) *= m32int
                     (0xDA, 1) => {
                         let top = self.fpu_top as usize;
                         self.fpu_stack[top] =
                             self.fpu_stack[top].mul(Self::fpu_read_m32int(bus, addr));
+                    }
+                    // FICOM m32 (DA /2): compare ST(0) vs m32int, set CC
+                    (0xDA, 2) => {
+                        let other = Self::fpu_read_m32int(bus, addr);
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        self.fpu_set_cc(st0, other);
+                    }
+                    // FICOMP m32 (DA /3): compare ST(0) vs m32int, set CC, pop
+                    (0xDA, 3) => {
+                        let other = Self::fpu_read_m32int(bus, addr);
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        self.fpu_set_cc(st0, other);
+                        self.fpu_pop();
+                    }
+                    // FISUB m32 (DA /4): ST(0) -= m32int
+                    (0xDA, 4) => {
+                        let top = self.fpu_top as usize;
+                        self.fpu_stack[top] =
+                            self.fpu_stack[top].sub(Self::fpu_read_m32int(bus, addr));
+                    }
+                    // FISUBR m32 (DA /5): ST(0) = m32int - ST(0)
+                    (0xDA, 5) => {
+                        let top = self.fpu_top as usize;
+                        self.fpu_stack[top] =
+                            Self::fpu_read_m32int(bus, addr).sub(self.fpu_stack[top]);
+                    }
+                    // FIDIV m32 (DA /6): ST(0) /= m32int
+                    (0xDA, 6) => {
+                        let top = self.fpu_top as usize;
+                        self.fpu_stack[top] =
+                            self.fpu_stack[top].div(Self::fpu_read_m32int(bus, addr));
+                    }
+                    // FIDIVR m32 (DA /7): ST(0) = m32int / ST(0)
+                    (0xDA, 7) => {
+                        let top = self.fpu_top as usize;
+                        self.fpu_stack[top] =
+                            Self::fpu_read_m32int(bus, addr).div(self.fpu_stack[top]);
                     }
                     // FADD m32 (D8 /0): ST(0) += m32
                     (0xD8, 0) => {
