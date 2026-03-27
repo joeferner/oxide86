@@ -96,6 +96,10 @@ pub struct CommonCli {
     #[arg(long = "joystick")]
     pub joystick: bool,
 
+    /// Use the host wall-clock for RTC time instead of deriving it from CPU cycles.
+    #[arg(long = "native-clock")]
+    pub native_clock: bool,
+
     /// Disable the 8087 math coprocessor
     #[arg(long = "no-fpu")]
     pub no_fpu: bool,

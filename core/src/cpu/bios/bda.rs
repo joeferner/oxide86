@@ -201,7 +201,10 @@ pub(in crate::cpu) fn bda_reset(bus: &mut Bus) {
 
     // Timer counter (0x0040:006C) - 4 bytes
     // Initialize from RTC if available, otherwise 0 ticks since midnight
-    let timer_counter = bus.rtc().map(|rtc| rtc.timer_counter()).unwrap_or(0);
+    let timer_counter = bus
+        .rtc()
+        .map(|rtc| rtc.timer_counter(bus.cycle_count()))
+        .unwrap_or(0);
     bus.memory_write_u16(
         BDA_START + BDA_TIMER_COUNTER,
         (timer_counter & 0xFFFF) as u16,

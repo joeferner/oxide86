@@ -17,7 +17,10 @@ use crate::{
             bda::bda_set_math_coprocessor, int09_keyboard_hardware_interrupt::scan_code_to_ascii,
         },
     },
-    devices::rtc::{CMOS_REG_FLOPPY_TYPES, Clock, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
+    devices::{
+        clock::Clock,
+        rtc::{CMOS_REG_FLOPPY_TYPES, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
+    },
     disk::{Disk, DiskError, DriveNumber},
     memory::Memory,
     video::{VideoBuffer, VideoCard, VideoCardType},

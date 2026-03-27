@@ -13,6 +13,7 @@ use crate::{
     cpu::bios::bios_reset,
     devices::{
         SoundCard, SoundCardRef,
+        clock::Clock,
         dma::{DmaController, DmaTransfer},
         floppy_disk_controller::FloppyDiskController,
         game_port::GamePortDevice,
@@ -22,7 +23,7 @@ use crate::{
         pc_speaker::PcSpeaker,
         pic::Pic,
         pit::Pit,
-        rtc::{Clock, Rtc},
+        rtc::Rtc,
         uart::Uart,
     },
     disk::Disk,

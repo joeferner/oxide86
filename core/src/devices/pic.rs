@@ -223,7 +223,7 @@ impl Pic {
             let masked = self.pic2_mask & (1 << pic2_bit) != 0;
             let in_service = self.pic2_in_service & (1 << pic2_bit) != 0;
 
-            if !masked && !in_service && rtc.borrow_mut().take_pending_alarm() {
+            if !masked && !in_service && rtc.borrow_mut().take_pending_alarm(cycle_count) {
                 self.pic2_in_service |= 1 << pic2_bit;
                 return Some(RTC_CPU_IRQ);
             }

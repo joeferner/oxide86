@@ -7,16 +7,19 @@ pub mod rodio_pc_speaker;
 pub mod rodio_sound_card;
 pub mod throttle;
 
+use chrono::{Datelike, Timelike};
 use std::sync::{Arc, RwLock};
 
 use anyhow::{Context, Result, anyhow};
 use oxide86_core::debugger::DebugShared;
+use oxide86_core::devices::clock::{Clock, LocalDate, LocalTime};
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
     devices::{
         SoundCardType,
         adlib::Adlib,
+        clock::EmulatedClock,
         parallel_port::LptPortDevice,
         parallel_port_loopback::ParallelLoopback,
         pc_speaker::{NullPcSpeaker, PcSpeaker},
@@ -87,11 +90,30 @@ pub fn create_computer(
 
     let cpu_freq = (cli.speed * 1_000_000.0) as u64;
 
+    let clock: Box<dyn Clock> = if cli.native_clock {
+        Box::new(NativeClock::new())
+    } else {
+        let now = chrono::Local::now();
+        let start_time = LocalTime {
+            hours: now.hour() as u8,
+            minutes: now.minute() as u8,
+            seconds: now.second() as u8,
+            milliseconds: now.timestamp_subsec_millis() as u16,
+        };
+        let start_date = LocalDate {
+            century: (now.year() / 100) as u8,
+            year: (now.year() % 100) as u8,
+            month: now.month() as u8,
+            day: now.day() as u8,
+        };
+        Box::new(EmulatedClock::new(cpu_freq, start_date, start_time))
+    };
+
     let mut computer = Computer::new(ComputerConfig {
         cpu_type,
         clock_speed: cpu_freq as u32,
         memory_size: parse_memory(&cli.memory)?,
-        clock: Box::new(NativeClock::new()),
+        clock,
         hard_disks,
         video_card_type,
         video_buffer,

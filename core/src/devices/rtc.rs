@@ -2,7 +2,10 @@ use std::any::Any;
 
 use crate::{
     Device,
-    devices::pit::{PIT_DIVISOR, PIT_FREQUENCY_HZ},
+    devices::{
+        clock::Clock,
+        pit::{PIT_DIVISOR, PIT_FREQUENCY_HZ},
+    },
 };
 
 pub const RTC_IO_PORT_REGISTER_SELECT: u16 = 0x0070;
@@ -26,33 +29,6 @@ pub const RTC_REG_STATUS_B: u8 = 0x0B;
 /// Bits 7:4 = drive A type, bits 3:0 = drive B type.
 /// Values: 0=none, 1=360KB 5.25", 2=1.2MB 5.25", 3=720KB 3.5", 4=1.44MB 3.5", 5=2.88MB 3.5"
 pub const CMOS_REG_FLOPPY_TYPES: u8 = 0x10;
-
-/// Local time components with sub-second precision.
-#[derive(Clone)]
-pub struct LocalTime {
-    pub hours: u8,
-    pub minutes: u8,
-    pub seconds: u8,
-    pub milliseconds: u16,
-}
-
-/// Local date components.
-#[derive(Clone)]
-pub struct LocalDate {
-    pub century: u8,
-    pub year: u8,
-    pub month: u8,
-    pub day: u8,
-}
-
-/// Platform-independent clock trait for time and date operations.
-/// Native implementations use chrono, WASM uses js_sys::Date.
-pub trait Clock: Send {
-    /// Returns local time with sub-second precision
-    fn get_local_time(&self) -> LocalTime;
-    /// Returns local date with century
-    fn get_local_date(&self) -> LocalDate;
-}
 
 pub(crate) struct Rtc {
     clock: Box<dyn Clock>,
@@ -86,13 +62,13 @@ impl Rtc {
     /// Check if the RTC alarm interrupt is pending and consume it.
     /// Fires at most once per second when the current time matches the alarm
     /// registers and AIE (bit 5 of Status Register B) is set.
-    pub(crate) fn take_pending_alarm(&mut self) -> bool {
+    pub(crate) fn take_pending_alarm(&mut self, cycle_count: u32) -> bool {
         // AIE = bit 5 of Status Register B
         if self.status_b & 0x20 == 0 {
             return false;
         }
 
-        let time = self.clock.get_local_time();
+        let time = self.clock.get_local_time(cycle_count);
         let current_sec = to_bcd(time.seconds);
 
         // Avoid firing multiple times in the same second
@@ -118,10 +94,10 @@ impl Rtc {
     /// Returns the BDA timer counter value (ticks since midnight at ~18.2 Hz).
     ///
     /// Computed as: total_milliseconds_since_midnight * PIT_FREQUENCY_HZ / (PIT_DIVISOR * MS_PER_SECOND)
-    pub(crate) fn timer_counter(&self) -> u32 {
+    pub(crate) fn timer_counter(&self, cycle_count: u32) -> u32 {
         const MS_PER_SECOND: u64 = 1_000;
 
-        let time = self.clock.get_local_time();
+        let time = self.clock.get_local_time(cycle_count);
         let total_ms = (time.hours as u64 * 3_600 + time.minutes as u64 * 60 + time.seconds as u64)
             * MS_PER_SECOND
             + time.milliseconds as u64;
@@ -151,18 +127,18 @@ impl Device for Rtc {
         false
     }
 
-    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8> {
         if port != RTC_IO_PORT_DATA {
             return None;
         }
 
         let val = match self.selected_register {
-            0x00 => to_bcd(self.clock.get_local_time().seconds),
-            0x02 => to_bcd(self.clock.get_local_time().minutes),
-            0x04 => to_bcd(self.clock.get_local_time().hours),
-            0x07 => to_bcd(self.clock.get_local_date().day),
-            0x08 => to_bcd(self.clock.get_local_date().month),
-            0x09 => to_bcd(self.clock.get_local_date().year),
+            0x00 => to_bcd(self.clock.get_local_time(cycle_count).seconds),
+            0x02 => to_bcd(self.clock.get_local_time(cycle_count).minutes),
+            0x04 => to_bcd(self.clock.get_local_time(cycle_count).hours),
+            0x07 => to_bcd(self.clock.get_local_date(cycle_count).day),
+            0x08 => to_bcd(self.clock.get_local_date(cycle_count).month),
+            0x09 => to_bcd(self.clock.get_local_date(cycle_count).year),
             // Status Register A: bit 7 = 0 (update not in progress)
             0x0A => 0x00,
             // Status Register B: writable; bit 5 = AIE, bit 1 = 24h mode
@@ -180,7 +156,7 @@ impl Device for Rtc {
             0x03 => self.alarm[1],
             0x05 => self.alarm[2],
             CMOS_REG_FLOPPY_TYPES => self.floppy_types,
-            0x32 => to_bcd(self.clock.get_local_date().century),
+            0x32 => to_bcd(self.clock.get_local_date(cycle_count).century),
             reg => {
                 log::warn!("RTC: read from unimplemented CMOS register 0x{reg:02X}");
                 0xFF
@@ -215,7 +191,7 @@ impl Device for Rtc {
 
 #[cfg(test)]
 pub mod tests {
-    use crate::devices::rtc::{Clock, LocalDate, LocalTime};
+    use crate::devices::clock::{Clock, LocalDate, LocalTime};
 
     pub(crate) struct MockClock {
         local_time: LocalTime,
@@ -242,11 +218,11 @@ pub mod tests {
     }
 
     impl Clock for MockClock {
-        fn get_local_time(&self) -> LocalTime {
+        fn get_local_time(&self, _cycle_count: u32) -> LocalTime {
             self.local_time.clone()
         }
 
-        fn get_local_date(&self) -> LocalDate {
+        fn get_local_date(&self, _cycle_count: u32) -> LocalDate {
             self.local_date.clone()
         }
     }

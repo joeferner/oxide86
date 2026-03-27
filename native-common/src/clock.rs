@@ -1,5 +1,5 @@
 use chrono::{Datelike, Local, Timelike};
-use oxide86_core::devices::rtc::{Clock, LocalDate, LocalTime};
+use oxide86_core::devices::clock::{Clock, LocalDate, LocalTime};
 
 pub struct NativeClock {}
 
@@ -10,7 +10,7 @@ impl NativeClock {
 }
 
 impl Clock for NativeClock {
-    fn get_local_time(&self) -> LocalTime {
+    fn get_local_time(&self, _cycle_count: u32) -> LocalTime {
         let now = Local::now();
         LocalTime {
             hours: now.hour() as u8,
@@ -20,7 +20,7 @@ impl Clock for NativeClock {
         }
     }
 
-    fn get_local_date(&self) -> LocalDate {
+    fn get_local_date(&self, _cycle_count: u32) -> LocalDate {
         let now = Local::now();
         let year = now.year();
         LocalDate {
