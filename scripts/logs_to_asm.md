@@ -24,7 +24,7 @@ Both arguments are optional. Defaults:
 
 ### Labels
 
-Function entry points (call targets) get a label above the first instruction:
+Function entry points (call targets and `retf_targets`) get a label above the first instruction:
 
 ```
 func_0019_423F:
@@ -81,6 +81,14 @@ Same shape as `functions`, but for jump targets (addresses reached only by jmp/j
 
 If a jump target is also a call target, the `functions` entry takes precedence and the `labels` entry is ignored.
 
+### `retf_targets`
+
+Same shape as `functions`, but for addresses that are entered via a RETF-based longjmp trick rather than a normal `call`. These addresses do not appear in `call_targets` (because no `call` instruction targets them in the log), so they would otherwise be labelled as jump targets or not labelled at all.
+
+Entries in `retf_targets` receive a `func_` label (or a custom `label`/`comment`) exactly like `functions` entries. If the same address appears in both `functions` and `retf_targets`, `functions` takes precedence.
+
+Jump instructions (`jmp`, `jcc`, etc.) that target a `retf_targets` address are also annotated with the `func_` label in their comment, matching the behaviour for `call_targets`.
+
 ### `lineComments`
 
 Keyed by `"SEG:OFF BB BB BB"` (address + space + space-separated hex bytes, matching the log exactly). Inserts a comment before the instruction line.
@@ -96,6 +104,12 @@ Keyed by `"SEG:OFF BB BB BB"` (address + space + space-separated hex bytes, matc
     },
     "0019:4000": {
       "label": "func_init"
+    }
+  },
+  "retf_targets": {
+    "36C5:06D2": {
+      "label": "longjmp_handler",
+      "comment": "Entered via RETF longjmp trick — not reachable by normal call"
     }
   },
   "labels": {

@@ -48,10 +48,6 @@ Plain `Vec<u8>`. Reads beyond size return `0xFF`; writes beyond size are silentl
 2. Either add it to `Bus::new` (for core devices with named fields) or call `bus.add_device(device)`.
 3. Handle the relevant IO ports or memory range in `io_read_u8` / `io_write_u8` / `memory_read_u8` / `memory_write_u8`.
 
-## Disassembler (`oxide86-disasm`)
-
-Standalone recursive-descent 286 disassembler for COM and EXE files. Output CS:IP addresses match the emulator's execution logs when `loadSegment` is configured correctly.
-
 ### Basic usage
 
 ```bash

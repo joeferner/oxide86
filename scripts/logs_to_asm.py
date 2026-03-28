@@ -94,17 +94,18 @@ def parse_log(path):
 
 
 def load_config(path):
-    """Load optional JSON config. Returns (functions_dict, labels_dict, line_comments_dict)."""
+    """Load optional JSON config. Returns (functions_dict, labels_dict, line_comments_dict, retf_targets_dict)."""
     try:
         with open(path, 'r') as f:
             data = json.load(f)
     except FileNotFoundError:
-        return {}, {}, {}
+        return {}, {}, {}, {}
     # Normalise keys to uppercase
     functions = {k.upper(): v for k, v in data.get('functions', {}).items()}
     labels = {k.upper(): v for k, v in data.get('labels', {}).items()}
     line_comments = {k.upper(): v for k, v in data.get('lineComments', {}).items()}
-    return functions, labels, line_comments
+    retf_targets = {k.upper(): v for k, v in data.get('retf_targets', {}).items()}
+    return functions, labels, line_comments, retf_targets
 
 
 def _wrap_comment(text, width=80):
@@ -133,7 +134,7 @@ def main():
     config_path = sys.argv[2] if len(sys.argv) > 2 else None
 
     counts, info, call_targets, jump_targets, int_handlers = parse_log(log_path)
-    functions, labels, line_comments = load_config(config_path) if config_path else ({}, {}, {})
+    functions, labels, line_comments, retf_targets = load_config(config_path) if config_path else ({}, {}, {}, {})
 
     # Sort by segment, then offset, then bytecode
     keys = sorted(counts.keys(), key=lambda k: (k[0][0:4], int(k[0][5:], 16), k[1]))
@@ -172,8 +173,8 @@ def main():
             for n in sorted(int_handlers[addr]):
                 print(f"\nint_{n:02x}h:")
 
-        if addr in call_targets:
-            func = functions.get(addr, {})
+        if addr in call_targets or addr in retf_targets:
+            func = functions.get(addr) or retf_targets.get(addr, {})
             print()
             if func.get('comment'):
                 for line in _wrap_comment(func['comment']):
@@ -222,8 +223,8 @@ def main():
                 if jnear:
                     joff = int(jnear.group(2), 16)
                     jtarget = f"{seg}:{joff:04X}"
-                    if jtarget in call_targets:
-                        func = functions.get(jtarget, {})
+                    if jtarget in call_targets or jtarget in retf_targets:
+                        func = functions.get(jtarget) or retf_targets.get(jtarget, {})
                         call_label = func.get('label') or f"func_{seg}_{joff:04X}"
                     else:
                         lbl = labels.get(jtarget, {})
@@ -234,8 +235,8 @@ def main():
                         jtseg = int(jfar.group(1), 16)
                         jtoff = int(jfar.group(2), 16)
                         jtarget = f"{jtseg:04X}:{jtoff:04X}"
-                        if jtarget in call_targets:
-                            func = functions.get(jtarget, {})
+                        if jtarget in call_targets or jtarget in retf_targets:
+                            func = functions.get(jtarget) or retf_targets.get(jtarget, {})
                             call_label = func.get('label') or f"func_{jtseg:04X}_{jtoff:04X}"
                         else:
                             lbl = labels.get(jtarget, {})

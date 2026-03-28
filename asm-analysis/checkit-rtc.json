@@ -54,7 +54,7 @@
         },
         "1D76:0340": {
             "label": "rtc_test_main",
-            "comment": "RTC test main routine. Entry stub calls func_1CF4_02EC for init then far-jumps to 1E88:0000 where the real body lives. Creates a full-screen (mode 0) or windowed (mode 1) dialog, polls rtc_read_datetime in a tight loop (~497x), and drives a 7-state machine via a jump table at CS:0x0BA3 (indexed by [bp-0x1a]*2). States: 0=read+FPU-compare timestamp against bounds [0xbcc8]/[0xbcd0]; 1=continue polling; 2=verify alarm registers (hours/day/min*100+sec); 3=check 12-entry result table. Pass counts clamped to 2; results displayed via func_1354 text routines."
+            "comment": "RTC test main routine. Entry stub calls func_1CF4_02EC for init then far-jumps to 1E88:0000 where the real body lives. Creates a full-screen (mode 0) or windowed (mode 1) dialog. Captures BDA start tick into [bp+0xfe2a/0xfe2c] and sets state 5 threshold [bp-0x16]=0xDA=218 ticks before the outer loop starts. Drives a 7-state machine via a jump table at CS:0x0BA3 (indexed by [bp-0x1a]*2); outer loop ran 4062 times total in emulated-clock trace. State flow for Compare Elapsed Time: states 0-2 set up and verify alarm → state 3 waits for RTC alarm (2179 iterations, timeout=127 ticks from alarm-set at [bp+0xfe2e]) → state 4 immediate transition → state 5 polls elapsed BDA ticks from TEST START against 218-tick threshold (1878+ iterations). Pass counts clamped to 2; results displayed via func_1354 text routines."
         },
         "36C5:06D2": {
             "label": "longjmp",
@@ -70,11 +70,47 @@
         },
         "1E88:0844": {
             "label": "state3_alarm_wait",
-            "comment": "State 3 handler: waits for the RTC alarm to fire while optionally checking elapsed BDA ticks. Each iteration calls func_1354_12E5 (always returns AX=0), then checks [0x8206]: if zero (alarm not yet fired) falls through to elapsed_ticks_ge at 1E88:0898 with start=[bp+0xfe2e] threshold=[bp+0xfe28]; if nonzero (alarm fired) transitions to state 4. Observed: elapsed check ran 59 times, never elapsed; alarm fired on the 60th iteration."
+            "comment": "State 3 handler: waits for the RTC alarm to fire while checking a BDA-tick elapsed timeout. Each iteration calls func_1354_12E5 (always returns AX=0), then checks [0x8206]: if zero (alarm not yet fired) falls through to elapsed_ticks_ge at 1E88:0898 with start=[bp+0xfe2e] (captured at 1E88:077A just before alarm set) threshold=[bp+0xfe28]=0x7F (127 ticks, ~7 sec timeout); if nonzero (alarm fired) captures display data and transitions to state 4. With real-clock: alarm fired after ~60 iterations (37 BDA ticks total). With emulated-clock: alarm fired after 2179 iterations (184 BDA ticks total); timeout elapsed check ran 2178 times without triggering, confirming alarm fired within the 127-tick window."
         },
         "1E88:0910": {
             "label": "state5_elapsed_check",
-            "comment": "State 5 handler — the hung state in the Compare Elapsed Time test. Each iteration calls func_1354_12E5 (always AX=0), then calls elapsed_ticks_ge(start_low=[bp+0xfe2a], start_high=[bp+0xfe2c], threshold=[bp-0x16]). elapsed_ticks_ge reads the BDA timer counter directly from 0x0000:0x046C using only the low 16 bits. Returns 0 (not elapsed) → loops back to lbl_1E88_0292. Root cause: RTC alarm fires based on real wall-clock time, but the BDA counter advances based on emulated CPU cycles; if the emulator runs faster than real-time the alarm fires before enough BDA ticks have accumulated, causing a slow loop that appears as a hang."
+            "comment": "State 5 handler — polls elapsed BDA ticks from test start. Each iteration calls func_1354_12E5 (always AX=0), then calls elapsed_ticks_ge(start_low=[bp+0xfe2a], start_high=[bp+0xfe2c], threshold=[bp-0x16]=0xDA=218). The start tick is captured at 1E88:027F at the very beginning of the test (before the outer loop), so state 5 measures total elapsed time from test start, not from alarm fire. Threshold of 218 ticks ≈ 12 seconds of emulated time. With real-clock: 37 total BDA ticks, never converged. With emulated-clock (full run): 2902 iterations before jne 0x095A taken once — threshold crossed exactly once. The test needs 2 passes through state 5 success to score 2 for this sub-test, but at PIT divisor ~4533 (263 Hz BDA) one pass consumes ~2902 of the ~5083 total outer-loop iterations, leaving no budget for a second."
+        },
+        "1354:175C": {
+            "label": "display_test_result",
+            "comment": "Selects a result string from a far-pointer table and renders it into a field. Three far-call args: [bp+06]=result_index (1=render result, other=gap path never executed), [bp+08]:[bp+0a]=field descriptor far ptr. Checks DS:[0x0c9c]: if 0 (our path) → table_index=[bp-0x02]=6; gap at 1354:1770 (5 bytes, never executed) presumably copies [0x0c9c] into [bp-0x02] when nonzero. When result_index==1: loads ES from global segment ptr at [0xb62c], computes bx=table_index*4, pushes the far ptr at ES:[bx+0x0646] (offset) and ES:[bx+0x0648] (segment) — selecting entry 6 (at ES:[0x065E]/[0x0660]) in execution — as the result string, pushes the field descriptor, calls render_result_in_field (16E4:02F6), cleans 8 bytes, then calls func_16E4_1429(1) for post-render finalization. Gap at 1354:179D-17BD (32 bytes, never executed) handles result_index!=1, then reaches the same add-sp/finalization tail. Called from 1E88:0BDB at the state-5 success conclusion to show the final RTC test result string in the display field."
+        },
+        "16E4:018E": {
+            "label": "draw_field_rule",
+            "comment": "Draws a full-width horizontal rule (CP437 0xC4 '─') across a field at a given row. Four near-far-call args (push cs; call near; caller cleans 8 bytes): [bp+06]=row within field, [bp+08]=column offset to write into descriptor's column cursor [bx+0x10], [bp+0a]:[bp+0c]=field descriptor far ptr. Saves [bx+0x10] → [bp-0x02]. Sets [bx+0x10]=[bp+0x08]. Calls func_31A9_0D98(descriptor, col=0, row=[bp+0x06]) to position cursor. Calls func_31A9_0F84(descriptor, char=0xFFC4, width=[bx+0x0a]-[bx+0x08]+1) to paint the horizontal line across the full field width (0xC4=─ in CP437, 0xFF=attribute). Restores [bx+0x10] from [bp-0x02]."
+        },
+        "16E4:025F": {
+            "label": "render_value_at_column",
+            "comment": "Renders a static label string and a centered value string into a field, at a given column, then restores field state. Six near-far-call args (push cs; call near; caller cleans 12 bytes): [bp+06]=row (passed directly to write_aligned_text as the row arg; caller computes this from field box dimensions [bx+0x06]-[bx+0x04]), [bp+08]=absolute column to temporarily set in the field descriptor's column cursor ([bx+0x10]), [bp+0a]:[bp+0c]=value string far ptr, [bp+0e]:[bp+10]=field descriptor far ptr. Saves original column [bx+0x10] → [bp-0x04]. Captures bit1 of [bx+0x14] (trailing-space-pad disable flag): uses sbb cx,cx+neg cx trick so [bp-0x02]=1 if bit1 was clear, 0 if set. Sets [bx+0x10]=[bp+0x08] and clears bit1 of [bx+0x14] (enabling trailing-space padding for both writes). First call: write_aligned_text(descriptor, string=ES:[0x2034] (ES loaded from global at [0xb6aa]), align=left/0, row) — writes a fixed label/spacer string. Second call: write_aligned_text(descriptor, string=[bp+0a]:[bp+0c], align=center/0xFFFF, row) — writes the value centered. Restores [bx+0x10] from [bp-0x04]. Restores bit1 of [bx+0x14]: if [bp-0x02]==1 (bit1 was clear), clears it again (no-op effectively); gap at 16E4:02E5-02EE (9 bytes, never executed in trace) restores bit1 to set when it was originally set. Caller func_16E4_02F6 passes column=0x002b (43)."
+        },
+        "16E4:02F6": {
+            "label": "render_result_in_field",
+            "comment": "Renders a test result value into a field with a horizontal separator rule above it. Four far-call args (caller cleans 8 bytes via 'add sp, 0x0008'): [bp+06]:[bp+08]=value string far ptr, [bp+0a]:[bp+0c]=field descriptor far ptr. Loads the descriptor to compute height=[bx+0x06]-[bx+0x04] (bottom minus top dimension). Makes two calls: (1) draw_field_rule(descriptor, col_start=1, row=height-1) — paints a full-width '─' rule at the penultimate row of the field. (2) render_value_at_column(descriptor, string=[bp+06]:[bp+08], col=43, row=height) — writes the value string centered at column 43 on the last row. The result is a horizontal rule followed immediately by the centered value text on the line below it, used to display CheckIt test result strings (e.g. pass/fail) within a display field."
+        },
+        "31A9:0358": {
+            "label": "write_aligned_text",
+            "comment": "Writes a string into a UI field with configurable horizontal alignment. Six far-call args (caller cleans 12 bytes via 'add sp, 0x000c'): [bp+06]=row within the field (passed to func_31A9_0D98 as the cursor row; callers use 0 or 1), [bp+08]=alignment sentinel (0=left, 0xFFFF=center, 0xFFFE=right-align, any other value=absolute column offset), [bp+0a]:[bp+0c]=source string far ptr, [bp+0e]:[bp+10]=field descriptor far ptr. Acquires display lock on CS:0xC6C0 via func_31A9_129C. Null-checks the string ptr ([bp+0a]|[bp+0c]==0 → skip via gap at 31A9:037E). Calls func_36C5_051C to get string length → [bp-0x08]. Computes field width as descriptor[bx+0x0a]-descriptor[bx+0x08]+1 → [bp-0x02]. Alignment dispatch on [bp+0x08]: 0xFFFF → center column = (field_width - strlen)/2 (via cwd+sub+sar); 0xFFFE → right column = field_width - strlen; 0x0000 → column stays 0 (left); other → use [bp+0x08] as absolute column. Clamps column to ≥0 (gap at 31A9:03DE). Calls func_31A9_0D98(descriptor, column, row) to position the field cursor, then write_text_to_field (31A9:10D4) to render the string. Releases lock via func_31A9_12C6. Returns dx:ax from write_text_to_field."
+        },
+        "31A9:10D4": {
+            "label": "write_text_to_field",
+            "comment": "Drives a render loop to write a string into a UI field descriptor. Four far-call args (caller cleans 8 bytes via 'add sp, 0x0008'): [bp+06]:[bp+08]=source string far ptr (walking pointer, updated per chunk), [bp+0a]:[bp+0c]=field descriptor far ptr. Acquires a display lock by calling func_31A9_129C on a buffer at CS:0xC752. Calls func_31A9_451C to validate the field descriptor; if not active (AX=0) skips to epilogue. Main loop (lbl_31A9_1139): calls func_31A9_451C again to get field state via ES:BX, computes remaining column width as [bx+0x0a]-[bx+0x08]-[bx+0x0e]+1, calls render_field_text (31A9:4640) with the current string ptr and width, stores the returned next-string-ptr back into [bp+06]:[bp+08], and loops back via lbl_31A9_111A as long as the return is nonzero (more string to render). Exits the loop when render_field_text returns 0 (string fully consumed). Releases the lock via func_31A9_12C6 and returns dx:ax=0. Gap at 31A9:1109-111A (17 bytes) handles the path when func_31A9_451C returns 0 on the first check (descriptor not ready). Gap at 31A9:1120-1138 (25 bytes) executes only when [bp-0x08]>0 (set by some path not seen in execution trace)."
+        },
+        "31A9:4640": {
+            "label": "render_field_text",
+            "comment": "Renders a fixed-width text field to the CheckIt screen. Five far-call args (caller cleans 10 bytes via 'add sp, 0x000a'): [bp+06]:[bp+08]=source string far ptr, [bp+0a]=max field width (char count), [bp+0c]:[bp+0e]=far ptr to field descriptor struct. Iterates source string up to max_width chars: NUL terminates early (sets end-of-string flag [bp-0x18]=1), TAB (0x09) and LF (0x0A) are handled in gap code, regular chars are stored into a local char buffer at [ES:bx+0x02aa] and a char count [bp-0x2c] is incremented. When char count reaches max_width, sets truncation flag [bp-0x20]=1 and terminates the loop. After the loop calls func_31A9_4E26 to compute the display position for the field, func_31A9_4D18 to compute a second video offset (for the pad region), then looks up the color/attribute from a table at [0xa58c] indexed by the field-type word at struct+0x16 (adding 1 to AH for the main text attribute). Calls video_write_chars (31A9:4EDE) twice: first for the accumulated chars with the field color, then (if bit 1 of struct+0x14 flags is clear) for trailing-space padding with a dimmer attribute (AH+2). Updates the field column cursor: adds char count to struct+0x0e. If truncation flag is set (string exactly filled the field), increments the row counter at struct+0x0c and resets struct+0x0e to 0. Returns dx:ax = pointer to the rendered region."
+        },
+        "31A9:4EDE": {
+            "label": "video_write_chars",
+            "comment": "Writes CX words from source buffer (DS:SI) to destination buffer (ES:DI), typically VGA text-mode video memory (0xB800). Six far-call args, caller cleans 6 words via 'add sp, 0x0c': [bp+06]=control word (BH=write mode, AL:AH=char:attr or fill value), [bp+08]=count, [bp+0a]=source offset→SI, [bp+0c]=source segment→DS, [bp+0e]=dest offset→DI, [bp+10]=dest segment→ES. Reads CheckIt global display flags: ES:[0x0138] via segment ptr at [0xcae4] (sub-mode; ja 4F0C skips gap when nonzero), then DH=ES:[0x012a] via ptr at [0xcae0] (text/graphics flag; DH=0=text mode, DH≠0=graphics path in gap 4F4C–4F9B, never executed). Write dispatch on BH: BH=2 → rep stosw (fill entire dest with AX from first source word); BH≠2,≠0 → word-by-word: stosw then reload only AL=[SI] each iteration (attribute AH stays fixed from the first word); BH=0 → gap at 4FB5 (never executed). After write, restores ES from [0xcae6], checks [0x0121]==1 for a post-write update (gap 4FC5–4FD2 never executed). Count=0 → immediate return via jmp 4FD2."
+        },
+        "1E88:095A": {
+            "label": "state5_success_path",
+            "comment": "State 5 success path — reached when elapsed_ticks_ge returns non-zero (BDA elapsed >= 218 ticks). Executed exactly ONCE in the full test run (after 2902 state-5 iterations). Calls func_1306_000A (push 0x000F arg) and func_1306_008B, then performs FPU comparison of actual elapsed time against expected bounds (jae 0x0A26 taken = pass, gap at 0A23 = fail path, never executed). Records result via func_16E4_0698, increments pass counter [0x8208] at 1E88:0A77 (from 0 to 1), then transitions to state 6 (mov [bp-0x1a], 0x0006 at 1E88:0B9B). Sub-test needs 2 increments for a full score of 2; only 1 was accumulated."
         }
     },
     "lineComments": {
@@ -85,8 +121,9 @@
         "1582:142D C7 46 FE 00 00": "far pointer segment = 0x0000 (BIOS data area)",
         "1582:1432 C7 46 FC 6C 04": "far pointer offset 0x046C = BIOS tick counter low word at 0x0000:0x046C",
         "1E88:0033 75 12": "ES:[0x01a2] is test mode: 0=full-screen 80x25 dialog, nonzero=44x18 windowed dialog at row 6 col 3",
-        "1E88:0287 C7 86 28 FE 7F 00": "timeout threshold = 0x7F BIOS ticks (~4 sec) for initial RTC read",
-        "1E88:028D C7 46 EA DA 00": "max polling iterations = 0xDA (218) before giving up",
+        "1E88:027A 9A 27 14 82 15": "capture BDA start tick into [bp+0xfe2a/0xfe2c] — state 5 measures elapsed ticks from this point",
+        "1E88:0287 C7 86 28 FE 7F 00": "state 3 elapsed timeout threshold = 0x7F = 127 BDA ticks (~7 sec); if alarm hasn't fired within this many ticks from [bp+0xfe2e], give up",
+        "1E88:028D C7 46 EA DA 00": "state 5 tick threshold = 0xDA = 218 BDA ticks (~12 sec from test start); elapsed_ticks_ge must return non-zero for test to pass",
         "1E88:02CF 77 C1": "state > 6: no matching handler, continue polling loop",
         "1E88:02D4 2E FF A7 A3 0B": "7-state jump table at CS:0x0BA3; index = [bp-0x1a] * 2",
         "1E88:0369 DC 16 C8 BC": "FPU: compare loaded datetime (as float) against upper bound at [0xbcc8]",
@@ -98,15 +135,46 @@
         "1306:0316 26 83 06 7A 0C 01": "increment CheckIt's own internal 32-bit tick counter low word at [DS:0x0C7A]",
         "1306:031C 26 83 16 7C 0C 00": "carry into high word of CheckIt's internal tick counter at [DS:0x0C7C]",
         "1306:0330 9A D2 06 C5 36": "chain to original INT 08h via longjmp (36C5:06D2); never returns here — stack is unwound and retf jumps to F000:0008 (BIOS timer handler)",
-        "1E88:0871 83 3E 06 82 00": "[0x8206]: RTC alarm-fired flag. 0 = alarm not yet fired (fall through to elapsed check); nonzero = alarm has fired (take state-4 transition path)",
-        "1E88:0876 74 14": "alarm not yet fired → check elapsed BDA ticks; when alarm fires this falls through instead",
+        "1E88:0775 9A 27 14 82 15": "capture state 3 timeout start tick into [bp+0xfe2e/0xfe30] — immediately before alarm is programmed via rtc_cancel_or_set_alarm",
+        "1E88:07E6 E8 8B 09": "program RTC alarm: call rtc_cancel_or_set_alarm with datetime struct at [bp-0x3e] (copied from [0xcf64]); [0x8206] cleared to 0 at 07D6 just before this",
+        "1E88:0871 83 3E 06 82 00": "[0x8206]: RTC alarm-fired flag set by INT 4Ah handler at 1E88:0FB2. 0 = alarm not yet fired (fall through to elapsed check); nonzero = alarm has fired (take state-4 transition path)",
+        "1E88:0876 74 14": "alarm not yet fired → check state 3 elapsed timeout (127-tick limit from [bp+0xfe2e]); when alarm fires this falls through instead",
+        "1E88:0898 9A 45 14 82 15": "state 3 elapsed timeout check: elapsed_ticks_ge(start=[bp+0xfe2e], threshold=0x7F=127). With emulated-clock ran 2178 times without triggering — alarm always fired before timeout",
+        "1E88:0FB2 C7 06 06 82 01 00": "INT 4Ah (RTC alarm) handler: sets alarm-fired flag [0x8206]=1; installed at 1E88:07CE via func_36C5_0682 with handler address 1E88:0FA2",
         "1E88:083C C7 46 E6 03 00": "state = 3: enter alarm-wait / elapsed-ticks polling loop",
         "1E88:08D0 C7 46 E6 04 00": "state = 4: alarm has fired; immediate transition to state 5",
         "1E88:0908 C7 46 E6 05 00": "state = 5: begin Compare Elapsed Time check against BDA tick counter",
-        "1E88:0940 FF 76 EA": "push threshold ([bp-0x16]) for elapsed_ticks_ge — ticks required since start",
-        "1E88:0943 FF B6 2C FE": "push start tick high word ([bp+0xfe2c]) for elapsed_ticks_ge",
-        "1E88:0947 FF B6 2A FE": "push start tick low word ([bp+0xfe2a]) for elapsed_ticks_ge — BDA counter value captured at test start",
+        "1E88:0940 FF 76 EA": "push threshold ([bp-0x16]=218) for elapsed_ticks_ge — total BDA ticks required since test start (~12 sec at 18.2 Hz)",
+        "1E88:0943 FF B6 2C FE": "push start tick high word ([bp+0xfe2c]) for elapsed_ticks_ge — captured at test init (1E88:027F), not at alarm set",
+        "1E88:0947 FF B6 2A FE": "push start tick low word ([bp+0xfe2a]) for elapsed_ticks_ge — BDA counter value captured at very beginning of test",
         "1582:144F 2B 46 06": "elapsed_low = current_low - start_low; only 16-bit subtraction, ignores high word wraparound",
-        "1582:145B 7C 05": "jl: elapsed < threshold (signed 16-bit) → return AX=0; fall-through to gap at 145D–1461 returns AX≠0 (never reached in trace)"
+        "1582:145B 7C 05": "jl: elapsed < threshold (signed 16-bit) → return AX=0; fall-through to gap at 145D–1461 returns AX≠0 (confirmed: mov ax,1 / jmp 0x7ff6 in decompressed dump)",
+        "1E88:0955 75 03": "jne 0x095A: state 5 elapsed check — taken once (BDA ticks >= 218 reached after 2902 iterations); fell through to jmp 0x0292 2901 times",
+        "1E88:0A77 FF 06 08 82": "inc [0x8208]: Compare Elapsed Time pass counter; incremented from 0 to 1 (sub-test needs 2 for full score of 2, but at 263 Hz BDA only one pass fits within the outer-loop budget)",
+        "1E88:0B9B C7 46 E6 06 00": "state = 6: final state after state5_success_path completes; outer loop returns to 0292 and then exits the test",
+        "1E88:05E4 26 83 BF B1 02 0C": "cumulative result check: cmp [bx+0x02b1], 0x000C — tests whether all 6 sub-tests accumulated their maximum score (6 × 2 = 12). ES:[bx+0x02b1] holds the running total. je NOT taken → fail path; test reports failure because only 11 (or fewer) was accumulated — Compare Elapsed Time scored 1/2 instead of 2/2",
+        "1E88:05EA 74 03": "je 0x05ef: would jump to 201-byte pass path (05EF–06B8) if cumulative score == 12; NOT taken (score < 12) → fall through to jmp 06B8",
+        "1E88:05EC E9 C9 00": "jmp 0x06B8: unconditional fail path taken because cumulative score < 12; 201-byte gap at 05EF–06B8 (the overall-pass path) remains unexecuted",
+        "31A9:4EE5 8E 06 E4 CA": "mov es, [0xcae4]: load CheckIt data segment selector into ES to read global display-mode flags",
+        "31A9:4EE9 26 A1 38 01": "mov ax, es:[0x0138]: read sub-mode flag; 0 = take gap path at 4EF2, nonzero = skip straight to 4F0C (always nonzero in trace)",
+        "31A9:4EF0 77 1A": "ja 0x4f0c: skip 26-byte gap (4EF2–4F0C) when [0x0138] > 0; gap path (never executed) likely handles a special display sub-mode init",
+        "31A9:4F0C 8E 06 E0 CA": "mov es, [0xcae0]: switch ES to a second CheckIt data segment to read text/graphics mode flag",
+        "31A9:4F10 26 8A 36 2A 01": "mov dh, es:[0x012a]: DH = text/graphics mode flag; 0 = text mode (executes write loop), nonzero = graphics mode (gap at 4F4C–4F9B, never executed)",
+        "31A9:4F18 8E 5E 0C": "mov ds, [bp+0x0c]: source buffer segment → DS",
+        "31A9:4F1E 8E 46 10": "mov es, [bp+0x10]: destination buffer segment → ES (typically 0xB800 for VGA text memory)",
+        "31A9:4F29 E9 A6 00": "jmp 0x4fd2: count == 0, nothing to write — skip straight to epilogue",
+        "31A9:4F2C 8C C0": "mov ax, es: AX = dest segment (from [bp+0x10]); compare against source segment to detect same-segment overlap (gap at 4F33–4F37 handles that case, never executed)",
+        "31A9:4F44 80 FE 00": "cmp dh, 0x00: branch on text vs graphics mode; DH=0 (text) → je 4F9B (write loop); DH≠0 (graphics) → fall to 79-byte gap at 4F4C–4F9B (never executed)",
+        "31A9:4F47 8B 5E 06": "mov bx, [bp+0x06]: load control word; BH = write mode (2=fill, 0=skip, other=copy), BL = attribute or fill char",
+        "31A9:4F9B 8B 04": "mov ax, [si]: load first source word (AL=char, AH=attribute) — used as fill value for BH=2, or first word written for BH=other",
+        "31A9:4F9D 80 FF 02": "cmp bh, 0x02: BH=2 → rep stosw fill mode (write AX to entire dest range)",
+        "31A9:4FA2 80 FF 00": "cmp bh, 0x00: BH=0 → gap at 4FB5 (never executed); otherwise fall through to word-by-word copy loop",
+        "31A9:4FA7 AB": "stosw: write AX (char+attr) to ES:DI, advance DI by 2",
+        "31A9:4FA8 83 C6 02": "add si, 0x0002: advance source pointer past the word just written",
+        "31A9:4FAB 8A 04": "mov al, [si]: reload only the character byte (AL) for next iteration; AH (attribute) stays fixed from the first source word — all chars share one attribute",
+        "31A9:4FAD E2 F8": "loop 0x4fa7: write CX words total",
+        "31A9:4FB1 F3 AB": "rep stosw: fill mode — write AX into ES:DI CX times (paint a uniform char+attr across the destination range)",
+        "31A9:4FB8 8E 06 E6 CA": "mov es, [0xcae6]: restore ES to a third CheckIt data segment to check post-write update flag",
+        "31A9:4FBC 26 A1 21 01": "mov ax, es:[0x0121]: read post-write notification flag; 1 = trigger display refresh (gap 4FC5–4FD2, never executed)"
     }
 }
