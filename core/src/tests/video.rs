@@ -145,6 +145,23 @@ pub(crate) fn int10_write_char_xor_inverted() {
     );
 }
 
+/// Verifies AC palette routing in CGA mode 04h on EGA/VGA.
+///
+/// The full color chain on VGA is:
+///   2-bit pixel value → AC palette register[pixel] → DAC index → RGB
+///
+/// This test fills four 50-row horizontal bands with pixel values 0-3, then
+/// programs the AC palette (AL=02h) to route pixel i → DAC i, and sets DAC
+/// registers 0-3 to black/cyan/purple/white.  The expected screen is four
+/// distinct color bands from top to bottom.
+#[test_log::test]
+pub(crate) fn int10_cga_ac_palette() {
+    run_assert_screen_key_press_run_test(
+        "video/int10_cga_ac_palette",
+        make_computer!(video_card_type: VideoCardType::VGA),
+    );
+}
+
 #[test_log::test]
 pub(crate) fn ct755r_vhw_detect_mda() {
     run_test(

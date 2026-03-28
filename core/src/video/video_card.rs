@@ -1088,7 +1088,16 @@ impl Device for VideoCard {
                         self.ac_address = val & 0x1F;
                         self.ac_flip_flop = true;
                     } else {
-                        self.ac_registers[(self.ac_address & 0x0F) as usize] = val;
+                        let index = (self.ac_address & 0x0F) as usize;
+                        self.ac_registers[index] = val;
+                        // Sync AC palette registers 0-15 to the video buffer so the
+                        // renderer can use them for CGA 4-color pixel → DAC resolution.
+                        if self.ac_address < 0x10 {
+                            self.buffer
+                                .write()
+                                .unwrap()
+                                .set_ac_palette_register(index, val);
+                        }
                         self.ac_flip_flop = false;
                     }
                     true

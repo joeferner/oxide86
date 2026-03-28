@@ -48,6 +48,15 @@ pub struct VideoBuffer {
     cga_intensity: bool,
     /// Palette select (bit 5 of port 0x3D9). false = green/red/brown, true = cyan/magenta/white.
     cga_palette: bool,
+    /// EGA/VGA Attribute Controller palette registers 0-15.
+    /// Maps 4-color CGA pixel values (0-3) to VGA DAC indices for EGA/VGA cards.
+    /// Only used when `ac_palette_programmed` is true; otherwise `color_map` from
+    /// the CGA color select register drives the lookup.
+    ac_palette: [u8; 16],
+    /// Set to true the first time an AC palette register is written via port 0x3C0.
+    /// Cleared on mode set so programs that don't touch the AC palette continue to
+    /// use the CGA color_map path.
+    ac_palette_programmed: bool,
     /// Composite (colorburst) output enabled (bit 3 of port 0x3D8).
     /// When true and mode is M06Cga640x200x2, renders NTSC artifact colors instead of B&W.
     cga_composite: bool,
@@ -102,6 +111,8 @@ impl VideoBuffer {
             cga_bg: 0,
             cga_intensity: false,
             cga_palette: false,
+            ac_palette: core::array::from_fn(|i| i as u8),
+            ac_palette_programmed: false,
             cga_composite: false,
             font: Cp437Font::new(),
             vga_dac_palette: Self::default_vga_dac_palette(),
@@ -125,6 +136,8 @@ impl VideoBuffer {
         self.cga_bg = 0;
         self.cga_intensity = false;
         self.cga_palette = false;
+        self.ac_palette = core::array::from_fn(|i| i as u8);
+        self.ac_palette_programmed = false;
         self.cga_composite = false;
         self.text_columns = TEXT_MODE_COLS as u8;
         self.font = Cp437Font::new();
@@ -168,6 +181,10 @@ impl VideoBuffer {
         // CGA modes 0-6 default to intensity mode (bit 7 = bright background).
         self.blink_enabled = matches!(mode, Mode::M07MdaText);
         self.mode = mode;
+        // Reset the AC palette so that a fresh mode set without subsequent
+        // AC reprogramming falls back to the CGA color_map path.
+        self.ac_palette = core::array::from_fn(|i| i as u8);
+        self.ac_palette_programmed = false;
     }
 
     /// Reset CRTC timing overrides back to hardware defaults.
@@ -277,6 +294,17 @@ impl VideoBuffer {
         self.cga_intensity = intensity;
         self.cga_palette = palette;
         self.dirty = true;
+    }
+
+    /// Record an EGA/VGA AC palette register write.  Once called, the AC
+    /// palette takes over CGA 4-color pixel → DAC-index translation in
+    /// `render_mode_04h_320x200x4`, overriding the hardcoded `color_map`.
+    pub(crate) fn set_ac_palette_register(&mut self, index: usize, value: u8) {
+        if index < 16 {
+            self.ac_palette[index] = value;
+            self.ac_palette_programmed = true;
+            self.dirty = true;
+        }
     }
 
     pub(crate) fn set_cga_composite(&mut self, enabled: bool) {
@@ -490,7 +518,15 @@ impl VideoBuffer {
                 let shift = 6 - (x % 4) * 2;
                 let color_index = ((self.vram[byte_offset] >> shift) & 0x03) as usize;
 
-                let dac_index = color_map[color_index];
+                // When the AC palette has been explicitly programmed (EGA/VGA cards),
+                // use it to resolve the 2-bit pixel value to a DAC index.  Programs
+                // like Checkit reprogram both the AC palette and DAC registers together,
+                // so the hardcoded color_map would point at the wrong DAC entries.
+                let dac_index = if self.ac_palette_programmed {
+                    self.ac_palette[color_index] as usize
+                } else {
+                    color_map[color_index]
+                };
                 let dac = self.vga_dac_palette[dac_index];
                 let rgb = [
                     dac_to_8bit(dac[0]),
