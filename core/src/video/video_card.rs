@@ -51,6 +51,18 @@ const CGA_VSYNC_HZ: u64 = 60;
 /// Vsync active for roughly 1/12 of the frame (~8%).
 const CGA_VSYNC_DUTY_DIVISOR: u64 = 12;
 
+/// Parameters for drawing a pre-fetched glyph into EGA planar VRAM.
+pub(crate) struct EgaGlyphParams<'a> {
+    pub glyph: &'a [u8],
+    pub char_row: u8,
+    pub char_col: u8,
+    pub fg_color: u8,
+    pub bytes_per_row: usize,
+    pub char_height: usize,
+    /// If true, XOR the glyph onto existing VRAM instead of overwriting.
+    pub xor: bool,
+}
+
 /// Window parameters shared by all BIOS scroll operations.
 pub(crate) struct ScrollWindow {
     /// Number of lines to scroll (0 = clear entire window).
@@ -570,29 +582,31 @@ impl VideoCard {
         } else {
             font.get_glyph_16(ch)
         };
-        self.ega_draw_glyph(
+        self.ega_draw_glyph(EgaGlyphParams {
             glyph,
             char_row,
             char_col,
             fg_color,
             bytes_per_row,
             char_height,
-        );
+            xor: false,
+        });
     }
 
     /// Draw a pre-fetched glyph into EGA planar VRAM.
     ///
     /// Foreground pixels (glyph bit = 1) are set to `fg_color` in all planes.
     /// Background pixels (glyph bit = 0) are set to 0 (black).
-    pub(crate) fn ega_draw_glyph(
-        &self,
-        glyph: &[u8],
-        char_row: u8,
-        char_col: u8,
-        fg_color: u8,
-        bytes_per_row: usize,
-        char_height: usize,
-    ) {
+    pub(crate) fn ega_draw_glyph(&self, params: EgaGlyphParams<'_>) {
+        let EgaGlyphParams {
+            glyph,
+            char_row,
+            char_col,
+            fg_color,
+            bytes_per_row,
+            char_height,
+            xor,
+        } = params;
         let mut buffer = self.buffer.write().unwrap();
         for (r, &glyph_byte) in glyph.iter().enumerate().take(char_height) {
             let pixel_y = char_row as usize * char_height + r;
@@ -603,7 +617,12 @@ impl VideoCard {
                     continue;
                 }
                 let plane_bit = (fg_color >> plane) & 1;
-                let new_val = if plane_bit != 0 { glyph_byte } else { 0 };
+                let glyph_plane = if plane_bit != 0 { glyph_byte } else { 0 };
+                let new_val = if xor {
+                    buffer.read_vram(plane_vram) ^ glyph_plane
+                } else {
+                    glyph_plane
+                };
                 buffer.write_vram(plane_vram, new_val);
             }
         }

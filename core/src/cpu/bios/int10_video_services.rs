@@ -27,7 +27,7 @@ use crate::{
         video_card::{
             AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
             CGA_COLOR_SELECT_ADDR, DAC_DATA_PORT, DAC_READ_INDEX_PORT, DAC_WRITE_INDEX_PORT,
-            INPUT_STATUS_1_PORT, ScrollWindow, VIDEO_CARD_REG_CURSOR_END_LINE,
+            EgaGlyphParams, INPUT_STATUS_1_PORT, ScrollWindow, VIDEO_CARD_REG_CURSOR_END_LINE,
             VIDEO_CARD_REG_CURSOR_START_LINE,
         },
         video_set_cursor_pos,
@@ -634,14 +634,22 @@ impl Cpu {
             }
         } else {
             // Graphics mode: draw character pixel-by-pixel
-            // IBM CGA BIOS behavior:
-            // - BL bit 7 = 1: XOR mode
-            // - BL bit 7 = 0: Normal (opaque) mode
-            // - When ch bit 7 is set AND XOR mode: invert glyph
-            //   Bit 7 of ch is the invert flag only; the actual glyph is ch & 0x7F.
+            // BL bit 7 = XOR mode (all graphics modes)
+            // BL bit 7 = 0: Normal (opaque) mode
+            //
+            // CGA BIOS only (modes 04h/05h/06h): bit 7 of AL is an invert flag.
+            //   When set, the glyph is (AL & 0x7F) drawn inverted. This is used by
+            //   programs that write ch=0x80 (glyph 0x00 inverted = full block XOR mask)
+            //   for cursor blink effects.
+            // EGA/VGA modes: all 256 character codes are valid glyph indices; bit 7 of
+            //   AL is NOT an invert flag.
             let fg_color = attr & 0x0F; // Lower 4 bits = color index
             let xor_mode = (attr & 0x80) != 0; // Bit 7 = XOR mode
-            let invert_glyph = (ch & 0x80) != 0 && xor_mode;
+            let is_cga_mode = matches!(
+                mode,
+                Mode::M04Cga320x200x4 | Mode::M05Cga320x200x4 | Mode::M06Cga640x200x2
+            );
+            let invert_glyph = is_cga_mode && (ch & 0x80) != 0 && xor_mode;
             let ch = if invert_glyph { ch & 0x7F } else { ch };
 
             log::debug!(
@@ -926,13 +934,35 @@ impl Cpu {
             }
             Mode::M0DEga320x200x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_8);
-                bus.video_card_mut()
-                    .ega_draw_glyph(&glyph, row, col, fg_color, 40, CHAR_HEIGHT_8);
+                let xor = matches!(
+                    draw_mode,
+                    GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted
+                );
+                bus.video_card_mut().ega_draw_glyph(EgaGlyphParams {
+                    glyph: &glyph,
+                    char_row: row,
+                    char_col: col,
+                    fg_color,
+                    bytes_per_row: 40,
+                    char_height: CHAR_HEIGHT_8,
+                    xor,
+                });
             }
             Mode::M10Ega640x350x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_14);
-                bus.video_card_mut()
-                    .ega_draw_glyph(&glyph, row, col, fg_color, 80, CHAR_HEIGHT_14);
+                let xor = matches!(
+                    draw_mode,
+                    GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted
+                );
+                bus.video_card_mut().ega_draw_glyph(EgaGlyphParams {
+                    glyph: &glyph,
+                    char_row: row,
+                    char_col: col,
+                    fg_color,
+                    bytes_per_row: 80,
+                    char_height: CHAR_HEIGHT_14,
+                    xor,
+                });
             }
             _ => {
                 log::warn!(

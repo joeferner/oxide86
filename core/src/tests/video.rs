@@ -145,6 +145,39 @@ pub(crate) fn int10_write_char_xor_inverted() {
     );
 }
 
+/// Verifies INT 10h AH=09h XOR cursor blink in EGA mode 0Dh (320x200x16).
+///
+/// In EGA mode, bit 7 of AL is NOT an invert flag: ch=0xDB (full block, all
+/// pixels on) in XOR mode (BL bit 7) must XOR glyph 0xDB directly onto the
+/// screen, inverting every pixel in the cell. Applied twice it restores the
+/// original character. This differs from CGA XorInverted behavior where
+/// ch=0x80 uses glyph (0x80 & 0x7F)=0x00 inverted as the XOR mask.
+///
+/// Step 1 screenshot: 'Y' with XOR cursor over it (full cell inverted).
+/// Step 2 screenshot: 'Y' restored (second XOR undoes the first).
+#[test_log::test]
+pub(crate) fn int10_write_char_xor_ega_0dh() {
+    run_test(
+        "video/int10_write_char_xor_ega_0dh",
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen(
+                "video/int10_write_char_xor_ega_0dh_step1",
+                video_buffer.clone(),
+            );
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen(
+                "video/int10_write_char_xor_ega_0dh_step2",
+                video_buffer.clone(),
+            );
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
 /// Verifies AC palette routing in CGA mode 04h on EGA/VGA.
 ///
 /// The full color chain on VGA is:
