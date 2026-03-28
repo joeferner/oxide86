@@ -747,29 +747,29 @@ impl Cpu {
                         self.fpu_set_cc(st0, other);
                         self.fpu_pop();
                     }
-                    // FSUBR m64 (DC /4): ST(0) = m64 - ST(0)
+                    // FSUB m64 (DC /4): ST(0) -= m64
                     (0xDC, 4) => {
-                        let top = self.fpu_top as usize;
-                        self.fpu_stack[top] =
-                            Self::fpu_read_m64(bus, addr).sub(self.fpu_stack[top]);
-                    }
-                    // FSUB m64 (DC /5): ST(0) -= m64
-                    (0xDC, 5) => {
                         let top = self.fpu_top as usize;
                         self.fpu_stack[top] =
                             self.fpu_stack[top].sub(Self::fpu_read_m64(bus, addr));
                     }
-                    // FDIVR m64 (DC /6): ST(0) = m64 / ST(0)
+                    // FSUBR m64 (DC /5): ST(0) = m64 - ST(0)
+                    (0xDC, 5) => {
+                        let top = self.fpu_top as usize;
+                        self.fpu_stack[top] =
+                            Self::fpu_read_m64(bus, addr).sub(self.fpu_stack[top]);
+                    }
+                    // FDIV m64 (DC /6): ST(0) /= m64
                     (0xDC, 6) => {
                         let top = self.fpu_top as usize;
                         self.fpu_stack[top] =
-                            Self::fpu_read_m64(bus, addr).div(self.fpu_stack[top]);
+                            self.fpu_stack[top].div(Self::fpu_read_m64(bus, addr));
                     }
-                    // FDIV m64 (DC /7): ST(0) /= m64
+                    // FDIVR m64 (DC /7): ST(0) = m64 / ST(0)
                     (0xDC, 7) => {
                         let top = self.fpu_top as usize;
                         self.fpu_stack[top] =
-                            self.fpu_stack[top].div(Self::fpu_read_m64(bus, addr));
+                            Self::fpu_read_m64(bus, addr).div(self.fpu_stack[top]);
                     }
                     // FLD m80 (DB /5): load 80-bit extended float and push
                     (0xDB, 5) => {

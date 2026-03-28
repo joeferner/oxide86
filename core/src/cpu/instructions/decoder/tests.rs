@@ -353,6 +353,20 @@ fn mov_ax_si_plus_disp16() {
     assert!(line.contains("[0x0120]=7766"), "EA annotation: {line}");
 }
 
+// ─── mod=10 negative disp16 ───────────────────────────────────────────────────
+
+#[test]
+fn lea_ax_bp_minus_disp16() {
+    // 8D 86 7C FF  →  lea ax, [bp-0x0084]
+    // disp16 = 0xFF7C = -132 as i16; should display with minus sign, not "+0xff7c"
+    let mem: Vec<u8> = vec![0x8D, 0x86, 0x7C, 0xFF];
+    let mut cpu = FakeCpu::new(&mem);
+    cpu.bp = 0x0200;
+
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("lea ax, [bp-0x0084]"), "asm column: {line}");
+}
+
 // ─── mod=11 (register — no memory, annotation shows register values) ──────────
 
 #[test]

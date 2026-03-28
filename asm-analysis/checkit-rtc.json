@@ -56,6 +56,18 @@
             "label": "rtc_test_main",
             "comment": "RTC test main routine. Entry stub calls func_1CF4_02EC for init then far-jumps to 1E88:0000 where the real body lives. Creates a full-screen (mode 0) or windowed (mode 1) dialog. Captures BDA start tick into [bp+0xfe2a/0xfe2c] and sets state 5 threshold [bp-0x16]=0xDA=218 ticks before the outer loop starts. Drives a 7-state machine via a jump table at CS:0x0BA3 (indexed by [bp-0x1a]*2); outer loop ran 4062 times total in emulated-clock trace. State flow for Compare Elapsed Time: states 0-2 set up and verify alarm → state 3 waits for RTC alarm (2179 iterations, timeout=127 ticks from alarm-set at [bp+0xfe2e]) → state 4 immediate transition → state 5 polls elapsed BDA ticks from TEST START against 218-tick threshold (1878+ iterations). Pass counts clamped to 2; results displayed via func_1354 text routines."
         },
+        "36C5:0698": {
+            "label": "dos_get_date",
+            "comment": "Reads the current system date via INT 21h AH=2Ah (DOS Get Date). Returns CX=year, DH=month, DL=day, AL=day-of-week. Writes results into the struct at the far ptr arg [bp+06]: [bx+0]=day (DL), [bx+1]=month (DH), [bx+2]=year (CX), [bx+4]=day-of-week (AL). Returns AX=0. Called every outer-loop iteration (2903×) with DS:0xCF4A."
+        },
+        "36C5:06B4": {
+            "label": "dos_get_time",
+            "comment": "Reads the current system time via INT 21h AH=2Ch (DOS Get Time). Returns CH=hours, CL=minutes, DH=seconds, DL=centiseconds. Writes results into the struct at the far ptr arg [bp+06]: [bx+0]=hours (CH), [bx+1]=minutes (CL), [bx+2]=seconds (DH), [bx+3]=centiseconds (DL). Returns AX=0. Called every outer-loop iteration (3337× including a second call site at 1E88:0F26) with DS:0xCF74."
+        },
+        "1E88:0D61": {
+            "label": "update_datetime_display",
+            "comment": "Delta-updates the live clock display field, re-rendering only changed values. Three near-far-call args (push cs; call near; caller cleans 6 bytes): [bp+06]=force flag (0=delta-only; nonzero path is an untraced 13-byte gap at 0D6F, presumably forces a full redraw); [bp+08]:[bp+0a]=field descriptor far ptr (SS:[bp+0xfe32] from the outer loop). Executes 2903 times per test run but renders only when a value changes (7 times in trace). Three independent change-checks in sequence, each comparing a current value against a 'last displayed' global: (1) RTC seconds [0xCF72] vs [0xCF5E]: if changed, copies hours/minutes/seconds from [0xCF6E:70:72] (from rtc_read_datetime at 0xCF64) into last-displayed globals [0xCF5A:5C:5E], formats via func_1582_0BCC with base struct at DS:0xCF50, then positions cursor at column 0x1F/row 1 via func_31A9_0D98 and writes via write_text_to_field. (2) DOS seconds [0xCF76] vs [0xCF62]: if changed, copies [0xCF74:76] (hours:minutes word and seconds:centiseconds word from dos_get_time struct) into [0xCF60:62], positions cursor at column 0x1F/row 2, formats hours/minutes/seconds using format string at DS:0x820A, renders via func_31A9_0EC0. (3) RTC day [0xCF6C] vs [0xCF58]: if changed, 82-byte gap at 0E40–0E92 (7 executions, untraced detail) presumably re-renders the date line. (4) DOS day [0xCF4A] vs [0xCF44]: if changed, 66-byte gap at 0EA1–0EE3 (untraced). Returns after all checks."
+        },
         "36C5:06D2": {
             "label": "longjmp",
             "comment": "C runtime longjmp. Takes two arguments pushed before the far call: ES:[0x0364] (saved IP) and ES:[0x0366] (saved CS) from a setjmp jump buffer. Resets SP to the caller's saved BP (unwinding the stack), overwrites the saved return CS:IP at [bp+0x12]/[bp+0x10] with the jump-buffer values, then pops the full saved register context (es/ds/di/si/bp/bx/bx/dx) and retf's to the saved address. Never returns to its call site (1306:0335 is dead code)."
@@ -75,6 +87,14 @@
         "1E88:0910": {
             "label": "state5_elapsed_check",
             "comment": "State 5 handler — polls elapsed BDA ticks from test start. Each iteration calls func_1354_12E5 (always AX=0), then calls elapsed_ticks_ge(start_low=[bp+0xfe2a], start_high=[bp+0xfe2c], threshold=[bp-0x16]=0xDA=218). The start tick is captured at 1E88:027F at the very beginning of the test (before the outer loop), so state 5 measures total elapsed time from test start, not from alarm fire. Threshold of 218 ticks ≈ 12 seconds of emulated time. With real-clock: 37 total BDA ticks, never converged. With emulated-clock (full run): 2902 iterations before jne 0x095A taken once — threshold crossed exactly once. The test needs 2 passes through state 5 success to score 2 for this sub-test, but at PIT divisor ~4533 (263 Hz BDA) one pass consumes ~2902 of the ~5083 total outer-loop iterations, leaving no budget for a second."
+        },
+        "1354:06D1": {
+            "label": "render_text_lines_to_field",
+            "comment": "Renders newline-delimited text data into a CheckIt UI field in two phases. Variable far-call args (callers clean 6–14 bytes): [bp+06]=flags (bit 2: gate display on CMOS-status [0x0cac]); [bp+08]:[bp+0a]=source data far ptr; [bp+0c] and higher = auxiliary words forwarded to func_36C5_091C. Allocates 162 bytes of locals; 158-byte working buffer at SS:[bp+ff62]. Phase 1 (0x06D1–0x0769): loads ES from [0xb638], checks ES:[0x0aa2] against 2 (9-byte gap 06E4–06ED, untraced: mode-2 path). If source ptr is non-null (3-byte gap 06F5–06F8, untraced: null path), calls func_36C5_091C(SS:buf, src_ptr, SS:&[bp+0c]) to populate the working buffer from the source data; adds strlen(buf) (func_36C5_051C) to running total at ES:[0x0aa8]. Loops: func_36C5_08EE(ptr, '\\n'=0x0a) finds the next newline — returned ptr incremented by 1, strlen of next segment added to ES:[0x0aa8], then func_36C5_08EE again — until null (list exhausted). Post-loop: if [0x0cb0]≠0 executes 55-byte gap (0x0770–0x07A7, untraced); if [0x0ca6]==0, jumps ahead 472 bytes to 0x0989, skipping the untraced body. Phase 2 (0x0989–0x0ACF): clears done-flag [bp-0x02]; if bit 2 of flags is set and ES:[0x0cac]≠0, sets [bp-0x02]=1 (44-byte gap 099B–09C7, untraced). Transfers local buffer to global text buffer 0x40af:0x05fe via func_36C5_041A. Display loop (lbl_09EB): calls func_36C5_08EE(0x40af:0x05fe, '\\n') to find next newline; null → exits. Null-terminates segment at that position (ES:[BX]=0); appends/concatenates via func_36C5_04E6 and func_36C5_041A with separator from DS:0x0d60; calls func_31A9_067C(SS:local_buf, ES:[0x0ab6], [0x0caa]:[0x0ca8]) to write the line into the field at the current row index (ES:[0x0ab6] loaded from [0xb63c]). AX≠1 path has 38-byte gap (0A8D–0AB3, untraced). Loops while ES:[0x0ab6]≠0xffff; exits at 0xACF."
+        },
+        "16E4:0698": {
+            "label": "render_right_aligned_value_in_field",
+            "comment": "Writes a source string right-aligned into a display field sub-object, then refreshes the field frame. Five far-call args (caller cleans 0xA bytes): [bp+06]:[bp+08]=outer field descriptor far ptr, [bp+0a]:[bp+0c]=source string far ptr, [bp+0e]=row cursor threshold. Step 1: if outer_desc[+0x32] != 0, calls func_31A9_0072(outer_desc+0x10) to reset the embedded text sub-field before writing. Step 2: calls write_aligned_text(row=1, align=0xFFFE=right-align, src=[bp+0a:0c], dest=outer_desc+0x10) — right-aligns the source string at row 1 within the sub-field embedded at descriptor+0x10. Step 3: compares outer_desc[+0x0c] (row cursor) against [bp+0x0e]; 4-byte gap at 16E4:06E3–06E7 handles the cursor-below-threshold case (never executed in trace: cursor=1 ≥ threshold=1, so jge taken). Step 4: calls func_16E4_0597 with the outer descriptor to redraw the field border/frame. Returns AX=0. Called once from state5_success_path (1E88:0A6F) after the FPU elapsed-time comparison passes, with the formatted elapsed-time string (built by display_elapsed_time + func_36C5_041A at SS:[bp+0xfefa]) and the measurement results field descriptor at SS:[bp+0xfe78]."
         },
         "1354:175C": {
             "label": "display_test_result",
@@ -111,6 +131,16 @@
         "1E88:095A": {
             "label": "state5_success_path",
             "comment": "State 5 success path — reached when elapsed_ticks_ge returns non-zero (BDA elapsed >= 218 ticks). Executed exactly ONCE in the full test run (after 2902 state-5 iterations). Calls func_1306_000A (push 0x000F arg) and func_1306_008B, then performs FPU comparison of actual elapsed time against expected bounds (jae 0x0A26 taken = pass, gap at 0A23 = fail path, never executed). Records result via func_16E4_0698, increments pass counter [0x8208] at 1E88:0A77 (from 0 to 1), then transitions to state 6 (mov [bp-0x1a], 0x0006 at 1E88:0B9B). Sub-test needs 2 increments for a full score of 2; only 1 was accumulated."
+        },
+        "1E88:120E": {
+            "label": "display_elapsed_time",
+            "comment": "Converts a 64-bit float RTC measurement into integer time components and renders them to a display field. Six args (push cs; call near; caller cleans 0x0c): [bp+06]=field descriptor offset, [bp+08]=field descriptor segment (SS), [bp+0a..0x10]=four words of a 64-bit IEEE double holding the measured elapsed time. Passes the four data words to func_36C5_1E25 to dereference/retrieve the underlying value, copies the resulting 8 bytes into a local qword at [bp-0x18] via 4×movsw. FPU: loads that qword, adds constant at [0xbd0a], multiplies by constant at [0xbcfa] (affine scale to normalize the float to integer ticks), then calls func_36C5_0178 to convert the FPU result to a 32-bit integer stored at [bp-0x08:-0x06]. Decomposes via successive long-division (func_36C5_160E = quotient, func_36C5_0720 = remainder update in-place): ÷100 → [bp-0a]=coarse unit (e.g. total seconds or primary display value), remainder in [bp-8]; ÷60 → [bp-0c]=first sub-component, remainder in [bp-8]; ÷60 → [bp-0e]=second sub-component, remainder in [bp-8]; then [bp-10]=[bp-8] (copies low word). Renders a header line into the field via func_36C5_04E6 with format string at DS:0x8228. Then loops i=0..2 over [bp-0x10], [bp-0x0e], [bp-0x0c] (highest to lowest order): a [bp-4] flag suppresses display of leading-zero components (set=suppress, cleared on first nonzero); nonzero values are formatted with string DS:0x822a and rendered via func_16E4_0098 + func_36C5_0460. After the loop, always renders [bp-0a] using format string DS:0x8233 via the same pair. Called from four sites in 1E88 (0x035D, 0x04BF, 0x0A3D, 0x0B7E), always with a 64-bit elapsed-time float and field descriptor at SS:[bp+0xfefa]."
+        }
+    },
+    "labels": {
+        "1E88:0292": {
+            "label": "poll_loop_top",
+            "comment": "Outer polling loop body (2903 iterations). Each pass: (1) reads RTC date+time via rtc_read_datetime into DS:0xCF64; (2) reads DOS system time (INT 21h/2Ch) into DS:0xCF74; (3) reads DOS system date (INT 21h/2Ah) into DS:0xCF4A; (4) calls update_datetime_display to re-render changed clock fields; (5) loads state [bp-0x1a] — if > 6 loops back, else dispatches via 7-entry jump table at CS:0x0BA3."
         }
     },
     "lineComments": {
@@ -129,6 +159,11 @@
         "1E88:0369 DC 16 C8 BC": "FPU: compare loaded datetime (as float) against upper bound at [0xbcc8]",
         "1E88:0384 DC 16 D0 BC": "FPU: compare loaded datetime (as float) against lower bound at [0xbcd0]",
         "1E88:044F 7E 03": "clamp pass/fail result count: if ax <= 2 keep it, else force ax=2",
+        "1E88:0292 B8 64 CF": "loop top (2903×): read RTC date+time into struct at DS:0xCF64 via rtc_read_datetime",
+        "1E88:02A4 9A B4 06 C5 36": "read DOS system time (INT 21h/2Ch) into struct at DS:0xCF74: hours/minutes/seconds/centiseconds",
+        "1E88:02B1 9A 98 06 C5 36": "read DOS system date (INT 21h/2Ah) into struct at DS:0xCF4A: day/month/year/day-of-week",
+        "1E88:02B9 8D 86 32 FE": "SS:[bp+0xFE32] = live clock display field descriptor",
+        "1E88:02C3 E8 9B 0A": "delta-update clock display: re-render RTC time, DOS time, and date fields only when changed",
         "1E88:0528 B8 64 00": "expected alarm ticks = minutes*100 + seconds; compare against [0xcf4c]",
         "1E88:118E B8 07 00": "INT 1Ah AH=7: cancel RTC alarm; all four output pointers point to scratch",
         "1E88:11F8 B8 06 00": "INT 1Ah AH=6: set RTC alarm to CH=hours, CL=minutes, DH=seconds (BCD)",

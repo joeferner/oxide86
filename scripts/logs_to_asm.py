@@ -15,8 +15,9 @@ from collections import defaultdict
 
 # Match lines like:
 #   [19:59:15.695 INFO  oxide86_core::cpu] 31A9:4FA7 AB                   stosw
+#   [18:09:41.612 INFO  oxide86_core::cpu] 31A9:43AE 26 8B 5C 02  mov bx, [si+0x02]  BX=F5AD [0xf3a8]=f5ad @48A2:F3A8(57DC8)
 LOG_RE = re.compile(
-    r'\] ([0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}) ((?:[0-9A-Fa-f]{2} )*[0-9A-Fa-f]{2})\s+(.*?)(?:\s{2,}.*)?$'
+    r'\] ([0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}) ((?:[0-9A-Fa-f]{2} )*[0-9A-Fa-f]{2})\s+(.*?)(?:\s{2,}(.*))?$'
 )
 
 # near call: call 0xABCD
@@ -25,8 +26,8 @@ CALL_NEAR_RE = re.compile(r'^call\s+(0x[0-9a-fA-F]+)$')
 CALL_FAR_RE = re.compile(r'^call\s+far\s+(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+)$')
 # software interrupt: int 0xNN
 INT_RE = re.compile(r'^int\s+(0x[0-9a-fA-F]+)$')
-# near jump: jmp/jcc/loop/jcxz 0xABCD
-JMP_NEAR_RE = re.compile(r'^(jmp|j[a-z]+|loop[a-z]*|jcxz)\s+(0x[0-9a-fA-F]+)$')
+# near jump: jmp/jmp short/jmp near/jcc/loop/jcxz 0xABCD
+JMP_NEAR_RE = re.compile(r'^(jmp(?:\s+(?:short|near))?|j[a-z]+|loop[a-z]*|jcxz)\s+(0x[0-9a-fA-F]+)$')
 # far jump: jmp far 0xSEG, 0xOFF
 JMP_FAR_RE = re.compile(r'^jmp\s+far\s+(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+)$')
 
@@ -34,6 +35,7 @@ JMP_FAR_RE = re.compile(r'^jmp\s+far\s+(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+)$')
 def parse_log(path):
     counts = defaultdict(int)
     info = {}           # (addr, bytes) -> disasm
+    values = {}         # (addr, bytes) -> set of values strings (None = varies)
     call_targets = set()
     jump_targets = set()
     int_handlers = {}   # addr -> set of int numbers (handler entry points)
@@ -48,10 +50,15 @@ def parse_log(path):
             addr = m.group(1).upper()
             bytecode = m.group(2).strip()
             disasm = m.group(3).strip()
+            val = (m.group(4) or '').strip()
             key = (addr, bytecode)
             counts[key] += 1
             if key not in info:
                 info[key] = disasm
+            if key not in values:
+                values[key] = val
+            elif values[key] != val:
+                values[key] = None  # differs across executions
 
             # If the previous instruction was an `int NN`, this is the handler entry
             if pending_int is not None:
@@ -90,7 +97,7 @@ def parse_log(path):
                 toff = int(jfar.group(2), 16)
                 jump_targets.add(f"{tseg:04X}:{toff:04X}")
 
-    return counts, info, call_targets, jump_targets, int_handlers
+    return counts, info, values, call_targets, jump_targets, int_handlers
 
 
 def load_config(path):
@@ -133,7 +140,7 @@ def main():
     log_path = sys.argv[1] if len(sys.argv) > 1 else 'oxide86.log'
     config_path = sys.argv[2] if len(sys.argv) > 2 else None
 
-    counts, info, call_targets, jump_targets, int_handlers = parse_log(log_path)
+    counts, info, values, call_targets, jump_targets, int_handlers = parse_log(log_path)
     functions, labels, line_comments, retf_targets = load_config(config_path) if config_path else ({}, {}, {}, {})
 
     # Sort by segment, then offset, then bytecode
@@ -248,7 +255,9 @@ def main():
             for cline in _wrap_comment(line_comment, width=80):
                 print(f"   {cline}")
         comment_col = f"{call_label}  " if call_label else ''
-        print(f"   {disasm:<24}; {comment_col}{count:4} -- {addr} {bytecode}")
+        val = values.get(key)
+        val_col = f"  [{val}]" if val else ''
+        print(f"   {disasm:<24}; {count:4} -- {addr} {bytecode:<19}{comment_col} {val_col}")
 
 
 if __name__ == '__main__':

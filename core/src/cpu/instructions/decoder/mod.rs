@@ -54,9 +54,13 @@ pub(super) fn decode_mem_ref(cur: &mut Cursor, modrm: u8) -> MemRef {
                 (ea, expr)
             }
             2 => {
-                let disp = cur.fetch16();
-                let ea = base_ea.wrapping_add(disp);
-                let expr = format!("{}+0x{:04x}", base.asm_str(), disp);
+                let disp = cur.fetch16() as i16;
+                let ea = base_ea.wrapping_add(disp as u16);
+                let expr = if disp >= 0 {
+                    format!("{}+0x{:04x}", base.asm_str(), disp as u16)
+                } else {
+                    format!("{}-0x{:04x}", base.asm_str(), disp.unsigned_abs())
+                };
                 (ea, expr)
             }
             _ => unreachable!(),
