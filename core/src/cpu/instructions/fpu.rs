@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, f80::F80, f80_trig, timing},
+    cpu::{Cpu, cpu_flag, f80::F80, f80_trig, timing},
 };
 
 /// Default 8087 control word after FNINIT/FINIT:
@@ -516,6 +516,20 @@ impl Cpu {
                         let dest = self.fpu_top.wrapping_add(i) as usize & 7;
                         self.fpu_stack[dest] = self.fpu_stack[dest].div(self.fpu_stack[top]);
                     }
+                    // FUCOMI ST(0), ST(i) (DB /5 mod=11): unordered compare, set EFLAGS CF/PF/ZF
+                    (0xDB, 5, i) => {
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        let sti = self.fpu_stack[self.fpu_top.wrapping_add(i) as usize & 7];
+                        let (c0, c2, c3) = st0.compare_cc(sti);
+                        self.set_flag(cpu_flag::CARRY, c0);
+                        self.set_flag(cpu_flag::PARITY, c2);
+                        self.set_flag(cpu_flag::ZERO, c3);
+                        self.set_flag(cpu_flag::OVERFLOW, false);
+                        self.set_flag(cpu_flag::SIGN, false);
+                        self.set_flag(cpu_flag::AUXILIARY, false);
+                    }
+                    // (DB /6 mod=11): reserved encoding, treat as NOP
+                    (0xDB, 6, _) => {}
                     _ => log::warn!(
                         "unimplemented FPU register instruction: opcode={:#04X} reg={} rm={}",
                         opcode,

@@ -156,6 +156,29 @@ impl Device for Rtc {
             0x03 => self.alarm[1],
             0x05 => self.alarm[2],
             CMOS_REG_FLOPPY_TYPES => self.floppy_types,
+            // Hard disk drive types: bits 7:4 = HD0 type, bits 3:0 = HD1 type. 0x00 = no drives.
+            0x12 => 0x00,
+            // Equipment byte: bits 7:6 = num floppies - 1 (if present), bits 5:4 = video type
+            // (00 = EGA/VGA), bit 1 = FPU present, bit 0 = floppy drive present.
+            0x14 => {
+                let drive_a = (self.floppy_types >> 4) & 0x0F;
+                let drive_b = self.floppy_types & 0x0F;
+                let num_drives = (drive_a != 0) as u8 + (drive_b != 0) as u8;
+                if num_drives > 0 {
+                    ((num_drives - 1) << 6) | 0x01
+                } else {
+                    0x00
+                }
+            }
+            // Base memory size in KB: 640KB = 0x0280
+            0x15 => 0x80, // low byte
+            0x16 => 0x02, // high byte
+            // Extended memory size in KB above 1MB: 0 (no extended memory)
+            0x17 => 0x00, // low byte
+            0x18 => 0x00, // high byte
+            // Extended hard disk types (used when 0x12 nibble = 0x0F): 0 = not used
+            0x19 => 0x00,
+            0x1A => 0x00,
             0x32 => to_bcd(self.clock.get_local_date(cycle_count).century),
             reg => {
                 log::warn!("RTC: read from unimplemented CMOS register 0x{reg:02X}");

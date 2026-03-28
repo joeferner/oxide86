@@ -101,6 +101,9 @@ pub struct VideoCard {
     gc_bit_mask: u8,
     /// CPU read latches: one byte per plane, loaded on every EGA CPU read.
     gc_latches: [u8; 4],
+    /// VGA Miscellaneous Output Register (write: 0x3C2, read: 0x3CC).
+    /// Default 0x67: color mode, RAM enabled, 25.175 MHz clock, positive syncs.
+    misc_output: u8,
 }
 
 impl VideoCard {
@@ -150,6 +153,7 @@ impl VideoCard {
             gc_write_mode: 0,
             gc_bit_mask: 0xFF,
             gc_latches: [0u8; 4],
+            misc_output: 0x67,
         }
     }
 
@@ -655,6 +659,7 @@ impl Device for VideoCard {
         self.gc_write_mode = 0;
         self.gc_bit_mask = 0xFF;
         self.gc_latches = [0u8; 4];
+        self.misc_output = 0x67;
     }
 
     fn memory_read_u8(&mut self, addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -833,6 +838,8 @@ impl Device for VideoCard {
             VideoCardType::CGA | VideoCardType::EGA | VideoCardType::VGA => match port {
                 // MDA ports: return 0xFF — no MDA card present
                 MDA_CRTC_CONTROL_ADDR | MDA_CRTC_DATA_ADDR => Some(0xFF),
+                // CRTC address register: return currently selected register index
+                VIDEO_CARD_CONTROL_ADDR => Some(self.io_register),
                 VIDEO_CARD_DATA_ADDR => {
                     let buffer = self.buffer.read().unwrap();
                     let val = match self.io_register {
@@ -852,6 +859,8 @@ impl Device for VideoCard {
                 }
                 CGA_MODE_CTRL_ADDR => Some(self.cga_mode_ctrl),
                 CGA_COLOR_SELECT_ADDR => Some(self.color_select),
+                // Miscellaneous Output Register read (EGA/VGA only)
+                0x3CC if is_ega_vga => Some(self.misc_output),
                 // Sequencer address/data read (EGA/VGA only)
                 0x3C4 if is_ega_vga => Some(self.sequencer_address),
                 0x3C5 if is_ega_vga => Some(match self.sequencer_address {
@@ -1066,6 +1075,11 @@ impl Device for VideoCard {
                             val
                         ),
                     }
+                    true
+                }
+                // Miscellaneous Output Register write (EGA/VGA only)
+                0x3C2 if is_ega_vga => {
+                    self.misc_output = val;
                     true
                 }
                 // AC address/data write (EGA/VGA only) — flip-flop toggles address vs data
