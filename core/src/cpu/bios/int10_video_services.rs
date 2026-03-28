@@ -22,7 +22,7 @@ use crate::{
     video::{
         CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, Mode, TEXT_MODE_SIZE,
         VGA_MODE_13_FRAMEBUFFER_SIZE, VideoCardType,
-        font::{CHAR_HEIGHT, CHAR_HEIGHT_8, CHAR_HEIGHT_14, Cp437Font},
+        font::{CHAR_HEIGHT, CHAR_HEIGHT_8, CHAR_HEIGHT_14},
         video_calculate_linear_offset,
         video_card::{
             AC_ADDR_DATA_PORT, AC_DATA_READ_PORT, AC_REG_COLOR_SELECT, AC_REG_MODE_CONTROL,
@@ -638,9 +638,11 @@ impl Cpu {
             // - BL bit 7 = 1: XOR mode
             // - BL bit 7 = 0: Normal (opaque) mode
             // - When ch bit 7 is set AND XOR mode: invert glyph
+            //   Bit 7 of ch is the invert flag only; the actual glyph is ch & 0x7F.
             let fg_color = attr & 0x0F; // Lower 4 bits = color index
             let xor_mode = (attr & 0x80) != 0; // Bit 7 = XOR mode
             let invert_glyph = (ch & 0x80) != 0 && xor_mode;
+            let ch = if invert_glyph { ch & 0x7F } else { ch };
 
             log::debug!(
                 "INT 0x10 AH=0x09: char=0x{:02X}('{}') attr=0x{:02X} (xor={} invert={}) fg={} count={} at ({},{})",
@@ -863,8 +865,7 @@ impl Cpu {
         fg_color: u8,
         draw_mode: GraphicsDrawMode,
     ) {
-        let font = Cp437Font::new();
-        let glyph = font.get_glyph_8(ch);
+        let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_8);
 
         match mode {
             Mode::M06Cga640x200x2 => {

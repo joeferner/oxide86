@@ -112,6 +112,39 @@ pub(crate) fn ct755r_vhw_detect_cga() {
     );
 }
 
+/// Verifies INT 10h AH=09h XorInverted behavior in CGA mode 04h.
+///
+/// When ch has bit 7 set AND attr has bit 7 set (XOR mode), the glyph looked
+/// up must be (ch & 0x7F), not ch itself. With ch=0x80 this gives glyph 0x00
+/// (blank / all zeros). Inverted: all ones → full-block XOR mask → every pixel
+/// in the cell toggles. Applied twice it must restore the original character.
+///
+/// Step 1 screenshot: 'Y' in white with a full-block XOR cursor over it
+///   (inverted Y: black Y on white background).
+/// Step 2 screenshot: 'Y' restored to white on black.
+#[test_log::test]
+pub(crate) fn int10_write_char_xor_inverted() {
+    run_test(
+        "video/int10_write_char_xor_inverted",
+        create_computer(),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen(
+                "video/int10_write_char_xor_inverted_step1",
+                video_buffer.clone(),
+            );
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen(
+                "video/int10_write_char_xor_inverted_step2",
+                video_buffer.clone(),
+            );
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
 #[test_log::test]
 pub(crate) fn ct755r_vhw_detect_mda() {
     run_test(
