@@ -7,6 +7,8 @@ use oxide86_core::{
     devices::{
         clock::{EmulatedClock, LocalDate, LocalTime},
         pc_speaker::NullPcSpeaker,
+        serial_loopback::SerialLoopback,
+        serial_mouse::SerialMouse,
     },
     disk::{BackedDisk, Disk, DriveNumber, MemBackend},
     video::{VideoBuffer, VideoCardType},
@@ -116,6 +118,10 @@ pub struct Oxide86Computer {
     hdd_data: Option<Vec<u8>>,
     boot_drive: Option<String>,
     frame_buf: Vec<u8>,
+    /// Device name for each COM port: index 0 = COM1, 1 = COM2, 2 = COM3, 3 = COM4.
+    com_port_devices: [String; 4],
+    /// Retained Arc for any serial mouse so push_mouse_event can forward events to it.
+    serial_mouse: Option<Arc<RwLock<SerialMouse>>>,
 }
 
 #[wasm_bindgen]
@@ -143,6 +149,8 @@ impl Oxide86Computer {
             hdd_data: None,
             boot_drive: None,
             frame_buf: Vec::new(),
+            com_port_devices: Default::default(),
+            serial_mouse: None,
         })
     }
 
@@ -166,6 +174,7 @@ impl Oxide86Computer {
 
     pub fn power_off(&mut self) {
         self.state = None;
+        self.serial_mouse = None;
     }
 
     pub fn reboot(&mut self) {
@@ -266,7 +275,14 @@ impl Oxide86Computer {
     }
 
     pub fn push_mouse_event(&mut self, dx: i16, dy: i16, buttons: u8) {
-        if let Some(state) = &mut self.state {
+        if self.state.is_none() {
+            return;
+        }
+        if let Some(mouse) = &self.serial_mouse {
+            let mut m = mouse.write().unwrap();
+            m.push_motion(dx, dy);
+            m.push_buttons(buttons & 0x01 != 0, buttons & 0x02 != 0);
+        } else if let Some(state) = &mut self.state {
             let dx8 = dx.clamp(i8::MIN as i16, i8::MAX as i16) as i8;
             let dy8 = dy.clamp(i8::MIN as i16, i8::MAX as i16) as i8;
             state.computer.push_ps2_mouse_event(dx8, dy8, buttons);
@@ -349,6 +365,48 @@ impl Oxide86Computer {
     pub fn get_last_error(&mut self) -> Option<String> {
         self.last_error.take()
     }
+
+    /// Attach a device to a COM port. `port`: 1–4. `device`: "none", "serial_mouse", "loopback".
+    /// Takes effect immediately if the computer is running, and persists across reboots.
+    pub fn set_com_port_device(&mut self, port: u8, device: &str) {
+        let idx = match port {
+            1..=4 => (port - 1) as usize,
+            _ => {
+                log::warn!("set_com_port_device: invalid port {port}");
+                return;
+            }
+        };
+        self.com_port_devices[idx] = device.to_string();
+        if let Some(state) = &mut self.state {
+            let (com_device, mouse_arc) = make_com_port_device(device);
+            let attached = com_device.is_some();
+            self.serial_mouse = mouse_arc;
+            state.computer.set_com_port_device(port, com_device);
+            if attached {
+                log::info!("COM{port}: attached {device}");
+            } else {
+                log::info!("COM{port}: detached (none)");
+            }
+        } else {
+            log::info!("COM{port}: queued {device} (will attach on next power-on)");
+        }
+    }
+}
+
+fn make_com_port_device(
+    device: &str,
+) -> (
+    Option<Arc<RwLock<dyn oxide86_core::devices::uart::ComPortDevice>>>,
+    Option<Arc<RwLock<SerialMouse>>>,
+) {
+    match device {
+        "serial_mouse" => {
+            let mouse = Arc::new(RwLock::new(SerialMouse::new()));
+            (Some(mouse.clone()), Some(mouse))
+        }
+        "loopback" => (Some(Arc::new(RwLock::new(SerialLoopback::new()))), None),
+        _ => (None, None),
+    }
 }
 
 impl Oxide86Computer {
@@ -401,6 +459,23 @@ impl Oxide86Computer {
                 {
                     self.last_error = Some(format!("Boot failed: {e}"));
                 }
+
+                for (idx, device_name) in self.com_port_devices.iter().enumerate() {
+                    if !device_name.is_empty() && device_name != "none" {
+                        let port = (idx + 1) as u8;
+                        let (com_device, mouse_arc) = make_com_port_device(device_name);
+                        if com_device.is_some() {
+                            log::info!("COM{port}: attaching {device_name} on boot");
+                        } else {
+                            log::warn!("COM{port}: unknown device '{device_name}', skipping");
+                        }
+                        if mouse_arc.is_some() {
+                            self.serial_mouse = mouse_arc;
+                        }
+                        state.computer.set_com_port_device(port, com_device);
+                    }
+                }
+
                 self.state = Some(state);
             }
             Err(e) => self.last_error = Some(e),

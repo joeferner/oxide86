@@ -2,6 +2,29 @@ import { signal, type ReadonlySignal } from '@preact/signals-react';
 import { Oxide86Computer, type WasmComputerConfig } from 'oxide86-wasm';
 
 const CONFIG_STORAGE_KEY = 'oxide86_machine_config';
+const COM_PORTS_STORAGE_KEY = 'oxide86_com_ports';
+
+export type ComPortDevice = 'none' | 'serial_mouse' | 'loopback';
+export const COM_PORT_COUNT = 4;
+
+function loadComPorts(): ComPortDevice[] {
+    try {
+        const raw = localStorage.getItem(COM_PORTS_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw) as unknown[];
+            if (Array.isArray(parsed)) {
+                return Array.from({ length: COM_PORT_COUNT }, (_, i) => (parsed[i] as ComPortDevice) ?? 'none');
+            }
+        }
+    } catch {
+        // ignore
+    }
+    return Array(COM_PORT_COUNT).fill('none') as ComPortDevice[];
+}
+
+function saveComPorts(ports: ComPortDevice[]): void {
+    localStorage.setItem(COM_PORTS_STORAGE_KEY, JSON.stringify(ports));
+}
 
 type PersistedConfig = Pick<WasmComputerConfig, 'cpu_type' | 'has_fpu' | 'memory_kb' | 'clock_hz' | 'video_card'>;
 
@@ -61,6 +84,7 @@ export class State {
     private readonly floppyBSignal = signal<File | null>(null);
     private readonly hddSignal = signal<File | null>(null);
     private readonly bootDriveSignal = signal<0 | 1 | 'hdd' | null>('hdd');
+    private readonly comPortsSignal = signal<ComPortDevice[]>(loadComPorts());
 
     // ── Read-only signal accessors ────────────────────────────────────────────
 
@@ -90,6 +114,10 @@ export class State {
 
     public get hdd(): ReadonlySignal<File | null> {
         return this.hddSignal;
+    }
+
+    public get comPorts(): ReadonlySignal<ComPortDevice[]> {
+        return this.comPortsSignal;
     }
 
     public get bootDrive(): ReadonlySignal<0 | 1 | 'hdd' | null> {
@@ -160,6 +188,13 @@ export class State {
         const bootDrive =
             this.bootDriveSignal.value != null ? bootDriveMap[String(this.bootDriveSignal.value)] : undefined;
 
+        // Push COM port config into the new instance before boot so start_computer picks them up.
+        this.comPortsSignal.value.forEach((device, i) => {
+            if (device && device !== 'none') {
+                computer.set_com_port_device((i + 1) as 1 | 2 | 3 | 4, device);
+            }
+        });
+
         computer.power_on(hddImage, floppyAImage, floppyBImage, bootDrive);
         this.computerSignal.value = computer;
         this.powerStateSignal.value = 'on';
@@ -212,6 +247,19 @@ export class State {
 
     public setBootDrive(drive: 0 | 1 | 'hdd' | null): void {
         this.bootDriveSignal.value = drive;
+    }
+
+    // ── COM ports ─────────────────────────────────────────────────────────────
+
+    public setComPortDevice(port: 1 | 2 | 3 | 4, device: ComPortDevice): void {
+        const next = [...this.comPortsSignal.value] as ComPortDevice[];
+        next[port - 1] = device;
+        this.comPortsSignal.value = next;
+        saveComPorts(next);
+        const computer = this.computerSignal.value;
+        if (computer) {
+            computer.set_com_port_device(port, device);
+        }
     }
 }
 

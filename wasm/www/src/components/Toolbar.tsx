@@ -3,6 +3,7 @@ import { ActionIcon, Tooltip } from '@mantine/core';
 import { useSignalEffect } from '@preact/signals-react';
 import { DriveButton } from './DriveButton';
 import { DrivePanel } from './DrivePanel';
+import { PeripheralsPanel } from './PeripheralsPanel';
 import { PowerPanel } from './PowerPanel';
 import { MachineConfig } from './MachineConfig';
 import { state } from '../state';
@@ -16,7 +17,7 @@ const driveConfigs = [
     { label: 'C:', drive: 'hdd' as DriveId, icon: 'bi-hdd', canEject: false },
 ];
 
-type Panel = DriveId | 'config' | 'power-confirm' | 'reboot-confirm';
+type Panel = DriveId | 'peripherals' | 'config' | 'power-confirm' | 'reboot-confirm';
 
 export function Toolbar(): React.ReactElement {
     const [activePanel, setActivePanel] = useState<Panel | null>(null);
@@ -65,6 +66,10 @@ export function Toolbar(): React.ReactElement {
         setActivePanel((prev) => (prev === drive ? null : drive));
     };
 
+    const handlePeripheralsToggle = (): void => {
+        setActivePanel((prev) => (prev === 'peripherals' ? null : 'peripherals'));
+    };
+
     const handleConfigToggle = (): void => {
         setActivePanel((prev) => (prev === 'config' ? null : 'config'));
     };
@@ -84,6 +89,7 @@ export function Toolbar(): React.ReactElement {
     const selectedDriveConfig = driveConfigs.find((d) => d.drive === activePanel);
     const hasPanel =
         selectedDriveConfig != null ||
+        activePanel === 'peripherals' ||
         activePanel === 'power-confirm' ||
         activePanel === 'reboot-confirm' ||
         activePanel === 'config';
@@ -105,6 +111,18 @@ export function Toolbar(): React.ReactElement {
                             />
                         </div>
                     ))}
+                    <div ref={setButtonRef('peripherals')}>
+                        <Tooltip label="Peripherals" position="left">
+                            <ActionIcon
+                                variant={activePanel === 'peripherals' ? 'filled' : 'subtle'}
+                                size="lg"
+                                aria-label="Peripherals"
+                                onClick={handlePeripheralsToggle}
+                            >
+                                <i className="bi bi-usb-symbol" />
+                            </ActionIcon>
+                        </Tooltip>
+                    </div>
                 </div>
                 <div className={styles.group}>
                     <div ref={setButtonRef('reboot')}>
@@ -157,6 +175,7 @@ export function Toolbar(): React.ReactElement {
                             canEject={selectedDriveConfig.canEject}
                         />
                     )}
+                    {activePanel === 'peripherals' && <PeripheralsPanel />}
                     {activePanel === 'power-confirm' && (
                         <PowerPanel
                             mode="power"

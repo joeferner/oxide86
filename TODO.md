@@ -89,7 +89,7 @@
 - [ ] WASM (see ai-analysis/wasm-ui-plan.md)
   - [X] Pre-load images
   - [X] Save last machine config
-  - [ ] COM Port/Mouse
+  - [X] COM Port/Mouse
   - [ ] Joystick
   - [ ] Multiple hard drives
 - [ ] CLI multiple hard drives
