@@ -1,44 +1,49 @@
 import React from 'react';
-import { Stack, Button } from '@mantine/core';
+import { Stack, Text, Button } from '@mantine/core';
 import { state } from '../state';
 import styles from './Toolbar.module.scss';
 
-export function PowerPanel(): React.ReactElement {
-    const running = state.computer.value !== null;
+export interface PowerPanelProps {
+    mode: 'power' | 'reboot';
+    onClose: () => void;
+}
+
+export function PowerPanel({ mode, onClose }: PowerPanelProps): React.ReactElement {
+    if (mode === 'power') {
+        return (
+            <Stack gap="xs" className={styles.panel}>
+                <Text size="sm">Shut down the computer?</Text>
+                <Button
+                    size="xs"
+                    color="red"
+                    onClick={() => {
+                        state.powerOff();
+                        onClose();
+                    }}
+                >
+                    Power Off
+                </Button>
+                <Button size="xs" variant="default" onClick={onClose}>
+                    Cancel
+                </Button>
+            </Stack>
+        );
+    }
 
     return (
         <Stack gap="xs" className={styles.panel}>
+            <Text size="sm">Reboot the computer?</Text>
             <Button
                 size="xs"
-                variant="default"
-                color="green"
-                disabled={running}
-                onClick={() => {
-                    void state.powerOn();
-                }}
-            >
-                Power On
-            </Button>
-            <Button
-                size="xs"
-                variant="default"
-                disabled={!running}
                 onClick={() => {
                     state.reboot();
+                    onClose();
                 }}
             >
                 Reboot
             </Button>
-            <Button
-                size="xs"
-                variant="default"
-                color="red"
-                disabled={!running}
-                onClick={() => {
-                    state.powerOff();
-                }}
-            >
-                Power Off
+            <Button size="xs" variant="default" onClick={onClose}>
+                Cancel
             </Button>
         </Stack>
     );

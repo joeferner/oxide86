@@ -1,11 +1,6 @@
 import { signal, type ReadonlySignal } from '@preact/signals-react';
 import { Oxide86Computer, type WasmComputerConfig } from 'oxide86-wasm';
 
-export interface Status {
-    message: string;
-    error: string | null;
-}
-
 function defaultConfig(): WasmComputerConfig {
     const now = new Date();
     return {
@@ -25,7 +20,8 @@ function defaultConfig(): WasmComputerConfig {
 
 export class State {
     private readonly computerSignal = signal<Oxide86Computer | null>(null);
-    private readonly statusSignal = signal<Status>({ message: 'Off', error: null });
+    private readonly powerStateSignal = signal<'on' | 'off' | 'warning'>('off');
+    private readonly errorSignal = signal<string | null>(null);
     private readonly configSignal = signal<WasmComputerConfig>(defaultConfig());
     private readonly perfSignal = signal<number>(0); // MHz
     private readonly floppyASignal = signal<File | null>(null);
@@ -38,8 +34,12 @@ export class State {
         return this.computerSignal;
     }
 
-    public get status(): ReadonlySignal<Status> {
-        return this.statusSignal;
+    public get powerState(): ReadonlySignal<'on' | 'off' | 'warning'> {
+        return this.powerStateSignal;
+    }
+
+    public get error(): ReadonlySignal<string | null> {
+        return this.errorSignal;
     }
 
     public get config(): ReadonlySignal<WasmComputerConfig> {
@@ -67,12 +67,13 @@ export class State {
     // ── Status ────────────────────────────────────────────────────────────────
 
     // Called by Screen when the emulator halts.
-    public setStatus(message: string, error?: string | null): void {
-        this.statusSignal.value = { message, error: error ?? null };
+    public setStatus(powerState: 'on' | 'off' | 'warning', error?: string | null): void {
+        this.powerStateSignal.value = powerState;
+        this.errorSignal.value = error ?? null;
     }
 
     public dismissError(): void {
-        this.statusSignal.value = { ...this.statusSignal.value, error: null };
+        this.errorSignal.value = null;
     }
 
     public get perf(): ReadonlySignal<number> {
@@ -88,7 +89,8 @@ export class State {
 
     public async powerOn(): Promise<void> {
         if (!this.floppyASignal.value && !this.hddSignal.value) {
-            this.statusSignal.value = { message: 'Off', error: 'Load a floppy or hard disk image first' };
+            this.powerStateSignal.value = 'off';
+            this.errorSignal.value = 'Load a floppy or hard disk image first';
             return;
         }
 
@@ -96,7 +98,8 @@ export class State {
         try {
             computer = new Oxide86Computer(this.configSignal.value);
         } catch (e) {
-            this.statusSignal.value = { message: 'Failed to start', error: String(e) };
+            this.powerStateSignal.value = 'warning';
+            this.errorSignal.value = String(e);
             return;
         }
 
@@ -107,7 +110,8 @@ export class State {
 
         computer.power_on(hddImage, floppyImage);
         this.computerSignal.value = computer;
-        this.statusSignal.value = { message: 'Running', error: null };
+        this.powerStateSignal.value = 'on';
+        this.errorSignal.value = null;
     }
 
     public powerOff(): void {
@@ -117,14 +121,16 @@ export class State {
         }
         computer.power_off();
         this.computerSignal.value = null;
-        this.statusSignal.value = { message: 'Off', error: null };
+        this.powerStateSignal.value = 'off';
+        this.errorSignal.value = null;
     }
 
     public reboot(): void {
         // The RAF loop in Screen keeps running — reboot resets internal state
         // on the existing computer object; no need to re-trigger the effect.
         this.computerSignal.value?.reboot();
-        this.statusSignal.value = { message: 'Running', error: null };
+        this.powerStateSignal.value = 'on';
+        this.errorSignal.value = null;
     }
 
     // ── Drives ────────────────────────────────────────────────────────────────

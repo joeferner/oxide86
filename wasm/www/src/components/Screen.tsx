@@ -45,7 +45,7 @@ export function Screen(): React.ReactElement {
 
             const error = computer.get_last_error();
             if (error) {
-                state.setStatus('Error', error);
+                state.setStatus('warning', error);
                 return;
             }
 
@@ -54,7 +54,7 @@ export function Screen(): React.ReactElement {
             if (!result.halted) {
                 raf = requestAnimationFrame(tick);
             } else {
-                state.setStatus('Halted');
+                state.setStatus('off');
             }
         };
 

@@ -1,9 +1,11 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { ActionIcon, Tooltip } from '@mantine/core';
+import { useSignalEffect } from '@preact/signals-react';
 import { DriveButton } from './DriveButton';
 import { DrivePanel } from './DrivePanel';
 import { PowerPanel } from './PowerPanel';
 import { MachineConfig } from './MachineConfig';
+import { state } from '../state';
 import styles from './Toolbar.module.scss';
 
 type DriveId = 0 | 1 | 'hdd';
@@ -14,20 +16,35 @@ const driveConfigs = [
     { label: 'C:', drive: 'hdd' as DriveId, icon: 'bi-hdd', canEject: false },
 ];
 
-type Panel = DriveId | 'config' | 'power';
+type Panel = DriveId | 'config' | 'power-confirm' | 'reboot-confirm';
 
 export function Toolbar(): React.ReactElement {
     const [activePanel, setActivePanel] = useState<Panel | null>(null);
+    const [isRunning, setIsRunning] = useState(() => state.computer.peek() !== null);
+    const [powerState, setPowerState] = useState(state.powerState.peek());
     const containerRef = useRef<HTMLDivElement>(null);
     const buttonRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const panelWrapperRef = useRef<HTMLDivElement>(null);
+
+    useSignalEffect(() => {
+        setIsRunning(state.computer.value !== null);
+    });
+
+    useSignalEffect(() => {
+        setPowerState(state.powerState.value);
+    });
 
     useLayoutEffect(() => {
         const wrapper = panelWrapperRef.current;
         if (!wrapper || activePanel === null || !containerRef.current) {
             return;
         }
-        const btn = buttonRefs.current.get(String(activePanel));
+        const panelToButtonKey: Record<string, string> = {
+            'power-confirm': 'power',
+            'reboot-confirm': 'reboot',
+        };
+        const btnKey = panelToButtonKey[String(activePanel)] ?? String(activePanel);
+        const btn = buttonRefs.current.get(btnKey);
         if (!btn) {
             return;
         }
@@ -52,12 +69,20 @@ export function Toolbar(): React.ReactElement {
         setActivePanel((prev) => (prev === 'config' ? null : 'config'));
     };
 
-    const handlePowerToggle = (): void => {
-        setActivePanel((prev) => (prev === 'power' ? null : 'power'));
+    const handlePowerClick = (): void => {
+        if (isRunning) {
+            setActivePanel((prev) => (prev === 'power-confirm' ? null : 'power-confirm'));
+        } else {
+            void state.powerOn();
+        }
+    };
+
+    const handleRebootClick = (): void => {
+        setActivePanel((prev) => (prev === 'reboot-confirm' ? null : 'reboot-confirm'));
     };
 
     const selectedDriveConfig = driveConfigs.find((d) => d.drive === activePanel);
-    const hasPanel = selectedDriveConfig != null || activePanel === 'power' || activePanel === 'config';
+    const hasPanel = selectedDriveConfig != null || activePanel === 'power-confirm' || activePanel === 'reboot-confirm' || activePanel === 'config';
 
     return (
         <div className={styles.toolbarContainer} ref={containerRef}>
@@ -78,17 +103,31 @@ export function Toolbar(): React.ReactElement {
                     ))}
                 </div>
                 <div className={styles.group}>
-                    <div ref={setButtonRef('power')}>
-                        <Tooltip label="Power" position="left">
+                    <div ref={setButtonRef('reboot')}>
+                        <Tooltip label="Reboot" position="left">
                             <ActionIcon
-                                variant={activePanel === 'power' ? 'filled' : 'subtle'}
+                                variant={activePanel === 'reboot-confirm' ? 'filled' : 'subtle'}
+                                size="lg"
+                                aria-label="Reboot"
+                                disabled={!isRunning}
+                                onClick={handleRebootClick}
+                            >
+                                <i className="bi bi-arrow-clockwise" />
+                            </ActionIcon>
+                        </Tooltip>
+                    </div>
+                    <div ref={setButtonRef('power')} className={styles.powerButtonWrapper}>
+                        <Tooltip label={isRunning ? 'Power off' : 'Power on'} position="left">
+                            <ActionIcon
+                                variant={activePanel === 'power-confirm' ? 'filled' : 'subtle'}
                                 size="lg"
                                 aria-label="Power"
-                                onClick={handlePowerToggle}
+                                onClick={handlePowerClick}
                             >
                                 <i className="bi bi-power" />
                             </ActionIcon>
                         </Tooltip>
+                        <span className={`${styles.powerDot} ${styles[`powerDot_${powerState}`]}`} />
                     </div>
                     <div ref={setButtonRef('config')}>
                         <Tooltip label="Machine settings" position="left">
@@ -114,7 +153,12 @@ export function Toolbar(): React.ReactElement {
                             canEject={selectedDriveConfig.canEject}
                         />
                     )}
-                    {activePanel === 'power' && <PowerPanel />}
+                    {activePanel === 'power-confirm' && (
+                        <PowerPanel mode="power" onClose={() => setActivePanel(null)} />
+                    )}
+                    {activePanel === 'reboot-confirm' && (
+                        <PowerPanel mode="reboot" onClose={() => setActivePanel(null)} />
+                    )}
                     {activePanel === 'config' && <MachineConfig />}
                 </div>
             )}
