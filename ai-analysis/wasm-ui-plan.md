@@ -212,7 +212,7 @@ Thin bar directly below `Screen`, same width as the canvas:
 - **Right**: reads `state.perf`; updated by a `setInterval` every 500 ms that calls
   `computer.get_effective_mhz()` and `state.setPerf(mhz)`. Displays as `"X.XX MHz"`.
 
-### 2e. MachineConfig (`wasm/www/src/components/MachineConfig.tsx`)
+### ✅ 2e. MachineConfig (`wasm/www/src/components/MachineConfig.tsx`)
 
 Mantine form controls that call `state.updateConfig(patch)`. Disabled while `state.computer.value` is non-null (machine is running). Add `updateConfig(patch: Partial<WasmComputerConfig>)` to `State` if not already present.
 
@@ -222,15 +222,7 @@ Mantine form controls that call `state.updateConfig(patch)`. Disabled while `sta
 - `Select` — clock: 4.77 MHz, 8 MHz, 10 MHz; plus a `NumberInput` that unlocks on "Custom"
 - `Select` — video card: CGA, EGA, VGA
 
-### 2f. ConfigDrawer (`wasm/www/src/components/ConfigDrawer.tsx`)
-
-Mantine `Drawer` opening from the right, triggered by a settings icon in the `Toolbar`:
-
-- Contains `MachineConfig` as a labelled section (`Title` + divider).
-- `ComPortConfig` and `JoystickConfig` panels are stubs (placeholders) for now.
-- Drive management is handled inline via `DriveButton` popovers in the `Toolbar` — no separate DriveManager panel.
-
-### 2g. App wiring (`wasm/www/src/App.tsx`)
+### ✅ 2g. App wiring (`wasm/www/src/App.tsx`)
 
 Replace the current stub with the new layout (no `AppShell` — plain flexbox):
 
@@ -250,7 +242,7 @@ Replace the current stub with the new layout (no `AppShell` — plain flexbox):
 
 ---
 
-## Phase 3: Keyboard Scan Code Mapping
+## ✅ Phase 3: Keyboard Scan Code Mapping
 
 A TypeScript file `src/keycodes.ts` maps `KeyboardEvent.code` (e.g. `"KeyA"`, `"ArrowUp"`) to
 XT scan codes. Reference: https://stanislavs.org/helppc/make_codes.html

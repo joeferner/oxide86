@@ -7,6 +7,7 @@ export function StatusBar(): React.ReactElement {
     const [message, setMessage] = useState(state.status.value.message);
     const [error, setError] = useState<string | null>(state.status.value.error);
     const [mhz, setMhz] = useState(0);
+    const [targetMhz, setTargetMhz] = useState(state.config.value.clock_hz / 1_000_000);
 
     useSignalEffect(() => {
         setMessage(state.status.value.message);
@@ -31,6 +32,10 @@ export function StatusBar(): React.ReactElement {
         setMhz(state.perf.value);
     });
 
+    useSignalEffect(() => {
+        setTargetMhz(state.config.value.clock_hz / 1_000_000);
+    });
+
     return (
         <div className={styles.bar}>
             <span className={styles.message}>{message}</span>
@@ -45,7 +50,9 @@ export function StatusBar(): React.ReactElement {
                     {error}
                 </span>
             )}
-            <span className={styles.perf}>{mhz > 0 ? `${mhz.toFixed(2)} MHz` : ''}</span>
+            <span className={styles.perf}>
+                {mhz > 0 ? `${mhz.toFixed(2)} / ${targetMhz.toFixed(2)} MHz` : ''}
+            </span>
         </div>
     );
 }
