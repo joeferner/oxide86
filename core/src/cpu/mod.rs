@@ -1,13 +1,14 @@
 use crate::{
     Computer,
     bus::Bus,
-    cpu::bios::int21_dos_services::{
-        DosFileHandleTable, PendingDosOpen, PendingDosRead, PendingDosSeek,
+    cpu::bios::{
+        BIOS_CODE_SEGMENT,
+        int08_timer_interrupt::{INT1C_RETURN_IP, TIMER_INLINE_RETURN_IP},
+        int21_dos_services::{DosFileHandleTable, PendingDosOpen, PendingDosRead, PendingDosSeek},
+        int70_rtc_alarm_interrupt::INT4A_RETURN_IP,
+        int74_ps2_mouse_interrupt::PS2_MOUSE_RETURN_IP,
     },
-    cpu::{
-        bios::BIOS_CODE_SEGMENT,
-        instructions::{RepeatPrefix, decoder, fpu::FPU_DEFAULT_CONTROL_WORD},
-    },
+    cpu::instructions::{RepeatPrefix, decoder, fpu::FPU_DEFAULT_CONTROL_WORD},
     debugger::DebugSnapshot,
     disk::DriveNumber,
 };
@@ -623,10 +624,21 @@ impl Cpu {
             log::error!("Invalid BIOS handler 0x{:02X}", self.ip);
             return;
         }
-        self.step_bios_int(bus, self.ip as u8);
+        let entry_ip = self.ip;
+        self.step_bios_int(bus, entry_ip as u8);
         if self.wait_for_key_press {
-            self.wait_for_key_press_patch_flags = true;
-            return;
+            // Trampoline IPs are no-ops whose sole purpose is to trigger patch_flags_and_iret
+            // to unwind a nested interrupt frame (e.g. a timer IRQ that fired while we were
+            // waiting for a keypress).  Skipping patch_flags_and_iret here would leave the
+            // stack unwound and spin the CPU forever at the trampoline with no cycle progress.
+            let is_trampoline = matches!(
+                entry_ip,
+                INT1C_RETURN_IP | TIMER_INLINE_RETURN_IP | PS2_MOUSE_RETURN_IP | INT4A_RETURN_IP
+            );
+            if !is_trampoline {
+                self.wait_for_key_press_patch_flags = true;
+                return;
+            }
         }
         // If the BIOS handler did a FAR CALL into user code (e.g. the PS/2
         // mouse callback) CS will no longer point to the BIOS segment.

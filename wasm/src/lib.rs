@@ -191,6 +191,11 @@ impl Oxide86Computer {
             if state.computer.get_cycle_count() >= target {
                 break;
             }
+            // Yield to JS when waiting for a keypress so the browser event loop
+            // can deliver key events and the tab doesn't appear frozen.
+            if state.computer.wait_for_key_press() {
+                break;
+            }
         }
 
         RunResult {
