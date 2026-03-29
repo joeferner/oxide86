@@ -4,6 +4,7 @@ import { Notifications } from '@mantine/notifications';
 import '@mantine/core/styles.css';
 import '@mantine/notifications/styles.css';
 import 'bootstrap-icons/font/bootstrap-icons.css';
+import initWasm from 'oxide86-wasm';
 import { App } from './App';
 import './styles/global.scss';
 
@@ -31,9 +32,12 @@ const root = document.getElementById('root');
 if (!root) {
     throw new Error('cannot find root element');
 }
-ReactDOM.createRoot(root).render(
-    <MantineProvider theme={theme} defaultColorScheme="dark">
-        <Notifications position="top-right" autoClose={4000} />
-        <App />
-    </MantineProvider>
-);
+
+void initWasm().then(() => {
+    ReactDOM.createRoot(root).render(
+        <MantineProvider theme={theme} defaultColorScheme="dark">
+            <Notifications position="top-right" autoClose={4000} />
+            <App />
+        </MantineProvider>
+    );
+});

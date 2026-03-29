@@ -27,6 +27,13 @@ export function Screen(): React.ReactElement {
 
         const tick = (): void => {
             const result = computer.run_for_cycles(100_000);
+
+            const error = computer.get_last_error();
+            if (error) {
+                state.setStatus('Error', error);
+                return;
+            }
+
             const frame = computer.render_frame();
 
             if (canvas.width !== frame.width || canvas.height !== frame.height) {

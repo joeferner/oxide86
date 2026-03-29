@@ -27,7 +27,7 @@ export class State {
     private readonly computerSignal = signal<Oxide86Computer | null>(null);
     private readonly statusSignal = signal<Status>({ message: 'Off', error: null });
     private readonly configSignal = signal<WasmComputerConfig>(defaultConfig());
-    private readonly _perfSignal = signal<number>(0); // MHz
+    private readonly perfSignal = signal<number>(0); // MHz
     private readonly floppyASignal = signal<File | null>(null);
     private readonly floppyBSignal = signal<File | null>(null);
     private readonly hddSignal = signal<File | null>(null);
@@ -71,9 +71,27 @@ export class State {
         this.statusSignal.value = { message, error: error ?? null };
     }
 
+    public dismissError(): void {
+        this.statusSignal.value = { ...this.statusSignal.value, error: null };
+    }
+
+    public get perf(): ReadonlySignal<number> {
+        return this.perfSignal;
+    }
+
+    public sampleMhz(): void {
+        const mhz = this.computerSignal.value?.get_effective_mhz() ?? 0;
+        this.perfSignal.value = mhz;
+    }
+
     // ── Power ─────────────────────────────────────────────────────────────────
 
     public async powerOn(): Promise<void> {
+        if (!this.floppyASignal.value && !this.hddSignal.value) {
+            this.statusSignal.value = { message: 'Off', error: 'Load a floppy or hard disk image first' };
+            return;
+        }
+
         let computer: Oxide86Computer;
         try {
             computer = new Oxide86Computer(this.configSignal.value);

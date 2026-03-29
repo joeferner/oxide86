@@ -16,11 +16,7 @@ export function DriveButton({ label, drive, icon, canEject }: DriveButtonProps):
     const [currentFile, setCurrentFile] = useState<File | null>(null);
 
     useSignalEffect(() => {
-        setCurrentFile(
-            drive === 0 ? state.floppyA.value :
-            drive === 1 ? state.floppyB.value :
-            state.hdd.value
-        );
+        setCurrentFile(drive === 0 ? state.floppyA.value : drive === 1 ? state.floppyB.value : state.hdd.value);
     });
 
     const onFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {

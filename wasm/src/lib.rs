@@ -128,7 +128,7 @@ impl Oxide86Computer {
     #[wasm_bindgen(constructor)]
     pub fn new(config: WasmComputerConfig) -> Result<Self, JsValue> {
         console_error_panic_hook::set_once();
-        wasm_logger::init(wasm_logger::Config::default());
+        wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
 
         // Validate config eagerly so JS gets a clear error at construction time.
         CpuType::parse(&config.cpu_type)

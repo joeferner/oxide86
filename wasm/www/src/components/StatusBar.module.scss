@@ -1,0 +1,34 @@
+.bar {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.2rem 0.4rem;
+    background: #111;
+    border: 1px solid #444;
+    border-top: none;
+    font-size: 0.75rem;
+    font-family: monospace;
+    min-height: 1.5rem;
+}
+
+.message {
+    flex: 1;
+    color: #aaa;
+}
+
+.error {
+    flex: 1;
+    color: #f55;
+    cursor: pointer;
+    text-align: center;
+
+    &:hover {
+        text-decoration: line-through;
+    }
+}
+
+.perf {
+    color: #6af;
+    text-align: right;
+    min-width: 6rem;
+}
