@@ -86,7 +86,14 @@
   - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
   - [ ] Test Fractint Version 15.x and below
   - [ ] Emulate 80287
-- [ ] WASM
+- [ ] WASM (see ai-analysis/wasm-ui-plan.md)
+  - [X] Phase 1: WASM Bridge
+  - [ ] Phase 2: React UI Components
+  - [ ] Phase 3: Keyboard Scan Code Mapping
+  - [ ] COM Port/Mouse
+  - [ ] Joystick
+  - [ ] Multiple hard drives
+- [ ] CLI multiple hard drives
 - [ ] CD-ROM
 - [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
