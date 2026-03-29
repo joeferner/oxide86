@@ -1,5 +1,43 @@
 pub(crate) struct TextModePalette {}
 
+/// Convert a 6-bit EGA color code to a 6-bit DAC RGB triple.
+///
+/// EGA hardware has no DAC — the 6-bit AC palette value drives the analog
+/// outputs directly. The bit layout is:
+///   bits [5,4,3,2,1,0] = [r_secondary, g_secondary, b_secondary, r_primary, g_primary, b_primary]
+///
+/// Each component = primary*42 + secondary*21  (in 6-bit DAC scale 0-63).
+pub(crate) fn ega_6bit_color_to_dac(index: u8) -> [u8; 3] {
+    let r_sec = (index >> 5) & 1;
+    let g_sec = (index >> 4) & 1;
+    let b_sec = (index >> 3) & 1;
+    let r_prim = (index >> 2) & 1;
+    let g_prim = (index >> 1) & 1;
+    let b_prim = index & 1;
+    [
+        r_prim * 42 + r_sec * 21,
+        g_prim * 42 + g_sec * 21,
+        b_prim * 42 + b_sec * 21,
+    ]
+}
+
+/// Returns the DAC RGB value for EGA DAC index i (0-63).
+///
+/// Indices 0-15 use the standard EGA BIOS 16-color palette (including brown at 6,
+/// dark gray at 8, bright white at 15) so that 16-color EGA modes (0Dh, 10h) whose
+/// renderers look up `DAC[pixel_value]` directly produce the expected colors.
+///
+/// Indices 16-63 use the raw EGA 6-bit encoding so that programs (e.g. CheckIt) that
+/// program AC palette registers to values >= 16 get the correct EGA analog colors
+/// (e.g. AC[3]=23 → DAC[23] = bright green, not VGA grayscale).
+pub(crate) fn ega_dac_entry(i: u8) -> [u8; 3] {
+    if i < 16 {
+        TextModePalette::get_dac_color(i)
+    } else {
+        ega_6bit_color_to_dac(i)
+    }
+}
+
 impl TextModePalette {
     // TODO
     // Get 8-bit RGB color value (0-255) for rendering

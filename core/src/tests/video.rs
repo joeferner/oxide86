@@ -62,6 +62,23 @@ pub(crate) fn mode_04h_cga_320x200x4() {
     run_assert_screen_key_press_run_test("video/mode_04h_cga_320x200x4", create_computer());
 }
 
+/// Tests that EGA card + CGA mode 04h uses EGA 6-bit color codes for the DAC,
+/// not the VGA grayscale ramp.
+///
+/// Mirrors CheckIt's Graphics Grid Test palette setup:
+///   AC[0..3] = [0, 19, 21, 23]  (set via INT 10h AH=10h)
+///   AC[3] = 23 = 0x17 = R=42,G=63,B=42 (bright green in EGA 6-bit encoding)
+///
+/// Without fix: DAC[23] = [24,24,24] = dark gray (nearly invisible)
+/// With fix:    DAC[23] = [42,63,42] = bright green (clearly visible)
+#[test_log::test]
+pub(crate) fn mode_04h_ega_ac_palette() {
+    run_assert_screen_key_press_run_test(
+        "video/mode_04h_ega_ac_palette",
+        make_computer!(video_card_type: VideoCardType::EGA),
+    );
+}
+
 #[test_log::test]
 pub(crate) fn mode_0dh_ega_320x200x16() {
     run_assert_screen_key_press_run_test(

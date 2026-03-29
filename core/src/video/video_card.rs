@@ -12,7 +12,7 @@ use crate::{
         VideoCardType,
         font::{CHAR_HEIGHT_8, Cp437Font},
         mode::TextDimensions,
-        palette::{TextModePalette, VGA_DEFAULT_DAC_PALETTE},
+        palette::{VGA_DEFAULT_DAC_PALETTE, ega_dac_entry},
     },
 };
 
@@ -131,15 +131,25 @@ impl VideoCard {
     ) -> Self {
         let dac_registers = match card_type {
             VideoCardType::VGA => VGA_DEFAULT_DAC_PALETTE.to_vec(),
-            VideoCardType::EGA | VideoCardType::MDA | VideoCardType::HGC => {
+            VideoCardType::EGA => {
                 let mut regs = vec![[0u8; 3]; 256];
-                for (i, entry) in regs.iter_mut().enumerate().take(16) {
-                    *entry = TextModePalette::get_dac_color(i as u8);
+                for (i, entry) in regs[..64].iter_mut().enumerate() {
+                    *entry = ega_dac_entry(i as u8);
                 }
                 regs
             }
+            VideoCardType::MDA | VideoCardType::HGC => vec![[0u8; 3]; 256],
             VideoCardType::CGA => vec![[0u8; 3]; 256],
         };
+        // For EGA: sync the 64-entry EGA DAC palette into the video buffer now,
+        // overriding the VGA default that VideoBuffer initializes with.
+        if matches!(card_type, VideoCardType::EGA) {
+            let mut buf = buffer.write().unwrap();
+            for (i, &[r, g, b]) in dac_registers[..64].iter().enumerate() {
+                buf.set_dac_color(i, r, g, b);
+            }
+        }
+
         Self {
             card_type,
             buffer,
@@ -221,10 +231,10 @@ impl VideoCard {
                 }
             }
             VideoCardType::EGA => {
-                for (i, entry) in self.dac_registers.iter_mut().enumerate().take(16) {
-                    let [r, g, b] = TextModePalette::get_dac_color(i as u8);
-                    *entry = [r, g, b];
-                    buffer.set_dac_color(i, r, g, b);
+                for i in 0..64usize {
+                    let rgb = ega_dac_entry(i as u8);
+                    self.dac_registers[i] = rgb;
+                    buffer.set_dac_color(i, rgb[0], rgb[1], rgb[2]);
                 }
             }
             VideoCardType::CGA | VideoCardType::MDA | VideoCardType::HGC => {}
@@ -772,11 +782,18 @@ impl Device for VideoCard {
         self.ac_flip_flop = false;
         match self.card_type {
             VideoCardType::VGA => self.dac_registers.copy_from_slice(&VGA_DEFAULT_DAC_PALETTE),
-            VideoCardType::EGA | VideoCardType::MDA | VideoCardType::HGC => {
-                for (i, entry) in self.dac_registers.iter_mut().enumerate().take(16) {
-                    *entry = TextModePalette::get_dac_color(i as u8);
+            VideoCardType::EGA => {
+                for i in 0..64usize {
+                    let rgb = ega_dac_entry(i as u8);
+                    self.dac_registers[i] = rgb;
+                    buffer.set_dac_color(i, rgb[0], rgb[1], rgb[2]);
                 }
-                for entry in self.dac_registers[16..].iter_mut() {
+                for entry in self.dac_registers[64..].iter_mut() {
+                    *entry = [0u8; 3];
+                }
+            }
+            VideoCardType::MDA | VideoCardType::HGC => {
+                for entry in self.dac_registers.iter_mut() {
                     *entry = [0u8; 3];
                 }
             }
