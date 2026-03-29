@@ -8,7 +8,8 @@ use crate::{
     video::{
         CGA_MEMORY_END, CGA_MEMORY_SIZE, CGA_MEMORY_START, EGA_MEMORY_END, EGA_MEMORY_START,
         EGA_PLANE_SIZE, MDA_MEMORY_END, MDA_MEMORY_SIZE, MDA_MEMORY_START, Mode,
-        VGA_MODE_13_FRAMEBUFFER_SIZE, VIDEO_MEMORY_SIZE, VideoBuffer, VideoCardType,
+        VGA_MODE_13_FRAMEBUFFER_SIZE, VGA_MODE_13_WIDTH, VIDEO_MEMORY_SIZE, VideoBuffer,
+        VideoCardType,
         font::{CHAR_HEIGHT_8, Cp437Font},
         mode::TextDimensions,
         palette::{TextModePalette, VGA_DEFAULT_DAC_PALETTE},
@@ -50,6 +51,10 @@ pub const INPUT_STATUS_1_PORT: u16 = 0x3DA;
 const CGA_VSYNC_HZ: u64 = 60;
 /// Vsync active for roughly 1/12 of the frame (~8%).
 const CGA_VSYNC_DUTY_DIVISOR: u64 = 12;
+/// CGA scanlines per frame (200 visible + 62 blanking).
+const CGA_LINES_PER_FRAME: u64 = 262;
+/// Horizontal retrace active for roughly 1/5 of each scanline (~20%).
+const CGA_HSYNC_DUTY_DIVISOR: u64 = 5;
 
 /// Parameters for drawing a pre-fetched glyph into EGA planar VRAM.
 pub(crate) struct EgaGlyphParams<'a> {
@@ -559,6 +564,122 @@ impl VideoCard {
         }
     }
 
+    /// Scroll up a rectangular window in VGA mode 13h linear VRAM (320x200, 1 byte/pixel).
+    ///
+    /// Coordinates are in character cells (8x8 pixels each). `lines == 0` clears the window.
+    /// Blank rows are filled with `fill_color` (palette index).
+    pub(crate) fn vga_scroll_up_window(&self, w: ScrollWindow, fill_color: u8) {
+        let ScrollWindow {
+            lines,
+            top,
+            left,
+            bottom,
+            right,
+        } = w;
+        let mut buffer = self.buffer.write().unwrap();
+        if lines == 0 {
+            for char_row in top..=bottom {
+                for pr in 0..CHAR_HEIGHT_8 {
+                    let pixel_y = char_row as usize * CHAR_HEIGHT_8 + pr;
+                    for col in left..=right {
+                        for b in 0..8usize {
+                            let off = pixel_y * VGA_MODE_13_WIDTH + col as usize * 8 + b;
+                            if off < VGA_MODE_13_FRAMEBUFFER_SIZE {
+                                buffer.write_vram(off, fill_color);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            let lines = lines as usize;
+            for char_row in top as usize..=bottom as usize {
+                for pr in 0..CHAR_HEIGHT_8 {
+                    let dest_pixel_y = char_row * CHAR_HEIGHT_8 + pr;
+                    for col in left..=right {
+                        for b in 0..8usize {
+                            let pixel_x = col as usize * 8 + b;
+                            let dest_off = dest_pixel_y * VGA_MODE_13_WIDTH + pixel_x;
+                            if dest_off >= VGA_MODE_13_FRAMEBUFFER_SIZE {
+                                continue;
+                            }
+                            let src_char_row = char_row + lines;
+                            if src_char_row <= bottom as usize {
+                                let src_off = (src_char_row * CHAR_HEIGHT_8 + pr)
+                                    * VGA_MODE_13_WIDTH
+                                    + pixel_x;
+                                if src_off < VGA_MODE_13_FRAMEBUFFER_SIZE {
+                                    let v = buffer.read_vram(src_off);
+                                    buffer.write_vram(dest_off, v);
+                                }
+                            } else {
+                                buffer.write_vram(dest_off, fill_color);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Scroll down a rectangular window in VGA mode 13h linear VRAM (320x200, 1 byte/pixel).
+    ///
+    /// Coordinates are in character cells (8x8 pixels each). `lines == 0` clears the window.
+    /// Blank rows are filled with `fill_color` (palette index).
+    pub(crate) fn vga_scroll_down_window(&self, w: ScrollWindow, fill_color: u8) {
+        let ScrollWindow {
+            lines,
+            top,
+            left,
+            bottom,
+            right,
+        } = w;
+        let mut buffer = self.buffer.write().unwrap();
+        if lines == 0 {
+            for char_row in top..=bottom {
+                for pr in 0..CHAR_HEIGHT_8 {
+                    let pixel_y = char_row as usize * CHAR_HEIGHT_8 + pr;
+                    for col in left..=right {
+                        for b in 0..8usize {
+                            let off = pixel_y * VGA_MODE_13_WIDTH + col as usize * 8 + b;
+                            if off < VGA_MODE_13_FRAMEBUFFER_SIZE {
+                                buffer.write_vram(off, fill_color);
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            let lines = lines as usize;
+            for char_row in (top as usize..=bottom as usize).rev() {
+                for pr in 0..CHAR_HEIGHT_8 {
+                    let dest_pixel_y = char_row * CHAR_HEIGHT_8 + pr;
+                    for col in left..=right {
+                        for b in 0..8usize {
+                            let pixel_x = col as usize * 8 + b;
+                            let dest_off = dest_pixel_y * VGA_MODE_13_WIDTH + pixel_x;
+                            if dest_off >= VGA_MODE_13_FRAMEBUFFER_SIZE {
+                                continue;
+                            }
+                            if char_row >= top as usize + lines {
+                                let src_char_row = char_row - lines;
+                                let src_off = (src_char_row * CHAR_HEIGHT_8 + pr)
+                                    * VGA_MODE_13_WIDTH
+                                    + pixel_x;
+                                if src_off < VGA_MODE_13_FRAMEBUFFER_SIZE {
+                                    let v = buffer.read_vram(src_off);
+                                    buffer.write_vram(dest_off, v);
+                                }
+                            } else {
+                                buffer.write_vram(dest_off, fill_color);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Draw a character into EGA planar VRAM.
     ///
     /// Foreground pixels (glyph bit = 1) are set to `fg_color` in all planes.
@@ -915,7 +1036,19 @@ impl Device for VideoCard {
                     let vsync_cycles = cycles_per_frame / CGA_VSYNC_DUTY_DIVISOR;
                     let phase = cycle_count as u64 % cycles_per_frame;
                     let in_vsync = phase < vsync_cycles;
-                    Some(if in_vsync { 0x08 } else { 0x00 })
+                    // Bit 0: horizontal retrace (~20% duty cycle at ~15.7 kHz)
+                    let cycles_per_line = cycles_per_frame / CGA_LINES_PER_FRAME;
+                    let hsync_cycles = cycles_per_line / CGA_HSYNC_DUTY_DIVISOR;
+                    let hphase = cycle_count as u64 % cycles_per_line;
+                    let in_hsync = hphase < hsync_cycles;
+                    let mut status = 0u8;
+                    if in_vsync {
+                        status |= 0x08;
+                    }
+                    if in_hsync {
+                        status |= 0x01;
+                    }
+                    Some(status)
                 }
                 _ => None,
             },
@@ -1165,11 +1298,20 @@ impl Device for VideoCard {
                     self.dac_registers[reg][component] = val & 0x3F;
                     self.dac_write_pos = (self.dac_write_pos + 1) % (256 * 3);
                     // Sync completed entry to video buffer palette used by the renderer
-                    let entry = self.dac_registers[reg];
-                    self.buffer
-                        .write()
-                        .unwrap()
-                        .set_dac_color(reg, entry[0], entry[1], entry[2]);
+                    if component == 2 {
+                        let entry = self.dac_registers[reg];
+                        log::debug!(
+                            "DAC[{}] = RGB({}, {}, {})",
+                            reg,
+                            entry[0],
+                            entry[1],
+                            entry[2]
+                        );
+                        self.buffer
+                            .write()
+                            .unwrap()
+                            .set_dac_color(reg, entry[0], entry[1], entry[2]);
+                    }
                     true
                 }
                 _ => false,

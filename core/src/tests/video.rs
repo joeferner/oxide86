@@ -33,6 +33,30 @@ pub(crate) fn mode_06h_cga_640x200x2() {
     run_assert_screen_key_press_run_test("video/mode_06h_cga_640x200x2", create_computer());
 }
 
+/// Tests that port 0x3DA bit 0 (horizontal retrace) toggles, allowing programs
+/// that use the classic CGA snow-avoidance write pattern to proceed.
+/// Without bit 0 toggling the double-poll loop spins forever and nothing renders.
+#[test_log::test]
+pub(crate) fn cga_snow_avoidance() {
+    run_assert_screen_key_press_run_test(
+        "video/cga_snow_avoidance",
+        make_computer!(video_card_type: VideoCardType::CGA),
+    );
+}
+
+/// Tests mode 06h with a custom VGA DAC palette programmed via INT 10h after the mode set.
+/// Replicates observed real-program behavior: after switching to mode 06h the program
+/// reprograms DAC registers 0-15 (including DAC[15] = greenish RGB(35,54,6)).
+/// Mode 06h foreground uses vga_dac_palette[cga_bg=15] = DAC[15], so the foreground
+/// should appear in the custom greenish color, not the default white.
+#[test_log::test]
+pub(crate) fn mode_06h_vga_custom_dac() {
+    run_assert_screen_key_press_run_test(
+        "video/mode_06h_vga_custom_dac",
+        make_computer!(video_card_type: VideoCardType::VGA),
+    );
+}
+
 #[test_log::test]
 pub(crate) fn mode_04h_cga_320x200x4() {
     run_assert_screen_key_press_run_test("video/mode_04h_cga_320x200x4", create_computer());

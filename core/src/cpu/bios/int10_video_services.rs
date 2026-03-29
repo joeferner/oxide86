@@ -21,7 +21,7 @@ use crate::{
     },
     video::{
         CGA_MEMORY_START, EGA_MEMORY_START, EGA_PLANE_SIZE, Mode, TEXT_MODE_SIZE,
-        VGA_MODE_13_FRAMEBUFFER_SIZE, VideoCardType,
+        VGA_MODE_13_FRAMEBUFFER_SIZE, VGA_MODE_13_WIDTH, VideoCardType,
         font::{CHAR_HEIGHT, CHAR_HEIGHT_8, CHAR_HEIGHT_14},
         video_calculate_linear_offset,
         video_card::{
@@ -466,6 +466,18 @@ impl Cpu {
                     attr & 0x0F,
                 );
             }
+            Mode::M13Vga320x200x256 => {
+                bus.video_card_mut().vga_scroll_up_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    attr,
+                );
+            }
             _ => {
                 log::warn!("INT 10h AH=06h: scroll up not implemented for mode {mode}");
             }
@@ -571,6 +583,18 @@ impl Cpu {
                     80,
                     CHAR_HEIGHT_14,
                     attr & 0x0F,
+                );
+            }
+            Mode::M13Vga320x200x256 => {
+                bus.video_card_mut().vga_scroll_down_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    attr,
                 );
             }
             _ => {
@@ -964,6 +988,38 @@ impl Cpu {
                     xor,
                 });
             }
+            Mode::M13Vga320x200x256 => {
+                for (r, &row_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
+                    let pixel_y = row as usize * CHAR_HEIGHT_8 + r;
+                    for b in 0..8usize {
+                        let pixel_x = col as usize * 8 + b;
+                        let addr = EGA_MEMORY_START + pixel_y * VGA_MODE_13_WIDTH + pixel_x;
+                        let existing = bus.memory_read_u8(addr);
+                        let set = (row_byte & (0x80 >> b)) != 0;
+                        let val = match draw_mode {
+                            GraphicsDrawMode::Opaque => {
+                                if set {
+                                    fg_color
+                                } else {
+                                    0
+                                }
+                            }
+                            GraphicsDrawMode::Xor => existing ^ if set { fg_color } else { 0 },
+                            GraphicsDrawMode::XorInverted => {
+                                existing ^ if set { 0 } else { fg_color }
+                            }
+                            GraphicsDrawMode::Transparent => {
+                                if set {
+                                    fg_color
+                                } else {
+                                    existing
+                                }
+                            }
+                        };
+                        bus.memory_write_u8(addr, val);
+                    }
+                }
+            }
             _ => {
                 log::warn!(
                     "unhandled draw char 0x{ch:02X}('{}')",
@@ -1055,6 +1111,18 @@ impl Cpu {
                             fg_color,
                             80,
                             CHAR_HEIGHT_14,
+                        );
+                    }
+                    Mode::M13Vga320x200x256 => {
+                        let fg_color = (self.bx & 0xFF) as u8; // BL
+                        self.draw_char_cga_graphics(
+                            bus,
+                            mode.clone(),
+                            ch,
+                            cursor.row,
+                            cursor.col,
+                            fg_color,
+                            GraphicsDrawMode::Opaque,
                         );
                     }
                     _ => {
@@ -1381,19 +1449,26 @@ impl Cpu {
     ///   CX = bytes per character
     ///   DL = rows on screen - 1
     fn int10_character_generator(&mut self, bus: &mut Bus) {
-        // Only EGA/VGA implement AH=11h
-        if !matches!(
+        let subfunction = (self.ax & 0xFF) as u8; // AL
+        let is_ega_vga = matches!(
             bus.video_card().card_type(),
             VideoCardType::EGA | VideoCardType::VGA
-        ) {
+        );
+
+        // AL=30h (get font info) is supported on all card types including CGA.
+        // All other subfunctions require EGA/VGA.
+        if subfunction == 0x30 {
+            self.int10_get_font_info(bus);
+            return;
+        }
+
+        if !is_ega_vga {
             log::warn!(
                 "INT 10h AH=11h: not supported by {:?} card - ignoring",
                 bus.video_card().card_type()
             );
             return;
         }
-
-        let subfunction = (self.ax & 0xFF) as u8; // AL
 
         match subfunction {
             0x00..=0x04 => {
@@ -1416,10 +1491,6 @@ impl Cpu {
                     "Unhandled INT 10h/AH=11h/AL={:02X}h: Set graphics character table",
                     subfunction
                 );
-            }
-            0x30 => {
-                // Get font information
-                self.int10_get_font_info(bus);
             }
             _ => {
                 log::warn!(
