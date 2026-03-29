@@ -1,13 +1,9 @@
 import React, { useState } from 'react';
-import { Modal, Select, Switch, NumberInput, Stack, Text } from '@mantine/core';
+import { Select, Switch, NumberInput, Stack, Text } from '@mantine/core';
 import { useSignalEffect } from '@preact/signals-react';
 import { state } from '../state';
 import type { WasmComputerConfig } from 'oxide86-wasm';
-
-interface Props {
-    opened: boolean;
-    onClose: () => void;
-}
+import styles from './Toolbar.module.scss';
 
 const CLOCK_OPTIONS = [
     { value: '4772727', label: '4.77 MHz (XT)' },
@@ -19,7 +15,7 @@ const CLOCK_OPTIONS = [
 
 const KNOWN_CLOCKS = new Set([4_772_727, 6_000_000, 8_000_000, 10_000_000]);
 
-export function MachineConfig({ opened, onClose }: Props): React.ReactElement {
+export function MachineConfig(): React.ReactElement {
     const [config, setConfig] = useState<WasmComputerConfig>(state.config.value);
     const [running, setRunning] = useState(state.computer.value !== null);
     const [clockOption, setClockOption] = useState<string>(() =>
@@ -53,91 +49,92 @@ export function MachineConfig({ opened, onClose }: Props): React.ReactElement {
     };
 
     return (
-        <Modal opened={opened} onClose={onClose} title="Machine Configuration" size="sm">
+        <Stack gap="md" className={styles.drivePanel}>
+            <Text size="sm" fw={600}>
+                Machine
+            </Text>
             {disabled && (
-                <Text size="xs" c="dimmed" mb="md">
-                    Power off to change machine settings.
+                <Text size="xs" c="dimmed">
+                    Power off to change settings.
                 </Text>
             )}
-            <Stack gap="md">
-                <Select
-                    label="CPU"
-                    data={[
-                        { value: '8086', label: 'Intel 8086' },
-                        { value: '286', label: 'Intel 286' },
-                    ]}
-                    value={config.cpu_type}
-                    onChange={(v) => {
-                        if (v) {
-                            patch({ cpu_type: v });
-                        }
-                    }}
-                    disabled={disabled}
-                />
+            <Select
+                label="CPU"
+                data={[
+                    { value: '8086', label: 'Intel 8086' },
+                    { value: '286', label: 'Intel 286' },
+                ]}
+                value={config.cpu_type}
+                onChange={(v) => {
+                    if (v) {
+                        patch({ cpu_type: v });
+                    }
+                }}
+                disabled={disabled}
+            />
 
-                <Switch
-                    label="Math coprocessor (FPU)"
-                    checked={config.has_fpu}
-                    onChange={(e) => {
-                        patch({ has_fpu: e.currentTarget.checked });
-                    }}
-                    disabled={disabled}
-                />
+            <Switch
+                label="Math coprocessor (FPU)"
+                checked={config.has_fpu}
+                onChange={(e) => {
+                    patch({ has_fpu: e.currentTarget.checked });
+                }}
+                disabled={disabled}
+            />
 
+            <NumberInput
+                label="RAM (KB)"
+                value={config.memory_kb}
+                min={64}
+                max={65536}
+                step={64}
+                onChange={(v) => {
+                    if (typeof v === 'number') {
+                        patch({ memory_kb: v });
+                    }
+                }}
+                disabled={disabled}
+            />
+
+            <Select
+                label="Clock speed"
+                data={CLOCK_OPTIONS}
+                value={clockOption}
+                onChange={onClockOptionChange}
+                disabled={disabled}
+            />
+
+            {clockOption === 'custom' && (
                 <NumberInput
-                    label="RAM (KB)"
-                    value={config.memory_kb}
-                    min={64}
-                    max={65536}
-                    step={64}
+                    label="Custom clock (Hz)"
+                    value={config.clock_hz}
+                    min={1_000_000}
+                    max={100_000_000}
+                    step={1_000_000}
                     onChange={(v) => {
                         if (typeof v === 'number') {
-                            patch({ memory_kb: v });
+                            patch({ clock_hz: v });
                         }
                     }}
                     disabled={disabled}
                 />
+            )}
 
-                <Select
-                    label="Clock speed"
-                    data={CLOCK_OPTIONS}
-                    value={clockOption}
-                    onChange={onClockOptionChange}
-                    disabled={disabled}
-                />
-
-                {clockOption === 'custom' && (
-                    <NumberInput
-                        label="Custom clock (Hz)"
-                        value={config.clock_hz}
-                        min={1_000_000}
-                        max={100_000_000}
-                        step={1_000_000}
-                        onChange={(v) => {
-                            if (typeof v === 'number') {
-                                patch({ clock_hz: v });
-                            }
-                        }}
-                        disabled={disabled}
-                    />
-                )}
-
-                <Select
-                    label="Video card"
-                    data={[
-                        { value: 'cga', label: 'CGA' },
-                        { value: 'ega', label: 'EGA' },
-                        { value: 'vga', label: 'VGA' },
-                    ]}
-                    value={config.video_card}
-                    onChange={(v) => {
-                        if (v) {
-                            patch({ video_card: v });
-                        }
-                    }}
-                    disabled={disabled}
-                />
-            </Stack>
-        </Modal>
+            <Select
+                label="Video card"
+                data={[
+                    { value: 'cga', label: 'CGA' },
+                    { value: 'ega', label: 'EGA' },
+                    { value: 'vga', label: 'VGA' },
+                ]}
+                value={config.video_card}
+                onChange={(v) => {
+                    if (v) {
+                        patch({ video_card: v });
+                    }
+                }}
+                disabled={disabled}
+            />
+        </Stack>
     );
 }
