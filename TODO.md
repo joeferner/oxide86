@@ -60,6 +60,28 @@
 - [X] COM loopback
 - [X] Parallel Port/LPT loopback
 - [X] RTC Checkit Tests
+- [ ] CheckIt Video Graphics Tests
+  - [X] CGA
+    - [X] Mode 04h
+    - [X] Mode 05h
+    - [X] Mode 06h
+  - [ ] EGA
+    - [X] Mode 04h
+    - [X] Mode 05h
+    - [X] Mode 0dh
+    - [X] Mode 06h
+    - [ ] Mode 0eh
+  - [ ] VGA
+    - [X] Mode 04h
+    - [X] Mode 05h
+    - [X] Mode 0dh
+    - [ ] Mode 03h
+    - [X] Mode 06h
+    - [ ] Mode 0eh
+    - [ ] Mode 0fh
+    - [ ] Mode 10h
+    - [ ] Mode 03h
+    - [ ] Mode 12h
 - [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
   - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
   - [ ] Test Fractint Version 15.x and below
