@@ -29,6 +29,17 @@ export function PowerPanel(): React.ReactElement {
             >
                 Reboot
             </Button>
+            <Button
+                size="xs"
+                variant="default"
+                color="red"
+                disabled={!running}
+                onClick={() => {
+                    state.powerOff();
+                }}
+            >
+                Power Off
+            </Button>
         </Stack>
     );
 }

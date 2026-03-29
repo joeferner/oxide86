@@ -19,6 +19,26 @@
     gap: 0.25rem;
 }
 
+.panelWrapper {
+    position: relative;
+    display: flex;
+    flex: 1;
+
+    &::before {
+        content: '';
+        position: absolute;
+        left: 0;
+        top: var(--chevron-top, 20px);
+        transform: translate(-50%, -50%) rotate(45deg);
+        width: 10px;
+        height: 10px;
+        background: #1a1a1a;
+        border-bottom: 1px solid #444;
+        border-left: 1px solid #444;
+        z-index: 1;
+    }
+}
+
 .panel {
     padding: 0.75rem;
     border-left: 1px solid #444;

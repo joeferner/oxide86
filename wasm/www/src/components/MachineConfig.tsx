@@ -49,7 +49,7 @@ export function MachineConfig(): React.ReactElement {
     };
 
     return (
-        <Stack gap="md" className={styles.drivePanel}>
+        <Stack gap="md" className={styles.panel}>
             <Text size="sm" fw={600}>
                 Machine
             </Text>

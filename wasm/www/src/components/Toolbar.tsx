@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { ActionIcon, Tooltip } from '@mantine/core';
 import { DriveButton } from './DriveButton';
 import { DrivePanel } from './DrivePanel';
@@ -18,6 +18,31 @@ type Panel = DriveId | 'config' | 'power';
 
 export function Toolbar(): React.ReactElement {
     const [activePanel, setActivePanel] = useState<Panel | null>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const buttonRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const panelWrapperRef = useRef<HTMLDivElement>(null);
+
+    useLayoutEffect(() => {
+        const wrapper = panelWrapperRef.current;
+        if (!wrapper || activePanel === null || !containerRef.current) {
+            return;
+        }
+        const btn = buttonRefs.current.get(String(activePanel));
+        if (!btn) {
+            return;
+        }
+        const containerRect = containerRef.current.getBoundingClientRect();
+        const btnRect = btn.getBoundingClientRect();
+        wrapper.style.setProperty('--chevron-top', `${btnRect.top - containerRect.top + btnRect.height / 2}px`);
+    }, [activePanel]);
+
+    const setButtonRef = (key: string) => (el: HTMLDivElement | null) => {
+        if (el) {
+            buttonRefs.current.set(key, el);
+        } else {
+            buttonRefs.current.delete(key);
+        }
+    };
 
     const handleDriveSelect = (drive: DriveId): void => {
         setActivePanel((prev) => (prev === drive ? null : drive));
@@ -32,56 +57,67 @@ export function Toolbar(): React.ReactElement {
     };
 
     const selectedDriveConfig = driveConfigs.find((d) => d.drive === activePanel);
+    const hasPanel = selectedDriveConfig != null || activePanel === 'power' || activePanel === 'config';
 
     return (
-        <div className={styles.toolbarContainer}>
+        <div className={styles.toolbarContainer} ref={containerRef}>
             <div className={styles.toolbar}>
                 <div className={styles.group}>
                     {driveConfigs.map((cfg) => (
-                        <DriveButton
-                            key={String(cfg.drive)}
-                            label={cfg.label}
-                            drive={cfg.drive}
-                            icon={cfg.icon}
-                            selected={activePanel === cfg.drive}
-                            onSelect={() => {
-                                handleDriveSelect(cfg.drive);
-                            }}
-                        />
+                        <div key={String(cfg.drive)} ref={setButtonRef(String(cfg.drive))}>
+                            <DriveButton
+                                label={cfg.label}
+                                drive={cfg.drive}
+                                icon={cfg.icon}
+                                selected={activePanel === cfg.drive}
+                                onSelect={() => {
+                                    handleDriveSelect(cfg.drive);
+                                }}
+                            />
+                        </div>
                     ))}
                 </div>
                 <div className={styles.group}>
-                    <Tooltip label="Power" position="left">
-                        <ActionIcon
-                            variant={activePanel === 'power' ? 'filled' : 'subtle'}
-                            size="lg"
-                            aria-label="Power"
-                            onClick={handlePowerToggle}
-                        >
-                            <i className="bi bi-power" />
-                        </ActionIcon>
-                    </Tooltip>
-                    <Tooltip label="Machine settings" position="left">
-                        <ActionIcon
-                            variant={activePanel === 'config' ? 'filled' : 'subtle'}
-                            size="lg"
-                            aria-label="Machine settings"
-                            onClick={handleConfigToggle}
-                        >
-                            <i className="bi bi-gear" />
-                        </ActionIcon>
-                    </Tooltip>
+                    <div ref={setButtonRef('power')}>
+                        <Tooltip label="Power" position="left">
+                            <ActionIcon
+                                variant={activePanel === 'power' ? 'filled' : 'subtle'}
+                                size="lg"
+                                aria-label="Power"
+                                onClick={handlePowerToggle}
+                            >
+                                <i className="bi bi-power" />
+                            </ActionIcon>
+                        </Tooltip>
+                    </div>
+                    <div ref={setButtonRef('config')}>
+                        <Tooltip label="Machine settings" position="left">
+                            <ActionIcon
+                                variant={activePanel === 'config' ? 'filled' : 'subtle'}
+                                size="lg"
+                                aria-label="Machine settings"
+                                onClick={handleConfigToggle}
+                            >
+                                <i className="bi bi-gear" />
+                            </ActionIcon>
+                        </Tooltip>
+                    </div>
                 </div>
             </div>
-            {selectedDriveConfig && (
-                <DrivePanel
-                    drive={selectedDriveConfig.drive}
-                    label={selectedDriveConfig.label}
-                    canEject={selectedDriveConfig.canEject}
-                />
+            {hasPanel && (
+                <div className={styles.panelWrapper} ref={panelWrapperRef}>
+                    {selectedDriveConfig && (
+                        <DrivePanel
+                            key={String(selectedDriveConfig.drive)}
+                            drive={selectedDriveConfig.drive}
+                            label={selectedDriveConfig.label}
+                            canEject={selectedDriveConfig.canEject}
+                        />
+                    )}
+                    {activePanel === 'power' && <PowerPanel />}
+                    {activePanel === 'config' && <MachineConfig />}
+                </div>
             )}
-            {activePanel === 'power' && <PowerPanel />}
-            {activePanel === 'config' && <MachineConfig />}
         </div>
     );
 }

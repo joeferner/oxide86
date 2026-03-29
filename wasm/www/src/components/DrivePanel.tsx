@@ -12,7 +12,9 @@ export interface DrivePanelProps {
 
 export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.ReactElement {
     const fileInputRef = useRef<HTMLInputElement>(null);
-    const [currentFile, setCurrentFile] = useState<File | null>(null);
+    const [currentFile, setCurrentFile] = useState<File | null>(() =>
+        drive === 0 ? state.floppyA.peek() : drive === 1 ? state.floppyB.peek() : state.hdd.peek()
+    );
 
     useSignalEffect(() => {
         setCurrentFile(drive === 0 ? state.floppyA.value : drive === 1 ? state.floppyB.value : state.hdd.value);
@@ -56,7 +58,7 @@ export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.R
                 Load image…
             </Button>
             {canEject && (
-                <Button size="xs" variant="subtle" color="red" disabled={!currentFile} onClick={onEject}>
+                <Button size="xs" variant="outline" color="red" disabled={!currentFile} onClick={onEject}>
                     Eject
                 </Button>
             )}

@@ -22,10 +22,6 @@ export function Screen(): React.ReactElement {
     // Reactive RAF loop — reruns automatically when state.computer changes.
     useSignalEffect(() => {
         const computer = state.computer.value;
-        if (!computer) {
-            return;
-        }
-
         const canvas = canvasRef.current;
         if (!canvas) {
             return;
@@ -33,6 +29,12 @@ export function Screen(): React.ReactElement {
 
         const ctx = canvas.getContext('2d');
         if (!ctx) {
+            return;
+        }
+
+        if (!computer) {
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
             return;
         }
 
