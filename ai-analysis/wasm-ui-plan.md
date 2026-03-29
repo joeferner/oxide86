@@ -113,90 +113,104 @@ JS `Uint8Array` data can be wrapped as an in-memory disk image.
 
 Tech stack already in place: Mantine 7, Preact Signals, SCSS modules.
 
+### Layout
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│                        (page background)                         │
+│                                                                  │
+│              ┌──────────────────────┐  [A:][B:][C:]  [⏻][↺]    │
+│              │                      │                             │
+│              │       Screen         │  ← icon toolbar to right  │
+│              │      (canvas)        │    of screen, horizontal   │
+│              │                      │    groups with gap         │
+│              └──────────────────────┘                            │
+│              │  Status · · · · MHz  │  ← StatusBar below screen │
+│              └──────────────────────┘                            │
+│                                                                  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+- Screen is centered horizontally and vertically on the page.
+- StatusBar sits directly below the screen (same width), showing status messages on the left and MHz on the right.
+- A horizontal icon toolbar sits to the right of the screen, with icon groups separated by a horizontal gap:
+  - **Group 1 — Drives**: Floppy A:, Floppy B:, Hard disk C: (each opens a file picker / eject popover)
+  - **Group 2 — Power**: Power On, Reboot (future: Power Off)
+  - Additional groups can be added (settings, etc.)
+- No AppShell header/footer — layout is plain flexbox/CSS centering.
+
 Target component tree:
 
 ```
 App
-├── StatusBar          ← last message / last error / CPU MHz
 ├── Screen             ← <canvas> + keyboard/mouse capture
-├── ControlPanel       ← Power On / Power Off / Reboot
-├── ConfigDrawer       ← slides in from right (Mantine Drawer)
-│   ├── MachineConfig  ← CPU type, FPU, RAM, clock speed, video card
-│   ├── DriveManager   ← floppy A/B file upload + eject; HDD file upload
-│   ├── ComPortConfig  ← COM1/COM2 device type (none, loopback, …)
-│   └── JoystickConfig ← enable/disable, axis sensitivity
-└── PerfBar            ← live MHz gauge (updates every ~500 ms)
+├── StatusBar          ← status message (left) + MHz (right), below Screen
+├── Toolbar            ← icon buttons to the right of Screen
+│   ├── DriveButton    ← per-drive icon + popover (file input + eject)
+│   └── PowerButton    ← Power On / Reboot icons
+└── ConfigDrawer       ← slides in from right (Mantine Drawer), opened from Toolbar
+    ├── MachineConfig  ← CPU type, FPU, RAM, clock speed, video card
+    ├── ComPortConfig  ← COM1/COM2 device type (none, loopback, …) [stub]
+    └── JoystickConfig ← enable/disable, axis sensitivity [stub]
 ```
 
 ### ✅ 2a. State (`wasm/www/src/state.ts`)
 
-Shared signal store implemented as a `State` class with all signals private. Signals are
-exposed as `ReadonlySignal<T>` getters on demand — add a getter to `State` only when a
-component first needs it.
+All computer interactions go through `State` — components never touch `Oxide86Computer` directly.
+Signals are private; components get read-only access via `ReadonlySignal<T>` getters. All
+mutations (power, drives, config) are methods on `State`.
 
-```ts
-export class State {
-    private readonly computerSignal = signal<Oxide86Computer | null>(null);
-    private readonly statusSignal   = signal<{ message: string; error: string | null }>(...);
-    private readonly configSignal   = signal<WasmComputerConfig>(defaultConfig());
-    private readonly perfSignal     = signal<number>(0);
-    private readonly floppyASignal  = signal<File | null>(null);
-    private readonly floppyBSignal  = signal<File | null>(null);
-    private readonly hddSignal      = signal<File | null>(null);
-}
-export const state = new State();
-```
+Public API:
+- **Getters**: `computer`, `status`, `config`, `floppyA`, `floppyB`, `hdd`
+- **Config**: `updateConfig(patch)`
+- **Status**: `setStatus(message, error?)` — called by Screen on halt
+- **Power**: `powerOn(): Promise<void>`, `powerOff()`, `reboot()`
+- **Drives**: `insertFloppy(drive: 0|1, file): Promise<void>`, `ejectFloppy(drive: 0|1)`, `setHdd(file|null)`
 
-`defaultConfig()` returns a valid `WasmComputerConfig` (8086, EGA, 640 KB, 4.77 MHz,
-current date/time from `new Date()`). When a component needs to read a signal, add a
-public getter typed as `ReadonlySignal<T>` and a mutation method alongside it — never
-export the raw mutable signal.
+`powerOn` constructs `Oxide86Computer`, reads disk `File` objects into `Uint8Array`, calls
+`power_on`, then updates `computerSignal`. `insertFloppy` does the same async read then calls
+`computer.insert_floppy` if running. Components never hold a computer reference.
 
-### 2b. Screen component (`wasm/www/src/components/Screen.tsx`)
+### ✅ 2b. Screen component (`wasm/www/src/components/Screen.tsx`)
 
-Validates the full Rust → canvas pipeline.
+- `<canvas>` with `image-rendering: pixelated`; resizes to match `RenderResult.width/height` on first frame.
+- `get computer()` and `setStatus()` added to `State` (also exports `Status` interface).
+- RAF loop uses `useSignalEffect` (not `useEffect`) so it reruns reactively when `state.computer` changes.
+  Arrow function `tick` (not a `function` declaration) so TypeScript narrows closed-over consts correctly.
+- Keyboard: `keydown`/`keyup` on `window` → `KEY_MAP[e.code]` → `computer.push_key_event(scanCode, isDown)`.
+- Mouse: `canvas.requestPointerLock()` on click; `pointerlockchange` toggles `mousemove` listener → `push_mouse_event`.
+- `keycodes.ts` created alongside with full XT scan code table (make codes; break = make | 0x80 handled in Rust).
 
-- `<canvas>` with CSS `image-rendering: pixelated`; resize to match `RenderResult.width/height` on first frame.
-- Add `get computer(): ReadonlySignal<Oxide86Computer | null>` to `State`; expose a
-  `setStatus(message, error?)` mutation method.
-- `useEffect` starts the RAF loop when `state.computer` is non-null, cancels it on cleanup:
-  ```ts
-  function tick() {
-    const result = computer.run_for_cycles(100_000)
-    const frame  = computer.render_frame()
-    const rgba   = new Uint8ClampedArray(frame.data)
-    ctx.putImageData(new ImageData(rgba, frame.width, frame.height), 0, 0)
-    if (!result.halted) raf = requestAnimationFrame(tick)
-    else state.setStatus('Halted')
-  }
-  ```
-- Click on canvas → `canvas.requestPointerLock()` to capture mouse; `pointerlockchange` → `push_mouse_event`.
-- `keydown`/`keyup` on `window` → look up scan code in `keycodes.ts` → `computer.push_key_event(scanCode, isDown)`.
+### ✅ 2c. Toolbar (`wasm/www/src/components/Toolbar.tsx`) + DriveButton / PowerButton
 
-### 2c. ControlPanel (`wasm/www/src/components/ControlPanel.tsx`)
+Horizontal strip of Bootstrap icon `ActionIcon` buttons to the right of `Screen`. Groups separated
+by CSS `gap: 1.5rem`; buttons within a group by `gap: 0.25rem`.
 
-Three Mantine `Button` components in a `Group`:
+Icons use `bootstrap-icons` CSS classes (`bi bi-floppy`, `bi bi-power`, etc.) — already imported
+in `main.tsx`.
 
-- Add `get config(): ReadonlySignal<WasmComputerConfig>`, `get floppyA/B/hdd()` getters and
-  `setComputer(c)` mutation to `State`.
-- **Power On** — reads `state.config` + disk signals, calls `new Oxide86Computer(config)`, then
-  `power_on(hdd, floppy)`. Calls `state.setComputer(computer)` and `state.setStatus(...)`.
-- **Power Off** — calls `computer.power_off()`, calls `state.setComputer(null)`.
-- **Reboot** — calls `computer.reboot()`, triggers RAF restart via `state.setComputer(computer)`.
+#### DriveButton (one per drive: A:, B:, C:)
+- `ActionIcon` (filled when a file is loaded, subtle when empty) opens a Mantine `Popover`.
+- Popover contains: filename or "Empty", hidden `<input type="file">`, "Load image…" button,
+  "Eject" button (floppy only, disabled when empty).
+- On load: calls `state.insertFloppy(drive, file)` or `state.setHdd(file)`.
+- On eject: calls `state.ejectFloppy(drive)`.
 
-Disable Power Off / Reboot when `state.computer.value` is null; disable Power On when non-null.
+#### PowerButtons
+- **Power On** — `onClick: void state.powerOn()`. Disabled when running.
+- **Reboot** — `onClick: state.reboot()`. Disabled when off.
+- Both buttons use `useComputed(() => state.computer.value !== null)` to reactively track run state.
 
 ### 2d. StatusBar (`wasm/www/src/components/StatusBar.tsx`)
 
-Thin bar, always visible (position it at the bottom of the layout):
+Thin bar directly below `Screen`, same width as the canvas:
 
 - Add `get status(): ReadonlySignal<...>`, `get perf(): ReadonlySignal<number>`,
   `dismissError()`, and `setPerf(mhz)` to `State`.
-- **Left**: status message from `state.status.value.message`.
-- **Center**: error from `state.status.value.error` — red Mantine `Text`, click to dismiss
-  via `state.dismissError()`.
-- **Right**: PerfBar — reads `state.perf`, updated by a `setInterval` every 500 ms that calls
-  `computer.get_effective_mhz()` and calls `state.setPerf(mhz)`. Displays as `"X.XX MHz"`.
+- **Left**: status message from `state.status.value.message`; if `error` is set, show it in red
+  with a click-to-dismiss handler (`state.dismissError()`).
+- **Right**: reads `state.perf`; updated by a `setInterval` every 500 ms that calls
+  `computer.get_effective_mhz()` and `state.setPerf(mhz)`. Displays as `"X.XX MHz"`.
 
 ### 2e. MachineConfig (`wasm/www/src/components/MachineConfig.tsx`)
 
@@ -209,35 +223,31 @@ Mantine form controls that call `state.updateConfig(patch)`. Disabled while `sta
 - `Select` — video card: CGA, EGA, VGA
 - Date/time pickers (or `NumberInput` fields) for `start_year/month/day/hour/minute/second`
 
-### 2f. DriveManager (`wasm/www/src/components/DriveManager.tsx`)
+### 2f. ConfigDrawer (`wasm/www/src/components/ConfigDrawer.tsx`)
 
-One row per drive (Floppy A:, Floppy B:, Hard disk C:):
+Mantine `Drawer` opening from the right, triggered by a settings icon in the `Toolbar`:
 
-- File `<input type="file" accept=".img,.ima,.bin">` — on change: read as `ArrayBuffer`, wrap in `Uint8Array`.
-  - Floppy: calls `computer.insert_floppy(drive, image)` if machine is running; always calls `state.setFloppyA/B(file)`.
-  - HDD: calls `state.setHdd(file)` only (takes effect on next Power On).
-- Eject button (floppy only) — calls `computer.eject_floppy(drive)`, calls `state.setFloppyA/B(null)`.
-- Show filename of currently inserted image or "Empty".
-
-### 2g. ConfigDrawer (`wasm/www/src/components/ConfigDrawer.tsx`)
-
-Mantine `Drawer` opening from the right, triggered by a settings button in the layout:
-
-- Contains `MachineConfig` and `DriveManager` as labelled sections (`Title` + divider).
+- Contains `MachineConfig` as a labelled section (`Title` + divider).
 - `ComPortConfig` and `JoystickConfig` panels are stubs (placeholders) for now.
+- Drive management is handled inline via `DriveButton` popovers in the `Toolbar` — no separate DriveManager panel.
 
-### 2h. App wiring (`wasm/www/src/App.tsx`)
+### 2g. App wiring (`wasm/www/src/App.tsx`)
 
-Replace the current stub with the full layout:
+Replace the current stub with the new layout (no `AppShell` — plain flexbox):
 
 ```tsx
-<AppShell header={<ControlPanel />} footer={<StatusBar />}>
-  <Screen />
-  <ConfigDrawer />
-</AppShell>
+// Outer: full-viewport flex, centering the inner block
+// Inner: flex-col — Screen on top, StatusBar below
+// Toolbar: flex-col or flex-row to the right of the inner block
+<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh' }}>
+  <div style={{ display: 'flex', flexDirection: 'column' }}>
+    <Screen />
+    <StatusBar />
+  </div>
+  <Toolbar />
+</div>
+<ConfigDrawer />
 ```
-
-Wire the settings button (in `ControlPanel` or a toolbar) to open `ConfigDrawer`.
 
 ---
 
@@ -277,11 +287,10 @@ Then layer in:
 | `wasm/src/lib.rs` | ✅ Done |
 | `core/src/disk/mem_backend.rs` | ✅ Done — added `from_data` |
 | `wasm/www/src/state.ts` | ✅ Done — `State` class, private signals, expose as `ReadonlySignal` getters on demand |
-| `wasm/www/src/components/Screen.tsx` | 2b — canvas + RAF loop |
-| `wasm/www/src/keycodes.ts` | 2b — scan code table (needed by Screen) |
-| `wasm/www/src/components/ControlPanel.tsx` | 2c — power buttons |
-| `wasm/www/src/components/StatusBar.tsx` | 2d — status + perf bar |
+| `wasm/www/src/components/Screen.tsx` | ✅ Done — canvas + `useSignalEffect` RAF loop, keyboard, mouse |
+| `wasm/www/src/keycodes.ts` | ✅ Done — XT scan code table |
+| `wasm/www/src/components/Toolbar.tsx` | 2c — icon toolbar (drive + power groups) |
+| `wasm/www/src/components/StatusBar.tsx` | 2d — status + perf bar below screen |
 | `wasm/www/src/components/MachineConfig.tsx` | 2e — config form |
-| `wasm/www/src/components/DriveManager.tsx` | 2f — disk image upload |
-| `wasm/www/src/components/ConfigDrawer.tsx` | 2g — drawer wrapper |
-| `wasm/www/src/App.tsx` | 2h — wire everything together |
+| `wasm/www/src/components/ConfigDrawer.tsx` | 2f — drawer wrapper (MachineConfig + stubs) |
+| `wasm/www/src/App.tsx` | 2g — flexbox layout: Screen+StatusBar centered, Toolbar to right |
