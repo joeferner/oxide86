@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Select, Switch, NumberInput, Stack, Text } from '@mantine/core';
+import { Select, Switch, NumberInput, Stack, Text, Button, Group } from '@mantine/core';
 import { useSignalEffect } from '@preact/signals-react';
 import { state } from '../state';
 import type { WasmComputerConfig } from 'oxide86-wasm';
@@ -21,6 +21,7 @@ export function MachineConfig(): React.ReactElement {
     const [clockOption, setClockOption] = useState<string>(() =>
         KNOWN_CLOCKS.has(state.config.value.clock_hz) ? String(state.config.value.clock_hz) : 'custom'
     );
+    const [confirmReset, setConfirmReset] = useState(false);
 
     useSignalEffect(() => {
         const cfg = state.config.value;
@@ -135,6 +136,39 @@ export function MachineConfig(): React.ReactElement {
                 }}
                 disabled={disabled}
             />
+
+            {confirmReset ? (
+                <Stack gap="xs">
+                    <Text size="xs" c="dimmed">
+                        Reset all settings to defaults?
+                    </Text>
+                    <Group gap="xs">
+                        <Button
+                            size="xs"
+                            color="red"
+                            onClick={() => {
+                                state.resetConfig();
+                                setConfirmReset(false);
+                            }}
+                        >
+                            Reset
+                        </Button>
+                        <Button size="xs" variant="subtle" onClick={() => { setConfirmReset(false); }}>
+                            Cancel
+                        </Button>
+                    </Group>
+                </Stack>
+            ) : (
+                <Button
+                    size="xs"
+                    variant="subtle"
+                    color="red"
+                    disabled={disabled}
+                    onClick={() => { setConfirmReset(true); }}
+                >
+                    Reset to defaults
+                </Button>
+            )}
         </Stack>
     );
 }

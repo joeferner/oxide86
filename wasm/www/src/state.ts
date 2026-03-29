@@ -1,14 +1,47 @@
 import { signal, type ReadonlySignal } from '@preact/signals-react';
 import { Oxide86Computer, type WasmComputerConfig } from 'oxide86-wasm';
 
+const CONFIG_STORAGE_KEY = 'oxide86_machine_config';
+
+type PersistedConfig = Pick<WasmComputerConfig, 'cpu_type' | 'has_fpu' | 'memory_kb' | 'clock_hz' | 'video_card'>;
+
+function loadPersistedConfig(): Partial<PersistedConfig> {
+    try {
+        const raw = localStorage.getItem(CONFIG_STORAGE_KEY);
+        if (raw) {
+            return JSON.parse(raw) as Partial<PersistedConfig>;
+        }
+    } catch {
+        // ignore parse errors
+    }
+    return {};
+}
+
+function saveConfig(config: WasmComputerConfig): void {
+    const persisted: PersistedConfig = {
+        cpu_type: config.cpu_type,
+        has_fpu: config.has_fpu,
+        memory_kb: config.memory_kb,
+        clock_hz: config.clock_hz,
+        video_card: config.video_card,
+    };
+    localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(persisted));
+}
+
+const HARDWARE_DEFAULTS: PersistedConfig = {
+    cpu_type: '286',
+    has_fpu: false,
+    memory_kb: 1024,
+    clock_hz: 6_000_000,
+    video_card: 'vga',
+};
+
 function defaultConfig(): WasmComputerConfig {
     const now = new Date();
+    const saved = loadPersistedConfig();
     return {
-        cpu_type: '286',
-        has_fpu: false,
-        memory_kb: 1024,
-        clock_hz: 6_000_000,
-        video_card: 'vga',
+        ...HARDWARE_DEFAULTS,
+        ...saved,
         start_year: now.getFullYear(),
         start_month: now.getMonth() + 1,
         start_day: now.getDate(),
@@ -61,7 +94,13 @@ export class State {
     // ── Config ────────────────────────────────────────────────────────────────
 
     public updateConfig(patch: Partial<WasmComputerConfig>): void {
-        this.configSignal.value = { ...this.configSignal.value, ...patch };
+        const next = { ...this.configSignal.value, ...patch };
+        this.configSignal.value = next;
+        saveConfig(next);
+    }
+
+    public resetConfig(): void {
+        this.updateConfig(HARDWARE_DEFAULTS);
     }
 
     // ── Status ────────────────────────────────────────────────────────────────

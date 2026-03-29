@@ -82,7 +82,11 @@ export function Toolbar(): React.ReactElement {
     };
 
     const selectedDriveConfig = driveConfigs.find((d) => d.drive === activePanel);
-    const hasPanel = selectedDriveConfig != null || activePanel === 'power-confirm' || activePanel === 'reboot-confirm' || activePanel === 'config';
+    const hasPanel =
+        selectedDriveConfig != null ||
+        activePanel === 'power-confirm' ||
+        activePanel === 'reboot-confirm' ||
+        activePanel === 'config';
 
     return (
         <div className={styles.toolbarContainer} ref={containerRef}>
@@ -154,10 +158,10 @@ export function Toolbar(): React.ReactElement {
                         />
                     )}
                     {activePanel === 'power-confirm' && (
-                        <PowerPanel mode="power" onClose={() => setActivePanel(null)} />
+                        <PowerPanel mode="power" onClose={() => { setActivePanel(null); }} />
                     )}
                     {activePanel === 'reboot-confirm' && (
-                        <PowerPanel mode="reboot" onClose={() => setActivePanel(null)} />
+                        <PowerPanel mode="reboot" onClose={() => { setActivePanel(null); }} />
                     )}
                     {activePanel === 'config' && <MachineConfig />}
                 </div>

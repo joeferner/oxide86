@@ -40,7 +40,9 @@ export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.R
             .then((data) => {
                 setPresetImages(drive === 'hdd' ? data.hdd : data.floppy);
             })
-            .catch(() => {/* silently ignore */});
+            .catch(() => {
+                /* silently ignore */
+            });
     }, [drive]);
 
     const onFileChange = (e: React.ChangeEvent<HTMLInputElement>): void => {
@@ -112,7 +114,14 @@ export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.R
                     <Divider label="Pre-made images" labelPosition="center" />
                     <Stack gap={4}>
                         {presetImages.map((entry) => (
-                            <Tooltip key={entry.url} label={entry.description} position="right" withArrow multiline w={200}>
+                            <Tooltip
+                                key={entry.url}
+                                label={entry.description}
+                                position="right"
+                                withArrow
+                                multiline
+                                w={200}
+                            >
                                 <Button
                                     size="xs"
                                     variant="subtle"

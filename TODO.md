@@ -88,7 +88,7 @@
   - [ ] Emulate 80287
 - [ ] WASM (see ai-analysis/wasm-ui-plan.md)
   - [X] Pre-load images
-  - [ ] Save last machine config
+  - [X] Save last machine config
   - [ ] COM Port/Mouse
   - [ ] Joystick
   - [ ] Multiple hard drives
