@@ -124,7 +124,7 @@ impl Cpu {
                         bus.memory_write_u8(CGA_MEMORY_START + i, 0);
                     }
                 }
-                Mode::M0DEga320x200x16 | Mode::M10Ega640x350x16 => {
+                Mode::M0DEga320x200x16 | Mode::M0EEga640x200x16 | Mode::M10Ega640x350x16 => {
                     // Clear all 4 EGA planes (sequencer map mask defaults to 0x0F = all planes)
                     for i in 0..EGA_PLANE_SIZE {
                         bus.memory_write_u8(EGA_MEMORY_START + i, 0);
@@ -452,6 +452,20 @@ impl Cpu {
                     attr & 0x0F,
                 );
             }
+            Mode::M0EEga640x200x16 => {
+                bus.video_card_mut().ega_scroll_up_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    80,
+                    CHAR_HEIGHT_8,
+                    attr & 0x0F,
+                );
+            }
             Mode::M10Ega640x350x16 => {
                 bus.video_card_mut().ega_scroll_up_window(
                     ScrollWindow {
@@ -567,6 +581,20 @@ impl Cpu {
                         right,
                     },
                     40,
+                    CHAR_HEIGHT_8,
+                    attr & 0x0F,
+                );
+            }
+            Mode::M0EEga640x200x16 => {
+                bus.video_card_mut().ega_scroll_down_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    80,
                     CHAR_HEIGHT_8,
                     attr & 0x0F,
                 );
@@ -972,6 +1000,22 @@ impl Cpu {
                     xor,
                 });
             }
+            Mode::M0EEga640x200x16 => {
+                let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_8);
+                let xor = matches!(
+                    draw_mode,
+                    GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted
+                );
+                bus.video_card_mut().ega_draw_glyph(EgaGlyphParams {
+                    glyph: &glyph,
+                    char_row: row,
+                    char_col: col,
+                    fg_color,
+                    bytes_per_row: 80,
+                    char_height: CHAR_HEIGHT_8,
+                    xor,
+                });
+            }
             Mode::M10Ega640x350x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_14);
                 let xor = matches!(
@@ -1098,6 +1142,17 @@ impl Cpu {
                             cursor.col,
                             fg_color,
                             40,
+                            CHAR_HEIGHT_8,
+                        );
+                    }
+                    Mode::M0EEga640x200x16 => {
+                        let fg_color = (self.bx & 0xFF) as u8; // BL
+                        bus.video_card_mut().ega_draw_char(
+                            ch,
+                            cursor.row,
+                            cursor.col,
+                            fg_color,
+                            80,
                             CHAR_HEIGHT_8,
                         );
                     }

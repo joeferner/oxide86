@@ -70,14 +70,14 @@
     - [X] Mode 05h
     - [X] Mode 0dh
     - [X] Mode 06h
-    - [ ] Mode 0eh
+    - [X] Mode 0eh
   - [ ] VGA
     - [X] Mode 04h
     - [X] Mode 05h
     - [X] Mode 0dh
     - [ ] Mode 03h
     - [X] Mode 06h
-    - [ ] Mode 0eh
+    - [X] Mode 0eh
     - [ ] Mode 0fh
     - [ ] Mode 10h
     - [ ] Mode 03h

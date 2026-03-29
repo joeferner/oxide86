@@ -7,7 +7,7 @@ pub enum VideoCardType {
     HGC,
     /// Color Graphics Adapter (CGA) - supports text modes and CGA graphics (modes 0x00-0x07)
     CGA,
-    /// Enhanced Graphics Adapter (EGA) - supports CGA modes plus 16-color graphics (mode 0x0D)
+    /// Enhanced Graphics Adapter (EGA) - supports CGA modes plus 16-color graphics (modes 0x0D, 0x0E)
     #[default]
     EGA,
     /// Video Graphics Array (VGA) - supports EGA modes plus additional VGA modes
@@ -43,7 +43,7 @@ impl VideoCardType {
         match self {
             Self::MDA | Self::HGC => matches!(mode, 0x00..=0x07),
             Self::CGA => matches!(mode, 0x00..=0x07),
-            Self::EGA => matches!(mode, 0x00..=0x07 | 0x0D),
+            Self::EGA => matches!(mode, 0x00..=0x07 | 0x0D | 0x0E),
             Self::VGA => true,
         }
     }
