@@ -9,11 +9,11 @@ export interface Status {
 function defaultConfig(): WasmComputerConfig {
     const now = new Date();
     return {
-        cpu_type: '8086',
+        cpu_type: '286',
         has_fpu: false,
-        memory_kb: 640,
-        clock_hz: 4_772_727,
-        video_card: 'ega',
+        memory_kb: 1024,
+        clock_hz: 6_000_000,
+        video_card: 'vga',
         start_year: now.getFullYear(),
         start_month: now.getMonth() + 1,
         start_day: now.getDate(),

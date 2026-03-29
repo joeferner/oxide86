@@ -201,7 +201,7 @@ in `main.tsx`.
 - **Reboot** — `onClick: state.reboot()`. Disabled when off.
 - Both buttons use `useComputed(() => state.computer.value !== null)` to reactively track run state.
 
-### 2d. StatusBar (`wasm/www/src/components/StatusBar.tsx`)
+### ✅ 2d. StatusBar (`wasm/www/src/components/StatusBar.tsx`)
 
 Thin bar directly below `Screen`, same width as the canvas:
 
@@ -221,7 +221,6 @@ Mantine form controls that call `state.updateConfig(patch)`. Disabled while `sta
 - `Select` — RAM: 256 KB, 512 KB, 640 KB
 - `Select` — clock: 4.77 MHz, 8 MHz, 10 MHz; plus a `NumberInput` that unlocks on "Custom"
 - `Select` — video card: CGA, EGA, VGA
-- Date/time pickers (or `NumberInput` fields) for `start_year/month/day/hour/minute/second`
 
 ### 2f. ConfigDrawer (`wasm/www/src/components/ConfigDrawer.tsx`)
 

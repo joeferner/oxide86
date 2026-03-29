@@ -87,9 +87,7 @@
   - [ ] Test Fractint Version 15.x and below
   - [ ] Emulate 80287
 - [ ] WASM (see ai-analysis/wasm-ui-plan.md)
-  - [X] Phase 1: WASM Bridge
-  - [ ] Phase 2: React UI Components
-  - [ ] Phase 3: Keyboard Scan Code Mapping
+  - [ ] Save last machine config
   - [ ] COM Port/Mouse
   - [ ] Joystick
   - [ ] Multiple hard drives

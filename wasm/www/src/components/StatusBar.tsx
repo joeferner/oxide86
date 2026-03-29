@@ -22,7 +22,9 @@ export function StatusBar(): React.ReactElement {
         const id = setInterval(() => {
             state.sampleMhz();
         }, 500);
-        return () => { clearInterval(id); };
+        return () => {
+            clearInterval(id);
+        };
     });
 
     useSignalEffect(() => {
@@ -33,7 +35,13 @@ export function StatusBar(): React.ReactElement {
         <div className={styles.bar}>
             <span className={styles.message}>{message}</span>
             {error && (
-                <span className={styles.error} onClick={() => { state.dismissError(); }} title="Click to dismiss">
+                <span
+                    className={styles.error}
+                    onClick={() => {
+                        state.dismissError();
+                    }}
+                    title="Click to dismiss"
+                >
                     {error}
                 </span>
             )}
