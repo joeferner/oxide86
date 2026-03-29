@@ -21,6 +21,7 @@ pub enum Mode {
     M0EEga640x200x16,
     M0FEga640x350x4,
     M10Ega640x350x16,
+    M12Vga640x480x16,
     M13Vga320x200x256,
     Unknown(u8),
 }
@@ -42,6 +43,7 @@ impl Mode {
             Mode::M0EEga640x200x16 => 0x0e,
             Mode::M0FEga640x350x4 => 0x0f,
             Mode::M10Ega640x350x16 => 0x10,
+            Mode::M12Vga640x480x16 => 0x12,
             Mode::M13Vga320x200x256 => 0x13,
             Mode::Unknown(v) => *v,
         }
@@ -59,6 +61,7 @@ impl Mode {
             Mode::M0EEga640x200x16 => (640, 400),
             Mode::M0FEga640x350x4 => (640, 350),
             Mode::M10Ega640x350x16 => (640, 350),
+            Mode::M12Vga640x480x16 => (640, 480),
             Mode::M13Vga320x200x256 => (VGA_MODE_13_WIDTH as u32, VGA_MODE_13_HEIGHT as u32),
             _ => (
                 (CHAR_WIDTH * TEXT_MODE_COLS) as u32,
@@ -82,6 +85,7 @@ impl Mode {
             Mode::M0EEga640x200x16 => Some(TextDimensions { rows: 25, cols: 80 }),
             Mode::M0FEga640x350x4 => Some(TextDimensions { rows: 25, cols: 80 }),
             Mode::M10Ega640x350x16 => Some(TextDimensions { rows: 25, cols: 80 }),
+            Mode::M12Vga640x480x16 => Some(TextDimensions { rows: 30, cols: 80 }),
             Mode::M13Vga320x200x256 => Some(TextDimensions { rows: 25, cols: 40 }),
             Mode::Unknown(_) => None,
         }
@@ -103,6 +107,7 @@ impl From<u8> for Mode {
             0x0e => Mode::M0EEga640x200x16,
             0x0f => Mode::M0FEga640x350x4,
             0x10 => Mode::M10Ega640x350x16,
+            0x12 => Mode::M12Vga640x480x16,
             0x13 => Mode::M13Vga320x200x256,
             v => Mode::Unknown(v),
         }

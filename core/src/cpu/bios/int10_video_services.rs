@@ -5,7 +5,7 @@ use crate::{
     cpu::{
         Cpu,
         bios::{
-            BIOS_CGA_FONT_OFFSET, BIOS_EGA_FONT_OFFSET,
+            BIOS_CGA_FONT_OFFSET, BIOS_EGA_FONT_OFFSET, BIOS_VGA_FONT_OFFSET,
             bda::{
                 bda_get_active_page, bda_get_char_height, bda_get_columns,
                 bda_get_crt_controller_port_address, bda_get_crt_palette, bda_get_cursor_end_line,
@@ -127,8 +127,9 @@ impl Cpu {
                 Mode::M0DEga320x200x16
                 | Mode::M0EEga640x200x16
                 | Mode::M0FEga640x350x4
-                | Mode::M10Ega640x350x16 => {
-                    // Clear all 4 EGA planes (sequencer map mask defaults to 0x0F = all planes)
+                | Mode::M10Ega640x350x16
+                | Mode::M12Vga640x480x16 => {
+                    // Clear all 4 EGA/VGA planes (sequencer map mask defaults to 0x0F = all planes)
                     for i in 0..EGA_PLANE_SIZE {
                         bus.memory_write_u8(EGA_MEMORY_START + i, 0);
                     }
@@ -180,6 +181,7 @@ impl Cpu {
             Mode::M0FEga640x350x4 | Mode::M10Ega640x350x16 => {
                 (BIOS_EGA_FONT_OFFSET, 0xF000u16, 14u8)
             }
+            Mode::M12Vga640x480x16 => (BIOS_VGA_FONT_OFFSET, 0xF000u16, 16u8),
             _ => (BIOS_CGA_FONT_OFFSET, 0xF000u16, 8u8),
         };
         bus.memory_write_u16(0x010C, int43_offset);
@@ -485,6 +487,20 @@ impl Cpu {
                     attr & 0x0F,
                 );
             }
+            Mode::M12Vga640x480x16 => {
+                bus.video_card_mut().ega_scroll_up_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    80,
+                    CHAR_HEIGHT,
+                    attr & 0x0F,
+                );
+            }
             Mode::M13Vga320x200x256 => {
                 bus.video_card_mut().vga_scroll_up_window(
                     ScrollWindow {
@@ -615,6 +631,20 @@ impl Cpu {
                     },
                     80,
                     CHAR_HEIGHT_14,
+                    attr & 0x0F,
+                );
+            }
+            Mode::M12Vga640x480x16 => {
+                bus.video_card_mut().ega_scroll_down_window(
+                    ScrollWindow {
+                        lines,
+                        top,
+                        left,
+                        bottom,
+                        right,
+                    },
+                    80,
+                    CHAR_HEIGHT,
                     attr & 0x0F,
                 );
             }
@@ -1037,6 +1067,22 @@ impl Cpu {
                     xor,
                 });
             }
+            Mode::M12Vga640x480x16 => {
+                let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT);
+                let xor = matches!(
+                    draw_mode,
+                    GraphicsDrawMode::Xor | GraphicsDrawMode::XorInverted
+                );
+                bus.video_card_mut().ega_draw_glyph(EgaGlyphParams {
+                    glyph: &glyph,
+                    char_row: row,
+                    char_col: col,
+                    fg_color,
+                    bytes_per_row: 80,
+                    char_height: CHAR_HEIGHT,
+                    xor,
+                });
+            }
             Mode::M13Vga320x200x256 => {
                 for (r, &row_byte) in glyph.iter().enumerate().take(CHAR_HEIGHT_8) {
                     let pixel_y = row as usize * CHAR_HEIGHT_8 + r;
@@ -1171,6 +1217,18 @@ impl Cpu {
                             fg_color,
                             80,
                             CHAR_HEIGHT_14,
+                        );
+                    }
+                    Mode::M12Vga640x480x16 => {
+                        // VGA 640x480 planar graphics: 80 bytes per row, 8x16 character cells
+                        let fg_color = (self.bx & 0xFF) as u8; // BL
+                        bus.video_card_mut().ega_draw_char(
+                            ch,
+                            cursor.row,
+                            cursor.col,
+                            fg_color,
+                            80,
+                            CHAR_HEIGHT,
                         );
                     }
                     Mode::M13Vga320x200x256 => {

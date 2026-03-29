@@ -32,6 +32,9 @@ pub const CGA_FONT_8X8_DATA: &[u8] = CGA_FONT_8X8;
 /// Public re-export of the raw 8x14 EGA font bytes for BIOS ROM mapping.
 pub const EGA_FONT_8X14_DATA: &[u8] = EGA_FONT_8X14;
 
+/// Public re-export of the raw 8x16 VGA font bytes for BIOS ROM mapping.
+pub const VGA_FONT_8X16_DATA: &[u8] = VGA_FONT_8X16;
+
 /// CP437 font wrapper around embedded BIOS fonts
 #[derive(Clone)]
 pub(crate) struct Cp437Font {
