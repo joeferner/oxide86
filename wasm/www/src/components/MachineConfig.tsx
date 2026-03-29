@@ -153,7 +153,13 @@ export function MachineConfig(): React.ReactElement {
                         >
                             Reset
                         </Button>
-                        <Button size="xs" variant="subtle" onClick={() => { setConfirmReset(false); }}>
+                        <Button
+                            size="xs"
+                            variant="subtle"
+                            onClick={() => {
+                                setConfirmReset(false);
+                            }}
+                        >
                             Cancel
                         </Button>
                     </Group>
@@ -164,7 +170,9 @@ export function MachineConfig(): React.ReactElement {
                     variant="subtle"
                     color="red"
                     disabled={disabled}
-                    onClick={() => { setConfirmReset(true); }}
+                    onClick={() => {
+                        setConfirmReset(true);
+                    }}
                 >
                     Reset to defaults
                 </Button>

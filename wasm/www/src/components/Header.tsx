@@ -46,7 +46,9 @@ export function Header(): React.ReactElement {
                     className={styles.notification}
                     color="red"
                     withBorder
-                    onClose={() => { state.dismissError(); }}
+                    onClose={() => {
+                        state.dismissError();
+                    }}
                 >
                     {error}
                 </Notification>

@@ -114,6 +114,7 @@ pub struct Oxide86Computer {
     floppy_a_data: Option<Vec<u8>>,
     floppy_b_data: Option<Vec<u8>>,
     hdd_data: Option<Vec<u8>>,
+    boot_drive: Option<String>,
     frame_buf: Vec<u8>,
 }
 
@@ -140,17 +141,27 @@ impl Oxide86Computer {
             floppy_a_data: None,
             floppy_b_data: None,
             hdd_data: None,
+            boot_drive: None,
             frame_buf: Vec::new(),
         })
     }
 
-    pub fn power_on(&mut self, hdd_image: Option<Uint8Array>, boot_floppy: Option<Uint8Array>) {
-        self.floppy_a_data = boot_floppy.map(|a| a.to_vec());
+    pub fn power_on(
+        &mut self,
+        hdd_image: Option<Uint8Array>,
+        floppy_a_image: Option<Uint8Array>,
+        floppy_b_image: Option<Uint8Array>,
+        boot_drive: Option<String>,
+    ) {
         self.hdd_data = hdd_image.map(|a| a.to_vec());
+        self.floppy_a_data = floppy_a_image.map(|a| a.to_vec());
+        self.floppy_b_data = floppy_b_image.map(|a| a.to_vec());
+        self.boot_drive = boot_drive;
         self.state = None;
         let hdd = self.hdd_data.clone();
         let floppy_a = self.floppy_a_data.clone();
-        self.start_computer(hdd, floppy_a);
+        let floppy_b = self.floppy_b_data.clone();
+        self.start_computer(hdd, floppy_a, floppy_b);
     }
 
     pub fn power_off(&mut self) {
@@ -160,8 +171,9 @@ impl Oxide86Computer {
     pub fn reboot(&mut self) {
         let hdd = self.hdd_data.clone();
         let floppy_a = self.floppy_a_data.clone();
+        let floppy_b = self.floppy_b_data.clone();
         self.state = None;
-        self.start_computer(hdd, floppy_a);
+        self.start_computer(hdd, floppy_a, floppy_b);
     }
 
     pub fn run_for_cycles(&mut self, cycles: u32) -> RunResult {
@@ -340,30 +352,48 @@ impl Oxide86Computer {
 }
 
 impl Oxide86Computer {
-    fn start_computer(&mut self, hdd: Option<Vec<u8>>, floppy_a: Option<Vec<u8>>) {
+    fn start_computer(
+        &mut self,
+        hdd: Option<Vec<u8>>,
+        floppy_a: Option<Vec<u8>>,
+        floppy_b: Option<Vec<u8>>,
+    ) {
         match ComputerState::create(&self.config, hdd.as_deref()) {
             Ok(mut state) => {
-                if let Some(data) = &floppy_a {
-                    match BackedDisk::new(MemBackend::from_data(data.clone())) {
-                        Ok(disk) => {
-                            state
-                                .computer
-                                .set_floppy_disk(DriveNumber::floppy_a(), Some(Box::new(disk)));
-                        }
-                        Err(e) => {
-                            self.last_error = Some(format!("Invalid floppy image: {e}"));
-                            self.state = Some(state);
-                            return;
+                for (data, drive_num, label) in [
+                    (floppy_a.as_deref(), DriveNumber::floppy_a(), "floppy A"),
+                    (floppy_b.as_deref(), DriveNumber::floppy_b(), "floppy B"),
+                ] {
+                    if let Some(data) = data {
+                        match BackedDisk::new(MemBackend::from_data(data.to_vec())) {
+                            Ok(disk) => {
+                                state
+                                    .computer
+                                    .set_floppy_disk(drive_num, Some(Box::new(disk)));
+                            }
+                            Err(e) => {
+                                self.last_error = Some(format!("Invalid {label} image: {e}"));
+                                self.state = Some(state);
+                                return;
+                            }
                         }
                     }
                 }
 
-                let boot_drive = if floppy_a.is_some() {
-                    Some(DriveNumber::floppy_a())
-                } else if hdd.is_some() {
-                    Some(DriveNumber::from_hard_drive_index(0))
-                } else {
-                    None
+                let boot_drive = match self.boot_drive.as_deref() {
+                    Some("floppy_a") if floppy_a.is_some() => Some(DriveNumber::floppy_a()),
+                    Some("floppy_b") if floppy_b.is_some() => Some(DriveNumber::floppy_b()),
+                    Some("hdd") if hdd.is_some() => Some(DriveNumber::from_hard_drive_index(0)),
+                    _ => {
+                        // Auto: floppy A first, then HDD
+                        if floppy_a.is_some() {
+                            Some(DriveNumber::floppy_a())
+                        } else if hdd.is_some() {
+                            Some(DriveNumber::from_hard_drive_index(0))
+                        } else {
+                            None
+                        }
+                    }
                 };
 
                 if let Some(drive) = boot_drive

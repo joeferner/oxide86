@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Stack, Text, Button, Divider, Loader, Tooltip } from '@mantine/core';
+import { Stack, Text, Button, Divider, Loader, Tooltip, Group, Switch } from '@mantine/core';
 import { useSignalEffect } from '@preact/signals-react';
 import { state } from '../state';
 import styles from './Toolbar.module.scss';
@@ -29,9 +29,19 @@ export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.R
     );
     const [presetImages, setPresetImages] = useState<ImageEntry[]>([]);
     const [loadingUrl, setLoadingUrl] = useState<string | null>(null);
+    const [isBootDrive, setIsBootDrive] = useState(() => state.bootDrive.peek() === drive);
+    const [isRunning, setIsRunning] = useState(() => state.computer.peek() !== null);
 
     useSignalEffect(() => {
         setCurrentFile(drive === 0 ? state.floppyA.value : drive === 1 ? state.floppyB.value : state.hdd.value);
+    });
+
+    useSignalEffect(() => {
+        setIsBootDrive(state.bootDrive.value === drive);
+    });
+
+    useSignalEffect(() => {
+        setIsRunning(state.computer.value !== null);
     });
 
     useEffect(() => {
@@ -86,11 +96,18 @@ export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.R
         }
     };
 
+    const onBootToggle = (e: React.ChangeEvent<HTMLInputElement>): void => {
+        state.setBootDrive(e.currentTarget.checked ? drive : null);
+    };
+
     return (
         <Stack gap="xs" className={styles.panel}>
-            <Text size="sm" fw={600}>
-                {label}
-            </Text>
+            <Group justify="space-between" align="center" wrap="nowrap">
+                <Text size="sm" fw={600}>
+                    {label}
+                </Text>
+                <Switch size="xs" label="Boot" checked={isBootDrive} onChange={onBootToggle} disabled={isRunning} />
+            </Group>
             <Text size="xs" c="dimmed">
                 {currentFile ? currentFile.name : 'Empty'}
             </Text>

@@ -60,6 +60,7 @@ export class State {
     private readonly floppyASignal = signal<File | null>(null);
     private readonly floppyBSignal = signal<File | null>(null);
     private readonly hddSignal = signal<File | null>(null);
+    private readonly bootDriveSignal = signal<0 | 1 | 'hdd' | null>('hdd');
 
     // ── Read-only signal accessors ────────────────────────────────────────────
 
@@ -89,6 +90,10 @@ export class State {
 
     public get hdd(): ReadonlySignal<File | null> {
         return this.hddSignal;
+    }
+
+    public get bootDrive(): ReadonlySignal<0 | 1 | 'hdd' | null> {
+        return this.bootDriveSignal;
     }
 
     // ── Config ────────────────────────────────────────────────────────────────
@@ -142,12 +147,20 @@ export class State {
             return;
         }
 
-        const hddFile = this.hddSignal.value;
-        const floppyFile = this.floppyASignal.value;
-        const hddImage = hddFile ? new Uint8Array(await hddFile.arrayBuffer()) : null;
-        const floppyImage = floppyFile ? new Uint8Array(await floppyFile.arrayBuffer()) : null;
+        const toBytes = async (f: File | null): Promise<Uint8Array | null> =>
+            f ? new Uint8Array(await f.arrayBuffer()) : null;
 
-        computer.power_on(hddImage, floppyImage);
+        const [hddImage, floppyAImage, floppyBImage] = await Promise.all([
+            toBytes(this.hddSignal.value),
+            toBytes(this.floppyASignal.value),
+            toBytes(this.floppyBSignal.value),
+        ]);
+
+        const bootDriveMap: Record<string, string> = { '0': 'floppy_a', '1': 'floppy_b', hdd: 'hdd' };
+        const bootDrive =
+            this.bootDriveSignal.value != null ? bootDriveMap[String(this.bootDriveSignal.value)] : undefined;
+
+        computer.power_on(hddImage, floppyAImage, floppyBImage, bootDrive);
         this.computerSignal.value = computer;
         this.powerStateSignal.value = 'on';
         this.errorSignal.value = null;
@@ -195,6 +208,10 @@ export class State {
 
     public setHdd(file: File | null): void {
         this.hddSignal.value = file;
+    }
+
+    public setBootDrive(drive: 0 | 1 | 'hdd' | null): void {
+        this.bootDriveSignal.value = drive;
     }
 }
 

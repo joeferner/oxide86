@@ -158,10 +158,20 @@ export function Toolbar(): React.ReactElement {
                         />
                     )}
                     {activePanel === 'power-confirm' && (
-                        <PowerPanel mode="power" onClose={() => { setActivePanel(null); }} />
+                        <PowerPanel
+                            mode="power"
+                            onClose={() => {
+                                setActivePanel(null);
+                            }}
+                        />
                     )}
                     {activePanel === 'reboot-confirm' && (
-                        <PowerPanel mode="reboot" onClose={() => { setActivePanel(null); }} />
+                        <PowerPanel
+                            mode="reboot"
+                            onClose={() => {
+                                setActivePanel(null);
+                            }}
+                        />
                     )}
                     {activePanel === 'config' && <MachineConfig />}
                 </div>
