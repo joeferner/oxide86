@@ -332,7 +332,7 @@ impl VideoBuffer {
         }
     }
 
-    fn render_resolution(&self) -> (u32, u32) {
+    pub fn render_resolution(&self) -> (u32, u32) {
         if self.crtc_max_scan_line.is_some() || self.crtc_vertical_displayed.is_some() {
             // Always output at the standard CGA text resolution so scanlines fill the
             // same physical height as normal text mode (matching mode 06h behaviour).

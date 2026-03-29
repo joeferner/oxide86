@@ -43,7 +43,9 @@ export function MachineConfig({ opened, onClose }: Props): React.ReactElement {
     };
 
     const onClockOptionChange = (val: string | null): void => {
-        if (!val) {return;}
+        if (!val) {
+            return;
+        }
         setClockOption(val);
         if (val !== 'custom') {
             patch({ clock_hz: Number(val) });
@@ -66,7 +68,9 @@ export function MachineConfig({ opened, onClose }: Props): React.ReactElement {
                     ]}
                     value={config.cpu_type}
                     onChange={(v) => {
-                        if (v) {patch({ cpu_type: v });}
+                        if (v) {
+                            patch({ cpu_type: v });
+                        }
                     }}
                     disabled={disabled}
                 />
@@ -87,7 +91,9 @@ export function MachineConfig({ opened, onClose }: Props): React.ReactElement {
                     max={65536}
                     step={64}
                     onChange={(v) => {
-                        if (typeof v === 'number') {patch({ memory_kb: v });}
+                        if (typeof v === 'number') {
+                            patch({ memory_kb: v });
+                        }
                     }}
                     disabled={disabled}
                 />
@@ -108,7 +114,9 @@ export function MachineConfig({ opened, onClose }: Props): React.ReactElement {
                         max={100_000_000}
                         step={1_000_000}
                         onChange={(v) => {
-                            if (typeof v === 'number') {patch({ clock_hz: v });}
+                            if (typeof v === 'number') {
+                                patch({ clock_hz: v });
+                            }
                         }}
                         disabled={disabled}
                     />
@@ -123,7 +131,9 @@ export function MachineConfig({ opened, onClose }: Props): React.ReactElement {
                     ]}
                     value={config.video_card}
                     onChange={(v) => {
-                        if (v) {patch({ video_card: v });}
+                        if (v) {
+                            patch({ video_card: v });
+                        }
                     }}
                     disabled={disabled}
                 />

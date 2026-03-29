@@ -14,6 +14,7 @@ use oxide86_core::{
 use serde::{Deserialize, Serialize};
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
+use web_sys::{CanvasRenderingContext2d, ImageData};
 
 #[derive(Deserialize, Tsify)]
 #[tsify(from_wasm_abi)]
@@ -38,14 +39,6 @@ pub struct RunResult {
     pub halted: bool,
     pub exit_code: Option<u8>,
     pub cycles_executed: u32,
-}
-
-#[derive(Serialize, Tsify)]
-#[tsify(into_wasm_abi)]
-pub struct RenderResult {
-    pub data: Vec<u8>,
-    pub width: u32,
-    pub height: u32,
 }
 
 struct ComputerState {
@@ -121,6 +114,7 @@ pub struct Oxide86Computer {
     floppy_a_data: Option<Vec<u8>>,
     floppy_b_data: Option<Vec<u8>>,
     hdd_data: Option<Vec<u8>>,
+    frame_buf: Vec<u8>,
 }
 
 #[wasm_bindgen]
@@ -128,7 +122,7 @@ impl Oxide86Computer {
     #[wasm_bindgen(constructor)]
     pub fn new(config: WasmComputerConfig) -> Result<Self, JsValue> {
         console_error_panic_hook::set_once();
-        wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
+        wasm_logger::init(wasm_logger::Config::new(log::Level::Debug));
 
         // Validate config eagerly so JS gets a clear error at construction time.
         CpuType::parse(&config.cpu_type)
@@ -146,6 +140,7 @@ impl Oxide86Computer {
             floppy_a_data: None,
             floppy_b_data: None,
             hdd_data: None,
+            frame_buf: Vec::new(),
         })
     }
 
@@ -205,22 +200,45 @@ impl Oxide86Computer {
         }
     }
 
-    pub fn render_frame(&self) -> RenderResult {
-        match &self.state {
-            Some(state) => {
-                let result = state.video_buffer.read().unwrap().render();
-                RenderResult {
-                    data: result.data,
-                    width: result.width,
-                    height: result.height,
-                }
-            }
-            None => RenderResult {
-                data: vec![0u8; 640 * 400 * 4],
-                width: 640,
-                height: 400,
-            },
+    /// Renders the current frame to the canvas context if the frame is dirty.
+    /// The pixel buffer is reused across calls to avoid per-frame allocation.
+    pub fn render_frame(&mut self, ctx: &CanvasRenderingContext2d) -> Result<(), JsValue> {
+        // Clone the Arc so we can release the borrow on self.state before
+        // mutating self.frame_buf.
+        let video_buffer = match &self.state {
+            Some(state) => Arc::clone(&state.video_buffer),
+            None => return Ok(()),
+        };
+
+        if !video_buffer.read().unwrap().is_dirty() {
+            return Ok(());
         }
+
+        let (width, height) = {
+            let mut vb = video_buffer.write().unwrap();
+            let (w, h) = vb.render_resolution();
+            let needed = w as usize * h as usize * 4;
+            if self.frame_buf.len() != needed {
+                self.frame_buf.resize(needed, 0);
+            }
+            vb.render_and_clear_dirty(&mut self.frame_buf);
+            (w, h)
+        };
+
+        if let Some(canvas) = ctx.canvas()
+            && (canvas.width() != width || canvas.height() != height)
+        {
+            canvas.set_width(width);
+            canvas.set_height(height);
+        }
+
+        let image_data = ImageData::new_with_u8_clamped_array_and_sh(
+            wasm_bindgen::Clamped(self.frame_buf.as_slice()),
+            width,
+            height,
+        )?;
+        ctx.put_image_data(&image_data, 0.0, 0.0)?;
+        Ok(())
     }
 
     pub fn push_key_event(&mut self, scan_code: u8, is_down: bool) {

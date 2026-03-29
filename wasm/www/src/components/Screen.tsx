@@ -1,16 +1,20 @@
 import React, { useEffect, useRef } from 'react';
 import { useSignalEffect } from '@preact/signals-react';
 import { state } from '../state';
-import { KEY_MAP } from '../keycodes';
+import { EXTENDED_KEYS, KEY_MAP } from '../keycodes';
 
 export function Screen(): React.ReactElement {
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
     useEffect(() => {
         const canvas = canvasRef.current;
-        if (!canvas) { return; }
+        if (!canvas) {
+            return;
+        }
         const ctx = canvas.getContext('2d');
-        if (!ctx) { return; }
+        if (!ctx) {
+            return;
+        }
         ctx.fillStyle = '#000';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
     }, []);
@@ -43,14 +47,7 @@ export function Screen(): React.ReactElement {
                 return;
             }
 
-            const frame = computer.render_frame();
-
-            if (canvas.width !== frame.width || canvas.height !== frame.height) {
-                canvas.width = frame.width;
-                canvas.height = frame.height;
-            }
-
-            ctx.putImageData(new ImageData(new Uint8ClampedArray(frame.data), frame.width, frame.height), 0, 0);
+            computer.render_frame(ctx);
 
             if (!result.halted) {
                 raf = requestAnimationFrame(tick);
@@ -73,6 +70,11 @@ export function Screen(): React.ReactElement {
                 return;
             }
             e.preventDefault();
+            const isExtended = EXTENDED_KEYS.has(e.code);
+            console.log(`[key] DOWN code=${e.code} scanCode=0x${scanCode.toString(16)} extended=${isExtended}`);
+            if (isExtended) {
+                state.computer.value?.push_key_event(0xe0, true);
+            }
             state.computer.value?.push_key_event(scanCode, true);
         };
 
@@ -82,6 +84,11 @@ export function Screen(): React.ReactElement {
                 return;
             }
             e.preventDefault();
+            const isExtended = EXTENDED_KEYS.has(e.code);
+            console.log(`[key] UP   code=${e.code} scanCode=0x${scanCode.toString(16)} extended=${isExtended}`);
+            if (isExtended) {
+                state.computer.value?.push_key_event(0xe0, true);
+            }
             state.computer.value?.push_key_event(scanCode, false);
         };
 

@@ -89,7 +89,7 @@ export const KEY_MAP: Record<string, number> = {
     NumpadDecimal: 0x53,
     F11: 0x57,
     F12: 0x58,
-    // Extended keys (sent as 0xE0 prefix on real hardware; emulator accepts the make code directly)
+    // Extended keys (require 0xE0 prefix before the scan code on real hardware)
     ArrowUp: 0x48,
     ArrowLeft: 0x4b,
     ArrowRight: 0x4d,
@@ -103,3 +103,19 @@ export const KEY_MAP: Record<string, number> = {
     NumpadEnter: 0x1c,
     NumpadDivide: 0x35,
 };
+
+// Keys that require an 0xE0 prefix byte before their scan code.
+export const EXTENDED_KEYS = new Set<string>([
+    'ArrowUp',
+    'ArrowLeft',
+    'ArrowRight',
+    'ArrowDown',
+    'Insert',
+    'Delete',
+    'Home',
+    'End',
+    'PageUp',
+    'PageDown',
+    'NumpadEnter',
+    'NumpadDivide',
+]);

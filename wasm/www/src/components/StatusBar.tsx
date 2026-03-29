@@ -50,9 +50,7 @@ export function StatusBar(): React.ReactElement {
                     {error}
                 </span>
             )}
-            <span className={styles.perf}>
-                {mhz > 0 ? `${mhz.toFixed(2)} / ${targetMhz.toFixed(2)} MHz` : ''}
-            </span>
+            <span className={styles.perf}>{mhz > 0 ? `${mhz.toFixed(2)} / ${targetMhz.toFixed(2)} MHz` : ''}</span>
         </div>
     );
 }
