@@ -378,6 +378,7 @@ impl VideoBuffer {
             }
             Mode::M0DEga320x200x16 => self.render_mode_0dh_320x200x16(buf),
             Mode::M0EEga640x200x16 => self.render_mode_0eh_640x200x16(buf),
+            Mode::M0FEga640x350x4 => self.render_mode_0fh_640x350x4(buf),
             Mode::M10Ega640x350x16 => self.render_mode_10h_640x350x16(buf),
             Mode::M13Vga320x200x256 => self.render_mode_13h_320x200x256(buf),
             Mode::Unknown(_) => self.render_text_mode(buf),
@@ -618,6 +619,43 @@ impl VideoBuffer {
                     buf[offset + 2] = b;
                     buf[offset + 3] = 0xFF;
                 }
+            }
+        }
+    }
+
+    /// Render EGA 640x350 monochrome graphics (mode 0Fh).
+    ///
+    /// Only planes 0 and 2 carry data; planes 1 and 3 stay zero.
+    /// Pixel intensity = (plane2_bit << 1) | plane0_bit → 0..3.
+    /// The standard EGA BIOS AC palette for this mode maps those 4 levels to
+    /// black / dark-gray / light-gray / white, so the render applies that
+    /// mapping directly rather than routing through the DAC palette.
+    fn render_mode_0fh_640x350x4(&self, buf: &mut [u8]) {
+        const WIDTH: usize = 640;
+        const HEIGHT: usize = 350;
+        // 6-bit DAC values matching EGA BIOS AC entries 0x00, 0x08, 0x07, 0x0F
+        const LEVELS: [[u8; 3]; 4] = [
+            [0x00, 0x00, 0x00], // 0 → black
+            [0x15, 0x15, 0x15], // 1 → dark gray  (DAC index 8)
+            [0x2A, 0x2A, 0x2A], // 2 → light gray (DAC index 7)
+            [0x3F, 0x3F, 0x3F], // 3 → bright white (DAC index 15)
+        ];
+        let bytes_per_row = self.crtc_offset.map(|v| v as usize * 2).unwrap_or(80);
+        let start_byte = self.start_address as usize;
+
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let byte_offset = (start_byte + y * bytes_per_row + x / 8) % EGA_PLANE_SIZE;
+                let bit_pos = 7 - (x % 8);
+                let p0 = (self.vram[byte_offset] >> bit_pos) & 1;
+                let p2 = (self.vram[2 * EGA_PLANE_SIZE + byte_offset] >> bit_pos) & 1;
+                let level = (p2 << 1) | p0;
+                let dac = LEVELS[level as usize];
+                let offset = (y * WIDTH + x) * 4;
+                buf[offset] = dac_to_8bit(dac[0]);
+                buf[offset + 1] = dac_to_8bit(dac[1]);
+                buf[offset + 2] = dac_to_8bit(dac[2]);
+                buf[offset + 3] = 0xFF;
             }
         }
     }

@@ -95,6 +95,14 @@ pub(crate) fn mode_0eh_ega_640x200x16() {
     );
 }
 
+#[test_log::test]
+pub(crate) fn mode_0fh_ega_640x350x4() {
+    run_assert_screen_key_press_run_test(
+        "video/mode_0fh_ega_640x350x4",
+        make_computer!(video_card_type: VideoCardType::EGA),
+    );
+}
+
 /// Tests that CRTC start address registers 0x0C/0x0D correctly offset the
 /// display viewport in EGA mode 0x0D. Page 0 (offset 0) is white; page 1
 /// (offset 8000 = 0x1F40) is blue. Flipping the CRTC start address must

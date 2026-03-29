@@ -124,7 +124,10 @@ impl Cpu {
                         bus.memory_write_u8(CGA_MEMORY_START + i, 0);
                     }
                 }
-                Mode::M0DEga320x200x16 | Mode::M0EEga640x200x16 | Mode::M10Ega640x350x16 => {
+                Mode::M0DEga320x200x16
+                | Mode::M0EEga640x200x16
+                | Mode::M0FEga640x350x4
+                | Mode::M10Ega640x350x16 => {
                     // Clear all 4 EGA planes (sequencer map mask defaults to 0x0F = all planes)
                     for i in 0..EGA_PLANE_SIZE {
                         bus.memory_write_u8(EGA_MEMORY_START + i, 0);
@@ -174,7 +177,9 @@ impl Cpu {
         // Programs use INT 43h to locate font bitmaps for custom text rendering,
         // and read BDA[0x85] (via AH=11h/AL=30h/BH=01h) to get bytes-per-character.
         let (int43_offset, int43_segment, char_height) = match mode {
-            Mode::M10Ega640x350x16 => (BIOS_EGA_FONT_OFFSET, 0xF000u16, 14u8),
+            Mode::M0FEga640x350x4 | Mode::M10Ega640x350x16 => {
+                (BIOS_EGA_FONT_OFFSET, 0xF000u16, 14u8)
+            }
             _ => (BIOS_CGA_FONT_OFFSET, 0xF000u16, 8u8),
         };
         bus.memory_write_u16(0x010C, int43_offset);
@@ -466,7 +471,7 @@ impl Cpu {
                     attr & 0x0F,
                 );
             }
-            Mode::M10Ega640x350x16 => {
+            Mode::M0FEga640x350x4 | Mode::M10Ega640x350x16 => {
                 bus.video_card_mut().ega_scroll_up_window(
                     ScrollWindow {
                         lines,
@@ -599,7 +604,7 @@ impl Cpu {
                     attr & 0x0F,
                 );
             }
-            Mode::M10Ega640x350x16 => {
+            Mode::M0FEga640x350x4 | Mode::M10Ega640x350x16 => {
                 bus.video_card_mut().ega_scroll_down_window(
                     ScrollWindow {
                         lines,
@@ -1016,7 +1021,7 @@ impl Cpu {
                     xor,
                 });
             }
-            Mode::M10Ega640x350x16 => {
+            Mode::M0FEga640x350x4 | Mode::M10Ega640x350x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT_14);
                 let xor = matches!(
                     draw_mode,
@@ -1156,7 +1161,7 @@ impl Cpu {
                             CHAR_HEIGHT_8,
                         );
                     }
-                    Mode::M10Ega640x350x16 => {
+                    Mode::M0FEga640x350x4 | Mode::M10Ega640x350x16 => {
                         // EGA 640x350 planar graphics: 80 bytes per row, 8x14 character cells
                         let fg_color = (self.bx & 0xFF) as u8; // BL
                         bus.video_card_mut().ega_draw_char(

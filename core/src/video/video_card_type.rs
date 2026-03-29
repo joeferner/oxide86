@@ -43,7 +43,7 @@ impl VideoCardType {
         match self {
             Self::MDA | Self::HGC => matches!(mode, 0x00..=0x07),
             Self::CGA => matches!(mode, 0x00..=0x07),
-            Self::EGA => matches!(mode, 0x00..=0x07 | 0x0D | 0x0E),
+            Self::EGA => matches!(mode, 0x00..=0x07 | 0x0D | 0x0E | 0x0F),
             Self::VGA => true,
         }
     }

@@ -78,7 +78,7 @@
     - [ ] Mode 03h
     - [X] Mode 06h
     - [X] Mode 0eh
-    - [ ] Mode 0fh
+    - [X] Mode 0fh
     - [ ] Mode 10h
     - [ ] Mode 03h
     - [ ] Mode 12h
