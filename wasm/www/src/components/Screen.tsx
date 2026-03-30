@@ -108,11 +108,19 @@ export function Screen(): React.ReactElement {
             state.computer.value?.push_mouse_event(e.movementX, e.movementY, e.buttons);
         };
 
+        const onMouseButton = (e: MouseEvent): void => {
+            state.computer.value?.push_mouse_event(0, 0, e.buttons);
+        };
+
         const onPointerLockChange = (): void => {
             if (document.pointerLockElement === canvasRef.current) {
                 document.addEventListener('mousemove', onMouseMove);
+                document.addEventListener('mousedown', onMouseButton);
+                document.addEventListener('mouseup', onMouseButton);
             } else {
                 document.removeEventListener('mousemove', onMouseMove);
+                document.removeEventListener('mousedown', onMouseButton);
+                document.removeEventListener('mouseup', onMouseButton);
             }
         };
 
@@ -120,6 +128,8 @@ export function Screen(): React.ReactElement {
         return () => {
             document.removeEventListener('pointerlockchange', onPointerLockChange);
             document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mousedown', onMouseButton);
+            document.removeEventListener('mouseup', onMouseButton);
         };
     }, []);
 
