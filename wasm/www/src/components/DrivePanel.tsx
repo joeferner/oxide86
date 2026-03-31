@@ -96,6 +96,25 @@ export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.R
         }
     };
 
+    const onSave = (): void => {
+        const computer = state.computer.peek();
+        if (!computer || !currentFile) {
+            return;
+        }
+        const driveId = drive === 'hdd' ? 0x80 : drive;
+        const imageData = computer.get_disk_image(driveId);
+        if (!imageData) {
+            return;
+        }
+        const blob = new Blob([imageData], { type: 'application/octet-stream' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = currentFile.name;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
     const onBootToggle = (e: React.ChangeEvent<HTMLInputElement>): void => {
         state.setBootDrive(e.currentTarget.checked ? drive : null);
     };
@@ -120,6 +139,9 @@ export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.R
             />
             <Button size="xs" variant="default" onClick={() => fileInputRef.current?.click()}>
                 Load image…
+            </Button>
+            <Button size="xs" variant="default" disabled={!currentFile || !isRunning} onClick={onSave}>
+                Save image…
             </Button>
             {canEject && (
                 <Button size="xs" variant="outline" color="red" disabled={!currentFile} onClick={onEject}>

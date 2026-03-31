@@ -26,7 +26,10 @@ function saveComPorts(ports: ComPortDevice[]): void {
     localStorage.setItem(COM_PORTS_STORAGE_KEY, JSON.stringify(ports));
 }
 
-type PersistedConfig = Pick<WasmComputerConfig, 'cpu_type' | 'has_fpu' | 'memory_kb' | 'clock_hz' | 'video_card'>;
+type PersistedConfig = Pick<
+    WasmComputerConfig,
+    'cpu_type' | 'has_fpu' | 'memory_kb' | 'clock_hz' | 'video_card' | 'sound_card'
+>;
 
 function loadPersistedConfig(): Partial<PersistedConfig> {
     try {
@@ -47,6 +50,7 @@ function saveConfig(config: WasmComputerConfig): void {
         memory_kb: config.memory_kb,
         clock_hz: config.clock_hz,
         video_card: config.video_card,
+        sound_card: config.sound_card,
     };
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(persisted));
 }
@@ -57,6 +61,7 @@ const HARDWARE_DEFAULTS: PersistedConfig = {
     memory_kb: 1024,
     clock_hz: 6_000_000,
     video_card: 'vga',
+    sound_card: 'adlib',
 };
 
 function defaultConfig(): WasmComputerConfig {
@@ -74,6 +79,11 @@ function defaultConfig(): WasmComputerConfig {
     };
 }
 
+interface SoundAudio {
+    context: AudioContext;
+    node: AudioWorkletNode;
+}
+
 export class State {
     private readonly computerSignal = signal<Oxide86Computer | null>(null);
     private readonly powerStateSignal = signal<'on' | 'off' | 'warning'>('off');
@@ -85,6 +95,7 @@ export class State {
     private readonly hddSignal = signal<File | null>(null);
     private readonly bootDriveSignal = signal<0 | 1 | 'hdd' | null>('hdd');
     private readonly comPortsSignal = signal<ComPortDevice[]>(loadComPorts());
+    private soundAudio: SoundAudio | null = null;
 
     // ── Read-only signal accessors ────────────────────────────────────────────
 
@@ -157,6 +168,77 @@ export class State {
         this.perfSignal.value = mhz;
     }
 
+    // ── Sound card audio ──────────────────────────────────────────────────────
+
+    public async setupSoundCardAudio(sampleRate: number): Promise<void> {
+        this.teardownSoundCardAudio();
+        try {
+            const context = new AudioContext({ sampleRate });
+            if (!context.audioWorklet) {
+                console.warn('[Sound Card] AudioWorklet not available (requires HTTPS or localhost)');
+                void context.close();
+                return;
+            }
+            const workletUrl = new URL('./soundCardWorklet.ts', import.meta.url);
+            await context.audioWorklet.addModule(workletUrl);
+            const node = new AudioWorkletNode(context, 'sound-card-processor');
+            node.connect(context.destination);
+            node.port.onmessage = (
+                e: MessageEvent<{
+                    type: string;
+                    underrunCount: number;
+                    nonzeroCount: number;
+                    totalCount: number;
+                    backlog: number;
+                }>
+            ) => {
+                if (e.data?.type !== 'stats') {
+                    return;
+                }
+                const { underrunCount, nonzeroCount, totalCount, backlog } = e.data;
+                if (underrunCount > 0) {
+                    console.debug(`[Sound Card] Underrun: ${underrunCount} silence samples in last ~1s`);
+                }
+                if (backlog > sampleRate / 2) {
+                    console.warn(
+                        `[Sound Card] Overrun: ${backlog} samples backlogged (~${((backlog / sampleRate) * 1000).toFixed(0)} ms)`
+                    );
+                }
+                console.debug(
+                    `[Sound Card] PCM: ${nonzeroCount}/${totalCount} non-zero (${((100 * nonzeroCount) / totalCount).toFixed(1)}%), backlog: ${backlog}`
+                );
+            };
+            this.soundAudio = { context, node };
+            console.log(`[Sound Card] AudioWorklet initialized: ${sampleRate} Hz`);
+        } catch (err) {
+            console.error('[Sound Card] Failed to initialize AudioWorklet:', err);
+        }
+    }
+
+    public teardownSoundCardAudio(): void {
+        if (this.soundAudio) {
+            this.soundAudio.node.disconnect();
+            void this.soundAudio.context.close();
+            this.soundAudio = null;
+        }
+    }
+
+    public resumeAudio(): void {
+        if (this.soundAudio?.context.state === 'suspended') {
+            void this.soundAudio.context.resume();
+        }
+    }
+
+    public feedSoundCardSamples(computer: Oxide86Computer, elapsedMs: number): void {
+        if (!this.soundAudio) {
+            return;
+        }
+        const { context, node } = this.soundAudio;
+        const frameSize = Math.ceil((context.sampleRate * elapsedMs) / 1000) + 64;
+        const samples = computer.get_sound_card_samples(frameSize);
+        node.port.postMessage({ type: 'samples', samples }, [samples.buffer]);
+    }
+
     // ── Power ─────────────────────────────────────────────────────────────────
 
     public async powerOn(): Promise<void> {
@@ -196,6 +278,11 @@ export class State {
         });
 
         computer.power_on(hddImage, floppyAImage, floppyBImage, bootDrive);
+
+        if (this.configSignal.value.sound_card === 'adlib') {
+            void this.setupSoundCardAudio(computer.get_sound_card_sample_rate());
+        }
+
         this.computerSignal.value = computer;
         this.powerStateSignal.value = 'on';
         this.errorSignal.value = null;
@@ -206,6 +293,7 @@ export class State {
         if (!computer) {
             return;
         }
+        this.teardownSoundCardAudio();
         computer.power_off();
         this.computerSignal.value = null;
         this.powerStateSignal.value = 'off';
@@ -215,7 +303,14 @@ export class State {
     public reboot(): void {
         // The RAF loop in Screen keeps running — reboot resets internal state
         // on the existing computer object; no need to re-trigger the effect.
+        this.teardownSoundCardAudio();
         this.computerSignal.value?.reboot();
+
+        const computer = this.computerSignal.value;
+        if (computer && this.configSignal.value.sound_card === 'adlib') {
+            void this.setupSoundCardAudio(computer.get_sound_card_sample_rate());
+        }
+
         this.powerStateSignal.value = 'on';
         this.errorSignal.value = null;
     }

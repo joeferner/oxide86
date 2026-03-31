@@ -90,7 +90,10 @@
   - [X] Pre-load images
   - [X] Save last machine config
   - [X] COM Port/Mouse
+  - [X] Download modified disk
+  - [X] Audio
   - [ ] Joystick
+  - [ ] Disk browser/editor
   - [ ] Multiple hard drives
 - [ ] CLI multiple hard drives
 - [ ] CD-ROM

@@ -1,16 +1,22 @@
 use std::sync::{Arc, RwLock};
 
+mod shared_mem_backend;
+use shared_mem_backend::SharedMemBackend;
+
 use js_sys::Uint8Array;
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
     devices::{
+        PcmRingBuffer,
+        adlib::Adlib,
         clock::{EmulatedClock, LocalDate, LocalTime},
         pc_speaker::NullPcSpeaker,
         serial_loopback::SerialLoopback,
         serial_mouse::SerialMouse,
+        uart::ComPortDevice,
     },
-    disk::{BackedDisk, Disk, DriveNumber, MemBackend},
+    disk::{BackedDisk, Disk, DriveNumber},
     video::{VideoBuffer, VideoCardType},
 };
 use serde::{Deserialize, Serialize};
@@ -26,6 +32,9 @@ pub struct WasmComputerConfig {
     pub memory_kb: u32,
     pub clock_hz: u32,
     pub video_card: String,
+    /// Sound card to emulate: "none" or "adlib" (default: "none")
+    #[serde(default)]
+    pub sound_card: String,
     /// Full year, e.g. 1990
     pub start_year: u16,
     pub start_month: u8,
@@ -46,10 +55,11 @@ pub struct RunResult {
 struct ComputerState {
     computer: Computer,
     video_buffer: Arc<RwLock<VideoBuffer>>,
+    pcm_buffer: Option<PcmRingBuffer>,
 }
 
 impl ComputerState {
-    fn create(config: &WasmComputerConfig, hdd_data: Option<&[u8]>) -> Result<Self, String> {
+    fn create(config: &WasmComputerConfig, hard_disks: Vec<Box<dyn Disk>>) -> Result<Self, String> {
         let cpu_type = CpuType::parse(&config.cpu_type)
             .ok_or_else(|| format!("Invalid cpu_type: {}", config.cpu_type))?;
 
@@ -79,15 +89,7 @@ impl ComputerState {
         let memory_size = (config.memory_kb as usize).max(64) * 1024;
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
 
-        let mut hard_disks: Vec<Box<dyn Disk>> = Vec::new();
-        if let Some(data) = hdd_data {
-            match BackedDisk::new(MemBackend::from_data(data.to_vec())) {
-                Ok(disk) => hard_disks.push(Box::new(disk)),
-                Err(e) => return Err(format!("Invalid HDD image: {e}")),
-            }
-        }
-
-        let computer = Computer::new(ComputerConfig {
+        let mut computer = Computer::new(ComputerConfig {
             cpu_type,
             clock_speed: clock_hz,
             memory_size,
@@ -99,9 +101,19 @@ impl ComputerState {
             math_coprocessor: config.has_fpu,
         });
 
+        let pcm_buffer = if matches!(config.sound_card.to_lowercase().trim(), "adlib" | "adl") {
+            let adlib = Adlib::new(clock_hz as u64);
+            let consumer = adlib.consumer();
+            computer.add_sound_card(adlib);
+            Some(consumer)
+        } else {
+            None
+        };
+
         Ok(Self {
             computer,
             video_buffer,
+            pcm_buffer,
         })
     }
 }
@@ -113,9 +125,9 @@ pub struct Oxide86Computer {
     last_error: Option<String>,
     last_cycle_count: u64,
     last_timestamp_ms: f64,
-    floppy_a_data: Option<Vec<u8>>,
-    floppy_b_data: Option<Vec<u8>>,
-    hdd_data: Option<Vec<u8>>,
+    floppy_a: Option<Arc<RwLock<Vec<u8>>>>,
+    floppy_b: Option<Arc<RwLock<Vec<u8>>>>,
+    hdd: Option<Arc<RwLock<Vec<u8>>>>,
     boot_drive: Option<String>,
     frame_buf: Vec<u8>,
     /// Device name for each COM port: index 0 = COM1, 1 = COM2, 2 = COM3, 3 = COM4.
@@ -129,7 +141,7 @@ impl Oxide86Computer {
     #[wasm_bindgen(constructor)]
     pub fn new(config: WasmComputerConfig) -> Result<Self, JsValue> {
         console_error_panic_hook::set_once();
-        wasm_logger::init(wasm_logger::Config::new(log::Level::Debug));
+        wasm_logger::init(wasm_logger::Config::new(log::Level::Info));
 
         // Validate config eagerly so JS gets a clear error at construction time.
         CpuType::parse(&config.cpu_type)
@@ -144,9 +156,9 @@ impl Oxide86Computer {
             last_error: None,
             last_cycle_count: 0,
             last_timestamp_ms: js_sys::Date::now(),
-            floppy_a_data: None,
-            floppy_b_data: None,
-            hdd_data: None,
+            floppy_a: None,
+            floppy_b: None,
+            hdd: None,
             boot_drive: None,
             frame_buf: Vec::new(),
             com_port_devices: Default::default(),
@@ -161,15 +173,16 @@ impl Oxide86Computer {
         floppy_b_image: Option<Uint8Array>,
         boot_drive: Option<String>,
     ) {
-        self.hdd_data = hdd_image.map(|a| a.to_vec());
-        self.floppy_a_data = floppy_a_image.map(|a| a.to_vec());
-        self.floppy_b_data = floppy_b_image.map(|a| a.to_vec());
+        self.hdd = hdd_image.map(|a| Arc::new(RwLock::new(a.to_vec())));
+        self.floppy_a = floppy_a_image.map(|a| Arc::new(RwLock::new(a.to_vec())));
+        self.floppy_b = floppy_b_image.map(|a| Arc::new(RwLock::new(a.to_vec())));
         self.boot_drive = boot_drive;
         self.state = None;
-        let hdd = self.hdd_data.clone();
-        let floppy_a = self.floppy_a_data.clone();
-        let floppy_b = self.floppy_b_data.clone();
-        self.start_computer(hdd, floppy_a, floppy_b);
+        self.start_computer(
+            self.hdd.clone(),
+            self.floppy_a.clone(),
+            self.floppy_b.clone(),
+        );
     }
 
     pub fn power_off(&mut self) {
@@ -178,11 +191,12 @@ impl Oxide86Computer {
     }
 
     pub fn reboot(&mut self) {
-        let hdd = self.hdd_data.clone();
-        let floppy_a = self.floppy_a_data.clone();
-        let floppy_b = self.floppy_b_data.clone();
         self.state = None;
-        self.start_computer(hdd, floppy_a, floppy_b);
+        self.start_computer(
+            self.hdd.clone(),
+            self.floppy_a.clone(),
+            self.floppy_b.clone(),
+        );
     }
 
     pub fn run_for_cycles(&mut self, cycles: u32) -> RunResult {
@@ -291,7 +305,7 @@ impl Oxide86Computer {
 
     /// Insert a floppy image. `drive`: 0 = A:, 1 = B:
     pub fn insert_floppy(&mut self, drive: u8, image: Uint8Array) {
-        let data = image.to_vec();
+        let arc = Arc::new(RwLock::new(image.to_vec()));
         let drive_num = if drive == 0 {
             DriveNumber::floppy_a()
         } else {
@@ -299,13 +313,13 @@ impl Oxide86Computer {
         };
 
         if drive == 0 {
-            self.floppy_a_data = Some(data.clone());
+            self.floppy_a = Some(Arc::clone(&arc));
         } else {
-            self.floppy_b_data = Some(data.clone());
+            self.floppy_b = Some(Arc::clone(&arc));
         }
 
         if let Some(state) = &mut self.state {
-            match BackedDisk::new(MemBackend::from_data(data)) {
+            match BackedDisk::new(SharedMemBackend { data: arc }) {
                 Ok(disk) => {
                     state
                         .computer
@@ -327,9 +341,9 @@ impl Oxide86Computer {
         };
 
         if drive == 0 {
-            self.floppy_a_data = None;
+            self.floppy_a = None;
         } else {
-            self.floppy_b_data = None;
+            self.floppy_b = None;
         }
 
         if let Some(state) = &mut self.state {
@@ -361,9 +375,49 @@ impl Oxide86Computer {
             .map_or(0, |s| s.computer.get_cycle_count()) as f64
     }
 
+    /// Pull up to `count` PCM samples from the sound card ring buffer.
+    /// Returns only real samples — no zero-padding — so the caller receives a
+    /// clean, continuous stream. Returns an empty array if no sound card is active.
+    pub fn get_sound_card_samples(&mut self, count: usize) -> js_sys::Float32Array {
+        if let Some(state) = &self.state
+            && let Some(buf) = &state.pcm_buffer
+        {
+            let available = buf.available().min(count);
+            let mut samples = vec![0.0f32; available];
+            buf.drain_into(&mut samples);
+            let arr = js_sys::Float32Array::new_with_length(available as u32);
+            arr.copy_from(&samples);
+            return arr;
+        }
+        js_sys::Float32Array::new_with_length(0)
+    }
+
+    /// Returns the sample rate of the sound card in Hz (44100). Wire this to
+    /// `AudioContext({ sampleRate })`. Returns 0 if no sound card is active.
+    pub fn get_sound_card_sample_rate(&self) -> u32 {
+        self.state
+            .as_ref()
+            .and_then(|s| s.pcm_buffer.as_ref())
+            .map(|b| b.sample_rate)
+            .unwrap_or(0)
+    }
+
     /// Returns and clears the last error message, if any.
     pub fn get_last_error(&mut self) -> Option<String> {
         self.last_error.take()
+    }
+
+    /// Return the current disk image bytes for a floppy or HDD.
+    /// `drive`: 0 = A:, 1 = B:, 0x80 = HDD
+    pub fn get_disk_image(&self, drive: u8) -> Option<Uint8Array> {
+        let arc = match drive {
+            0 => self.floppy_a.as_ref(),
+            1 => self.floppy_b.as_ref(),
+            0x80 => self.hdd.as_ref(),
+            _ => return None,
+        }?;
+        let data = arc.read().unwrap();
+        Some(Uint8Array::from(data.as_slice()))
     }
 
     /// Attach a device to a COM port. `port`: 1–4. `device`: "none", "serial_mouse", "loopback".
@@ -378,10 +432,10 @@ impl Oxide86Computer {
         };
         self.com_port_devices[idx] = device.to_string();
         if let Some(state) = &mut self.state {
-            let (com_device, mouse_arc) = make_com_port_device(device);
-            let attached = com_device.is_some();
-            self.serial_mouse = mouse_arc;
-            state.computer.set_com_port_device(port, com_device);
+            let result = make_com_port_device(device);
+            let attached = result.device.is_some();
+            self.serial_mouse = result.mouse;
+            state.computer.set_com_port_device(port, result.device);
             if attached {
                 log::info!("COM{port}: attached {device}");
             } else {
@@ -393,37 +447,61 @@ impl Oxide86Computer {
     }
 }
 
-fn make_com_port_device(
-    device: &str,
-) -> (
-    Option<Arc<RwLock<dyn oxide86_core::devices::uart::ComPortDevice>>>,
-    Option<Arc<RwLock<SerialMouse>>>,
-) {
+struct WasmComPortDevice {
+    device: Option<Arc<RwLock<dyn ComPortDevice>>>,
+    mouse: Option<Arc<RwLock<SerialMouse>>>,
+}
+
+fn make_com_port_device(device: &str) -> WasmComPortDevice {
     match device {
         "serial_mouse" => {
             let mouse = Arc::new(RwLock::new(SerialMouse::new()));
-            (Some(mouse.clone()), Some(mouse))
+            WasmComPortDevice {
+                device: Some(mouse.clone()),
+                mouse: Some(mouse),
+            }
         }
-        "loopback" => (Some(Arc::new(RwLock::new(SerialLoopback::new()))), None),
-        _ => (None, None),
+        "loopback" => WasmComPortDevice {
+            device: Some(Arc::new(RwLock::new(SerialLoopback::new()))),
+            mouse: None,
+        },
+        _ => WasmComPortDevice {
+            device: None,
+            mouse: None,
+        },
     }
 }
 
 impl Oxide86Computer {
     fn start_computer(
         &mut self,
-        hdd: Option<Vec<u8>>,
-        floppy_a: Option<Vec<u8>>,
-        floppy_b: Option<Vec<u8>>,
+        hdd: Option<Arc<RwLock<Vec<u8>>>>,
+        floppy_a: Option<Arc<RwLock<Vec<u8>>>>,
+        floppy_b: Option<Arc<RwLock<Vec<u8>>>>,
     ) {
-        match ComputerState::create(&self.config, hdd.as_deref()) {
+        let mut hard_disks: Vec<Box<dyn Disk>> = Vec::new();
+        if let Some(arc) = &hdd {
+            match BackedDisk::new(SharedMemBackend {
+                data: Arc::clone(arc),
+            }) {
+                Ok(disk) => hard_disks.push(Box::new(disk)),
+                Err(e) => {
+                    self.last_error = Some(format!("Invalid HDD image: {e}"));
+                    return;
+                }
+            }
+        }
+
+        match ComputerState::create(&self.config, hard_disks) {
             Ok(mut state) => {
-                for (data, drive_num, label) in [
-                    (floppy_a.as_deref(), DriveNumber::floppy_a(), "floppy A"),
-                    (floppy_b.as_deref(), DriveNumber::floppy_b(), "floppy B"),
+                for (arc_opt, drive_num, label) in [
+                    (&floppy_a, DriveNumber::floppy_a(), "floppy A"),
+                    (&floppy_b, DriveNumber::floppy_b(), "floppy B"),
                 ] {
-                    if let Some(data) = data {
-                        match BackedDisk::new(MemBackend::from_data(data.to_vec())) {
+                    if let Some(arc) = arc_opt {
+                        match BackedDisk::new(SharedMemBackend {
+                            data: Arc::clone(arc),
+                        }) {
                             Ok(disk) => {
                                 state
                                     .computer
@@ -463,16 +541,16 @@ impl Oxide86Computer {
                 for (idx, device_name) in self.com_port_devices.iter().enumerate() {
                     if !device_name.is_empty() && device_name != "none" {
                         let port = (idx + 1) as u8;
-                        let (com_device, mouse_arc) = make_com_port_device(device_name);
-                        if com_device.is_some() {
+                        let result = make_com_port_device(device_name);
+                        if result.device.is_some() {
                             log::info!("COM{port}: attaching {device_name} on boot");
                         } else {
                             log::warn!("COM{port}: unknown device '{device_name}', skipping");
                         }
-                        if mouse_arc.is_some() {
-                            self.serial_mouse = mouse_arc;
+                        if result.mouse.is_some() {
+                            self.serial_mouse = result.mouse.clone();
                         }
-                        state.computer.set_com_port_device(port, com_device);
+                        state.computer.set_com_port_device(port, result.device);
                     }
                 }
 

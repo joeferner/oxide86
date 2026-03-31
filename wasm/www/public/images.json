@@ -26,6 +26,21 @@
             "url": "/images/floppy/svardos-20250427-1.44M-disk-1.img"
         },
         {
+            "name": "MS-DOS v4.01 (Setup)",
+            "description": "The original MS-DOS v4.01",
+            "url": "/images/floppy/MS-DOS-v4.01/Setup.img"
+        },
+        {
+            "name": "MS-DOS v4.01 (Operating)",
+            "description": "The original MS-DOS v4.01",
+            "url": "/images/floppy/MS-DOS-v4.01/Operating.img"
+        },
+        {
+            "name": "MS-DOS v4.01 (DOSShell)",
+            "description": "The original MS-DOS v4.01",
+            "url": "/images/floppy/MS-DOS-v4.01/DOSShell.img"
+        },
+        {
             "name": "x86 Blackjack",
             "description": "Blackjack made for the x86",
             "url": "/images/floppy/x86-blackjack.img"

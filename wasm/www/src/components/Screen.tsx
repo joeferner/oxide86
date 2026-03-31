@@ -39,8 +39,14 @@ export function Screen(): React.ReactElement {
         }
 
         let raf = 0;
+        let lastTimestamp: number | null = null;
 
-        const tick = (): void => {
+        const tick = (timestamp: number): void => {
+            const prev = lastTimestamp;
+            lastTimestamp = timestamp;
+            // First frame: default to 16 ms. Cap at 50 ms to prevent runaway.
+            const elapsedMs = prev !== null ? Math.min(timestamp - prev, 50) : 16;
+
             const result = computer.run_for_cycles(100_000);
 
             const error = computer.get_last_error();
@@ -50,6 +56,7 @@ export function Screen(): React.ReactElement {
             }
 
             computer.render_frame(ctx);
+            state.feedSoundCardSamples(computer, elapsedMs);
 
             if (!result.halted) {
                 raf = requestAnimationFrame(tick);
@@ -58,6 +65,7 @@ export function Screen(): React.ReactElement {
             }
         };
 
+        state.resumeAudio();
         raf = requestAnimationFrame(tick);
         return () => {
             cancelAnimationFrame(raf);
