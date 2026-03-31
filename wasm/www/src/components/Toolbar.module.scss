@@ -3,7 +3,6 @@
     flex-direction: row;
     align-items: stretch;
     width: var(--toolbar-width);
-    min-height: 0;
     overflow: hidden;
 }
 
@@ -25,7 +24,6 @@
     position: relative;
     display: flex;
     flex: 1;
-    min-height: 0;
 
     &::before {
         content: '';
@@ -54,9 +52,15 @@
         border-radius: 50%;
         pointer-events: none;
 
-        &.powerDot_on { background: #4c4; }
-        &.powerDot_off { background: #c44; }
-        &.powerDot_warning { background: #ca4; }
+        &.powerDot_on {
+            background: #4c4;
+        }
+        &.powerDot_off {
+            background: #c44;
+        }
+        &.powerDot_warning {
+            background: #ca4;
+        }
     }
 }
 
@@ -66,5 +70,20 @@
     display: flex;
     flex-direction: column;
     width: 100%;
+    min-height: 0;
+
+    > * {
+        flex-shrink: 0;
+    }
+}
+
+.scroll {
     overflow-y: auto;
+    min-height: 0;
+    flex-shrink: 1;
+    padding-right: 8px;
+
+    > * {
+        flex-shrink: 0;
+    }
 }

@@ -22,22 +22,24 @@ export function PeripheralsPanel(): React.ReactElement {
             <Text size="sm" fw={600}>
                 Peripherals
             </Text>
-            {Array.from({ length: COM_PORT_COUNT }, (_, i) => {
-                const port = (i + 1) as 1 | 2 | 3 | 4;
-                return (
-                    <Select
-                        key={port}
-                        label={`COM${port}`}
-                        data={DEVICE_OPTIONS}
-                        value={comPorts[i] ?? 'none'}
-                        onChange={(v) => {
-                            if (v) {
-                                state.setComPortDevice(port, v as ComPortDevice);
-                            }
-                        }}
-                    />
-                );
-            })}
+            <Stack gap="md" className={styles.scroll}>
+                {Array.from({ length: COM_PORT_COUNT }, (_, i) => {
+                    const port = (i + 1) as 1 | 2 | 3 | 4;
+                    return (
+                        <Select
+                            key={port}
+                            label={`COM${port}`}
+                            data={DEVICE_OPTIONS}
+                            value={comPorts[i] ?? 'none'}
+                            onChange={(v) => {
+                                if (v) {
+                                    state.setComPortDevice(port, v as ComPortDevice);
+                                }
+                            }}
+                        />
+                    );
+                })}
+            </Stack>
         </Stack>
     );
 }

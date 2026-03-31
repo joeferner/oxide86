@@ -151,7 +151,7 @@ export function DrivePanel({ label, drive, canEject }: DrivePanelProps): React.R
             {presetImages.length > 0 && (
                 <>
                     <Divider label="Pre-made images" labelPosition="center" />
-                    <Stack gap={4}>
+                    <Stack gap={4} className={styles.scroll}>
                         {presetImages.map((entry) => (
                             <Tooltip
                                 key={entry.url}
