@@ -128,6 +128,7 @@ impl Cpu {
                 | Mode::M0EEga640x200x16
                 | Mode::M0FEga640x350x4
                 | Mode::M10Ega640x350x16
+                | Mode::M11Vga640x480x2
                 | Mode::M12Vga640x480x16 => {
                     // Clear all 4 EGA/VGA planes (sequencer map mask defaults to 0x0F = all planes)
                     for i in 0..EGA_PLANE_SIZE {
@@ -181,7 +182,9 @@ impl Cpu {
             Mode::M0FEga640x350x4 | Mode::M10Ega640x350x16 => {
                 (BIOS_EGA_FONT_OFFSET, 0xF000u16, 14u8)
             }
-            Mode::M12Vga640x480x16 => (BIOS_VGA_FONT_OFFSET, 0xF000u16, 16u8),
+            Mode::M11Vga640x480x2 | Mode::M12Vga640x480x16 => {
+                (BIOS_VGA_FONT_OFFSET, 0xF000u16, 16u8)
+            }
             _ => (BIOS_CGA_FONT_OFFSET, 0xF000u16, 8u8),
         };
         bus.memory_write_u16(0x010C, int43_offset);
@@ -487,7 +490,7 @@ impl Cpu {
                     attr & 0x0F,
                 );
             }
-            Mode::M12Vga640x480x16 => {
+            Mode::M11Vga640x480x2 | Mode::M12Vga640x480x16 => {
                 bus.video_card_mut().ega_scroll_up_window(
                     ScrollWindow {
                         lines,
@@ -634,7 +637,7 @@ impl Cpu {
                     attr & 0x0F,
                 );
             }
-            Mode::M12Vga640x480x16 => {
+            Mode::M11Vga640x480x2 | Mode::M12Vga640x480x16 => {
                 bus.video_card_mut().ega_scroll_down_window(
                     ScrollWindow {
                         lines,
@@ -1067,7 +1070,7 @@ impl Cpu {
                     xor,
                 });
             }
-            Mode::M12Vga640x480x16 => {
+            Mode::M11Vga640x480x2 | Mode::M12Vga640x480x16 => {
                 let glyph = fetch_glyph_int43h(bus, ch, CHAR_HEIGHT);
                 let xor = matches!(
                     draw_mode,
@@ -1219,7 +1222,7 @@ impl Cpu {
                             CHAR_HEIGHT_14,
                         );
                     }
-                    Mode::M12Vga640x480x16 => {
+                    Mode::M11Vga640x480x2 | Mode::M12Vga640x480x16 => {
                         // VGA 640x480 planar graphics: 80 bytes per row, 8x16 character cells
                         let fg_color = (self.bx & 0xFF) as u8; // BL
                         bus.video_card_mut().ega_draw_char(

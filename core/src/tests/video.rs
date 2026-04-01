@@ -151,6 +151,14 @@ pub(crate) fn mode_10h_ega_640x350x16() {
 }
 
 #[test_log::test]
+pub(crate) fn mode_11h_vga_640x480x2() {
+    run_assert_screen_key_press_run_test(
+        "video/mode_11h_vga_640x480x2",
+        make_computer!(video_card_type: VideoCardType::VGA),
+    );
+}
+
+#[test_log::test]
 pub(crate) fn mode_12h_vga_640x480x16() {
     run_assert_screen_key_press_run_test(
         "video/mode_12h_vga_640x480x16",

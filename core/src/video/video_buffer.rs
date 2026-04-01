@@ -402,6 +402,7 @@ impl VideoBuffer {
             Mode::M0EEga640x200x16 => self.render_mode_0eh_640x200x16(buf),
             Mode::M0FEga640x350x4 => self.render_mode_0fh_640x350x4(buf),
             Mode::M10Ega640x350x16 => self.render_mode_10h_640x350x16(buf),
+            Mode::M11Vga640x480x2 => self.render_mode_11h_640x480x2(buf),
             Mode::M12Vga640x480x16 => self.render_mode_12h_640x480x16(buf),
             Mode::M13Vga320x200x256 => self.render_mode_13h_320x200x256(buf),
             Mode::Unknown(_) => self.render_text_mode(buf),
@@ -707,6 +708,38 @@ impl VideoBuffer {
                         color_index |= 1 << plane;
                     }
                 }
+
+                let dac = self.vga_dac_palette[color_index];
+                let offset = (y * WIDTH + x) * 4;
+                buf[offset] = dac_to_8bit(dac[0]);
+                buf[offset + 1] = dac_to_8bit(dac[1]);
+                buf[offset + 2] = dac_to_8bit(dac[2]);
+                buf[offset + 3] = 0xFF;
+            }
+        }
+    }
+
+    /// Render VGA 640x480 2-color graphics (mode 11h).
+    ///
+    /// Same resolution as mode 12h but monochrome: only plane 0 is used.
+    /// Each pixel is 1 bit: 0 = DAC color 0 (black), 1 = DAC color 15 (white).
+    fn render_mode_11h_640x480x2(&self, buf: &mut [u8]) {
+        const WIDTH: usize = 640;
+        const HEIGHT: usize = 480;
+        let bytes_per_row = self.crtc_offset.map(|v| v as usize * 2).unwrap_or(80);
+        let start_byte = self.start_address as usize;
+
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let byte_offset = (start_byte + y * bytes_per_row + x / 8) % EGA_PLANE_SIZE;
+                let bit_pos = 7 - (x % 8);
+
+                let plane_byte = self.vram[byte_offset]; // plane 0 only
+                let color_index = if (plane_byte >> bit_pos) & 1 != 0 {
+                    15
+                } else {
+                    0
+                };
 
                 let dac = self.vga_dac_palette[color_index];
                 let offset = (y * WIDTH + x) * 4;

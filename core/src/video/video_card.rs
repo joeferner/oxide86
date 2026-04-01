@@ -112,8 +112,14 @@ pub struct VideoCard {
     /// bits 2:0 = rotate count, bits 4:3 = ALU function (0=replace,1=AND,2=OR,3=XOR).
     gc_data_rotate: u8,
     gc_function_select: u8,
+    /// Color Compare (GC register 0x02): reference color for read mode 1 comparisons.
+    gc_color_compare: u8,
     /// Graphics Mode (GC register 0x05): bits 1:0 = write mode, bit 3 = read mode.
     gc_write_mode: u8,
+    /// Read mode extracted from GC register 0x05 bit 3.
+    gc_read_mode: u8,
+    /// Color Don't Care (GC register 0x07): planes to include in read mode 1 comparison.
+    gc_color_dont_care: u8,
     /// Bit Mask (GC register 0x08): bit N=1 means CPU data bit N passes through to VRAM.
     gc_bit_mask: u8,
     /// CPU read latches: one byte per plane, loaded on every EGA CPU read.
@@ -177,7 +183,10 @@ impl VideoCard {
             gc_read_map_select: 0,
             gc_data_rotate: 0,
             gc_function_select: 0,
+            gc_color_compare: 0,
             gc_write_mode: 0,
+            gc_read_mode: 0,
+            gc_color_dont_care: 0x0F,
             gc_bit_mask: 0xFF,
             gc_latches: [0u8; 4],
             misc_output: 0x67,
@@ -813,7 +822,10 @@ impl Device for VideoCard {
         self.gc_read_map_select = 0;
         self.gc_data_rotate = 0;
         self.gc_function_select = 0;
+        self.gc_color_compare = 0;
         self.gc_write_mode = 0;
+        self.gc_read_mode = 0;
+        self.gc_color_dont_care = 0x0F;
         self.gc_bit_mask = 0xFF;
         self.gc_latches = [0u8; 4];
         self.misc_output = 0x67;
@@ -851,7 +863,27 @@ impl Device for VideoCard {
                     self.internal_read_u8(3 * EGA_PLANE_SIZE + offset),
                 ];
                 self.gc_latches = latches;
-                Some(latches[self.gc_read_map_select as usize])
+                if self.gc_read_mode == 1 {
+                    // Read mode 1: color compare.
+                    // For each bit position, compare plane bits against gc_color_compare,
+                    // masked by gc_color_dont_care. Return 1 where all cared planes match.
+                    let mut result = 0xFFu8;
+                    for plane in 0..4u8 {
+                        if self.gc_color_dont_care & (1 << plane) != 0 {
+                            let compare_bit = (self.gc_color_compare >> plane) & 1;
+                            let plane_byte = latches[plane as usize];
+                            if compare_bit == 1 {
+                                result &= plane_byte;
+                            } else {
+                                result &= !plane_byte;
+                            }
+                        }
+                    }
+                    Some(result)
+                } else {
+                    // Read mode 0: return selected plane.
+                    Some(latches[self.gc_read_map_select as usize])
+                }
             } else {
                 Some(0xFF)
             }
@@ -1031,9 +1063,11 @@ impl Device for VideoCard {
                 0x3CF if is_ega_vga => Some(match self.gc_address {
                     0x00 => self.gc_set_reset,
                     0x01 => self.gc_enable_set_reset,
+                    0x02 => self.gc_color_compare,
                     0x03 => self.gc_data_rotate | (self.gc_function_select << 3),
                     0x04 => self.gc_read_map_select,
-                    0x05 => self.gc_write_mode,
+                    0x05 => self.gc_write_mode | (self.gc_read_mode << 3),
+                    0x07 => self.gc_color_dont_care,
                     0x08 => self.gc_bit_mask,
                     _ => 0,
                 }),
@@ -1287,6 +1321,7 @@ impl Device for VideoCard {
                     match self.gc_address {
                         0x00 => self.gc_set_reset = val & 0x0F,
                         0x01 => self.gc_enable_set_reset = val & 0x0F,
+                        0x02 => self.gc_color_compare = val & 0x0F,
                         0x03 => {
                             self.gc_data_rotate = val & 0x07;
                             self.gc_function_select = (val >> 3) & 0x03;
@@ -1294,8 +1329,9 @@ impl Device for VideoCard {
                         0x04 => self.gc_read_map_select = val & 0x03,
                         0x05 => {
                             self.gc_write_mode = val & 0x03;
-                            // bit 3 = read mode; not yet used
+                            self.gc_read_mode = (val >> 3) & 0x01;
                         }
+                        0x07 => self.gc_color_dont_care = val & 0x0F,
                         0x08 => self.gc_bit_mask = val,
                         _ => log::warn!(
                             "Unhandled GC register 0x{:02X} = 0x{:02X}",
