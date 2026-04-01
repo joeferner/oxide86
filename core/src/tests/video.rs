@@ -243,6 +243,65 @@ pub(crate) fn int10_write_char_xor_ega_0dh() {
     );
 }
 
+/// Tests blinking text attributes and cursor positioning in CGA text mode 3.
+///
+/// Screen 1 (blink_off): Blink disabled (intensity mode) — bit 7 gives bright
+///   background instead of blinking.
+/// Screen 2 (blink_on_visible): Blink enabled, visible phase — blinking chars
+///   rendered with foreground visible (blink_phase = false).
+/// Screen 2 (blink_on_blanked): Same VRAM, blanked phase — blinking chars
+///   rendered as background-only (blink_phase = true).
+/// Screen 3 (cursor): Cursor visible at row 12, col 40 with a label above.
+#[test_log::test]
+pub(crate) fn blink_and_cursor() {
+    run_test(
+        "video/blink_and_cursor",
+        make_computer!(video_card_type: VideoCardType::VGA),
+        |computer, video_buffer| {
+            // Screen 1: intensity mode (blink disabled)
+            computer.run();
+            assert_screen("video/blink_and_cursor_01_blink_off", video_buffer.clone());
+
+            // Screen 2: blink enabled
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            // Visible phase (blink_phase = false, default)
+            assert_screen("video/blink_and_cursor_02_blink_on_visible", video_buffer.clone());
+            // Blanked phase: toggle blink_phase so blinking chars show background only
+            {
+                let mut vb = video_buffer.write().unwrap();
+                vb.set_blink_phase(true);
+            }
+            assert_screen("video/blink_and_cursor_03_blink_on_blanked", video_buffer.clone());
+            // Reset blink phase
+            {
+                let mut vb = video_buffer.write().unwrap();
+                vb.set_blink_phase(false);
+            }
+
+            // Screen 3: cursor positioning
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            // Cursor visible phase
+            assert_screen("video/blink_and_cursor_04_cursor_visible", video_buffer.clone());
+            // Cursor blanked phase: blink_phase hides the cursor
+            {
+                let mut vb = video_buffer.write().unwrap();
+                vb.set_blink_phase(true);
+            }
+            assert_screen("video/blink_and_cursor_05_cursor_blanked", video_buffer.clone());
+            // Reset blink phase
+            {
+                let mut vb = video_buffer.write().unwrap();
+                vb.set_blink_phase(false);
+            }
+
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
 /// Verifies AC palette routing in CGA mode 04h on EGA/VGA.
 ///
 /// The full color chain on VGA is:

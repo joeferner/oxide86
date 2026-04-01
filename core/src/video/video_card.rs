@@ -1266,6 +1266,13 @@ impl Device for VideoCard {
                                 .write()
                                 .unwrap()
                                 .set_ac_palette_register(index, val);
+                        } else if self.ac_address == AC_REG_MODE_CONTROL {
+                            // Bit 3 of the Mode Control register controls blink vs intensity
+                            let blink_enabled = (val & 0x08) != 0;
+                            self.buffer
+                                .write()
+                                .unwrap()
+                                .set_blink_enabled(blink_enabled);
                         }
                         self.ac_flip_flop = false;
                     }

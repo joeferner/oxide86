@@ -98,6 +98,10 @@ pub struct VideoBuffer {
     /// bytes_per_row = crtc_offset * 2.  None = use mode default.
     /// Reset to None on INT 10h mode set.
     crtc_offset: Option<u8>,
+    /// Current blink phase. When false, blinking characters are visible (foreground drawn).
+    /// When true, blinking characters are blanked (only background drawn) and the cursor is hidden.
+    /// Toggled externally (e.g. by a timer every ~8 frames at 60 Hz).
+    blink_phase: bool,
     /// If any value changes in the struct which could result in different output this will be set to true
     dirty: bool,
 }
@@ -125,6 +129,7 @@ impl VideoBuffer {
             crtc_max_scan_line: None,
             crtc_vertical_displayed: None,
             crtc_offset: None,
+            blink_phase: false,
             dirty: false,
         };
         me.reset();
@@ -151,6 +156,7 @@ impl VideoBuffer {
         self.crtc_max_scan_line = None;
         self.crtc_vertical_displayed = None;
         self.crtc_offset = None;
+        self.blink_phase = false;
         self.dirty = false;
         for i in (0..TEXT_MODE_SIZE).step_by(2) {
             self.vram[i] = 0x20; // space
@@ -278,6 +284,22 @@ impl VideoBuffer {
 
     pub fn blink_enabled(&self) -> bool {
         self.blink_enabled
+    }
+
+    pub fn set_blink_enabled(&mut self, enabled: bool) {
+        if self.blink_enabled != enabled {
+            self.blink_enabled = enabled;
+            self.dirty = true;
+        }
+    }
+
+    /// Set the blink phase for rendering. When true, characters with the blink
+    /// attribute are blanked (background only) and the hardware cursor is hidden.
+    pub fn set_blink_phase(&mut self, phase: bool) {
+        if self.blink_phase != phase {
+            self.blink_phase = phase;
+            self.dirty = true;
+        }
     }
 
     pub fn vga_dac_palette(&self) -> &[[u8; 3]; 256] {
@@ -425,6 +447,7 @@ impl VideoBuffer {
                         stride: width,
                         char_height,
                         scanline_scale,
+                        blink_phase: self.blink_phase,
                     },
                     buf,
                 );
@@ -441,7 +464,7 @@ impl VideoBuffer {
         char_height: usize,
         scanline_scale: usize,
     ) {
-        if self.cursor_visible {
+        if self.cursor_visible && !self.blink_phase {
             let cursor_row = (self.cursor_loc / self.text_columns as u16) as usize;
             let cursor_col = (self.cursor_loc % self.text_columns as u16) as usize;
 

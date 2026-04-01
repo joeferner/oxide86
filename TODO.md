@@ -60,6 +60,7 @@
 - [X] COM loopback
 - [X] Parallel Port/LPT loopback
 - [X] RTC Checkit Tests
+- [X] Blinking text core/src/test_data/video/ct755r/mode7.asm
 - [ ] CheckIt Video Graphics Tests
   - [X] CGA
     - [X] Mode 04h
@@ -72,16 +73,16 @@
     - [X] Mode 06h
     - [X] Mode 0eh
   - [ ] VGA
-    - [X] Mode 04h
-    - [X] Mode 05h
-    - [X] Mode 0dh
-    - [ ] Mode 03h
-    - [X] Mode 06h
-    - [X] Mode 0eh
-    - [X] Mode 0fh
-    - [ ] Mode 10h
-    - [ ] Mode 03h
-    - [ ] Mode 12h
+    - [X] 01 - Mode 04h
+    - [X] 02 - Mode 05h
+    - [X] 03 - Mode 0dh
+    - [ ] 04 - Mode 03h
+    - [X] 05 - Mode 06h
+    - [X] 06 - Mode 0eh
+    - [X] 07 - Mode 0fh
+    - [ ] 08 - Mode 10h
+    - [ ] 09 - Mode 03h
+    - [ ] 10 - Mode 12h
 - [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
   - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
   - [ ] Test Fractint Version 15.x and below
@@ -99,7 +100,6 @@
 - [ ] CD-ROM
 - [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
-- [ ] Blinking text core/src/test_data/video/ct755r/mode7.asm
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
 - [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code
