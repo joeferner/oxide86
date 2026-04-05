@@ -44,7 +44,7 @@ Update `LMSW` to set the low 4 bits of CR0 (PE can be set but not cleared via LM
 
 ---
 
-### Step 2: LGDT / LIDT / SGDT / SIDT Instructions
+### ✅ Step 2: LGDT / LIDT / SGDT / SIDT Instructions
 
 Implement the remaining `0F 01` sub-opcodes:
 - `/0` SGDT — store 6 bytes (limit:16, base:24 on 286) to memory
@@ -58,7 +58,7 @@ On 286, the base is 24-bit (3 bytes), not 32-bit. The 6-byte format is: limit (2
 
 ---
 
-### Step 3: Descriptor Table Structures and Segment Loading
+### ✅ Step 3: Descriptor Table Structures and Segment Loading
 
 Create `core/src/cpu/protected_mode.rs`:
 - `SegmentDescriptor` struct: base (24-bit on 286), limit (16-bit), access byte (present, DPL, type, S, etc.)

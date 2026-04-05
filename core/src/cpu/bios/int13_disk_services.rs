@@ -877,7 +877,7 @@ impl Cpu {
         }
 
         // Return success with ES:DI pointing to DBT
-        self.es = DBT_SEGMENT;
+        self.set_es_real(DBT_SEGMENT);
         self.di = DBT_OFFSET;
         self.ax &= 0x00FF; // AH = 0 (success)
         self.set_flag(cpu_flag::CARRY, false);

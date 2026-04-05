@@ -501,6 +501,11 @@ impl Bus {
     /// Apply A20 gate masking to a physical address. When A20 is disabled, bit 20
     /// is cleared, aliasing the HMA (0x100000–0x10FFEF) back to 0x000000–0x0FFEF.
     #[inline(always)]
+    pub(crate) fn apply_a20_pub(&self, addr: usize) -> usize {
+        self.apply_a20(addr)
+    }
+
+    #[inline(always)]
     fn apply_a20(&self, addr: usize) -> usize {
         if self.a20_enabled {
             addr

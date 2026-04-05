@@ -1694,7 +1694,7 @@ impl Cpu {
         };
 
         // Return font pointer in ES:BP
-        self.es = segment;
+        self.set_es_real(segment);
         self.bp = offset;
 
         // Return bytes per character in CX
@@ -2157,7 +2157,7 @@ impl Cpu {
         let video_offset = 0x0000;
 
         // Return pointer in ES:DI
-        self.es = video_segment;
+        self.set_es_real(video_segment);
         self.di = video_offset;
 
         log::debug!(

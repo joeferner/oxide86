@@ -38,27 +38,22 @@ impl Cpu {
         let offset = self.fetch_word(bus);
         // Use segment override if present, otherwise use DS
         let segment = self.segment_override.unwrap_or(self.ds);
-        let addr = bus.physical_address(segment, offset);
+        let addr = self.seg_offset_to_phys(segment, offset, bus);
 
         if is_word {
             if to_acc {
-                // MOV AX, [offset]
                 self.ax = bus.memory_read_u16(addr);
             } else {
-                // MOV [offset], AX
                 bus.memory_write_u16(addr, self.ax);
             }
         } else if to_acc {
-            // MOV AL, [offset]
             let value = bus.memory_read_u8(addr);
             self.ax = (self.ax & 0xFF00) | (value as u16);
         } else {
-            // MOV [offset], AL
             let value = (self.ax & 0xFF) as u8;
             bus.memory_write_u8(addr, value);
         }
 
-        // MOV acc, [addr] or [addr], acc: 10 cycles (direct addressing)
         bus.increment_cycle_count(if to_acc {
             timing::cycles::MOV_MEM_ACC
         } else {
@@ -76,12 +71,16 @@ impl Cpu {
 
         // The reg field specifies which segment register (ES=0, CS=1, SS=2, DS=3)
         let value = self.read_rm16(mode, rm, addr, bus);
-        self.set_segreg(seg_reg, value);
 
-        // Loading SS suppresses the single-step trap for the next instruction so
-        // the paired SP load runs atomically (8086/286 behaviour).
-        if seg_reg == 2 {
-            self.suppress_trap = true;
+        if self.in_protected_mode() {
+            self.load_segment_register(seg_reg, value, bus);
+        } else {
+            self.set_segreg(seg_reg, value);
+            // Loading SS suppresses the single-step trap for the next instruction so
+            // the paired SP load runs atomically (8086/286 behaviour).
+            if seg_reg == 2 {
+                self.suppress_trap = true;
+            }
         }
 
         // Calculate cycle timing
@@ -116,7 +115,7 @@ impl Cpu {
             // PUSH SP on 8086: push the decremented value (post-decrement SP)
             self.sp = self.sp.wrapping_sub(2);
             let value = self.sp;
-            let addr = bus.physical_address(self.ss, self.sp);
+            let addr = self.seg_offset_to_phys(self.ss, self.sp, bus);
             bus.memory_write_u16(addr, value);
         } else {
             let value = self.get_reg16(reg);
@@ -275,7 +274,11 @@ impl Cpu {
         let segment = bus.memory_read_u16(addr + 2);
 
         self.set_reg16(reg, offset);
-        self.ds = segment;
+        if self.in_protected_mode() {
+            self.load_segment_register(3, segment, bus); // 3 = DS
+        } else {
+            self.set_ds_real(segment);
+        }
 
         // LDS: 16 + EA cycles
         let rm = modrm & 0x07;
@@ -321,12 +324,16 @@ impl Cpu {
             _ => unreachable!(),
         };
         let value = self.pop(bus);
-        self.set_segreg(seg, value);
 
-        // POP SS suppresses the single-step trap for the next instruction so
-        // the paired SP load runs atomically (8086/286 behaviour).
-        if seg == 2 {
-            self.suppress_trap = true;
+        if self.in_protected_mode() {
+            self.load_segment_register(seg, value, bus);
+        } else {
+            self.set_segreg(seg, value);
+            // POP SS suppresses the single-step trap for the next instruction so
+            // the paired SP load runs atomically (8086/286 behaviour).
+            if seg == 2 {
+                self.suppress_trap = true;
+            }
         }
 
         // POP segment register: 8 cycles
@@ -373,11 +380,74 @@ impl Cpu {
     }
 
     /// 0F 01 — SGDT/SIDT/LGDT/LIDT/SMSW/LMSW (286+)
-    /// Only SMSW and LMSW are implemented; others are rare in real-mode programs.
     fn exec_0f_01(&mut self, bus: &mut Bus) {
         let modrm = self.fetch_byte(bus);
         let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
         match reg {
+            // SGDT m — store GDTR (6 bytes: limit16, base24, reserved8)
+            0 => {
+                if mode == 0b11 {
+                    log::warn!("SGDT with register operand is invalid");
+                    self.dispatch_interrupt(bus, 6);
+                    return;
+                }
+                bus.memory_write_u16(addr, self.gdtr_limit);
+                bus.memory_write_u8(addr + 2, (self.gdtr_base & 0xFF) as u8);
+                bus.memory_write_u8(addr + 3, ((self.gdtr_base >> 8) & 0xFF) as u8);
+                bus.memory_write_u8(addr + 4, ((self.gdtr_base >> 16) & 0xFF) as u8);
+                bus.memory_write_u8(addr + 5, 0xFF); // 286: upper byte is undefined
+            }
+            // SIDT m — store IDTR (6 bytes: limit16, base24, reserved8)
+            1 => {
+                if mode == 0b11 {
+                    log::warn!("SIDT with register operand is invalid");
+                    self.dispatch_interrupt(bus, 6);
+                    return;
+                }
+                bus.memory_write_u16(addr, self.idtr_limit);
+                bus.memory_write_u8(addr + 2, (self.idtr_base & 0xFF) as u8);
+                bus.memory_write_u8(addr + 3, ((self.idtr_base >> 8) & 0xFF) as u8);
+                bus.memory_write_u8(addr + 4, ((self.idtr_base >> 16) & 0xFF) as u8);
+                bus.memory_write_u8(addr + 5, 0xFF); // 286: upper byte is undefined
+            }
+            // LGDT m — load GDTR from 6 bytes (limit16, base24)
+            2 => {
+                if mode == 0b11 {
+                    log::warn!("LGDT with register operand is invalid");
+                    self.dispatch_interrupt(bus, 6);
+                    return;
+                }
+                self.gdtr_limit = bus.memory_read_u16(addr);
+                self.gdtr_base = bus.memory_read_u8(addr + 2) as u32
+                    | ((bus.memory_read_u8(addr + 3) as u32) << 8)
+                    | ((bus.memory_read_u8(addr + 4) as u32) << 16);
+                log::debug!(
+                    "LGDT at {:04X}:{:04X} — base=0x{:06X}, limit=0x{:04X}",
+                    self.cs,
+                    self.ip.wrapping_sub(4),
+                    self.gdtr_base,
+                    self.gdtr_limit
+                );
+            }
+            // LIDT m — load IDTR from 6 bytes (limit16, base24)
+            3 => {
+                if mode == 0b11 {
+                    log::warn!("LIDT with register operand is invalid");
+                    self.dispatch_interrupt(bus, 6);
+                    return;
+                }
+                self.idtr_limit = bus.memory_read_u16(addr);
+                self.idtr_base = bus.memory_read_u8(addr + 2) as u32
+                    | ((bus.memory_read_u8(addr + 3) as u32) << 8)
+                    | ((bus.memory_read_u8(addr + 4) as u32) << 16);
+                log::debug!(
+                    "LIDT at {:04X}:{:04X} — base=0x{:06X}, limit=0x{:04X}",
+                    self.cs,
+                    self.ip.wrapping_sub(4),
+                    self.idtr_base,
+                    self.idtr_limit
+                );
+            }
             // SMSW r/m16 — store Machine Status Word (CR0 low 16 bits) to r/m
             4 => {
                 let msw = self.cr0;
@@ -442,7 +512,11 @@ impl Cpu {
         let segment = bus.memory_read_u16(addr + 2);
 
         self.set_reg16(reg, offset);
-        self.es = segment;
+        if self.in_protected_mode() {
+            self.load_segment_register(0, segment, bus); // 0 = ES
+        } else {
+            self.set_es_real(segment);
+        }
 
         // LES: 16 + EA cycles
         let rm = modrm & 0x07;
@@ -591,7 +665,7 @@ impl Cpu {
         let offset = self.bx.wrapping_add(al as u16);
         // Use segment override if present, otherwise use DS
         let segment = self.segment_override.unwrap_or(self.ds);
-        let addr = bus.physical_address(segment, offset);
+        let addr = self.seg_offset_to_phys(segment, offset, bus);
         let value = bus.memory_read_u8(addr);
         self.ax = (self.ax & 0xFF00) | (value as u16);
 

@@ -41,7 +41,7 @@ impl Cpu {
                 self.push(BIOS_CODE_SEGMENT, bus);
                 self.push(INT4A_RETURN_IP, bus);
                 self.set_flag(cpu_flag::INTERRUPT, false);
-                self.cs = handler_cs;
+                self.set_cs_real(handler_cs);
                 self.ip = handler_ip;
             }
         }

@@ -229,7 +229,7 @@ impl Cpu {
     ///   Offset 9: Feature information byte 5
     fn int15_get_system_config(&mut self) {
         // Table was written to ROM area at reset; just return the pointer
-        self.es = INT15_SYSTEM_CONFIG_SEGMENT;
+        self.set_es_real(INT15_SYSTEM_CONFIG_SEGMENT);
         self.bx = INT15_SYSTEM_CONFIG_OFFSET;
         self.set_flag(cpu_flag::CARRY, false);
     }

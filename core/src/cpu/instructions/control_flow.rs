@@ -32,7 +32,11 @@ impl Cpu {
         let old_if = self.get_flag(cpu_flag::INTERRUPT);
 
         self.ip = new_ip;
-        self.cs = new_cs;
+        if self.in_protected_mode() {
+            self.load_segment_register(1, new_cs, bus);
+        } else {
+            self.set_cs_real(new_cs);
+        }
         self.flags = match self.cpu_type {
             CpuType::I8086 => (new_flags & 0x0FFF) | 0xF002,
             CpuType::I80286 => (new_flags & 0x0FFF) | 0x0002,
@@ -107,7 +111,11 @@ impl Cpu {
                 self.push(self.cs, bus);
                 self.push(self.ip, bus);
                 self.ip = offset;
-                self.cs = segment;
+                if self.in_protected_mode() {
+                    self.load_segment_register(1, segment, bus);
+                } else {
+                    self.set_cs_real(segment);
+                }
 
                 // CALL far indirect: 37+EA cycles
                 bus.increment_cycle_count(
@@ -182,7 +190,11 @@ impl Cpu {
                 let offset = bus.memory_read_u16(addr);
                 let segment = bus.memory_read_u16(addr + 2);
                 self.ip = offset;
-                self.cs = segment;
+                if self.in_protected_mode() {
+                    self.load_segment_register(1, segment, bus);
+                } else {
+                    self.set_cs_real(segment);
+                }
 
                 // JMP far indirect: 24+EA cycles
                 bus.increment_cycle_count(
@@ -337,7 +349,7 @@ impl Cpu {
             for _ in 1..level {
                 // Walk caller's display chain (BP still holds caller's BP)
                 self.bp = self.bp.wrapping_sub(2);
-                let addr = bus.physical_address(self.ss, self.bp);
+                let addr = self.seg_offset_to_phys(self.ss, self.bp, bus);
                 let val = bus.memory_read_u16(addr);
                 self.push(val, bus);
             }
@@ -380,7 +392,7 @@ impl Cpu {
         let offset = bus.memory_read_u16(ivt_addr);
         let segment = bus.memory_read_u16(ivt_addr + 2);
         self.ip = offset;
-        self.cs = segment;
+        self.set_cs_real(segment);
 
         // INT 3: 52 cycles
         bus.increment_cycle_count(timing::cycles::INT3)
@@ -402,7 +414,11 @@ impl Cpu {
         let offset = self.fetch_word(bus);
         let segment = self.fetch_word(bus);
         self.ip = offset;
-        self.cs = segment;
+        if self.in_protected_mode() {
+            self.load_segment_register(1, segment, bus); // 1 = CS
+        } else {
+            self.set_cs_real(segment);
+        }
 
         // JMP far direct: 15 cycles
         bus.increment_cycle_count(timing::cycles::JMP_FAR_DIRECT)
@@ -422,7 +438,12 @@ impl Cpu {
 
         // Pop IP and CS
         self.ip = self.pop(bus);
-        self.cs = self.pop(bus);
+        let cs_val = self.pop(bus);
+        if self.in_protected_mode() {
+            self.load_segment_register(1, cs_val, bus);
+        } else {
+            self.set_cs_real(cs_val);
+        }
 
         // Add the immediate to SP (if CA)
         self.sp = self.sp.wrapping_add(bytes_to_pop);
@@ -445,7 +466,11 @@ impl Cpu {
         self.push(self.ip, bus);
         // Jump to far address
         self.ip = offset;
-        self.cs = segment;
+        if self.in_protected_mode() {
+            self.load_segment_register(1, segment, bus);
+        } else {
+            self.set_cs_real(segment);
+        }
 
         // CALL far direct: 28 cycles
         bus.increment_cycle_count(timing::cycles::CALL_FAR_DIRECT);

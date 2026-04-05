@@ -58,7 +58,7 @@ impl Cpu {
         // FAR CALL to the handler: push return address (trampoline), jump.
         self.push(BIOS_CODE_SEGMENT, bus);
         self.push(PS2_MOUSE_RETURN_IP, bus);
-        self.cs = handler_seg;
+        self.set_cs_real(handler_seg);
         self.ip = handler_off;
         // step() will see CS != BIOS_CODE_SEGMENT and skip patch_flags_and_iret.
     }

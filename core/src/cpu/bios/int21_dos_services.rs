@@ -118,7 +118,7 @@ impl Cpu {
             self.exit_code = Some(return_code);
         } else {
             // Return to parent program
-            self.cs = terminate_cs;
+            self.set_cs_real(terminate_cs);
             self.ip = terminate_ip;
         }
     }

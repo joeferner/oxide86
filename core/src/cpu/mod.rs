@@ -18,6 +18,7 @@ mod cpu_type;
 pub(crate) mod f80;
 pub(crate) mod f80_trig;
 pub(crate) mod instructions;
+mod protected_mode;
 mod timing;
 
 pub use cpu_type::CpuType;
@@ -63,6 +64,12 @@ pub(crate) struct Cpu {
     es: u16,
     fs: u16, // 80386+
     gs: u16, // 80386+
+
+    // Cached descriptor state (hidden part of segment registers)
+    cs_cache: protected_mode::SegmentCache,
+    ds_cache: protected_mode::SegmentCache,
+    ss_cache: protected_mode::SegmentCache,
+    es_cache: protected_mode::SegmentCache,
 
     /// Instruction pointer
     ip: u16,
@@ -260,6 +267,10 @@ impl Cpu {
             es: 0,
             fs: 0,
             gs: 0,
+            cs_cache: protected_mode::SegmentCache::default(),
+            ds_cache: protected_mode::SegmentCache::default(),
+            ss_cache: protected_mode::SegmentCache::default(),
+            es_cache: protected_mode::SegmentCache::default(),
             ip: 0,
             flags: 0,
             current_psp: 0x100,
@@ -315,6 +326,153 @@ impl Cpu {
     /// Returns true if the CPU is in protected mode (PE bit set in CR0/MSW).
     pub(crate) fn in_protected_mode(&self) -> bool {
         self.cr0 & 1 != 0
+    }
+
+    /// Set CS and update cache (real-mode base = seg << 4).
+    /// Use `load_segment_register(1, ...)` for PM descriptor lookup instead.
+    fn set_cs_real(&mut self, value: u16) {
+        self.cs = value;
+        self.cs_cache = protected_mode::SegmentCache::from_real_mode(value);
+    }
+
+    /// Set DS and update cache (real-mode base = seg << 4).
+    fn set_ds_real(&mut self, value: u16) {
+        self.ds = value;
+        self.ds_cache = protected_mode::SegmentCache::from_real_mode(value);
+    }
+
+    /// Set ES and update cache (real-mode base = seg << 4).
+    fn set_es_real(&mut self, value: u16) {
+        self.es = value;
+        self.es_cache = protected_mode::SegmentCache::from_real_mode(value);
+    }
+
+    /// Set SS and update cache (real-mode base = seg << 4).
+    fn set_ss_real(&mut self, value: u16) {
+        self.ss = value;
+        self.ss_cache = protected_mode::SegmentCache::from_real_mode(value);
+    }
+
+    /// Resolve segment:offset to a physical address.
+    /// In real mode: (segment << 4) + offset with A20 masking.
+    /// In protected mode: cached_base + offset with A20 masking.
+    fn seg_offset_to_phys(&self, segment: u16, offset: u16, bus: &Bus) -> usize {
+        if self.in_protected_mode() {
+            let base = self.cache_for_seg_value(segment).base;
+            let addr = base as usize + offset as usize;
+            bus.apply_a20_pub(addr)
+        } else {
+            bus.physical_address(segment, offset)
+        }
+    }
+
+    /// Get the segment cache for a segment register value.
+    /// In protected mode, looks up which segment register holds this value.
+    fn cache_for_seg_value(&self, segment: u16) -> &protected_mode::SegmentCache {
+        if segment == self.cs {
+            &self.cs_cache
+        } else if segment == self.ds {
+            &self.ds_cache
+        } else if segment == self.ss {
+            &self.ss_cache
+        } else if segment == self.es {
+            &self.es_cache
+        } else {
+            // Fallback: treat as real-mode style (shouldn't happen in PM)
+            &self.ds_cache
+        }
+    }
+
+    /// Load a segment register with descriptor lookup in protected mode.
+    /// In real mode, just sets the register value and updates the cache.
+    fn load_segment_register(&mut self, reg: u8, selector: u16, bus: &Bus) {
+        if self.in_protected_mode() {
+            // Null selector is allowed for DS/ES (not CS/SS)
+            if selector & 0xFFF8 == 0 {
+                match reg & 0x03 {
+                    0 => {
+                        self.es = selector;
+                        self.es_cache = protected_mode::SegmentCache::default();
+                    }
+                    3 => {
+                        self.ds = selector;
+                        self.ds_cache = protected_mode::SegmentCache::default();
+                    }
+                    _ => {
+                        log::warn!("Null selector loaded into CS or SS — #GP");
+                        // TODO: dispatch #GP(0) once exceptions are wired up
+                    }
+                }
+                return;
+            }
+
+            // Look up descriptor from GDT (TI=0) or LDT (TI=1)
+            let descriptor = if selector & 0x04 == 0 {
+                // GDT
+                protected_mode::load_descriptor_from_table(
+                    bus,
+                    self.gdtr_base,
+                    self.gdtr_limit,
+                    selector,
+                )
+            } else {
+                // LDT — not yet implemented
+                log::warn!("LDT selector 0x{:04X} not yet supported", selector);
+                None
+            };
+
+            match descriptor {
+                Some(desc) => {
+                    if !desc.is_present() {
+                        log::warn!("Segment 0x{:04X} not present — #NP", selector);
+                        // TODO: dispatch #NP once exceptions are wired up
+                        return;
+                    }
+                    let cache = desc.to_cache();
+                    match reg & 0x03 {
+                        0 => { self.es = selector; self.es_cache = cache; }
+                        1 => { self.cs = selector; self.cs_cache = cache; }
+                        2 => {
+                            self.ss = selector;
+                            self.ss_cache = cache;
+                            self.suppress_trap = true;
+                        }
+                        3 => { self.ds = selector; self.ds_cache = cache; }
+                        _ => unreachable!(),
+                    }
+                }
+                None => {
+                    log::warn!(
+                        "Selector 0x{:04X} out of bounds (GDTR limit=0x{:04X}) — #GP",
+                        selector,
+                        self.gdtr_limit
+                    );
+                    // TODO: dispatch #GP once exceptions are wired up
+                }
+            }
+        } else {
+            // Real mode: set register and update cache
+            match reg & 0x03 {
+                0 => {
+                    self.es = selector;
+                    self.es_cache = protected_mode::SegmentCache::from_real_mode(selector);
+                }
+                1 => {
+                    self.cs = selector;
+                    self.cs_cache = protected_mode::SegmentCache::from_real_mode(selector);
+                }
+                2 => {
+                    self.ss = selector;
+                    self.ss_cache = protected_mode::SegmentCache::from_real_mode(selector);
+                    self.suppress_trap = true;
+                }
+                3 => {
+                    self.ds = selector;
+                    self.ds_cache = protected_mode::SegmentCache::from_real_mode(selector);
+                }
+                _ => unreachable!(),
+            }
+        }
     }
 
     pub(crate) fn snapshot(&self) -> DebugSnapshot {
@@ -559,7 +717,7 @@ impl Cpu {
         let offset = bus.memory_read_u16(ivt_addr);
         let segment = bus.memory_read_u16(ivt_addr + 2);
         self.ip = offset;
-        self.cs = segment;
+        self.set_cs_real(segment);
     }
 
     pub(crate) fn patch_flags_and_iret(&mut self, bus: &mut Bus) {
@@ -571,7 +729,7 @@ impl Cpu {
         // so self.flags has IF=0, but the stacked copy reflects the caller's IF state
         // (typically IF=1).  Clobbering IF here would leave the caller running with
         // interrupts disabled after every BIOS call.
-        let stacked_flags_addr = bus.physical_address(self.ss, self.sp.wrapping_add(4));
+        let stacked_flags_addr = self.seg_offset_to_phys(self.ss, self.sp.wrapping_add(4), bus);
         let original_stacked = bus.memory_read_u16(stacked_flags_addr);
         let patched =
             (self.flags & !cpu_flag::INTERRUPT) | (original_stacked & cpu_flag::INTERRUPT);
@@ -581,7 +739,7 @@ impl Cpu {
 
     /// Fetch a byte from memory at CS:IP and increment IP
     fn fetch_byte(&mut self, bus: &Bus) -> u8 {
-        let addr = bus.physical_address(self.cs, self.ip);
+        let addr = self.seg_offset_to_phys(self.cs, self.ip, bus);
         let byte = bus.memory_read_u8(addr);
         self.ip = self.ip.wrapping_add(1);
         byte
@@ -602,9 +760,9 @@ impl Cpu {
         self.si = 0;
         self.di = 0;
         self.bp = 0;
-        self.cs = 0;
-        self.ds = 0;
-        self.es = 0;
+        self.set_cs_real(0);
+        self.set_ds_real(0);
+        self.set_es_real(0);
         self.fs = 0;
         self.gs = 0;
         self.ip = 0;
@@ -628,8 +786,18 @@ impl Cpu {
         self.fpu_stack = [f80::F80::ZERO; 8];
         self.fpu_top = 0;
 
+        // Reset 286+ system registers
+        self.cr0 = 0;
+        self.gdtr_base = 0;
+        self.gdtr_limit = 0;
+        self.idtr_base = 0;
+        self.idtr_limit = 0x03FF;
+        self.ldtr = 0;
+        self.tr = 0;
+        self.cpl = 0;
+
         // Set CPU to start at this location
-        self.cs = segment;
+        self.set_cs_real(segment);
         self.ip = offset;
 
         if let Some(boot_drive) = boot_drive {
@@ -637,14 +805,14 @@ impl Cpu {
             self.dx = (self.dx & 0xFF00) | (boot_drive.as_standard() as u16);
             // Set up stack at 0x0000:0x7C00 (just below boot sector)
             // Some boot loaders expect this, others set up their own stack
-            self.ss = 0x0000;
+            self.set_ss_real(0x0000);
             self.sp = 0x7C00;
             self.current_psp = 0x0000;
         } else {
             // Initialize other segments to reasonable defaults
-            self.ds = segment;
-            self.es = segment;
-            self.ss = segment;
+            self.set_ds_real(segment);
+            self.set_es_real(segment);
+            self.set_ss_real(segment);
             self.sp = 0xFFFE; // Stack grows down from top of segment
             // For a direct COM load, the PSP is at segment:0x0000.
             // Memory there is zero-initialized, so the INT 22h terminate vector
@@ -719,7 +887,7 @@ impl Cpu {
                         bus,
                     );
                     self.set_flag(cpu_flag::INTERRUPT, false);
-                    self.cs = timer_ivt_seg;
+                    self.set_cs_real(timer_ivt_seg);
                     self.ip = timer_ivt_off;
                     return;
                 }
@@ -784,7 +952,7 @@ impl Cpu {
         log::debug!("INT 19h: bootstrap loader requested");
         self.bootstrap_request = true;
         // Jump to reset vector; step() will see CS != BIOS_CODE_SEGMENT and skip IRET.
-        self.cs = 0xFFFF;
+        self.set_cs_real(0xFFFF);
         self.ip = 0x0000;
     }
 

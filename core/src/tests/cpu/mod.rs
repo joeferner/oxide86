@@ -182,6 +182,33 @@ pub(crate) fn pm_step1_msw() {
     );
 }
 
+/// 286 Protected Mode Step 3: Segment loading in protected mode.
+/// Tests that MOV to segment registers uses GDT descriptor bases for
+/// address resolution, not (segment << 4).
+#[test_log::test]
+pub(crate) fn pm_step3_segments() {
+    run_test(
+        "cpu/pm_step3_segments",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
+/// 286 Protected Mode Step 2: LGDT/LIDT/SGDT/SIDT.
+/// Tests that descriptor table registers can be loaded and stored correctly.
+#[test_log::test]
+pub(crate) fn pm_step2_gdt_idt() {
+    run_test(
+        "cpu/pm_step2_gdt_idt",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// Run the same program as a 286.
 /// Expected: no SP quirk, IOPL not settable, bits 12-15 confirmed 0x0000 → exit 0x01.
 #[test_log::test]
