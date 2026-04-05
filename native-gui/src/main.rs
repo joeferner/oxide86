@@ -28,9 +28,11 @@ use rodio::MixerDeviceSink;
 use std::sync::Mutex;
 use std::sync::{Arc, RwLock};
 use winit::dpi::LogicalSize;
+use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
 use winit::event_loop::{ControlFlow, EventLoop};
 use winit::keyboard::{Key, KeyCode, KeyLocation, NamedKey, PhysicalKey};
+use winit::window::Window;
 use winit::window::{CursorGrabMode, WindowBuilder};
 
 use crate::mouse_motion_state::MouseMotionState;
@@ -91,7 +93,7 @@ fn run(cli: Cli) -> Result<()> {
         .with_title(TITLE)
         .with_window_icon(icon)
         .with_inner_size(LogicalSize::new(SCREEN_WIDTH as u32, SCREEN_HEIGHT as u32))
-        .with_resizable(true)
+        .with_resizable(false)
         .build(&event_loop)
         .context("Failed to create window")?;
 
@@ -296,13 +298,16 @@ fn run(cli: Cli) -> Result<()> {
                         was_paused = any_paused;
 
                         let halted = step_emulator(
-                            &mut computer,
                             &mut pixels,
-                            &video_buffer,
-                            any_paused || app_state.halted,
-                            &mut throttle,
-                            max_cycles_per_frame,
-                            &mut surface_size,
+                            &mut StepContext {
+                                computer: &mut computer,
+                                video_buffer: &video_buffer,
+                                is_paused: any_paused || app_state.halted,
+                                throttle: &mut throttle,
+                                max_cycles_per_frame,
+                                surface_size: &mut surface_size,
+                                window,
+                            },
                         );
 
                         // Handle halt: show notification and exit exclusive mode
@@ -972,48 +977,51 @@ fn render_frame(
     }
 }
 
-fn step_emulator(
-    computer: &mut Computer,
-    pixels: &mut Pixels,
-    video_buffer: &Arc<RwLock<VideoBuffer>>,
+struct StepContext<'a> {
+    computer: &'a mut Computer,
+    video_buffer: &'a Arc<RwLock<VideoBuffer>>,
     is_paused: bool,
-    throttle: &mut CpuThrottle,
+    throttle: &'a mut CpuThrottle,
     max_cycles_per_frame: u64,
-    surface_size: &mut winit::dpi::PhysicalSize<u32>,
-) -> bool {
+    surface_size: &'a mut PhysicalSize<u32>,
+    window: &'a Window,
+}
+
+fn step_emulator(pixels: &mut Pixels, ctx: &mut StepContext) -> bool {
     let mut halted = false;
 
     // Skip execution if paused. When the computer is debug-paused (MCP breakpoint
     // or watchpoint), still call step() once per frame so that debug_check()
     // can service pending MCP commands (step/continue/read_memory).
-    if computer.is_debug_paused() {
-        computer.step();
-    } else if !is_paused {
-        let current_cycles = computer.get_cycle_count();
-        let frame_target = throttle
+    if ctx.computer.is_debug_paused() {
+        ctx.computer.step();
+    } else if !ctx.is_paused {
+        let current_cycles = ctx.computer.get_cycle_count();
+        let frame_target = ctx
+            .throttle
             .target_cycles()
-            .min(current_cycles + max_cycles_per_frame)
+            .min(current_cycles + ctx.max_cycles_per_frame)
             .max(current_cycles + 1000);
 
-        while computer.get_cycle_count() < frame_target {
-            computer.step();
+        while ctx.computer.get_cycle_count() < frame_target {
+            ctx.computer.step();
             // Only treat as a terminal halt when IF=0 (e.g. INT 20h / INT 21h AH=4Ch exit).
             // HLT with IF=1 (STI + HLT idle loop used by TSRs/task managers) must keep running
             // so that pending timer IRQs can wake the CPU back up.
-            if computer.is_terminal_halt() {
+            if ctx.computer.is_terminal_halt() {
                 log::info!("Computer halted");
                 halted = true;
                 break;
             }
             // If waiting for a keypress, step() returns without advancing cycles,
             // which would spin this loop forever and lock up the window.
-            if computer.wait_for_key_press() {
+            if ctx.computer.wait_for_key_press() {
                 break;
             }
             // If a debug pause was triggered mid-frame (e.g. by MCP pause command or
             // a breakpoint), step() returns without advancing cycles.  Break out now
             // so the winit event loop stays responsive instead of spinning forever.
-            if computer.is_debug_paused() {
+            if ctx.computer.is_debug_paused() {
                 break;
             }
         }
@@ -1021,7 +1029,7 @@ fn step_emulator(
 
     // Always update the pixel buffer from the video buffer
     let (is_dirty, width, height) = {
-        let vb = video_buffer.read().unwrap();
+        let vb = ctx.video_buffer.read().unwrap();
         let (w, h) = vb.mode().resolution();
         (vb.is_dirty(), w, h)
     };
@@ -1031,21 +1039,24 @@ fn step_emulator(
             if let Err(e) = pixels.resize_buffer(width, height) {
                 log::error!("Failed to resize pixel buffer to {width}x{height}: {e}");
             }
-            // Resize the surface to match the new buffer aspect ratio so the
-            // scaling renderer doesn't clip or distort the image.
-            let new_aspect = width as f32 / height as f32;
-            let new_surface_height = (surface_size.width as f32 / new_aspect).round() as u32;
-            let adjusted = winit::dpi::PhysicalSize::new(surface_size.width, new_surface_height);
-            if let Err(e) = pixels.resize_surface(adjusted.width, adjusted.height) {
-                log::error!(
-                    "Failed to resize surface to {}x{}: {e}",
-                    adjusted.width,
-                    adjusted.height
-                );
+            // Scale small modes (e.g. 320x200) up so the window is at least 640 wide.
+            let scale = if width <= 320 { 2 } else { 1 };
+            let win_w = width * scale;
+            let win_h = height * scale;
+            let new_size = LogicalSize::new(win_w, win_h);
+            if let Some(new_size) = ctx.window.request_inner_size(new_size) {
+                let physical = PhysicalSize::new(new_size.width, new_size.height);
+                if let Err(e) = pixels.resize_surface(physical.width, physical.height) {
+                    log::error!(
+                        "Failed to resize surface to {}x{}: {e}",
+                        physical.width,
+                        physical.height
+                    );
+                }
+                *ctx.surface_size = physical;
             }
-            *surface_size = adjusted;
         }
-        video_buffer
+        ctx.video_buffer
             .write()
             .unwrap()
             .render_and_clear_dirty(pixels.frame_mut());

@@ -5,10 +5,10 @@
 
 
 int_10h:
-   call 0x0147             ;    8 -- 0E7B:003C E8 08 01           func_0E7B_0147   
-   ; gap 0E7B:003F - 0E7B:0045 (6 bytes)
 
 int_16h:
+   call 0x0147             ;    8 -- 0E7B:003C E8 08 01           func_0E7B_0147   
+   ; gap 0E7B:003F - 0E7B:0045 (6 bytes)
    jmp short 0x0049        ;    3 -- 0E7B:0045 EB 02              lbl_0E7B_0049   
    ; gap 0E7B:0047 - 0E7B:0049 (2 bytes)
 lbl_0E7B_0049:
@@ -43,17 +43,17 @@ func_0E7B_0147:
    mov bp, [bp+0x00]       ;   11 -- 0E7B:0185 2E 8B 6E 00         
    pushf                   ;   11 -- 0E7B:0189 9C                  
    call far [bp+0x00]      ;   11 -- 0E7B:018A 2E FF 5E 00         
-   mov bp, sp              ;   11 -- 0E7B:018E 8B EC                 [BP=04C6 SP=04C6]
-   mov bp, [bp+0x00]       ;   11 -- 0E7B:0190 26 8B 6E 00           [BP=0040 [0x0040]=0001 @0EA2:0040(0EA60)]
-   mov [bp+0x04]           ;   11 -- 0E7B:0194 26 8E 56 04           [[0x0044]=48a2 @0EA2:0044(0EA64)]
-   mov sp, [bp+0x02]       ;   11 -- 0E7B:0198 26 8B 66 02         
-   mov [bp+0x00], 0x00     ;   11 -- 0E7B:019C 26 C6 46 00 00        [[0x0040]=00 @0EA2:0040(0EA60)]
-   mov [0x0010], bp        ;   11 -- 0E7B:01A1 2E 89 2E 10 00        [[0x0010]=0040 @0E7B:0010(0E7C0) BP=0040]
-   pop es                  ;   11 -- 0E7B:01A6 07                  
-   pop bp                  ;   11 -- 0E7B:01A7 5D                  
-   pop ax                  ;   11 -- 0E7B:01A8 58                  
-   add sp, 0x0002          ;   11 -- 0E7B:01A9 83 C4 02            
-   iret                    ;   11 -- 0E7B:01AC CF                  
+   mov bp, sp              ;   12 -- 0E7B:018E 8B EC                 [BP=04C6 SP=04C6]
+   mov bp, [bp+0x00]       ;   12 -- 0E7B:0190 26 8B 6E 00           [BP=0040 [0x0040]=0001 @0EA2:0040(0EA60)]
+   mov [bp+0x04]           ;   12 -- 0E7B:0194 26 8E 56 04           [[0x0044]=48a2 @0EA2:0044(0EA64)]
+   mov sp, [bp+0x02]       ;   12 -- 0E7B:0198 26 8B 66 02         
+   mov [bp+0x00], 0x00     ;   12 -- 0E7B:019C 26 C6 46 00 00        [[0x0040]=00 @0EA2:0040(0EA60)]
+   mov [0x0010], bp        ;   12 -- 0E7B:01A1 2E 89 2E 10 00        [[0x0010]=0040 @0E7B:0010(0E7C0) BP=0040]
+   pop es                  ;   12 -- 0E7B:01A6 07                  
+   pop bp                  ;   12 -- 0E7B:01A7 5D                  
+   pop ax                  ;   12 -- 0E7B:01A8 58                  
+   add sp, 0x0002          ;   12 -- 0E7B:01A9 83 C4 02            
+   iret                    ;   12 -- 0E7B:01AC CF                  
 
 func_12E0_01BB:
    push bp                 ;  363 -- 12E0:01BB 55                  
@@ -65,8 +65,6 @@ func_12E0_01BB:
    mov dh, [bp+0x06]       ;  363 -- 12E0:01C6 8A 76 06            
    mov dl, [bp+0x08]       ;  363 -- 12E0:01C9 8A 56 08            
    int 0x10                ;  363 -- 12E0:01CC CD 10                 [; INT 10h AH=02h: set cursor position]
-
-int_10h:
    pop si                  ;  363 -- 12E0:01CE 5E                  
    pop di                  ;  363 -- 12E0:01CF 5F                  
    pop bp                  ;  363 -- 12E0:01D0 5D                  
@@ -248,7 +246,7 @@ lbl_1354_0A0C:
    ; gap 1354:0A61 - 1354:0A66 (5 bytes)
 lbl_1354_0A66:
    push [0x0caa]           ;    1 -- 1354:0A66 FF 36 AA 0C           [[0x0caa]=58a3 @48A2:0CAA(496CA)]
-   push [0x0ca8]           ;    1 -- 1354:0A6A FF 36 A8 0C           [[0x0ca8]=5a5c @48A2:0CA8(496C8)]
+   push [0x0ca8]           ;    1 -- 1354:0A6A FF 36 A8 0C           [[0x0ca8]=5bb2 @48A2:0CA8(496C8)]
    mov [0xb63c]            ;    1 -- 1354:0A6E 8E 06 3C B6           [[0xb63c]=48a2 @48A2:B63C(5405C)]
    push [0x0ab6]           ;    1 -- 1354:0A72 26 FF 36 B6 0A        [[0x0ab6]=ffff @48A2:0AB6(494D6)]
    lea ax, [bp-0x009e]     ;    1 -- 1354:0A77 8D 86 62 FF           [AX=ECC4 [0xecc4]=2020 @48A2:ECC4(576E4)]
@@ -537,8 +535,6 @@ lbl_1A34_101A:
    push si                 ;    2 -- 1A34:101D 56                  
    push di                 ;    2 -- 1A34:101E 57                    [DI=FFFF]
    int 0x10                ;    2 -- 1A34:101F CD 10                 [; INT 10h AH=12h: alternate function select]
-
-int_10h:
    pop di                  ;    2 -- 1A34:1021 5F                    [DI=FFFF]
    pop si                  ;    2 -- 1A34:1022 5E                  
    pop bp                  ;    2 -- 1A34:1023 5D                  
@@ -549,8 +545,6 @@ lbl_1A34_1024:
    push di                 ;    2 -- 1A34:1029 57                    [DI=FFFF]
    mov ah, 0x00            ;    2 -- 1A34:102A B4 00                 [AH=00]
    int 0x10                ;    2 -- 1A34:102C CD 10                 [; INT 10h AH=00h: set video mode]
-
-int_10h:
    pop di                  ;    2 -- 1A34:102E 5F                    [DI=FFFF]
    pop si                  ;    2 -- 1A34:102F 5E                  
    pop bp                  ;    2 -- 1A34:1030 5D                  
@@ -569,8 +563,6 @@ lbl_1A34_104C:
    push di                 ;    2 -- 1A34:1054 57                    [DI=FFFF]
    mov ah, 0x05            ;    2 -- 1A34:1055 B4 05                 [AH=05]
    int 0x10                ;    2 -- 1A34:1057 CD 10                 [; INT 10h AH=05h: select active page]
-
-int_10h:
    pop di                  ;    2 -- 1A34:1059 5F                    [DI=FFFF]
    pop si                  ;    2 -- 1A34:105A 5E                  
    pop bp                  ;    2 -- 1A34:105B 5D                  
@@ -598,8 +590,6 @@ lbl_1A34_14F2:
    push di                 ;    1 -- 1A34:1512 57                    [DI=FFFF]
    mov ah, 0x00            ;    1 -- 1A34:1513 B4 00                 [AH=00]
    int 0x10                ;    1 -- 1A34:1515 CD 10                 [; INT 10h AH=00h: set video mode]
-
-int_10h:
    pop di                  ;    1 -- 1A34:1517 5F                    [DI=FFFF]
    pop si                  ;    1 -- 1A34:1518 5E                    [SI=0010]
    pop bp                  ;    1 -- 1A34:1519 5D                    [BP=ED4A]
@@ -628,8 +618,6 @@ lbl_1A34_1543:
    push di                 ;    3 -- 1A34:1558 57                    [DI=FFFF]
    mov ah, 0x10            ;    3 -- 1A34:1559 B4 10                 [AH=10]
    int 0x10                ;    3 -- 1A34:155B CD 10                 [; INT 10h AH=10h: palette registers]
-
-int_10h:
    pop di                  ;    3 -- 1A34:155D 5F                    [DI=FFFF]
    pop si                  ;    3 -- 1A34:155E 5E                  
    pop bp                  ;    3 -- 1A34:155F 5D                  
@@ -640,8 +628,6 @@ int_10h:
    push di                 ;    3 -- 1A34:1567 57                    [DI=FFFF]
    mov ah, 0x10            ;    3 -- 1A34:1568 B4 10                 [AH=10]
    int 0x10                ;    3 -- 1A34:156A CD 10                 [; INT 10h AH=10h: palette registers]
-
-int_10h:
    pop di                  ;    3 -- 1A34:156C 5F                    [DI=FFFF]
    pop si                  ;    3 -- 1A34:156D 5E                  
    pop bp                  ;    3 -- 1A34:156E 5D                  
@@ -655,8 +641,6 @@ lbl_1A34_156F:
    push di                 ;    3 -- 1A34:157C 57                    [DI=FFFF]
    mov ah, 0x10            ;    3 -- 1A34:157D B4 10                 [AH=10]
    int 0x10                ;    3 -- 1A34:157F CD 10                 [; INT 10h AH=10h: palette registers]
-
-int_10h:
    pop di                  ;    3 -- 1A34:1581 5F                    [DI=FFFF]
    pop si                  ;    3 -- 1A34:1582 5E                  
    pop bp                  ;    3 -- 1A34:1583 5D                  
@@ -678,8 +662,6 @@ lbl_1A34_158F:
    push di                 ;    1 -- 1A34:15A1 57                    [DI=0000]
    mov ah, 0x10            ;    1 -- 1A34:15A2 B4 10                 [AH=10]
    int 0x10                ;    1 -- 1A34:15A4 CD 10                 [; INT 10h AH=10h: palette registers]
-
-int_10h:
    pop di                  ;    1 -- 1A34:15A6 5F                    [DI=0000]
    pop si                  ;    1 -- 1A34:15A7 5E                    [SI=0000]
    pop bp                  ;    1 -- 1A34:15A8 5D                    [BP=ED52]
@@ -800,8 +782,6 @@ lbl_1A34_242D:
    push di                 ;    2 -- 1A34:2446 57                    [DI=FFFF]
    mov ah, 0x09            ;    2 -- 1A34:2447 B4 09                 [AH=09]
    int 0x10                ;    2 -- 1A34:2449 CD 10                 [; INT 10h AH=09h: write char/attr]
-
-int_10h:
    pop di                  ;    2 -- 1A34:244B 5F                    [DI=FFFF]
    pop si                  ;    2 -- 1A34:244C 5E                  
    pop bp                  ;    2 -- 1A34:244D 5D                    [BP=ED1E]
@@ -831,8 +811,6 @@ func_1A34_24A9:
    push di                 ;    6 -- 1A34:24BF 57                    [DI=FFFF]
    mov ah, 0x02            ;    6 -- 1A34:24C0 B4 02                 [AH=02]
    int 0x10                ;    6 -- 1A34:24C2 CD 10                 [; INT 10h AH=02h: set cursor position]
-
-int_10h:
    pop di                  ;    6 -- 1A34:24C4 5F                    [DI=FFFF]
    pop si                  ;    6 -- 1A34:24C5 5E                  
    pop bp                  ;    6 -- 1A34:24C6 5D                  
@@ -1150,8 +1128,6 @@ lbl_1A34_29E0:
    push si                 ;    6 -- 1A34:29EB 56                  
    push di                 ;    6 -- 1A34:29EC 57                    [DI=FFFF]
    int 0x10                ;    6 -- 1A34:29ED CD 10                 [; INT 10h AH=11h: character generator]
-
-int_10h:
    pop di                  ;    6 -- 1A34:29EF 5F                    [DI=FFFF]
    pop si                  ;    6 -- 1A34:29F0 5E                  
    pop bp                  ;    6 -- 1A34:29F1 5D                  
@@ -2214,7 +2190,7 @@ lbl_1E88_1236:
    mov ax, 0x9150          ;    1 -- 1E88:124D B8 50 91              [AX=9150]
    push ds                 ;    1 -- 1E88:1250 1E                    [DS=48A2]
    push ax                 ;    1 -- 1E88:1251 50                    [AX=9150]
-   lea ax, [bp-0x00a4]     ;    1 -- 1E88:1252 8D 86 5C FF           [AX=ECCE [0xecce]=00a9 @48A2:ECCE(576EE)]
+   lea ax, [bp-0x00a4]     ;    1 -- 1E88:1252 8D 86 5C FF           [AX=ECCE [0xecce]=ece0 @48A2:ECCE(576EE)]
    push ss                 ;    1 -- 1E88:1256 16                    [SS=48A2]
    push ax                 ;    1 -- 1E88:1257 50                    [AX=ECCE]
    call far 0x36c5, 0x0460 ;    1 -- 1E88:1258 9A 60 04 C5 36     func_36C5_0460   
@@ -3266,22 +3242,22 @@ func_31A9_067C:
    add sp, 0x0004          ;    1 -- 31A9:06AA 83 C4 04              [SP=EC8C]
    cmp [bp+0x0a], 0xffff   ;    1 -- 31A9:06AD 83 7E 0A FF           [[0xecba]=ffff @48A2:ECBA(576DA)]
    jne 0x06bd              ;    1 -- 31A9:06B1 75 0A              lbl_31A9_06BD   
-   les bx, [bp+0x0c]       ;    1 -- 31A9:06B3 C4 5E 0C              [BX=5A5C [0xecbc]=5a5c @48A2:ECBC(576DC)]
-   mov ax, [bx+0x14]       ;    1 -- 31A9:06B6 26 8B 47 14           [AX=000F [0x5a70]=000f @58A3:5A70(5E4A0)]
+   les bx, [bp+0x0c]       ;    1 -- 31A9:06B3 C4 5E 0C              [BX=5BB2 [0xecbc]=5bb2 @48A2:ECBC(576DC)]
+   mov ax, [bx+0x14]       ;    1 -- 31A9:06B6 26 8B 47 14           [AX=000F [0x5bc6]=000f @58A3:5BC6(5E5F6)]
    mov [bp+0x0a], ax       ;    1 -- 31A9:06BA 89 46 0A              [[0xecba]=000f @48A2:ECBA(576DA) AX=000F]
 lbl_31A9_06BD:
    cmp [bp+0x0a], 0x0000   ;    1 -- 31A9:06BD 83 7E 0A 00           [[0xecba]=000f @48A2:ECBA(576DA)]
    jge 0x06d2              ;    1 -- 31A9:06C1 7D 0F              lbl_31A9_06D2   
    ; gap 31A9:06C3 - 31A9:06D2 (15 bytes)
 lbl_31A9_06D2:
-   les bx, [bp+0x0c]       ;    1 -- 31A9:06D2 C4 5E 0C              [BX=5A5C [0xecbc]=5a5c @48A2:ECBC(576DC)]
+   les bx, [bp+0x0c]       ;    1 -- 31A9:06D2 C4 5E 0C              [BX=5BB2 [0xecbc]=5bb2 @48A2:ECBC(576DC)]
    mov ax, [bp+0x0a]       ;    1 -- 31A9:06D5 8B 46 0A              [AX=000F [0xecba]=000f @48A2:ECBA(576DA)]
-   cmp [bx+0x14], ax       ;    1 -- 31A9:06D8 26 39 47 14           [[0x5a70]=000f @58A3:5A70(5E4A0) AX=000F]
+   cmp [bx+0x14], ax       ;    1 -- 31A9:06D8 26 39 47 14           [[0x5bc6]=000f @58A3:5BC6(5E5F6) AX=000F]
    jge 0x06ec              ;    1 -- 31A9:06DC 7D 0E              lbl_31A9_06EC   
    ; gap 31A9:06DE - 31A9:06EC (14 bytes)
 lbl_31A9_06EC:
    mov [bp+0x0e]           ;    1 -- 31A9:06EC 8E 46 0E              [[0xecbe]=58a3 @48A2:ECBE(576DE)]
-   mov ax, [bx+0x1e]       ;    1 -- 31A9:06EF 26 8B 47 1E           [AX=1144 [0x5a7a]=1144 @58A3:5A7A(5E4AA)]
+   mov ax, [bx+0x1e]       ;    1 -- 31A9:06EF 26 8B 47 1E           [AX=1144 [0x5bd0]=1144 @58A3:5BD0(5E600)]
    dec ax                  ;    1 -- 31A9:06F3 48                    [AX=1143]
    cmp ax, [bp+0x0a]       ;    1 -- 31A9:06F4 3B 46 0A              [AX=1143 [0xecba]=000f @48A2:ECBA(576DA)]
    jge 0x0708              ;    1 -- 31A9:06F7 7D 0F              lbl_31A9_0708   
@@ -3292,19 +3268,19 @@ lbl_31A9_0708:
    jne 0x071e              ;    1 -- 31A9:070E 75 0E              lbl_31A9_071E   
    ; gap 31A9:0710 - 31A9:071E (14 bytes)
 lbl_31A9_071E:
-   les bx, [bp+0x0c]       ;    1 -- 31A9:071E C4 5E 0C              [BX=5A5C [0xecbc]=5a5c @48A2:ECBC(576DC)]
-   mov ax, [bx+0x1a]       ;    1 -- 31A9:0721 26 8B 47 1A           [AX=5A82 [0x5a76]=5a82 @58A3:5A76(5E4A6)]
-   mov dx, [bx+0x1c]       ;    1 -- 31A9:0725 26 8B 57 1C           [DX=58A3 [0x5a78]=58a3 @58A3:5A78(5E4A8)]
-   mov [bp-0x0c], ax       ;    1 -- 31A9:0729 89 46 F4              [[0xeca4]=5a82 @48A2:ECA4(576C4) AX=5A82]
+   les bx, [bp+0x0c]       ;    1 -- 31A9:071E C4 5E 0C              [BX=5BB2 [0xecbc]=5bb2 @48A2:ECBC(576DC)]
+   mov ax, [bx+0x1a]       ;    1 -- 31A9:0721 26 8B 47 1A           [AX=5BD8 [0x5bcc]=5bd8 @58A3:5BCC(5E5FC)]
+   mov dx, [bx+0x1c]       ;    1 -- 31A9:0725 26 8B 57 1C           [DX=58A3 [0x5bce]=58a3 @58A3:5BCE(5E5FE)]
+   mov [bp-0x0c], ax       ;    1 -- 31A9:0729 89 46 F4              [[0xeca4]=5bd8 @48A2:ECA4(576C4) AX=5BD8]
    mov [bp-0x0a], dx       ;    1 -- 31A9:072C 89 56 F6              [[0xeca6]=58a3 @48A2:ECA6(576C6) DX=58A3]
-   mov ax, [bx+0x22]       ;    1 -- 31A9:072F 26 8B 47 22           [AX=004C [0x5a7e]=004c @58A3:5A7E(5E4AE)]
+   mov ax, [bx+0x22]       ;    1 -- 31A9:072F 26 8B 47 22           [AX=004C [0x5bd4]=004c @58A3:5BD4(5E604)]
    mov [bp-0x16], ax       ;    1 -- 31A9:0733 89 46 EA              [[0xec9a]=004c @48A2:EC9A(576BA) AX=004C]
    mov bx, [bp+0x0a]       ;    1 -- 31A9:0736 8B 5E 0A              [BX=000F [0xecba]=000f @48A2:ECBA(576DA)]
    shl bx, 0x01            ;    1 -- 31A9:0739 D1 E3                 [BX=001E]
    shl bx, 0x01            ;    1 -- 31A9:073B D1 E3                 [BX=003C]
-   les si, [bp-0x0c]       ;    1 -- 31A9:073D C4 76 F4              [SI=5A82 [0xeca4]=5a82 @48A2:ECA4(576C4)]
-   mov ax, [bx+si]         ;    1 -- 31A9:0740 26 8B 00              [AX=0000 [0x5abe]=0000 @58A3:5ABE(5E4EE)]
-   mov dx, [bx+si+0x02]    ;    1 -- 31A9:0743 26 8B 50 02           [DX=0000 [0x5ac0]=0000 @58A3:5AC0(5E4F0)]
+   les si, [bp-0x0c]       ;    1 -- 31A9:073D C4 76 F4              [SI=5BD8 [0xeca4]=5bd8 @48A2:ECA4(576C4)]
+   mov ax, [bx+si]         ;    1 -- 31A9:0740 26 8B 00              [AX=0000 [0x5c14]=0000 @58A3:5C14(5E644)]
+   mov dx, [bx+si+0x02]    ;    1 -- 31A9:0743 26 8B 50 02           [DX=0000 [0x5c16]=0000 @58A3:5C16(5E646)]
    mov [bp-0x1a], ax       ;    1 -- 31A9:0747 89 46 E6              [[0xec96]=0000 @48A2:EC96(576B6) AX=0000]
    mov [bp-0x18], dx       ;    1 -- 31A9:074A 89 56 E8              [[0xec98]=0000 @48A2:EC98(576B8) DX=0000]
    push [bp+0x08]          ;    1 -- 31A9:074D FF 76 08              [[0xecb8]=48a2 @48A2:ECB8(576D8)]
@@ -3360,30 +3336,30 @@ lbl_31A9_086F:
    push [bp+0x06]          ;    1 -- 31A9:0872 FF 76 06              [[0xecb6]=ecc4 @48A2:ECB6(576D6)]
    call far 0x31a9, 0x427e ;    1 -- 31A9:0875 9A 7E 42 A9 31     func_31A9_427E   
    add sp, 0x0004          ;    1 -- 31A9:087A 83 C4 04              [SP=EC8C]
-   mov [bp-0x1a], ax       ;    1 -- 31A9:087D 89 46 E6              [[0xec96]=5922 @48A2:EC96(576B6) AX=5922]
+   mov [bp-0x1a], ax       ;    1 -- 31A9:087D 89 46 E6              [[0xec96]=a3c0 @48A2:EC96(576B6) AX=A3C0]
    mov [bp-0x18], dx       ;    1 -- 31A9:0880 89 56 E8              [[0xec98]=58a3 @48A2:EC98(576B8) DX=58A3]
-   or dx, ax               ;    1 -- 31A9:0883 0B D0                 [DX=59A3 AX=5922]
+   or dx, ax               ;    1 -- 31A9:0883 0B D0                 [DX=FBE3 AX=A3C0]
    je 0x0902               ;    1 -- 31A9:0885 74 7B              lbl_31A9_0902   
    mov bx, [bp+0x0a]       ;    1 -- 31A9:0887 8B 5E 0A              [BX=000F [0xecba]=000f @48A2:ECBA(576DA)]
    shl bx, 0x01            ;    1 -- 31A9:088A D1 E3                 [BX=001E]
    shl bx, 0x01            ;    1 -- 31A9:088C D1 E3                 [BX=003C]
-   les si, [bp-0x0c]       ;    1 -- 31A9:088E C4 76 F4              [SI=5A82 [0xeca4]=5a82 @48A2:ECA4(576C4)]
+   les si, [bp-0x0c]       ;    1 -- 31A9:088E C4 76 F4              [SI=5BD8 [0xeca4]=5bd8 @48A2:ECA4(576C4)]
    mov dx, [bp-0x18]       ;    1 -- 31A9:0891 8B 56 E8              [DX=58A3 [0xec98]=58a3 @48A2:EC98(576B8)]
-   mov [bx+si], ax         ;    1 -- 31A9:0894 26 89 00              [[0x5abe]=5922 @58A3:5ABE(5E4EE) AX=5922]
-   mov [bx+si+0x02], dx    ;    1 -- 31A9:0897 26 89 50 02           [[0x5ac0]=58a3 @58A3:5AC0(5E4F0) DX=58A3]
+   mov [bx+si], ax         ;    1 -- 31A9:0894 26 89 00              [[0x5c14]=a3c0 @58A3:5C14(5E644) AX=A3C0]
+   mov [bx+si+0x02], dx    ;    1 -- 31A9:0897 26 89 50 02           [[0x5c16]=58a3 @58A3:5C16(5E646) DX=58A3]
    mov ax, [bp-0x16]       ;    1 -- 31A9:089B 8B 46 EA              [AX=004C [0xec9a]=004c @48A2:EC9A(576BA)]
    cmp [bp-0x1c], ax       ;    1 -- 31A9:089E 39 46 E4              [[0xec94]=0046 @48A2:EC94(576B4) AX=004C]
    jg 0x08b2               ;    1 -- 31A9:08A1 7F 0F              lbl_31A9_08B2   
-   les bx, [bp+0x0c]       ;    1 -- 31A9:08A3 C4 5E 0C              [BX=5A5C [0xecbc]=5a5c @48A2:ECBC(576DC)]
-   mov ax, [bx+0x12]       ;    1 -- 31A9:08A6 26 8B 47 12           [AX=0046 [0x5a6e]=0046 @58A3:5A6E(5E49E)]
+   les bx, [bp+0x0c]       ;    1 -- 31A9:08A3 C4 5E 0C              [BX=5BB2 [0xecbc]=5bb2 @48A2:ECBC(576DC)]
+   mov ax, [bx+0x12]       ;    1 -- 31A9:08A6 26 8B 47 12           [AX=0046 [0x5bc4]=0046 @58A3:5BC4(5E5F4)]
    cmp ax, [bp-0x1c]       ;    1 -- 31A9:08AA 3B 46 E4              [AX=0046 [0xec94]=0046 @48A2:EC94(576B4)]
    jge 0x08b2              ;    1 -- 31A9:08AD 7D 03              lbl_31A9_08B2   
    ; gap 31A9:08AF - 31A9:08B2 (3 bytes)
 lbl_31A9_08B2:
-   les bx, [bp+0x0c]       ;    1 -- 31A9:08B2 C4 5E 0C              [BX=5A5C [0xecbc]=5a5c @48A2:ECBC(576DC)]
-   mov [bx+0x12], ax       ;    1 -- 31A9:08B5 26 89 47 12           [[0x5a6e]=0046 @58A3:5A6E(5E49E) AX=0046]
-   les bx, [bp+0x0c]       ;    1 -- 31A9:08B9 C4 5E 0C              [BX=5A5C [0xecbc]=5a5c @48A2:ECBC(576DC)]
-   inc [bx+0x14]           ;    1 -- 31A9:08BC 26 FF 47 14           [[0x5a70]=0010 @58A3:5A70(5E4A0)]
+   les bx, [bp+0x0c]       ;    1 -- 31A9:08B2 C4 5E 0C              [BX=5BB2 [0xecbc]=5bb2 @48A2:ECBC(576DC)]
+   mov [bx+0x12], ax       ;    1 -- 31A9:08B5 26 89 47 12           [[0x5bc4]=0046 @58A3:5BC4(5E5F4) AX=0046]
+   les bx, [bp+0x0c]       ;    1 -- 31A9:08B9 C4 5E 0C              [BX=5BB2 [0xecbc]=5bb2 @48A2:ECBC(576DC)]
+   inc [bx+0x14]           ;    1 -- 31A9:08BC 26 FF 47 14           [[0x5bc6]=0010 @58A3:5BC6(5E5F6)]
    mov ax, [bp-0x04]       ;    1 -- 31A9:08C0 8B 46 FC              [AX=0000 [0xecac]=0000 @48A2:ECAC(576CC)]
    or ax, [bp-0x02]        ;    1 -- 31A9:08C3 0B 46 FE              [AX=0000 [0xecae]=0000 @48A2:ECAE(576CE)]
    je 0x08d1               ;    1 -- 31A9:08C6 74 09              lbl_31A9_08D1   
@@ -3532,7 +3508,7 @@ func_31A9_3AE0:
    mov ax, 0x001c          ;    1 -- 31A9:3AE3 B8 1C 00              [AX=001C]
    call far 0x36c5, 0x1ebe ;    1 -- 31A9:3AE6 9A BE 1E C5 36     func_36C5_1EBE   
    push di                 ;    1 -- 31A9:3AEB 57                    [DI=FFFF]
-   push si                 ;    1 -- 31A9:3AEC 56                    [SI=5A82]
+   push si                 ;    1 -- 31A9:3AEC 56                    [SI=5BD8]
    sub ax, ax              ;    1 -- 31A9:3AED 2B C0                 [AX=0000 AX=0000]
    mov [bp-0x14], ax       ;    1 -- 31A9:3AEF 89 46 EC              [[0xec6a]=0000 @48A2:EC6A(5768A) AX=0000]
    mov [bp-0x16], ax       ;    1 -- 31A9:3AF2 89 46 EA              [[0xec68]=0000 @48A2:EC68(57688) AX=0000]
@@ -3588,7 +3564,7 @@ lbl_31A9_3B76:
    add sp, 0x0004          ;    1 -- 31A9:3B81 83 C4 04              [SP=EC5E]
    mov ax, [bp-0x16]       ;    1 -- 31A9:3B84 8B 46 EA              [AX=0000 [0xec68]=0000 @48A2:EC68(57688)]
    mov dx, [bp-0x14]       ;    1 -- 31A9:3B87 8B 56 EC              [DX=0000 [0xec6a]=0000 @48A2:EC6A(5768A)]
-   pop si                  ;    1 -- 31A9:3B8A 5E                    [SI=5A82]
+   pop si                  ;    1 -- 31A9:3B8A 5E                    [SI=5BD8]
    pop di                  ;    1 -- 31A9:3B8B 5F                    [DI=FFFF]
    mov sp, bp              ;    1 -- 31A9:3B8C 8B E5                 [SP=EC7E BP=EC7E]
    pop bp                  ;    1 -- 31A9:3B8E 5D                    [BP=ECB0]
@@ -3680,7 +3656,7 @@ func_31A9_427E:
    mov bp, sp              ;    1 -- 31A9:427F 8B EC                 [BP=EC82 SP=EC82]
    mov ax, 0x0010          ;    1 -- 31A9:4281 B8 10 00              [AX=0010]
    call far 0x36c5, 0x1ebe ;    1 -- 31A9:4284 9A BE 1E C5 36     func_36C5_1EBE   
-   push si                 ;    1 -- 31A9:4289 56                    [SI=5A82]
+   push si                 ;    1 -- 31A9:4289 56                    [SI=5BD8]
    mov [bp-0x0e], 0x0000   ;    1 -- 31A9:428A C7 46 F2 00 00        [[0xec74]=0000 @48A2:EC74(57694)]
    mov ax, 0xca0e          ;    1 -- 31A9:428F B8 0E CA              [AX=CA0E]
    mov [bp-0x08], ax       ;    1 -- 31A9:4292 89 46 F8              [[0xec7a]=ca0e @48A2:EC7A(5769A) AX=CA0E]
@@ -3703,9 +3679,9 @@ lbl_31A9_42C0:
    push ax                 ;    1 -- 31A9:42D4 50                    [AX=0006]
    call far 0x31a9, 0x2c8e ;    1 -- 31A9:42D5 9A 8E 2C A9 31     func_31A9_2C8E   
    add sp, 0x0002          ;    1 -- 31A9:42DA 83 C4 02              [SP=EC70]
-   mov [bp-0x0c], ax       ;    1 -- 31A9:42DD 89 46 F4              [[0xec76]=5922 @48A2:EC76(57696) AX=5922]
+   mov [bp-0x0c], ax       ;    1 -- 31A9:42DD 89 46 F4              [[0xec76]=a3c0 @48A2:EC76(57696) AX=A3C0]
    mov [bp-0x0a], dx       ;    1 -- 31A9:42E0 89 56 F6              [[0xec78]=58a3 @48A2:EC78(57698) DX=58A3]
-   or dx, ax               ;    1 -- 31A9:42E3 0B D0                 [DX=59A3 AX=5922]
+   or dx, ax               ;    1 -- 31A9:42E3 0B D0                 [DX=FBE3 AX=A3C0]
    jne 0x42ea              ;    1 -- 31A9:42E5 75 03              lbl_31A9_42EA   
    ; gap 31A9:42E7 - 31A9:42EA (3 bytes)
 lbl_31A9_42EA:
@@ -3720,21 +3696,21 @@ lbl_31A9_42FF:
    push ax                 ;    1 -- 31A9:4305 50                    [AX=0048]
    call far 0x31a9, 0x2c8e ;    1 -- 31A9:4306 9A 8E 2C A9 31     func_31A9_2C8E   
    add sp, 0x0002          ;    1 -- 31A9:430B 83 C4 02              [SP=EC70]
-   les bx, [bp-0x0c]       ;    1 -- 31A9:430E C4 5E F4              [BX=5922 [0xec76]=5922 @48A2:EC76(57696)]
-   mov [bx+0x02], ax       ;    1 -- 31A9:4311 26 89 47 02           [[0x5924]=59fc @58A3:5924(5E354) AX=59FC]
-   mov [bx+0x04], dx       ;    1 -- 31A9:4315 26 89 57 04           [[0x5926]=58a3 @58A3:5926(5E356) DX=58A3]
-   or dx, ax               ;    1 -- 31A9:4319 0B D0                 [DX=59FF AX=59FC]
+   les bx, [bp-0x0c]       ;    1 -- 31A9:430E C4 5E F4              [BX=A3C0 [0xec76]=a3c0 @48A2:EC76(57696)]
+   mov [bx+0x02], ax       ;    1 -- 31A9:4311 26 89 47 02           [[0xa3c2]=a3c8 @58A3:A3C2(62DF2) AX=A3C8]
+   mov [bx+0x04], dx       ;    1 -- 31A9:4315 26 89 57 04           [[0xa3c4]=58a3 @58A3:A3C4(62DF4) DX=58A3]
+   or dx, ax               ;    1 -- 31A9:4319 0B D0                 [DX=FBEB AX=A3C8]
    jne 0x4336              ;    1 -- 31A9:431B 75 19              lbl_31A9_4336   
    ; gap 31A9:431D - 31A9:4336 (25 bytes)
 lbl_31A9_4336:
    push [bp+0x08]          ;    1 -- 31A9:4336 FF 76 08              [[0xec8a]=48a2 @48A2:EC8A(576AA)]
    push [bp+0x06]          ;    1 -- 31A9:4339 FF 76 06              [[0xec88]=ecc4 @48A2:EC88(576A8)]
-   les bx, [bp-0x0c]       ;    1 -- 31A9:433C C4 5E F4              [BX=5922 [0xec76]=5922 @48A2:EC76(57696)]
-   push [bx+0x04]          ;    1 -- 31A9:433F 26 FF 77 04           [[0x5926]=58a3 @58A3:5926(5E356)]
-   push [bx+0x02]          ;    1 -- 31A9:4343 26 FF 77 02           [[0x5924]=59fc @58A3:5924(5E354)]
+   les bx, [bp-0x0c]       ;    1 -- 31A9:433C C4 5E F4              [BX=A3C0 [0xec76]=a3c0 @48A2:EC76(57696)]
+   push [bx+0x04]          ;    1 -- 31A9:433F 26 FF 77 04           [[0xa3c4]=58a3 @58A3:A3C4(62DF4)]
+   push [bx+0x02]          ;    1 -- 31A9:4343 26 FF 77 02           [[0xa3c2]=a3c8 @58A3:A3C2(62DF2)]
    call far 0x31a9, 0x308c ;    1 -- 31A9:4347 9A 8C 30 A9 31     func_31A9_308C   
    add sp, 0x0008          ;    1 -- 31A9:434C 83 C4 08              [SP=EC70]
-   mov [bp-0x04], ax       ;    1 -- 31A9:434F 89 46 FC              [[0xec7e]=5a42 @48A2:EC7E(5769E) AX=5A42]
+   mov [bp-0x04], ax       ;    1 -- 31A9:434F 89 46 FC              [[0xec7e]=a40e @48A2:EC7E(5769E) AX=A40E]
    mov [bp-0x02], dx       ;    1 -- 31A9:4352 89 56 FE              [[0xec80]=58a3 @48A2:EC80(576A0) DX=58A3]
    cmp [bp-0x0e], 0x0000   ;    1 -- 31A9:4355 83 7E F2 00           [[0xec74]=0000 @48A2:EC74(57694)]
    jne 0x436c              ;    1 -- 31A9:4359 75 11              lbl_31A9_436C   
@@ -3742,20 +3718,20 @@ lbl_31A9_4336:
    push ds                 ;    1 -- 31A9:435E 1E                    [DS=48A2]
    push ax                 ;    1 -- 31A9:435F 50                    [AX=CA18]
    push dx                 ;    1 -- 31A9:4360 52                    [DX=58A3]
-   push [bp-0x04]          ;    1 -- 31A9:4361 FF 76 FC              [[0xec7e]=5a42 @48A2:EC7E(5769E)]
+   push [bp-0x04]          ;    1 -- 31A9:4361 FF 76 FC              [[0xec7e]=a40e @48A2:EC7E(5769E)]
    call far 0x31a9, 0x308c ;    1 -- 31A9:4364 9A 8C 30 A9 31     func_31A9_308C   
    add sp, 0x0008          ;    1 -- 31A9:4369 83 C4 08              [SP=EC70]
 lbl_31A9_436C:
-   les bx, [bp-0x0c]       ;    1 -- 31A9:436C C4 5E F4              [BX=5922 [0xec76]=5922 @48A2:EC76(57696)]
+   les bx, [bp-0x0c]       ;    1 -- 31A9:436C C4 5E F4              [BX=A3C0 [0xec76]=a3c0 @48A2:EC76(57696)]
    mov ax, [bp-0x10]       ;    1 -- 31A9:436F 8B 46 F0              [AX=0046 [0xec72]=0046 @48A2:EC72(57692)]
-   mov [bx], ax            ;    1 -- 31A9:4372 26 89 07              [[0x5922]=0046 @58A3:5922(5E352) AX=0046]
+   mov [bx], ax            ;    1 -- 31A9:4372 26 89 07              [[0xa3c0]=0046 @58A3:A3C0(62DF0) AX=0046]
    push [bp-0x06]          ;    1 -- 31A9:4375 FF 76 FA              [[0xec7c]=48a2 @48A2:EC7C(5769C)]
    push [bp-0x08]          ;    1 -- 31A9:4378 FF 76 F8              [[0xec7a]=ca0e @48A2:EC7A(5769A)]
    call far 0x31a9, 0x12c6 ;    1 -- 31A9:437B 9A C6 12 A9 31     func_31A9_12C6   
    add sp, 0x0004          ;    1 -- 31A9:4380 83 C4 04              [SP=EC70]
-   mov ax, [bp-0x0c]       ;    1 -- 31A9:4383 8B 46 F4              [AX=5922 [0xec76]=5922 @48A2:EC76(57696)]
+   mov ax, [bp-0x0c]       ;    1 -- 31A9:4383 8B 46 F4              [AX=A3C0 [0xec76]=a3c0 @48A2:EC76(57696)]
    mov dx, [bp-0x0a]       ;    1 -- 31A9:4386 8B 56 F6              [DX=58A3 [0xec78]=58a3 @48A2:EC78(57698)]
-   pop si                  ;    1 -- 31A9:4389 5E                    [SI=5A82]
+   pop si                  ;    1 -- 31A9:4389 5E                    [SI=5BD8]
    mov sp, bp              ;    1 -- 31A9:438A 8B E5                 [SP=EC82 BP=EC82]
    pop bp                  ;    1 -- 31A9:438C 5D                    [BP=ECB0]
    retf                    ;    1 -- 31A9:438D CB                  
@@ -3787,8 +3763,6 @@ lbl_31A9_4398:
    pop ax                  ;    1 -- 31A9:43CD 58                    [AX=0200]
    push bp                 ;    1 -- 31A9:43CE 55                    [BP=ED72]
    int 0x10                ;    1 -- 31A9:43CF CD 10                 [; INT 10h AH=02h: set cursor position]
-
-int_10h:
    pop bp                  ;    1 -- 31A9:43D1 5D                    [BP=ED72]
    push ds                 ;    1 -- 31A9:43D2 1E                    [DS=31A9]
    mov [0x4396]            ;    1 -- 31A9:43D3 2E 8E 1E 96 43        [[0x4396]=48a2 @31A9:4396(35E26)]
@@ -4933,12 +4907,7 @@ func_36C5_3A03:
    dec ax                  ;    2 -- 36C5:3A19 48                  
    cmp ax, cx              ;    2 -- 36C5:3A1A 3B C1               
    jae 0x3a33              ;    2 -- 36C5:3A1C 73 15              lbl_36C5_3A33   
-   mov dx, ax              ;    1 -- 36C5:3A1E 8B D0                 [DX=000C AX=000C]
-   add si, ax              ;    1 -- 36C5:3A20 03 F0                 [SI=5936 AX=000C]
-   lodsw                   ;    1 -- 36C5:3A22 AD                  
-   test al, 0x01           ;    1 -- 36C5:3A23 A8 01                 [AL=0C]
-   je 0x3a5b               ;    1 -- 36C5:3A25 74 34              lbl_36C5_3A5B   
-   ; gap 36C5:3A27 - 36C5:3A33 (12 bytes)
+   ; gap 36C5:3A1E - 36C5:3A33 (21 bytes)
 lbl_36C5_3A33:
    mov di, si              ;    2 -- 36C5:3A33 8B FE               
    je 0x3a43               ;    2 -- 36C5:3A35 74 0C              lbl_36C5_3A43   
@@ -4959,21 +4928,7 @@ lbl_36C5_3A48:
 lbl_36C5_3A57:
    mov [bx+0x02], di       ;    2 -- 36C5:3A57 89 7F 02            
    ret                     ;    2 -- 36C5:3A5A C3                  
-lbl_36C5_3A5B:
-   mov [0xafb8], 0x02      ;    1 -- 36C5:3A5B 26 C6 06 B8 AF 02     [[0xafb8]=02 @48A2:AFB8(539D8)]
-lbl_36C5_3A61:
-   cmp ax, 0xfffe          ;    4 -- 36C5:3A61 3D FE FF            
-   je 0x3a8b               ;    4 -- 36C5:3A64 74 25              lbl_36C5_3A8B   
-   mov di, si              ;    4 -- 36C5:3A66 8B FE               
-   add si, ax              ;    4 -- 36C5:3A68 03 F0               
-   lodsw                   ;    4 -- 36C5:3A6A AD                  
-   test al, 0x01           ;    4 -- 36C5:3A6B A8 01               
-   je 0x3a61               ;    4 -- 36C5:3A6D 74 F2              lbl_36C5_3A61   
-   mov di, si              ;    1 -- 36C5:3A6F 8B FE                 [DI=59FC SI=59FC]
-   dec ax                  ;    1 -- 36C5:3A71 48                    [AX=005E]
-   cmp ax, cx              ;    1 -- 36C5:3A72 3B C1                 [AX=005E CX=0048]
-   jae 0x3a33              ;    1 -- 36C5:3A74 73 BD              lbl_36C5_3A33   
-   ; gap 36C5:3A76 - 36C5:55B0 (6970 bytes)
+   ; gap 36C5:3A5B - 36C5:55B0 (6997 bytes)
 
 func_36C5_55B0:
    push bp                 ;    4 -- 36C5:55B0 55                  
@@ -5037,95 +4992,49 @@ lbl_36C5_574F:
    pop bp                  ;    4 -- 36C5:5765 5D                  
    retf                    ;    4 -- 36C5:5766 CB                  
    int 0x10                ;  246 -- 48A2:EC2C CD 10                 [; INT 10h AH=09h: write char/attr]
-
-int_10h:
    retf                    ;  246 -- 48A2:EC2E CB                  
    ; gap 48A2:EC2F - 48A2:EC34 (5 bytes)
    int 0x10                ;    2 -- 48A2:EC34 CD 10                 [; INT 10h AH=09h: write char/attr]
-
-int_10h:
    retf                    ;    2 -- 48A2:EC36 CB                  
    ; gap 48A2:EC37 - 48A2:ECDE (167 bytes)
    int 0x10                ;    2 -- 48A2:ECDE CD 10                 [; INT 10h AH=09h: write char/attr]
-
-int_10h:
    retf                    ;    2 -- 48A2:ECE0 CB                  
    ; gap 48A2:ECE1 - 48A2:ECE4 (3 bytes)
    int 0x10                ;   49 -- 48A2:ECE4 CD 10                 [; INT 10h AH=09h: write char/attr]
-
-int_10h:
    retf                    ;   49 -- 48A2:ECE6 CB                  
    ; gap 48A2:ECE7 - 48A2:ECEC (5 bytes)
    int 0x10                ;    1 -- 48A2:ECEC CD 10                 [; INT 10h AH=01h: set cursor shape]
-
-int_10h:
    retf                    ;    1 -- 48A2:ECEE CB                  
    ; gap 48A2:ECEF - 48A2:ECF0 (1 bytes)
    int 0x10                ;    1 -- 48A2:ECF0 CD 10                 [; INT 10h AH=01h: set cursor shape]
    int 0x11                ;    1 -- 48A2:ECF0 CD 11                 [; INT 11h: get equipment list]
-
-int_10h:
-
-int_11h:
    retf                    ;    2 -- 48A2:ECF2 CB                  
-
-int_10h:
-
-int_11h:
    int 0x10                ;    4 -- 48A2:ECF2 CD 10                 [; INT 10h AH=09h: write char/attr]
-
-int_10h:
    retf                    ;    4 -- 48A2:ECF4 CB                  
    ; gap 48A2:ECF5 - 48A2:ED12 (29 bytes)
    int 0x10                ;   60 -- 48A2:ED12 CD 10                 [; INT 10h AH=09h: write char/attr]
-
-int_10h:
    retf                    ;   60 -- 48A2:ED14 CB                  
    ; gap 48A2:ED15 - 48A2:ED1C (7 bytes)
    int 0x10                ;    1 -- 48A2:ED1C CD 10                 [; INT 10h AH=01h: set cursor shape]
-
-int_10h:
    retf                    ;    1 -- 48A2:ED1E CB                  
    ; gap 48A2:ED1F - 48A2:ED38 (25 bytes)
    int 0x10                ;    1 -- 48A2:ED38 CD 10                 [; INT 10h AH=00h: set video mode]
-
-int_10h:
    retf                    ;    1 -- 48A2:ED3A CB                  
    ; gap 48A2:ED3B - 48A2:ED8A (79 bytes)
    int 0x10                ;    1 -- 48A2:ED8A CD 10                 [; INT 10h AH=01h: set cursor shape]
-
-int_10h:
    retf                    ;    1 -- 48A2:ED8C CB                  
-
-int_10h:
    int 0x10                ;    1 -- 48A2:ED8C CD 10                 [; INT 10h AH=01h: set cursor shape]
-
-int_10h:
    retf                    ;    1 -- 48A2:ED8E CB                  
    ; gap 48A2:ED8F - 48A2:ED9C (13 bytes)
    int 0x10                ;    1 -- 48A2:ED9C CD 10                 [; INT 10h AH=01h: set cursor shape]
-
-int_10h:
    retf                    ;    1 -- 48A2:ED9E CB                  
    ; gap 48A2:ED9F - 48A2:EDA0 (1 bytes)
    int 0x11                ;    1 -- 48A2:EDA0 CD 11                 [; INT 11h: get equipment list]
-
-int_11h:
    retf                    ;    1 -- 48A2:EDA2 CB                  
-
-int_11h:
    int 0x10                ;    1 -- 48A2:EDA2 CD 10                 [; INT 10h AH=01h: set cursor shape]
-
-int_10h:
    retf                    ;    1 -- 48A2:EDA4 CB                  
    ; gap 48A2:EDA5 - 48A2:EDA6 (1 bytes)
    int 0x10                ;    1 -- 48A2:EDA6 CD 10                 [; INT 10h AH=00h: set video mode]
-
-int_10h:
    retf                    ;    1 -- 48A2:EDA8 CB                  
-
-int_10h:
    int 0x10                ;    1 -- 48A2:EDA8 CD 10                 [; INT 10h AH=00h: set video mode]
-
-int_10h:
    retf                    ;    1 -- 48A2:EDAA CB                  

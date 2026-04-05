@@ -1634,8 +1634,13 @@ impl Cpu {
     fn int10_get_font_info(&mut self, bus: &mut Bus) {
         let pointer_type = (self.bx >> 8) as u8; // BH
 
+        // DL returns the current screen row count from BDA (rows - 1),
+        // not a hardcoded value. This varies by mode: 24 for 25-row text,
+        // 29 for mode 11h/12h (640x480 with 16px chars = 30 rows), etc.
+        let rows = bda_get_rows(bus); // already stores rows-1
+
         // Determine which font to return based on pointer type
-        let (segment, offset, bytes_per_char, rows) = match pointer_type {
+        let (segment, offset, bytes_per_char) = match pointer_type {
             0x00 => {
                 // INT 1Fh pointer (8x8 graphics characters)
                 // Read INT 1Fh vector from IVT
@@ -1644,9 +1649,9 @@ impl Cpu {
                 // If not set, default to our ROM 8x8 font
                 if int_1f_segment == 0xF000 && int_1f_offset < 0x100 {
                     // Not initialized, use ROM font
-                    (FONT_8X8_SEGMENT, FONT_8X8_OFFSET, 8, 25)
+                    (FONT_8X8_SEGMENT, FONT_8X8_OFFSET, 8)
                 } else {
-                    (int_1f_segment, int_1f_offset, 8, 25)
+                    (int_1f_segment, int_1f_offset, 8)
                 }
             }
             0x01 => {
@@ -1655,28 +1660,28 @@ impl Cpu {
                 let int_43_segment = bus.memory_read_u16(0x43 * 4 + 2);
                 let height = bda_get_char_height(bus) as u16;
                 let height = if height == 0 { 16 } else { height };
-                (int_43_segment, int_43_offset, height, 25)
+                (int_43_segment, int_43_offset, height)
             }
             0x02 => {
                 // ROM 8x14 character font pointer
-                (FONT_8X14_SEGMENT, FONT_8X14_OFFSET, 14, 25)
+                (FONT_8X14_SEGMENT, FONT_8X14_OFFSET, 14)
             }
             0x03 | 0x04 => {
                 // ROM 8x8 double-dot font pointer (both regular and top half)
-                (FONT_8X8_SEGMENT, FONT_8X8_OFFSET, 8, 25)
+                (FONT_8X8_SEGMENT, FONT_8X8_OFFSET, 8)
             }
             0x05 => {
                 // ROM 9x14 alphanumeric alternate — use our 8x14 font
-                (FONT_8X14_SEGMENT, FONT_8X14_OFFSET, 14, 25)
+                (FONT_8X14_SEGMENT, FONT_8X14_OFFSET, 14)
             }
             0x06 => {
                 // ROM 8x16 font
-                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16)
             }
             0x07 => {
                 // ROM 9x16 alternate
                 // We don't have a 9x16 font, return 8x16 instead
-                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16)
             }
             _ => {
                 // Unknown pointer type, default to 8x16
@@ -1684,7 +1689,7 @@ impl Cpu {
                     "INT 10h/AH=11h/AL=30h: Unknown pointer type BH=0x{:02X}, defaulting to 8x16",
                     pointer_type
                 );
-                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16, 25)
+                (FONT_8X16_SEGMENT, FONT_8X16_OFFSET, 16)
             }
         };
 
@@ -1695,8 +1700,8 @@ impl Cpu {
         // Return bytes per character in CX
         self.cx = bytes_per_char;
 
-        // Return rows - 1 in DL
-        self.dx = (self.dx & 0xFF00) | ((rows - 1) as u16);
+        // Return rows - 1 in DL (BDA already stores rows-1)
+        self.dx = (self.dx & 0xFF00) | (rows as u16);
 
         log::debug!(
             "INT 10h/AH=11h/AL=30h: Get font info BH={:02X}h -> ES:BP={:04X}:{:04X}, CX={}, DL={}",
@@ -1704,7 +1709,7 @@ impl Cpu {
             self.es,
             self.bp,
             self.cx,
-            rows - 1
+            rows
         );
     }
 

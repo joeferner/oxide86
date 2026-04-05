@@ -40,7 +40,7 @@ def parse_log(path):
     jump_targets = set()
     int_handlers = {}   # addr -> set of int numbers (handler entry points)
 
-    pending_int = None  # int number whose handler we haven't seen yet
+    pending_int = None  # (int_number, seg_of_int_instr) or None
 
     with open(path, 'r', errors='replace') as f:
         for line in f:
@@ -60,9 +60,15 @@ def parse_log(path):
             elif values[key] != val:
                 values[key] = None  # differs across executions
 
-            # If the previous instruction was an `int NN`, this is the handler entry
+            # If the previous instruction was an `int NN`, the next instruction
+            # in the log is the handler entry — but only if it's in a different
+            # segment.  If the handler code isn't logged (e.g. BIOS ROM), the
+            # next logged instruction is back in the caller's segment and should
+            # NOT be labelled as the handler.
             if pending_int is not None:
-                int_handlers.setdefault(addr, set()).add(pending_int)
+                int_num, int_seg = pending_int
+                if addr[:4] != int_seg:
+                    int_handlers.setdefault(addr, set()).add(int_num)
                 pending_int = None
 
             seg = addr[:4]
@@ -82,7 +88,7 @@ def parse_log(path):
 
             int_m = INT_RE.match(disasm)
             if int_m:
-                pending_int = int(int_m.group(1), 16)
+                pending_int = (int(int_m.group(1), 16), seg)
                 continue
 
             jnear = JMP_NEAR_RE.match(disasm)
