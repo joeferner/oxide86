@@ -168,6 +168,20 @@ pub(crate) fn fpu_present() {
     );
 }
 
+/// 286 Protected Mode Step 1: SMSW/LMSW with real CR0 state tracking.
+/// Tests that SMSW returns the actual MSW, LMSW can set PE/MP/EM/TS bits,
+/// and LMSW cannot clear PE once set (286 behavior).
+#[test_log::test]
+pub(crate) fn pm_step1_msw() {
+    run_test(
+        "cpu/pm_step1_msw",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// Run the same program as a 286.
 /// Expected: no SP quirk, IOPL not settable, bits 12-15 confirmed 0x0000 → exit 0x01.
 #[test_log::test]

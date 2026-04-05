@@ -146,6 +146,30 @@ pub(crate) struct Cpu {
     /// Set when a prefix (WAIT, REP, REPNE) is folded with the following instruction
     /// in the log so that instruction doesn't get logged a second time on its own step.
     suppress_next_exec_log: bool,
+
+    // --- 286+ system registers ---
+    /// Machine Status Word / Control Register 0 (low 16 bits on 286).
+    /// Bit 0 = PE (Protection Enable), Bit 1 = MP, Bit 2 = EM, Bit 3 = TS.
+    cr0: u16,
+
+    /// Global Descriptor Table Register: base address (24-bit on 286)
+    gdtr_base: u32,
+    /// Global Descriptor Table Register: table limit in bytes
+    gdtr_limit: u16,
+
+    /// Interrupt Descriptor Table Register: base address (24-bit on 286)
+    idtr_base: u32,
+    /// Interrupt Descriptor Table Register: table limit in bytes
+    idtr_limit: u16,
+
+    /// Local Descriptor Table Register (selector)
+    ldtr: u16,
+
+    /// Task Register (selector)
+    tr: u16,
+
+    /// Current Privilege Level (0–3)
+    cpl: u8,
 }
 
 /// Snapshot of CPU state captured before instruction execution, used by the
@@ -261,6 +285,14 @@ impl Cpu {
             fpu_status_word: 0,
             fpu_stack: [f80::F80::ZERO; 8],
             fpu_top: 0,
+            cr0: 0,
+            gdtr_base: 0,
+            gdtr_limit: 0,
+            idtr_base: 0,
+            idtr_limit: 0x03FF, // Real-mode default: IVT at 0x0000, 1024 bytes
+            ldtr: 0,
+            tr: 0,
+            cpl: 0,
         }
     }
 
@@ -278,6 +310,11 @@ impl Cpu {
 
     pub(crate) fn ip(&self) -> u16 {
         self.ip
+    }
+
+    /// Returns true if the CPU is in protected mode (PE bit set in CR0/MSW).
+    pub(crate) fn in_protected_mode(&self) -> bool {
+        self.cr0 & 1 != 0
     }
 
     pub(crate) fn snapshot(&self) -> DebugSnapshot {

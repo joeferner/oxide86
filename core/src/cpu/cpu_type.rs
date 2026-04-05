@@ -58,11 +58,10 @@ impl CpuType {
     //     matches!(self, Self::I80386 | Self::I80486)
     // }
 
-    // TODO
-    // Check if this CPU supports protected mode
-    // pub(crate) fn supports_protected_mode(&self) -> bool {
-    //     !matches!(self, Self::I8086)
-    // }
+    /// Check if this CPU supports protected mode (286+)
+    pub(crate) fn supports_protected_mode(&self) -> bool {
+        !matches!(self, Self::I8086)
+    }
 }
 
 impl std::fmt::Display for CpuType {

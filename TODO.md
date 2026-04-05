@@ -83,6 +83,7 @@
     - [X] 08 - Mode 10h
     - [X] 09 - Mode 03h
     - [X] 10 - Mode 12h
+- [ ] 286 Protected Mode (see ai-analysis/286-protected-mode.md)
 - [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
   - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
   - [ ] Test Fractint Version 15.x and below
@@ -111,5 +112,5 @@
 - [ ] Test https://github.com/MobyGamer/CGACompatibilityTester
 - [ ] Commander Keen 1 laggy scrolling (see ai-analysis/commander-keen-1-laggy-scroll.md)
 - [ ] 386 Real Mode
-- [ ] 286/386 Protected Mode
+- [ ] 386 Protected Mode
 - [ ] 80387 math coprocessors

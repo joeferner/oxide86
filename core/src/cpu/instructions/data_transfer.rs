@@ -343,13 +343,14 @@ impl Cpu {
                 // SGDT/SIDT/LGDT/LIDT/SMSW/LMSW — reg field in ModRM selects operation
                 0x01 => self.exec_0f_01(bus),
 
-                // CLTS — clear task-switched flag in CR0; no-op in real mode
+                // CLTS — clear task-switched flag (TS, bit 3) in CR0
                 0x06 => {
                     log::debug!(
-                        "CLTS (0F 06) at {:04X}:{:04X} — no-op in real mode",
+                        "CLTS (0F 06) at {:04X}:{:04X} — clearing TS bit",
                         self.cs,
                         self.ip.wrapping_sub(2)
                     );
+                    self.cr0 &= !0x0008;
                 }
                 _ => {
                     log::warn!(
@@ -378,26 +379,40 @@ impl Cpu {
         let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
         match reg {
             // SMSW r/m16 — store Machine Status Word (CR0 low 16 bits) to r/m
-            // In real mode CR0 = 0x0000 (PE bit clear).
             4 => {
+                let msw = self.cr0;
                 log::debug!(
-                    "SMSW at {:04X}:{:04X} — returning MSW=0x0000",
+                    "SMSW at {:04X}:{:04X} — returning MSW=0x{:04X}",
                     self.cs,
-                    self.ip.wrapping_sub(3)
+                    self.ip.wrapping_sub(3),
+                    msw
                 );
                 if mode == 0b11 {
-                    self.set_reg16(rm, 0x0000);
+                    self.set_reg16(rm, msw);
                 } else {
-                    bus.memory_write_u16(addr, 0x0000);
+                    bus.memory_write_u16(addr, msw);
                 }
             }
-            // LMSW r/m16 — load Machine Status Word; no-op in real-mode emulation
+            // LMSW r/m16 — load Machine Status Word (low 4 bits of CR0).
+            // PE (bit 0) can be set but not cleared; bits 1-3 (MP, EM, TS) can
+            // be freely set or cleared.
             6 => {
+                let val = if mode == 0b11 {
+                    self.get_reg16(rm)
+                } else {
+                    bus.memory_read_u16(addr)
+                };
+                // Preserve PE if already set (cannot clear PE via LMSW on 286)
+                let new_cr0 =
+                    (self.cr0 & !0x000E) | (val & 0x000E) | (val & 0x0001) | (self.cr0 & 0x0001);
                 log::debug!(
-                    "LMSW at {:04X}:{:04X} — no-op in real mode",
+                    "LMSW at {:04X}:{:04X} — CR0: 0x{:04X} -> 0x{:04X}",
                     self.cs,
-                    self.ip.wrapping_sub(3)
+                    self.ip.wrapping_sub(3),
+                    self.cr0,
+                    new_cr0
                 );
+                self.cr0 = new_cr0;
             }
             _ => {
                 log::warn!(
