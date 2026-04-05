@@ -197,6 +197,7 @@ impl VideoBuffer {
     /// Called when INT 10h AH=0 sets a new video mode (which reprograms the CRTC).
     /// Direct I/O writes to 0x3D8 do NOT call this.
     pub(crate) fn reset_crtc_overrides(&mut self) {
+        self.start_address = 0;
         self.crtc_max_scan_line = None;
         self.crtc_vertical_displayed = None;
         self.crtc_offset = None;

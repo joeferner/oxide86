@@ -1,7 +1,7 @@
 use crate::{
     bus::Bus,
     cpu::{IVT_END, IVT_ENTRY_SIZE, IVT_START, bios::bda::bda_reset},
-    video::font::{CGA_FONT_8X8_DATA, EGA_FONT_8X14_DATA, VGA_FONT_8X16_DATA},
+    video::{VideoCardType, font::{CGA_FONT_8X8_DATA, EGA_FONT_8X14_DATA, VGA_FONT_8X16_DATA}},
 };
 
 pub mod bda;
@@ -51,12 +51,22 @@ pub const BIOS_VGA_FONT_ADDR: usize = 0xFB000;
 /// Segment offset of the 8x16 VGA font within F000.
 pub const BIOS_VGA_FONT_OFFSET: u16 = 0xB000;
 
+/// Physical address of the VGA static functionality table in BIOS ROM (F000:D600).
+/// Placed after the EGA 8x14 font (C800..D5FF). Only 16 bytes.
+/// Used by INT 10h/AH=1Bh to report supported video modes and capabilities.
+pub const VGA_STATIC_FUNC_TABLE_ADDR: usize = 0xFD600;
+/// Segment offset of the VGA static functionality table within F000.
+pub const VGA_STATIC_FUNC_TABLE_OFFSET: u16 = 0xD600;
+
 pub(crate) fn bios_reset(bus: &mut Bus) {
     bios_interrupt_handlers_reset(bus);
     bda_reset(bus);
     bios_int15_system_config_reset(bus);
     bios_font_reset(bus);
     bios_dma_reset(bus);
+    if bus.video_card().card_type() == VideoCardType::VGA {
+        bios_vga_static_func_table_reset(bus);
+    }
 }
 
 /// Programs DMA1 channel 0 for memory refresh, matching real IBM PC BIOS POST behaviour.
@@ -127,6 +137,49 @@ pub(crate) fn bios_int15_system_config_reset(bus: &mut Bus) {
         ((INT15_SYSTEM_CONFIG_SEGMENT as usize) << 4) + INT15_SYSTEM_CONFIG_OFFSET as usize;
     for (i, &byte) in table.iter().enumerate() {
         bus.memory_write_u8(physical_addr + i, byte);
+    }
+}
+
+/// Writes the VGA static functionality table into BIOS ROM at F000:D600.
+/// This table is referenced by INT 10h/AH=1Bh (offset 00h-03h of the response buffer)
+/// and describes which video modes and features the VGA BIOS supports.
+/// Programs like CheckIt read this table during initialization to determine
+/// which video modes are available for testing.
+fn bios_vga_static_func_table_reset(bus: &mut Bus) {
+    let table: [u8; 16] = [
+        // Byte 00h: Supported modes 00h-07h (bit N = mode N)
+        0xFF, // All standard text and CGA modes
+        // Byte 01h: Supported modes 08h-0Fh (bit N = mode N+8)
+        0xE0, // Modes 0Dh, 0Eh, 0Fh (EGA modes; skip PCjr modes 08h-0Ch)
+        // Byte 02h: Supported modes 10h-13h (bits 0-3)
+        0x0F, // Modes 10h, 11h, 12h, 13h all supported
+        // Bytes 03h-06h: Reserved
+        0x00, 0x00, 0x00, 0x00,
+        // Byte 07h: Scan lines supported (bit 0=200, bit 1=350, bit 2=400)
+        0x07, // All three scan line counts
+        // Byte 08h: Total character blocks available
+        0x02,
+        // Byte 09h: Max active character blocks
+        0x08,
+        // Byte 0Ah: Misc flags #1
+        // bit 0: all modes on all displays, bit 1: gray summing,
+        // bit 2: char font loading, bit 3: default palette control,
+        // bit 4: cursor emulation, bit 5: EGA palette, bit 6: color palette,
+        // bit 7: color paging
+        0xFF,
+        // Byte 0Bh: Misc flags #2
+        // bit 1: save/restore state, bit 2: blinking control, bit 3: DCC supported
+        0x0E,
+        // Bytes 0Ch-0Dh: Reserved
+        0x00, 0x00,
+        // Byte 0Eh: Save pointer flags
+        0x00,
+        // Byte 0Fh: Reserved
+        0x00,
+    ];
+
+    for (i, &byte) in table.iter().enumerate() {
+        bus.memory_write_u8(VGA_STATIC_FUNC_TABLE_ADDR + i, byte);
     }
 }
 

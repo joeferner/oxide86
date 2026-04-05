@@ -1969,10 +1969,10 @@ impl Cpu {
         let buffer_addr = bus.physical_address(self.es, self.di);
 
         // Build the 64-byte state information structure
-        // Offset 00h-03h: Pointer to static functionality table (we'll point to a dummy location)
-        // For simplicity, we set this to 0 (null pointer)
-        bus.memory_write_u16(buffer_addr, 0x0000); // Offset
-        bus.memory_write_u16(buffer_addr + 2, 0x0000); // Segment
+        // Offset 00h-03h: Pointer to static functionality table in BIOS ROM
+        use crate::cpu::bios::{BIOS_CODE_SEGMENT, VGA_STATIC_FUNC_TABLE_OFFSET};
+        bus.memory_write_u16(buffer_addr, VGA_STATIC_FUNC_TABLE_OFFSET);
+        bus.memory_write_u16(buffer_addr + 2, BIOS_CODE_SEGMENT);
 
         // Offset 04h: Current video mode
         let mode = bda_get_video_mode(bus);
