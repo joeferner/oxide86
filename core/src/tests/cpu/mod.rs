@@ -196,6 +196,20 @@ pub(crate) fn pm_step3_segments() {
     );
 }
 
+/// 286 Protected Mode Step 4: Segment limit checking.
+/// Tests that accesses within a segment's limit succeed, and accesses
+/// beyond the limit are blocked (#GP).
+#[test_log::test]
+pub(crate) fn pm_step4_limits() {
+    run_test(
+        "cpu/pm_step4_limits",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// 286 Protected Mode Step 2: LGDT/LIDT/SGDT/SIDT.
 /// Tests that descriptor table registers can be loaded and stored correctly.
 #[test_log::test]

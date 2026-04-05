@@ -75,7 +75,7 @@ Add cached descriptor fields for each segment register (base, limit, access righ
 
 ---
 
-### Step 4: Protected-Mode Physical Address Resolution
+### ✅ Step 4: Protected-Mode Physical Address Resolution
 
 Change how the CPU resolves segment:offset to physical addresses in protected mode:
 - Instead of `(segment << 4) + offset`, use `cached_base[segreg] + offset`

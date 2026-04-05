@@ -92,6 +92,10 @@ pub(crate) struct Cpu {
     /// Segment override prefix (for next instruction only)
     segment_override: Option<u16>,
 
+    /// Last effective segment and offset from decode_modrm (for word limit checks)
+    last_ea_seg: u16,
+    last_ea_offset: u16,
+
     /// Repeat prefix for string instructions
     repeat_prefix: Option<RepeatPrefix>,
 
@@ -277,6 +281,8 @@ impl Cpu {
             halted: false,
             exit_code: None,
             segment_override: None,
+            last_ea_seg: 0,
+            last_ea_offset: 0,
             repeat_prefix: None,
             pending_exception: None,
             last_disk_status: 0,
@@ -355,11 +361,43 @@ impl Cpu {
 
     /// Resolve segment:offset to a physical address.
     /// In real mode: (segment << 4) + offset with A20 masking.
-    /// In protected mode: cached_base + offset with A20 masking.
-    fn seg_offset_to_phys(&self, segment: u16, offset: u16, bus: &Bus) -> usize {
+    /// In protected mode: cached_base + offset with A20 masking, with limit check.
+    /// If the offset exceeds the segment limit, sets pending_exception to #GP(13)
+    /// and returns a dummy address (0). Callers should check pending_exception
+    /// or let Computer::step() fire the exception before the next instruction.
+    fn seg_offset_to_phys(&mut self, segment: u16, offset: u16, bus: &Bus) -> usize {
         if self.in_protected_mode() {
-            let base = self.cache_for_seg_value(segment).base;
-            let addr = base as usize + offset as usize;
+            let cache = *self.cache_for_seg_value(segment);
+            if offset as u32 > cache.limit as u32 {
+                log::warn!(
+                    "#GP: segment 0x{:04X} offset 0x{:04X} exceeds limit 0x{:04X}",
+                    segment, offset, cache.limit
+                );
+                self.pending_exception = Some(13);
+                return 0;
+            }
+            let addr = cache.base as usize + offset as usize;
+            bus.apply_a20_pub(addr)
+        } else {
+            bus.physical_address(segment, offset)
+        }
+    }
+
+    /// Like `seg_offset_to_phys` but also checks that offset+size-1 is within limits.
+    /// Used for word (2-byte) accesses where the last byte might exceed the limit.
+    fn seg_offset_to_phys_word(&mut self, segment: u16, offset: u16, bus: &Bus) -> usize {
+        if self.in_protected_mode() {
+            let cache = *self.cache_for_seg_value(segment);
+            let last_byte = offset as u32 + 1; // offset of second byte
+            if last_byte > cache.limit as u32 {
+                log::warn!(
+                    "#GP: segment 0x{:04X} word access at offset 0x{:04X} exceeds limit 0x{:04X}",
+                    segment, offset, cache.limit
+                );
+                self.pending_exception = Some(13);
+                return 0;
+            }
+            let addr = cache.base as usize + offset as usize;
             bus.apply_a20_pub(addr)
         } else {
             bus.physical_address(segment, offset)
@@ -562,6 +600,17 @@ impl Cpu {
     }
 
     pub(crate) fn step(&mut self, bus: &mut Bus) {
+        // Fire any pending CPU exception (e.g. #DE from divide, #GP from limit violation)
+        if let Some(int_num) = self.pending_exception.take() {
+            // In protected mode without an IDT set up, silently clear the exception
+            // to avoid dispatching through the real-mode IVT. Full #GP dispatch
+            // will be added when IDT support is implemented.
+            if !self.in_protected_mode() {
+                self.dispatch_interrupt(bus, int_num);
+                return;
+            }
+        }
+
         // service any interrupts coming from the PIC
         if self.get_flag(cpu_flag::INTERRUPT) {
             let irq = bus.pic_mut().take_irq(bus.cycle_count());

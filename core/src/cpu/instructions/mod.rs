@@ -578,6 +578,8 @@ impl Cpu {
                     // Special case: direct address (16-bit displacement, no base)
                     let disp = self.fetch_word(bus);
                     let seg = self.segment_override.unwrap_or(self.ds);
+                    self.last_ea_seg = seg;
+                    self.last_ea_offset = disp;
                     return (mode, reg, rm, self.seg_offset_to_phys(seg, disp, bus), seg);
                 } else {
                     (self.bp, self.ss) // [BP]
@@ -605,6 +607,8 @@ impl Cpu {
 
         // Use segment override if present, otherwise use default segment
         let effective_seg = self.segment_override.unwrap_or(default_seg);
+        self.last_ea_seg = effective_seg;
+        self.last_ea_offset = effective_offset;
         let effective_addr = self.seg_offset_to_phys(effective_seg, effective_offset, bus);
         (mode, reg, rm, effective_addr, effective_seg)
     }
@@ -702,21 +706,35 @@ impl Cpu {
     /// Read 8-bit value from register or memory based on mod field
     fn read_rm8(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u8 {
         if mode == 0b11 {
-            // Register mode
             self.get_reg8(rm)
         } else {
-            // Memory mode
+            if self.pending_exception.is_some() {
+                return 0;
+            }
             bus.memory_read_u8(addr)
         }
     }
 
     // Read 16-bit value from register or memory based on mod field
-    fn read_rm16(&self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u16 {
+    fn read_rm16(&mut self, mode: u8, rm: u8, addr: usize, bus: &Bus) -> u16 {
         if mode == 0b11 {
-            // Register mode
             self.get_reg16(rm)
         } else {
-            // Memory mode
+            if self.pending_exception.is_some() {
+                return 0;
+            }
+            // Check word access: last byte (offset+1) must be within limit
+            if self.in_protected_mode() {
+                let cache = *self.cache_for_seg_value(self.last_ea_seg);
+                if self.last_ea_offset as u32 + 1 > cache.limit as u32 {
+                    log::warn!(
+                        "#GP: word read at offset 0x{:04X} exceeds limit 0x{:04X}",
+                        self.last_ea_offset, cache.limit
+                    );
+                    self.pending_exception = Some(13);
+                    return 0;
+                }
+            }
             bus.memory_read_u16(addr)
         }
     }
@@ -724,10 +742,11 @@ impl Cpu {
     // Write 8-bit value to register or memory based on mod field
     fn write_rm8(&mut self, mode: u8, rm: u8, addr: usize, value: u8, bus: &mut Bus) {
         if mode == 0b11 {
-            // Register mode
             self.set_reg8(rm, value);
         } else {
-            // Memory mode
+            if self.pending_exception.is_some() {
+                return;
+            }
             bus.memory_write_u8(addr, value);
         }
     }
@@ -735,10 +754,23 @@ impl Cpu {
     // Write 16-bit value to register or memory based on mod field
     fn write_rm16(&mut self, mode: u8, rm: u8, addr: usize, value: u16, bus: &mut Bus) {
         if mode == 0b11 {
-            // Register mode
             self.set_reg16(rm, value);
         } else {
-            // Memory mode
+            if self.pending_exception.is_some() {
+                return;
+            }
+            // Check word access: last byte (offset+1) must be within limit
+            if self.in_protected_mode() {
+                let cache = *self.cache_for_seg_value(self.last_ea_seg);
+                if self.last_ea_offset as u32 + 1 > cache.limit as u32 {
+                    log::warn!(
+                        "#GP: word write at offset 0x{:04X} exceeds limit 0x{:04X}",
+                        self.last_ea_offset, cache.limit
+                    );
+                    self.pending_exception = Some(13);
+                    return;
+                }
+            }
             bus.memory_write_u16(addr, value);
         }
     }
@@ -746,13 +778,16 @@ impl Cpu {
     /// Push 16-bit value onto stack
     pub(in crate::cpu) fn push(&mut self, value: u16, bus: &mut Bus) {
         self.sp = self.sp.wrapping_sub(2);
-        let addr = self.seg_offset_to_phys(self.ss, self.sp, bus);
+        let addr = self.seg_offset_to_phys_word(self.ss, self.sp, bus);
+        if self.pending_exception.is_some() {
+            return;
+        }
         bus.memory_write_u16(addr, value);
     }
 
     /// Pop 16-bit value from stack
     fn pop(&mut self, bus: &Bus) -> u16 {
-        let addr = self.seg_offset_to_phys(self.ss, self.sp, bus);
+        let addr = self.seg_offset_to_phys_word(self.ss, self.sp, bus);
         let value = bus.memory_read_u16(addr);
         self.sp = self.sp.wrapping_add(2);
         value
