@@ -1,7 +1,10 @@
 use crate::{
     bus::Bus,
     cpu::{IVT_END, IVT_ENTRY_SIZE, IVT_START, bios::bda::bda_reset},
-    video::{VideoCardType, font::{CGA_FONT_8X8_DATA, EGA_FONT_8X14_DATA, VGA_FONT_8X16_DATA}},
+    video::{
+        VideoCardType,
+        font::{CGA_FONT_8X8_DATA, EGA_FONT_8X14_DATA, VGA_FONT_8X16_DATA},
+    },
 };
 
 pub mod bda;
@@ -158,8 +161,7 @@ fn bios_vga_static_func_table_reset(bus: &mut Bus) {
         // Byte 07h: Scan lines supported (bit 0=200, bit 1=350, bit 2=400)
         0x07, // All three scan line counts
         // Byte 08h: Total character blocks available
-        0x02,
-        // Byte 09h: Max active character blocks
+        0x02, // Byte 09h: Max active character blocks
         0x08,
         // Byte 0Ah: Misc flags #1
         // bit 0: all modes on all displays, bit 1: gray summing,
@@ -169,12 +171,9 @@ fn bios_vga_static_func_table_reset(bus: &mut Bus) {
         0xFF,
         // Byte 0Bh: Misc flags #2
         // bit 1: save/restore state, bit 2: blinking control, bit 3: DCC supported
-        0x0E,
-        // Bytes 0Ch-0Dh: Reserved
-        0x00, 0x00,
-        // Byte 0Eh: Save pointer flags
-        0x00,
-        // Byte 0Fh: Reserved
+        0x0E, // Bytes 0Ch-0Dh: Reserved
+        0x00, 0x00, // Byte 0Eh: Save pointer flags
+        0x00, // Byte 0Fh: Reserved
         0x00,
     ];
 

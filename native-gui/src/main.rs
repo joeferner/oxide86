@@ -302,6 +302,7 @@ fn run(cli: Cli) -> Result<()> {
                             any_paused || app_state.halted,
                             &mut throttle,
                             max_cycles_per_frame,
+                            &mut surface_size,
                         );
 
                         // Handle halt: show notification and exit exclusive mode
@@ -407,8 +408,10 @@ fn handle_window_resize(
         return;
     }
 
-    // Maintain aspect ratio (8:5 for 640:400) to avoid viewport mismatches
-    let aspect_ratio = SCREEN_WIDTH as f32 / SCREEN_HEIGHT as f32;
+    // Maintain aspect ratio based on the current pixel buffer dimensions,
+    // which change when the video mode changes (e.g. 640x400 → 640x480).
+    let buf_size = pixels.texture().size();
+    let aspect_ratio = buf_size.width as f32 / buf_size.height as f32;
     let new_height = (new_size.width as f32 / aspect_ratio).round() as u32;
     let adjusted_size = winit::dpi::PhysicalSize::new(new_size.width, new_height);
 
@@ -976,6 +979,7 @@ fn step_emulator(
     is_paused: bool,
     throttle: &mut CpuThrottle,
     max_cycles_per_frame: u64,
+    surface_size: &mut winit::dpi::PhysicalSize<u32>,
 ) -> bool {
     let mut halted = false;
 
@@ -1027,6 +1031,19 @@ fn step_emulator(
             if let Err(e) = pixels.resize_buffer(width, height) {
                 log::error!("Failed to resize pixel buffer to {width}x{height}: {e}");
             }
+            // Resize the surface to match the new buffer aspect ratio so the
+            // scaling renderer doesn't clip or distort the image.
+            let new_aspect = width as f32 / height as f32;
+            let new_surface_height = (surface_size.width as f32 / new_aspect).round() as u32;
+            let adjusted = winit::dpi::PhysicalSize::new(surface_size.width, new_surface_height);
+            if let Err(e) = pixels.resize_surface(adjusted.width, adjusted.height) {
+                log::error!(
+                    "Failed to resize surface to {}x{}: {e}",
+                    adjusted.width,
+                    adjusted.height
+                );
+            }
+            *surface_size = adjusted;
         }
         video_buffer
             .write()
