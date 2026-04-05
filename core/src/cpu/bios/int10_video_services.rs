@@ -130,7 +130,9 @@ impl Cpu {
                 | Mode::M10Ega640x350x16
                 | Mode::M11Vga640x480x2
                 | Mode::M12Vga640x480x16 => {
-                    // Clear all 4 EGA/VGA planes (sequencer map mask defaults to 0x0F = all planes)
+                    // Set mode first so GC/sequencer registers are reset to defaults
+                    // before we write through the planar path.
+                    bus.video_card_mut().set_mode(mode.clone());
                     for i in 0..EGA_PLANE_SIZE {
                         bus.memory_write_u8(EGA_MEMORY_START + i, 0);
                     }

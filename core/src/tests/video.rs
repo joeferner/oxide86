@@ -274,13 +274,19 @@ pub(crate) fn blink_and_cursor() {
             computer.push_key_press(0x1C /* Enter */);
             computer.run();
             // Visible phase (blink_phase = false, default)
-            assert_screen("video/blink_and_cursor_02_blink_on_visible", video_buffer.clone());
+            assert_screen(
+                "video/blink_and_cursor_02_blink_on_visible",
+                video_buffer.clone(),
+            );
             // Blanked phase: toggle blink_phase so blinking chars show background only
             {
                 let mut vb = video_buffer.write().unwrap();
                 vb.set_blink_phase(true);
             }
-            assert_screen("video/blink_and_cursor_03_blink_on_blanked", video_buffer.clone());
+            assert_screen(
+                "video/blink_and_cursor_03_blink_on_blanked",
+                video_buffer.clone(),
+            );
             // Reset blink phase
             {
                 let mut vb = video_buffer.write().unwrap();
@@ -291,13 +297,19 @@ pub(crate) fn blink_and_cursor() {
             computer.push_key_press(0x1C /* Enter */);
             computer.run();
             // Cursor visible phase
-            assert_screen("video/blink_and_cursor_04_cursor_visible", video_buffer.clone());
+            assert_screen(
+                "video/blink_and_cursor_04_cursor_visible",
+                video_buffer.clone(),
+            );
             // Cursor blanked phase: blink_phase hides the cursor
             {
                 let mut vb = video_buffer.write().unwrap();
                 vb.set_blink_phase(true);
             }
-            assert_screen("video/blink_and_cursor_05_cursor_blanked", video_buffer.clone());
+            assert_screen(
+                "video/blink_and_cursor_05_cursor_blanked",
+                video_buffer.clone(),
+            );
             // Reset blink phase
             {
                 let mut vb = video_buffer.write().unwrap();

@@ -230,6 +230,22 @@ impl VideoCard {
         let mut buffer = self.buffer.write().unwrap();
         buffer.reset_crtc_overrides();
         buffer.set_mode(mode);
+
+        // Reset GC and sequencer registers to defaults, mirroring what a real BIOS
+        // does when programming VGA registers during a mode switch.  Without this,
+        // stale register state (e.g. gc_bit_mask != 0xFF) from a previous mode
+        // causes the BIOS screen-clear to write incorrect values through the
+        // planar write path.
+        self.sequencer_map_mask = 0x0F;
+        self.gc_set_reset = 0;
+        self.gc_enable_set_reset = 0;
+        self.gc_data_rotate = 0;
+        self.gc_function_select = 0;
+        self.gc_write_mode = 0;
+        self.gc_read_mode = 0;
+        self.gc_bit_mask = 0xFF;
+        self.gc_latches = [0u8; 4];
+
         // Re-initialize DAC registers with the default palette for this card type so
         // programs that read them back (e.g. via INT 10h/AL=0x17) get correct values.
         match self.card_type {
