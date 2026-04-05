@@ -72,27 +72,6 @@ export function Screen(): React.ReactElement {
         };
     });
 
-    // Keep .center's height in sync with the canvas so side panels don't stretch it.
-    useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas) {
-            return;
-        }
-        const center = canvas.parentElement;
-        if (!center) {
-            return;
-        }
-        const update = (): void => {
-            center.style.height = `${canvas.offsetHeight}px`;
-        };
-        update();
-        const ro = new ResizeObserver(update);
-        ro.observe(canvas);
-        return () => {
-            ro.disconnect();
-        };
-    }, []);
-
     // Keyboard input — always active regardless of power state.
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent): void => {

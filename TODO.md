@@ -61,28 +61,28 @@
 - [X] Parallel Port/LPT loopback
 - [X] RTC Checkit Tests
 - [X] Blinking text core/src/test_data/video/ct755r/mode7.asm
-- [ ] CheckIt Video Graphics Tests
+- [X] CheckIt Video Graphics Tests
   - [X] CGA
     - [X] Mode 04h
     - [X] Mode 05h
     - [X] Mode 06h
-  - [ ] EGA
+  - [X] EGA
     - [X] Mode 04h
     - [X] Mode 05h
     - [X] Mode 0dh
     - [X] Mode 06h
     - [X] Mode 0eh
-  - [ ] VGA
+  - [X] VGA
     - [X] 01 - Mode 04h
     - [X] 02 - Mode 05h
     - [X] 03 - Mode 0dh
-    - [ ] 04 - Mode 03h
+    - [X] 04 - Mode 03h
     - [X] 05 - Mode 06h
     - [X] 06 - Mode 0eh
     - [X] 07 - Mode 0fh
-    - [ ] 08 - Mode 10h
-    - [ ] 09 - Mode 03h
-    - [ ] 10 - Mode 12h
+    - [X] 08 - Mode 10h
+    - [X] 09 - Mode 03h
+    - [X] 10 - Mode 12h
 - [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
   - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
   - [ ] Test Fractint Version 15.x and below
