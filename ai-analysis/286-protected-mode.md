@@ -90,7 +90,7 @@ Approach: Add a `resolve_address(&self, segreg, offset) -> usize` method on `Cpu
 
 ---
 
-### Step 5: Protected-Mode Interrupt Dispatch (IDT)
+### ✅ Step 5: Protected-Mode Interrupt Dispatch (IDT)
 
 When `in_protected_mode()`, `dispatch_interrupt` must:
 1. Read the IDT entry (8 bytes per entry on 286) at `idtr_base + int_num * 8`

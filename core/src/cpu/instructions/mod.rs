@@ -678,10 +678,22 @@ impl Cpu {
     fn set_segreg(&mut self, reg: u8, value: u16) {
         let cache = crate::cpu::protected_mode::SegmentCache::from_real_mode(value);
         match reg & 0x03 {
-            0 => { self.es = value; self.es_cache = cache; }
-            1 => { self.cs = value; self.cs_cache = cache; }
-            2 => { self.ss = value; self.ss_cache = cache; }
-            3 => { self.ds = value; self.ds_cache = cache; }
+            0 => {
+                self.es = value;
+                self.es_cache = cache;
+            }
+            1 => {
+                self.cs = value;
+                self.cs_cache = cache;
+            }
+            2 => {
+                self.ss = value;
+                self.ss_cache = cache;
+            }
+            3 => {
+                self.ds = value;
+                self.ds_cache = cache;
+            }
             _ => unreachable!(),
         }
     }
@@ -729,7 +741,8 @@ impl Cpu {
                 if self.last_ea_offset as u32 + 1 > cache.limit as u32 {
                     log::warn!(
                         "#GP: word read at offset 0x{:04X} exceeds limit 0x{:04X}",
-                        self.last_ea_offset, cache.limit
+                        self.last_ea_offset,
+                        cache.limit
                     );
                     self.pending_exception = Some(13);
                     return 0;
@@ -765,7 +778,8 @@ impl Cpu {
                 if self.last_ea_offset as u32 + 1 > cache.limit as u32 {
                     log::warn!(
                         "#GP: word write at offset 0x{:04X} exceeds limit 0x{:04X}",
-                        self.last_ea_offset, cache.limit
+                        self.last_ea_offset,
+                        cache.limit
                     );
                     self.pending_exception = Some(13);
                     return;

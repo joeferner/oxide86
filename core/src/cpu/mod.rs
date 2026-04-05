@@ -371,7 +371,9 @@ impl Cpu {
             if offset as u32 > cache.limit as u32 {
                 log::warn!(
                     "#GP: segment 0x{:04X} offset 0x{:04X} exceeds limit 0x{:04X}",
-                    segment, offset, cache.limit
+                    segment,
+                    offset,
+                    cache.limit
                 );
                 self.pending_exception = Some(13);
                 return 0;
@@ -392,7 +394,9 @@ impl Cpu {
             if last_byte > cache.limit as u32 {
                 log::warn!(
                     "#GP: segment 0x{:04X} word access at offset 0x{:04X} exceeds limit 0x{:04X}",
-                    segment, offset, cache.limit
+                    segment,
+                    offset,
+                    cache.limit
                 );
                 self.pending_exception = Some(13);
                 return 0;
@@ -468,14 +472,23 @@ impl Cpu {
                     }
                     let cache = desc.to_cache();
                     match reg & 0x03 {
-                        0 => { self.es = selector; self.es_cache = cache; }
-                        1 => { self.cs = selector; self.cs_cache = cache; }
+                        0 => {
+                            self.es = selector;
+                            self.es_cache = cache;
+                        }
+                        1 => {
+                            self.cs = selector;
+                            self.cs_cache = cache;
+                        }
                         2 => {
                             self.ss = selector;
                             self.ss_cache = cache;
                             self.suppress_trap = true;
                         }
-                        3 => { self.ds = selector; self.ds_cache = cache; }
+                        3 => {
+                            self.ds = selector;
+                            self.ds_cache = cache;
+                        }
                         _ => unreachable!(),
                     }
                 }
@@ -731,8 +744,8 @@ impl Cpu {
         }
     }
 
-    /// Dispatch an interrupt: push FLAGS/CS/IP, clear IF/TF, load CS:IP from IVT.
-    /// Common mechanism for INT instructions and hardware IRQs.
+    /// Dispatch an interrupt: push FLAGS/CS/IP, load CS:IP from IVT (real mode)
+    /// or IDT (protected mode).
     fn dispatch_interrupt(&mut self, bus: &mut Bus, int_num: u8) {
         if int_num == 0x10 {
             self.log_int10_video_services();
@@ -757,6 +770,16 @@ impl Cpu {
             log::info!("pushing IP={:04X}", self.ip);
         }
         self.halted = false;
+
+        if self.in_protected_mode() {
+            self.dispatch_interrupt_pm(bus, int_num);
+        } else {
+            self.dispatch_interrupt_real(bus, int_num);
+        }
+    }
+
+    /// Real-mode interrupt dispatch: push FLAGS/CS/IP, clear IF/TF, load from IVT.
+    fn dispatch_interrupt_real(&mut self, bus: &mut Bus, int_num: u8) {
         self.push(self.flags, bus);
         self.push(self.cs, bus);
         self.push(self.ip, bus);
@@ -767,6 +790,58 @@ impl Cpu {
         let segment = bus.memory_read_u16(ivt_addr + 2);
         self.ip = offset;
         self.set_cs_real(segment);
+    }
+
+    /// Protected-mode interrupt dispatch: push FLAGS/CS/IP, load from IDT gate.
+    /// Interrupt gates clear IF; trap gates preserve IF.
+    fn dispatch_interrupt_pm(&mut self, bus: &mut Bus, int_num: u8) {
+        let gate = protected_mode::load_idt_gate(bus, self.idtr_base, self.idtr_limit, int_num);
+
+        let gate = match gate {
+            Some(g) => g,
+            None => {
+                log::warn!(
+                    "INT 0x{:02X}: IDT entry out of bounds (IDTR limit=0x{:04X})",
+                    int_num,
+                    self.idtr_limit
+                );
+                // Fall back to real-mode IVT dispatch (e.g. for BIOS calls
+                // that haven't been redirected through IDT entries)
+                self.dispatch_interrupt_real(bus, int_num);
+                return;
+            }
+        };
+
+        if !gate.is_present() || (!gate.is_interrupt_gate() && !gate.is_trap_gate()) {
+            // Gate not present or not a recognized gate type.
+            // Fall back to real-mode IVT dispatch. This handles the case where
+            // the default IDTR (base=0, limit=0x3FF) overlaps the real-mode IVT
+            // and the bytes there don't form valid gate descriptors.
+            log::debug!(
+                "INT 0x{:02X}: IDT gate not usable (access=0x{:02X}), falling back to IVT",
+                int_num,
+                gate.access
+            );
+            self.dispatch_interrupt_real(bus, int_num);
+            return;
+        }
+
+        // Push FLAGS, CS, IP
+        self.push(self.flags, bus);
+        self.push(self.cs, bus);
+        self.push(self.ip, bus);
+
+        // Clear TF always
+        self.set_flag(cpu_flag::TRAP, false);
+
+        // Interrupt gates clear IF; trap gates leave IF unchanged
+        if gate.is_interrupt_gate() {
+            self.set_flag(cpu_flag::INTERRUPT, false);
+        }
+
+        // Load CS from the gate's selector (with descriptor lookup)
+        self.ip = gate.offset;
+        self.load_segment_register(1, gate.selector, bus); // 1 = CS
     }
 
     pub(crate) fn patch_flags_and_iret(&mut self, bus: &mut Bus) {

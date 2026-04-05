@@ -196,6 +196,20 @@ pub(crate) fn pm_step3_segments() {
     );
 }
 
+/// 286 Protected Mode Step 5: IDT-based interrupt dispatch.
+/// Tests that INT in protected mode dispatches through the IDT,
+/// interrupt gates clear IF, trap gates preserve IF, and IRET works.
+#[test_log::test]
+pub(crate) fn pm_step5_idt() {
+    run_test(
+        "cpu/pm_step5_idt",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// 286 Protected Mode Step 4: Segment limit checking.
 /// Tests that accesses within a segment's limit succeed, and accesses
 /// beyond the limit are blocked (#GP).

@@ -114,3 +114,5 @@
 - [ ] 386 Real Mode
 - [ ] 386 Protected Mode
 - [ ] 80387 math coprocessors
+- [ ] Run "Day of the Tentacle"
+- [ ] Run "Sam and Max"
