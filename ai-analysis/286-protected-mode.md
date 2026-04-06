@@ -118,7 +118,7 @@ These are dispatched through the IDT like regular interrupts, but push an error 
 
 ---
 
-### Step 7: LLDT / SLDT / LTR / STR Instructions
+### ✅ Step 7: LLDT / SLDT / LTR / STR Instructions
 
 Implement:
 - `LLDT r/m16` (0F 00 /2) — load LDT register from selector

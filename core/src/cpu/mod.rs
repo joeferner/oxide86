@@ -184,6 +184,10 @@ pub(crate) struct Cpu {
 
     /// Local Descriptor Table Register (selector)
     ldtr: u16,
+    /// Cached LDT base address (loaded from GDT descriptor on LLDT)
+    ldtr_base: u32,
+    /// Cached LDT limit (loaded from GDT descriptor on LLDT)
+    ldtr_limit: u16,
 
     /// Task Register (selector)
     tr: u16,
@@ -317,6 +321,8 @@ impl Cpu {
             idtr_base: 0,
             idtr_limit: 0x03FF, // Real-mode default: IVT at 0x0000, 1024 bytes
             ldtr: 0,
+            ldtr_base: 0,
+            ldtr_limit: 0,
             tr: 0,
             cpl: 0,
         }
@@ -476,9 +482,13 @@ impl Cpu {
                     selector,
                 )
             } else {
-                // LDT — not yet implemented
-                log::warn!("LDT selector 0x{:04X} not yet supported", selector);
-                None
+                // LDT
+                protected_mode::load_descriptor_from_table(
+                    bus,
+                    self.ldtr_base,
+                    self.ldtr_limit,
+                    selector,
+                )
             };
 
             match descriptor {
@@ -981,6 +991,8 @@ impl Cpu {
         self.idtr_base = 0;
         self.idtr_limit = 0x03FF;
         self.ldtr = 0;
+        self.ldtr_base = 0;
+        self.ldtr_limit = 0;
         self.tr = 0;
         self.cpl = 0;
 

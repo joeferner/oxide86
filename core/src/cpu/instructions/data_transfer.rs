@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, CpuType, cpu_flag, timing},
+    cpu::{Cpu, CpuType, PendingException, cpu_flag, timing},
 };
 
 impl Cpu {
@@ -347,6 +347,9 @@ impl Cpu {
         if self.cpu_type.is_286_or_later() {
             let second = self.fetch_byte(bus);
             match second {
+                // SLDT/STR/LLDT/LTR — reg field in ModRM selects operation
+                0x00 => self.exec_0f_00(bus),
+
                 // SGDT/SIDT/LGDT/LIDT/SMSW/LMSW — reg field in ModRM selects operation
                 0x01 => self.exec_0f_01(bus),
 
@@ -380,6 +383,127 @@ impl Cpu {
     }
 
     /// 0F 01 — SGDT/SIDT/LGDT/LIDT/SMSW/LMSW (286+)
+    /// 0F 00 — SLDT/STR/LLDT/LTR (286+)
+    fn exec_0f_00(&mut self, bus: &mut Bus) {
+        let modrm = self.fetch_byte(bus);
+        let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);
+        match reg {
+            // SLDT r/m16 — store Local Descriptor Table register
+            0 => {
+                if mode == 0b11 {
+                    self.set_reg16(rm, self.ldtr);
+                } else {
+                    bus.memory_write_u16(addr, self.ldtr);
+                }
+            }
+            // STR r/m16 — store Task Register
+            1 => {
+                if mode == 0b11 {
+                    self.set_reg16(rm, self.tr);
+                } else {
+                    bus.memory_write_u16(addr, self.tr);
+                }
+            }
+            // LLDT r/m16 — load Local Descriptor Table register from selector
+            2 => {
+                let selector = if mode == 0b11 {
+                    self.get_reg16(rm)
+                } else {
+                    bus.memory_read_u16(addr)
+                };
+                if selector & 0xFFF8 == 0 {
+                    // Null selector: clear LDT
+                    self.ldtr = 0;
+                    self.ldtr_base = 0;
+                    self.ldtr_limit = 0;
+                } else {
+                    // Look up the LDT descriptor in the GDT
+                    let desc = crate::cpu::protected_mode::load_descriptor_from_table(
+                        bus,
+                        self.gdtr_base,
+                        self.gdtr_limit,
+                        selector,
+                    );
+                    match desc {
+                        Some(d) if d.is_present() => {
+                            self.ldtr = selector;
+                            self.ldtr_base = d.base;
+                            self.ldtr_limit = d.limit;
+                            log::debug!(
+                                "LLDT: selector=0x{:04X}, base=0x{:06X}, limit=0x{:04X}",
+                                selector, d.base, d.limit
+                            );
+                        }
+                        Some(_) => {
+                            log::warn!("LLDT: descriptor not present for selector 0x{:04X}", selector);
+                            self.pending_exception = Some(PendingException {
+                                int_num: 11, // #NP
+                                error_code: Some(selector),
+                            });
+                        }
+                        None => {
+                            log::warn!("LLDT: selector 0x{:04X} out of GDT bounds", selector);
+                            self.pending_exception = Some(PendingException {
+                                int_num: 13, // #GP
+                                error_code: Some(selector),
+                            });
+                        }
+                    }
+                }
+            }
+            // LTR r/m16 — load Task Register from selector
+            3 => {
+                let selector = if mode == 0b11 {
+                    self.get_reg16(rm)
+                } else {
+                    bus.memory_read_u16(addr)
+                };
+                if selector & 0xFFF8 == 0 {
+                    log::warn!("LTR: null selector — #GP(0)");
+                    self.pending_exception = Some(PendingException {
+                        int_num: 13,
+                        error_code: Some(0),
+                    });
+                } else {
+                    // Look up the TSS descriptor in the GDT
+                    let desc = crate::cpu::protected_mode::load_descriptor_from_table(
+                        bus,
+                        self.gdtr_base,
+                        self.gdtr_limit,
+                        selector,
+                    );
+                    match desc {
+                        Some(d) if d.is_present() => {
+                            self.tr = selector;
+                            log::debug!("LTR: selector=0x{:04X}, base=0x{:06X}", selector, d.base);
+                        }
+                        Some(_) => {
+                            log::warn!("LTR: descriptor not present for selector 0x{:04X}", selector);
+                            self.pending_exception = Some(PendingException {
+                                int_num: 11,
+                                error_code: Some(selector),
+                            });
+                        }
+                        None => {
+                            log::warn!("LTR: selector 0x{:04X} out of GDT bounds", selector);
+                            self.pending_exception = Some(PendingException {
+                                int_num: 13,
+                                error_code: Some(selector),
+                            });
+                        }
+                    }
+                }
+            }
+            _ => {
+                log::warn!(
+                    "Unimplemented 0F 00 /{} at {:04X}:{:04X} — firing INT 6",
+                    reg, self.cs, self.ip.wrapping_sub(3)
+                );
+                self.dispatch_interrupt(bus, 6);
+            }
+        }
+    }
+
     fn exec_0f_01(&mut self, bus: &mut Bus) {
         let modrm = self.fetch_byte(bus);
         let (mode, reg, rm, addr, _seg) = self.decode_modrm(modrm, bus);

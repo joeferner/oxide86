@@ -196,6 +196,19 @@ pub(crate) fn pm_step3_segments() {
     );
 }
 
+/// 286 Protected Mode Step 7: LLDT/SLDT/LTR/STR.
+/// Tests LDT and Task Register load/store, and loading a segment from the LDT.
+#[test_log::test]
+pub(crate) fn pm_step7_lldt() {
+    run_test(
+        "cpu/pm_step7_lldt",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// 286 Protected Mode Step 6: Exception handling (#GP, #NP).
 /// Tests that #GP fires on limit violations and bad selectors,
 /// #NP fires on loading a not-present segment, and error codes
