@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, cpu_flag, timing},
+    cpu::{Cpu, PendingException, cpu_flag, timing},
 };
 
 impl Cpu {
@@ -215,7 +215,10 @@ impl Cpu {
                     let divisor = self.read_rm16(mode, rm, addr, bus) as u32;
                     if divisor == 0 {
                         log::warn!("DIV16: division by zero at {:04X}:{:04X}", self.cs, self.ip);
-                        self.pending_exception = Some(0);
+                        self.pending_exception = Some(PendingException {
+                            int_num: 0,
+                            error_code: None,
+                        });
                         return;
                     }
                     let dividend = ((self.dx as u32) << 16) | (self.ax as u32);
@@ -223,7 +226,10 @@ impl Cpu {
                     let remainder = dividend % divisor;
                     if quotient > 0xFFFF {
                         log::warn!("DIV16: overflow at {:04X}:{:04X}", self.cs, self.ip);
-                        self.pending_exception = Some(0);
+                        self.pending_exception = Some(PendingException {
+                            int_num: 0,
+                            error_code: None,
+                        });
                         return;
                     }
                     self.ax = quotient as u16;
@@ -233,7 +239,10 @@ impl Cpu {
                     let divisor = self.read_rm8(mode, rm, addr, bus) as u16;
                     if divisor == 0 {
                         log::warn!("DIV8: division by zero at {:04X}:{:04X}", self.cs, self.ip);
-                        self.pending_exception = Some(0);
+                        self.pending_exception = Some(PendingException {
+                            int_num: 0,
+                            error_code: None,
+                        });
                         return;
                     }
                     let dividend = self.ax;
@@ -241,7 +250,10 @@ impl Cpu {
                     let remainder: u16 = dividend % divisor;
                     if quotient > 0xFF {
                         log::warn!("DIV8: overflow at {:04X}:{:04X}", self.cs, self.ip);
-                        self.pending_exception = Some(0);
+                        self.pending_exception = Some(PendingException {
+                            int_num: 0,
+                            error_code: None,
+                        });
                         return;
                     }
                     self.ax = (remainder << 8) | quotient;
@@ -272,7 +284,10 @@ impl Cpu {
                             self.cs,
                             self.ip
                         );
-                        self.pending_exception = Some(0);
+                        self.pending_exception = Some(PendingException {
+                            int_num: 0,
+                            error_code: None,
+                        });
                         return;
                     }
                     let dividend = ((self.dx as i16 as i32) << 16) | (self.ax as i32);
@@ -280,7 +295,10 @@ impl Cpu {
                     let remainder = dividend % divisor;
                     if !(-32768..=32767).contains(&quotient) {
                         log::debug!("IDIV16: overflow at {:04X}:{:04X}", self.cs, self.ip);
-                        self.pending_exception = Some(0);
+                        self.pending_exception = Some(PendingException {
+                            int_num: 0,
+                            error_code: None,
+                        });
                         return;
                     }
                     self.ax = quotient as u16;
@@ -290,7 +308,10 @@ impl Cpu {
                     let divisor = self.read_rm8(mode, rm, addr, bus) as i8 as i16;
                     if divisor == 0 {
                         log::warn!("IDIV8: division by zero at {:04X}:{:04X}", self.cs, self.ip);
-                        self.pending_exception = Some(0);
+                        self.pending_exception = Some(PendingException {
+                            int_num: 0,
+                            error_code: None,
+                        });
                         return;
                     }
                     let dividend = self.ax as i16;
@@ -298,7 +319,10 @@ impl Cpu {
                     let remainder = dividend % divisor;
                     if !(-128..=127).contains(&quotient) {
                         log::warn!("IDIV8: overflow at {:04X}:{:04X}", self.cs, self.ip);
-                        self.pending_exception = Some(0);
+                        self.pending_exception = Some(PendingException {
+                            int_num: 0,
+                            error_code: None,
+                        });
                         return;
                     }
                     let al = quotient as u8;

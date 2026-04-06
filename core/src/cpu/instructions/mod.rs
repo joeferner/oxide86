@@ -1,6 +1,6 @@
 use crate::{
     bus::Bus,
-    cpu::{Cpu, cpu_flag},
+    cpu::{Cpu, PendingException, cpu_flag},
 };
 
 mod arithmetic;
@@ -744,7 +744,10 @@ impl Cpu {
                         self.last_ea_offset,
                         cache.limit
                     );
-                    self.pending_exception = Some(13);
+                    self.pending_exception = Some(PendingException {
+                        int_num: 13,
+                        error_code: Some(0),
+                    });
                     return 0;
                 }
             }
@@ -781,7 +784,10 @@ impl Cpu {
                         self.last_ea_offset,
                         cache.limit
                     );
-                    self.pending_exception = Some(13);
+                    self.pending_exception = Some(PendingException {
+                        int_num: 13,
+                        error_code: Some(0),
+                    });
                     return;
                 }
             }

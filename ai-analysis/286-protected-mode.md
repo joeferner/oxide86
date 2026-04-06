@@ -104,7 +104,7 @@ When `in_protected_mode()`, `dispatch_interrupt` must:
 
 ---
 
-### Step 6: Protected-Mode Exception Handling (#GP, #NP, #SS, #TS)
+### ✅ Step 6: Protected-Mode Exception Handling (#GP, #NP, #SS, #TS)
 
 Add proper CPU exceptions for protected mode faults:
 - `#GP` (13) — general protection fault (bad selector, privilege violation, limit violation)

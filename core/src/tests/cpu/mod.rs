@@ -196,6 +196,21 @@ pub(crate) fn pm_step3_segments() {
     );
 }
 
+/// 286 Protected Mode Step 6: Exception handling (#GP, #NP).
+/// Tests that #GP fires on limit violations and bad selectors,
+/// #NP fires on loading a not-present segment, and error codes
+/// are pushed onto the stack.
+#[test_log::test]
+pub(crate) fn pm_step6_exceptions() {
+    run_test(
+        "cpu/pm_step6_exceptions",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// 286 Protected Mode Step 5: IDT-based interrupt dispatch.
 /// Tests that INT in protected mode dispatches through the IDT,
 /// interrupt gates clear IF, trap gates preserve IF, and IRET works.

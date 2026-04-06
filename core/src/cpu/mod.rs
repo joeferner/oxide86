@@ -42,6 +42,16 @@ mod cpu_flag {
     pub const OVERFLOW: u16 = 1 << 11;
 }
 
+/// A pending CPU exception to be dispatched at the start of the next step.
+#[derive(Debug, Clone, Copy)]
+struct PendingException {
+    /// Interrupt vector number (e.g. 0 = #DE, 11 = #NP, 13 = #GP)
+    int_num: u8,
+    /// Error code pushed onto the stack for certain exceptions (#GP, #NP, #SS, #TS).
+    /// `None` for exceptions that don't push an error code (#DE, #UD, etc.).
+    error_code: Option<u16>,
+}
+
 pub(crate) struct Cpu {
     cpu_type: CpuType,
 
@@ -99,9 +109,8 @@ pub(crate) struct Cpu {
     /// Repeat prefix for string instructions
     repeat_prefix: Option<RepeatPrefix>,
 
-    /// Pending CPU exception interrupt number (e.g. 0 = divide error)
-    /// Set by instructions that trigger CPU exceptions; fired by Computer::step()
-    pending_exception: Option<u8>,
+    /// Pending CPU exception, fired at the start of step().
+    pending_exception: Option<PendingException>,
 
     /// Last disk operation status (for INT 13h AH=01h)
     last_disk_status: u8,
@@ -375,7 +384,10 @@ impl Cpu {
                     offset,
                     cache.limit
                 );
-                self.pending_exception = Some(13);
+                self.pending_exception = Some(PendingException {
+                    int_num: 13,
+                    error_code: Some(0),
+                });
                 return 0;
             }
             let addr = cache.base as usize + offset as usize;
@@ -398,7 +410,10 @@ impl Cpu {
                     offset,
                     cache.limit
                 );
-                self.pending_exception = Some(13);
+                self.pending_exception = Some(PendingException {
+                    int_num: 13,
+                    error_code: Some(0),
+                });
                 return 0;
             }
             let addr = cache.base as usize + offset as usize;
@@ -441,8 +456,11 @@ impl Cpu {
                         self.ds_cache = protected_mode::SegmentCache::default();
                     }
                     _ => {
-                        log::warn!("Null selector loaded into CS or SS — #GP");
-                        // TODO: dispatch #GP(0) once exceptions are wired up
+                        log::warn!("Null selector loaded into CS or SS — #GP(0)");
+                        self.pending_exception = Some(PendingException {
+                            int_num: 13,
+                            error_code: Some(0),
+                        });
                     }
                 }
                 return;
@@ -466,8 +484,15 @@ impl Cpu {
             match descriptor {
                 Some(desc) => {
                     if !desc.is_present() {
-                        log::warn!("Segment 0x{:04X} not present — #NP", selector);
-                        // TODO: dispatch #NP once exceptions are wired up
+                        log::warn!(
+                            "Segment 0x{:04X} not present — #NP(0x{:04X})",
+                            selector,
+                            selector
+                        );
+                        self.pending_exception = Some(PendingException {
+                            int_num: 11,
+                            error_code: Some(selector),
+                        });
                         return;
                     }
                     let cache = desc.to_cache();
@@ -494,11 +519,15 @@ impl Cpu {
                 }
                 None => {
                     log::warn!(
-                        "Selector 0x{:04X} out of bounds (GDTR limit=0x{:04X}) — #GP",
+                        "Selector 0x{:04X} out of bounds (GDTR limit=0x{:04X}) — #GP(0x{:04X})",
                         selector,
-                        self.gdtr_limit
+                        self.gdtr_limit,
+                        selector
                     );
-                    // TODO: dispatch #GP once exceptions are wired up
+                    self.pending_exception = Some(PendingException {
+                        int_num: 13,
+                        error_code: Some(selector),
+                    });
                 }
             }
         } else {
@@ -614,14 +643,13 @@ impl Cpu {
 
     pub(crate) fn step(&mut self, bus: &mut Bus) {
         // Fire any pending CPU exception (e.g. #DE from divide, #GP from limit violation)
-        if let Some(int_num) = self.pending_exception.take() {
-            // In protected mode without an IDT set up, silently clear the exception
-            // to avoid dispatching through the real-mode IVT. Full #GP dispatch
-            // will be added when IDT support is implemented.
-            if !self.in_protected_mode() {
-                self.dispatch_interrupt(bus, int_num);
-                return;
+        if let Some(exc) = self.pending_exception.take() {
+            if self.in_protected_mode() {
+                self.dispatch_exception_pm(bus, exc.int_num, exc.error_code);
+            } else {
+                self.dispatch_interrupt(bus, exc.int_num);
             }
+            return;
         }
 
         // service any interrupts coming from the PIC
@@ -790,6 +818,42 @@ impl Cpu {
         let segment = bus.memory_read_u16(ivt_addr + 2);
         self.ip = offset;
         self.set_cs_real(segment);
+    }
+
+    /// Protected-mode exception dispatch: push error code (if any), then FLAGS/CS/IP
+    /// via the IDT. Used for #GP, #NP, #SS, #TS, #DE, etc.
+    fn dispatch_exception_pm(&mut self, bus: &mut Bus, int_num: u8, error_code: Option<u16>) {
+        let gate = protected_mode::load_idt_gate(bus, self.idtr_base, self.idtr_limit, int_num);
+
+        let gate = match gate {
+            Some(g) if g.is_present() && (g.is_interrupt_gate() || g.is_trap_gate()) => g,
+            _ => {
+                log::warn!(
+                    "Exception 0x{:02X}: no valid IDT gate, falling back to IVT",
+                    int_num
+                );
+                self.dispatch_interrupt_real(bus, int_num);
+                return;
+            }
+        };
+
+        // Push FLAGS, CS, IP
+        self.push(self.flags, bus);
+        self.push(self.cs, bus);
+        self.push(self.ip, bus);
+
+        // Push error code (exceptions like #GP, #NP, #SS, #TS push one)
+        if let Some(code) = error_code {
+            self.push(code, bus);
+        }
+
+        self.set_flag(cpu_flag::TRAP, false);
+        if gate.is_interrupt_gate() {
+            self.set_flag(cpu_flag::INTERRUPT, false);
+        }
+
+        self.ip = gate.offset;
+        self.load_segment_register(1, gate.selector, bus);
     }
 
     /// Protected-mode interrupt dispatch: push FLAGS/CS/IP, load from IDT gate.
