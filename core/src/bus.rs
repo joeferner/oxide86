@@ -87,6 +87,9 @@ pub(crate) struct Bus {
     /// Optional debugger shared state. When set, write watchpoints are checked
     /// in memory_write_u8 and can trigger a pause.
     debug: Option<Arc<DebugShared>>,
+
+    /// CPU reset requested by keyboard controller command 0xFE.
+    reset_requested: bool,
 }
 
 impl Bus {
@@ -152,7 +155,15 @@ impl Bus {
             watch_cs: 0,
             watch_ip: 0,
             debug: None,
+            reset_requested: false,
         }
+    }
+
+    /// Check and clear the CPU reset request flag (set by keyboard controller 0xFE).
+    pub(crate) fn take_reset_request(&mut self) -> bool {
+        let r = self.reset_requested;
+        self.reset_requested = false;
+        r
     }
 
     pub(crate) fn set_debug(&mut self, debug: Arc<DebugShared>) {
@@ -444,6 +455,10 @@ impl Bus {
                 let a20_request = self.keyboard_controller.borrow_mut().take_a20_request();
                 if let Some(enabled) = a20_request {
                     self.set_a20_enabled(enabled);
+                }
+                // Drain any CPU reset request from the keyboard controller.
+                if self.keyboard_controller.borrow_mut().take_reset_request() {
+                    self.reset_requested = true;
                 }
                 // Drain any DMA channel 2 request state change from the FDC.
                 // This is how the FDC asserts DREQ when it enters DMA execution phase.

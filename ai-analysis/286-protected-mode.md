@@ -156,7 +156,7 @@ Full CPL/RPL/DPL checking:
 
 ---
 
-### Step 10: Real Mode → Protected Mode Transition and Reset Path
+### ✅ Step 10: Real Mode → Protected Mode Transition and Reset Path
 
 On a real 286, protected mode is a one-way trip — there is no instruction to clear PE. The only way back to real mode is a CPU reset (typically triggered by the keyboard controller's reset line or a triple fault), after which the BIOS checks a shutdown byte in CMOS (address 0x0F) to determine whether to resume from a known address rather than cold-booting.
 

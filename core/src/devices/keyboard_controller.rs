@@ -39,6 +39,8 @@ pub(crate) struct KeyboardController {
     pending_command: Option<u8>,
     /// Queued A20 gate change from 8042 output port write; drained by Bus.
     a20_request: Option<bool>,
+    /// CPU reset requested (command 0xFE on port 0x64); drained by Bus.
+    reset_request: bool,
 }
 
 impl KeyboardController {
@@ -53,12 +55,20 @@ impl KeyboardController {
             aux_enabled: false,
             pending_command: None,
             a20_request: None,
+            reset_request: false,
         }
     }
 
     /// Drain and return a pending A20 gate change requested via 8042 output port write.
     pub(crate) fn take_a20_request(&mut self) -> Option<bool> {
         self.a20_request.take()
+    }
+
+    /// Drain and return whether a CPU reset was requested (command 0xFE).
+    pub(crate) fn take_reset_request(&mut self) -> bool {
+        let r = self.reset_request;
+        self.reset_request = false;
+        r
     }
 
     pub(crate) fn key_press(&mut self, scan_code: u8) {
@@ -158,6 +168,7 @@ impl Device for KeyboardController {
         self.aux_enabled = false;
         self.pending_command = None;
         self.a20_request = None;
+        self.reset_request = false;
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -243,6 +254,11 @@ impl Device for KeyboardController {
                         // Write 8042 output port — next byte written to port 0x60 is the value.
                         self.pending_command = Some(0xD1);
                         log::debug!("8042: write output port command pending");
+                    }
+                    0xFE => {
+                        // Pulse reset line — triggers CPU reset
+                        log::debug!("8042: CPU reset requested (command 0xFE)");
+                        self.reset_request = true;
                     }
                     0xFF => {
                         // Keyboard controller self-test / reset — no-op (accept silently).

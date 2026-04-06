@@ -187,6 +187,12 @@ impl Computer {
         }
         self.process_key_presses();
         self.cpu.step(&mut self.bus);
+        // Check for keyboard controller reset request (command 0xFE)
+        if self.bus.take_reset_request() {
+            log::info!("CPU reset requested by keyboard controller (0xFE)");
+            self.reset();
+            return;
+        }
         if self.cpu.at_reset_vector() {
             if self.cpu.take_bootstrap_request() {
                 // INT 19h: try floppy A: first, then fall back to the configured boot drive.

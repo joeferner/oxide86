@@ -196,6 +196,20 @@ pub(crate) fn pm_step3_segments() {
     );
 }
 
+/// 286 Protected Mode Step 10: Real mode → PM transition and reset path.
+/// Tests PM entry, keyboard controller reset (0xFE), and PE=0 after reset.
+/// Uses CMOS shutdown byte (register 0x0F) to detect post-reset run.
+#[test_log::test]
+pub(crate) fn pm_step10_mode_switch() {
+    run_test(
+        "cpu/pm_step10_mode_switch",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// 286 Protected Mode Step 9: Privilege level transitions (ring 0 ↔ ring 3).
 /// Tests IRET to ring 3, CPL verification, DPL-checked data access,
 /// call gate from ring 3 to ring 0 with stack switch, and return.

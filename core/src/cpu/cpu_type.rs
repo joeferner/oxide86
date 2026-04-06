@@ -57,11 +57,6 @@ impl CpuType {
     // pub(crate) fn supports_32bit(&self) -> bool {
     //     matches!(self, Self::I80386 | Self::I80486)
     // }
-
-    /// Check if this CPU supports protected mode (286+)
-    pub(crate) fn supports_protected_mode(&self) -> bool {
-        !matches!(self, Self::I8086)
-    }
 }
 
 impl std::fmt::Display for CpuType {

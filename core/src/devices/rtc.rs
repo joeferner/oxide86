@@ -44,6 +44,9 @@ pub(crate) struct Rtc {
     status_c: u8,
     /// BCD seconds value at which the alarm last fired, to prevent re-firing within the same second.
     last_alarm_second: u8,
+    /// CMOS register 0x0F: shutdown status byte. Battery-backed, survives reset.
+    /// Used by BIOS to determine POST behavior after a CPU reset.
+    shutdown_byte: u8,
 }
 
 impl Rtc {
@@ -56,6 +59,7 @@ impl Rtc {
             status_b: 0x02, // 24h mode, BCD format
             status_c: 0,
             last_alarm_second: 0xFF, // invalid sentinel
+            shutdown_byte: 0,
         }
     }
 
@@ -155,6 +159,8 @@ impl Device for Rtc {
             0x01 => self.alarm[0],
             0x03 => self.alarm[1],
             0x05 => self.alarm[2],
+            // Shutdown status byte (battery-backed, survives reset)
+            0x0F => self.shutdown_byte,
             CMOS_REG_FLOPPY_TYPES => self.floppy_types,
             // Hard disk drive types: bits 7:4 = HD0 type, bits 3:0 = HD1 type. 0x00 = no drives.
             0x12 => 0x00,
@@ -199,6 +205,7 @@ impl Device for Rtc {
             RTC_IO_PORT_DATA => {
                 match self.selected_register {
                     CMOS_REG_FLOPPY_TYPES => self.floppy_types = val,
+                    0x0F => self.shutdown_byte = val,
                     0x01 => self.alarm[0] = val,
                     0x03 => self.alarm[1] = val,
                     0x05 => self.alarm[2] = val,

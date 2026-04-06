@@ -9,8 +9,6 @@ pub(crate) struct SegmentCache {
     pub base: u32,
     /// 16-bit limit
     pub limit: u16,
-    /// Access rights byte from the descriptor
-    pub access: u8,
 }
 
 impl Default for SegmentCache {
@@ -18,7 +16,6 @@ impl Default for SegmentCache {
         Self {
             base: 0,
             limit: 0xFFFF,
-            access: 0,
         }
     }
 }
@@ -29,7 +26,6 @@ impl SegmentCache {
         Self {
             base: (segment as u32) << 4,
             limit: 0xFFFF,
-            access: 0x93, // present, DPL 0, data read/write, accessed
         }
     }
 }
@@ -63,40 +59,11 @@ impl SegmentDescriptor {
         self.access & 0x80 != 0
     }
 
-    /// Descriptor Privilege Level (0–3)
-    #[allow(dead_code)]
-    pub fn dpl(&self) -> u8 {
-        (self.access >> 5) & 0x03
-    }
-
-    /// Is this a system/gate descriptor (S=0) or code/data (S=1)?
-    pub fn is_code_or_data(&self) -> bool {
-        self.access & 0x10 != 0
-    }
-
-    /// For code/data descriptors: is this a code segment? (TYPE bit 3)
-    pub fn is_code(&self) -> bool {
-        self.is_code_or_data() && (self.access & 0x08 != 0)
-    }
-
-    /// For data descriptors: is this writable? (TYPE bit 1)
-    #[allow(dead_code)]
-    pub fn is_writable(&self) -> bool {
-        !self.is_code() && (self.access & 0x02 != 0)
-    }
-
-    /// For code descriptors: is this readable? (TYPE bit 1)
-    #[allow(dead_code)]
-    pub fn is_readable(&self) -> bool {
-        self.is_code() && (self.access & 0x02 != 0)
-    }
-
     /// Convert to a segment cache entry
-    pub fn to_cache(&self) -> SegmentCache {
+    pub fn to_cache(self) -> SegmentCache {
         SegmentCache {
             base: self.base,
             limit: self.limit,
-            access: self.access,
         }
     }
 }
@@ -121,9 +88,7 @@ pub(crate) struct GateDescriptor {
 }
 
 /// 286 gate types (low 4 bits of access byte)
-#[allow(dead_code)]
 pub(crate) mod gate_type {
-    pub const TASK_GATE_286: u8 = 0x01;
     pub const CALL_GATE_286: u8 = 0x04;
     pub const INTERRUPT_GATE_286: u8 = 0x06;
     pub const TRAP_GATE_286: u8 = 0x07;
