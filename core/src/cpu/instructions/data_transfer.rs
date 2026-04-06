@@ -431,11 +431,16 @@ impl Cpu {
                             self.ldtr_limit = d.limit;
                             log::debug!(
                                 "LLDT: selector=0x{:04X}, base=0x{:06X}, limit=0x{:04X}",
-                                selector, d.base, d.limit
+                                selector,
+                                d.base,
+                                d.limit
                             );
                         }
                         Some(_) => {
-                            log::warn!("LLDT: descriptor not present for selector 0x{:04X}", selector);
+                            log::warn!(
+                                "LLDT: descriptor not present for selector 0x{:04X}",
+                                selector
+                            );
                             self.pending_exception = Some(PendingException {
                                 int_num: 11, // #NP
                                 error_code: Some(selector),
@@ -478,7 +483,10 @@ impl Cpu {
                             log::debug!("LTR: selector=0x{:04X}, base=0x{:06X}", selector, d.base);
                         }
                         Some(_) => {
-                            log::warn!("LTR: descriptor not present for selector 0x{:04X}", selector);
+                            log::warn!(
+                                "LTR: descriptor not present for selector 0x{:04X}",
+                                selector
+                            );
                             self.pending_exception = Some(PendingException {
                                 int_num: 11,
                                 error_code: Some(selector),
@@ -497,7 +505,9 @@ impl Cpu {
             _ => {
                 log::warn!(
                     "Unimplemented 0F 00 /{} at {:04X}:{:04X} — firing INT 6",
-                    reg, self.cs, self.ip.wrapping_sub(3)
+                    reg,
+                    self.cs,
+                    self.ip.wrapping_sub(3)
                 );
                 self.dispatch_interrupt(bus, 6);
             }

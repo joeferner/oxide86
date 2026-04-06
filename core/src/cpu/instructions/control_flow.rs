@@ -108,12 +108,12 @@ impl Cpu {
                 }
                 let offset = bus.memory_read_u16(addr);
                 let segment = bus.memory_read_u16(addr + 2);
-                self.push(self.cs, bus);
-                self.push(self.ip, bus);
-                self.ip = offset;
                 if self.in_protected_mode() {
-                    self.load_segment_register(1, segment, bus);
+                    self.far_call_pm(segment, offset, bus);
                 } else {
+                    self.push(self.cs, bus);
+                    self.push(self.ip, bus);
+                    self.ip = offset;
                     self.set_cs_real(segment);
                 }
 
@@ -189,10 +189,10 @@ impl Cpu {
                 }
                 let offset = bus.memory_read_u16(addr);
                 let segment = bus.memory_read_u16(addr + 2);
-                self.ip = offset;
                 if self.in_protected_mode() {
-                    self.load_segment_register(1, segment, bus);
+                    self.far_jmp_pm(segment, offset, bus);
                 } else {
+                    self.ip = offset;
                     self.set_cs_real(segment);
                 }
 
@@ -413,10 +413,10 @@ impl Cpu {
     pub(in crate::cpu) fn jmp_far(&mut self, bus: &mut Bus) {
         let offset = self.fetch_word(bus);
         let segment = self.fetch_word(bus);
-        self.ip = offset;
         if self.in_protected_mode() {
-            self.load_segment_register(1, segment, bus); // 1 = CS
+            self.far_jmp_pm(segment, offset, bus);
         } else {
+            self.ip = offset;
             self.set_cs_real(segment);
         }
 
@@ -461,14 +461,12 @@ impl Cpu {
     pub(in crate::cpu) fn call_far(&mut self, bus: &mut Bus) {
         let offset = self.fetch_word(bus);
         let segment = self.fetch_word(bus);
-        // Push CS and IP
-        self.push(self.cs, bus);
-        self.push(self.ip, bus);
-        // Jump to far address
-        self.ip = offset;
         if self.in_protected_mode() {
-            self.load_segment_register(1, segment, bus);
+            self.far_call_pm(segment, offset, bus);
         } else {
+            self.push(self.cs, bus);
+            self.push(self.ip, bus);
+            self.ip = offset;
             self.set_cs_real(segment);
         }
 

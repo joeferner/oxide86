@@ -565,6 +565,98 @@ impl Cpu {
         }
     }
 
+    /// Handle a far CALL in protected mode.
+    /// Checks if the selector points to a code segment (direct transfer)
+    /// or a call gate (indirect transfer through the gate).
+    fn far_call_pm(&mut self, selector: u16, offset: u16, bus: &mut Bus) {
+        let (table_base, table_limit) = if selector & 0x04 == 0 {
+            (self.gdtr_base, self.gdtr_limit)
+        } else {
+            (self.ldtr_base, self.ldtr_limit)
+        };
+
+        let raw = protected_mode::load_raw_descriptor(bus, table_base, table_limit, selector);
+        let raw = match raw {
+            Some(r) => r,
+            None => {
+                log::warn!("Far CALL: selector 0x{:04X} out of bounds — #GP", selector);
+                self.pending_exception = Some(PendingException {
+                    int_num: 13,
+                    error_code: Some(selector),
+                });
+                return;
+            }
+        };
+
+        let access = raw[5];
+        if protected_mode::is_call_gate(access) {
+            // Call gate: push return address, then jump to gate target
+            let gate = protected_mode::GateDescriptor::from_bytes(&raw);
+            if !gate.is_present() {
+                log::warn!("Far CALL: call gate 0x{:04X} not present — #NP", selector);
+                self.pending_exception = Some(PendingException {
+                    int_num: 11,
+                    error_code: Some(selector),
+                });
+                return;
+            }
+            self.push(self.cs, bus);
+            self.push(self.ip, bus);
+            self.ip = gate.offset;
+            self.load_segment_register(1, gate.selector, bus);
+        } else {
+            // Code segment: direct far call
+            self.push(self.cs, bus);
+            self.push(self.ip, bus);
+            self.ip = offset;
+            self.load_segment_register(1, selector, bus);
+        }
+    }
+
+    /// Handle a far JMP in protected mode.
+    /// Checks if the selector points to a code segment (direct transfer)
+    /// or a call gate (indirect transfer through the gate, no return address pushed).
+    fn far_jmp_pm(&mut self, selector: u16, offset: u16, bus: &mut Bus) {
+        let (table_base, table_limit) = if selector & 0x04 == 0 {
+            (self.gdtr_base, self.gdtr_limit)
+        } else {
+            (self.ldtr_base, self.ldtr_limit)
+        };
+
+        let raw = protected_mode::load_raw_descriptor(bus, table_base, table_limit, selector);
+        let raw = match raw {
+            Some(r) => r,
+            None => {
+                log::warn!("Far JMP: selector 0x{:04X} out of bounds — #GP", selector);
+                self.pending_exception = Some(PendingException {
+                    int_num: 13,
+                    error_code: Some(selector),
+                });
+                return;
+            }
+        };
+
+        let access = raw[5];
+        if protected_mode::is_call_gate(access) {
+            let gate = protected_mode::GateDescriptor::from_bytes(&raw);
+            if !gate.is_present() {
+                log::warn!("Far JMP: call gate 0x{:04X} not present — #NP", selector);
+                self.pending_exception = Some(PendingException {
+                    int_num: 11,
+                    error_code: Some(selector),
+                });
+                return;
+            }
+            // JMP through call gate: no return address pushed
+            self.ip = gate.offset;
+            self.load_segment_register(1, gate.selector, bus);
+        } else {
+            // Code segment: direct far jump
+            self.ip = offset;
+            self.load_segment_register(1, selector, bus);
+        }
+    }
+
     pub(crate) fn snapshot(&self) -> DebugSnapshot {
         DebugSnapshot {
             cs: self.cs,

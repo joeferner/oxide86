@@ -196,6 +196,20 @@ pub(crate) fn pm_step3_segments() {
     );
 }
 
+/// 286 Protected Mode Step 8: Far CALL/JMP through call gates.
+/// Tests call gate dispatch, far RET, return values, far JMP through gate,
+/// and direct far CALL to code segments.
+#[test_log::test]
+pub(crate) fn pm_step8_call_gate() {
+    run_test(
+        "cpu/pm_step8_call_gate",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// 286 Protected Mode Step 7: LLDT/SLDT/LTR/STR.
 /// Tests LDT and Task Register load/store, and loading a segment from the LDT.
 #[test_log::test]

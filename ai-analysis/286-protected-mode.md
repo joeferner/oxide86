@@ -132,7 +132,7 @@ LDT loading: read the LDT descriptor from the GDT, cache its base and limit.
 
 ---
 
-### Step 8: Far CALL/JMP and RET Through Call Gates (286)
+### ✅ Step 8: Far CALL/JMP and RET Through Call Gates (286)
 
 In protected mode, far JMP and far CALL check the selector:
 - If it points to a code segment: direct transfer (with privilege checks)

@@ -124,6 +124,7 @@ pub(crate) struct GateDescriptor {
 #[allow(dead_code)]
 pub(crate) mod gate_type {
     pub const TASK_GATE_286: u8 = 0x01;
+    pub const CALL_GATE_286: u8 = 0x04;
     pub const INTERRUPT_GATE_286: u8 = 0x06;
     pub const TRAP_GATE_286: u8 = 0x07;
 }
@@ -180,6 +181,32 @@ pub(crate) fn load_idt_gate(
         *byte = bus.memory_read_u8(addr + i);
     }
     Some(GateDescriptor::from_bytes(&bytes))
+}
+
+/// Load raw 8 bytes from a descriptor table.
+/// Returns None if the selector is out of bounds.
+pub(crate) fn load_raw_descriptor(
+    bus: &Bus,
+    table_base: u32,
+    table_limit: u16,
+    selector: u16,
+) -> Option<[u8; 8]> {
+    let index = (selector & 0xFFF8) as u32;
+    if index + 7 > table_limit as u32 {
+        return None;
+    }
+    let addr = (table_base + index) as usize;
+    let mut bytes = [0u8; 8];
+    for (i, byte) in bytes.iter_mut().enumerate() {
+        *byte = bus.memory_read_u8(addr + i);
+    }
+    Some(bytes)
+}
+
+/// Check if the access byte indicates a call gate (S=0, type=0x04)
+pub(crate) fn is_call_gate(access: u8) -> bool {
+    // S bit (bit 4) must be 0 (system descriptor), type must be 0x04 (286 call gate)
+    (access & 0x10 == 0) && (access & 0x0F == gate_type::CALL_GATE_286)
 }
 
 /// Load a descriptor from a descriptor table in memory.
