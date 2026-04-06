@@ -191,6 +191,10 @@ pub(crate) struct Cpu {
 
     /// Task Register (selector)
     tr: u16,
+    /// Cached TSS base address (loaded from GDT descriptor on LTR)
+    tr_base: u32,
+    /// Cached TSS limit (loaded from GDT descriptor on LTR)
+    tr_limit: u16,
 
     /// Current Privilege Level (0–3)
     cpl: u8,
@@ -324,6 +328,8 @@ impl Cpu {
             ldtr_base: 0,
             ldtr_limit: 0,
             tr: 0,
+            tr_base: 0,
+            tr_limit: 0,
             cpl: 0,
         }
     }
@@ -565,6 +571,30 @@ impl Cpu {
         }
     }
 
+    /// Get the DPL of a selector's descriptor. Returns 0 if descriptor not found.
+    fn get_selector_dpl(&self, selector: u16, bus: &Bus) -> u8 {
+        let (table_base, table_limit) = if selector & 0x04 == 0 {
+            (self.gdtr_base, self.gdtr_limit)
+        } else {
+            (self.ldtr_base, self.ldtr_limit)
+        };
+        if let Some(raw) =
+            protected_mode::load_raw_descriptor(bus, table_base, table_limit, selector)
+        {
+            (raw[5] >> 5) & 0x03
+        } else {
+            0
+        }
+    }
+
+    /// Read ring 0 SS:SP from the 286 TSS.
+    /// 286 TSS layout: +02 = SP0, +04 = SS0
+    fn read_tss_ring0_stack(&self, bus: &Bus) -> (u16, u16) {
+        let sp0 = bus.memory_read_u16(self.tr_base as usize + 2);
+        let ss0 = bus.memory_read_u16(self.tr_base as usize + 4);
+        (ss0, sp0)
+    }
+
     /// Handle a far CALL in protected mode.
     /// Checks if the selector points to a code segment (direct transfer)
     /// or a call gate (indirect transfer through the gate).
@@ -590,7 +620,7 @@ impl Cpu {
 
         let access = raw[5];
         if protected_mode::is_call_gate(access) {
-            // Call gate: push return address, then jump to gate target
+            // Call gate: may involve privilege transition with stack switch
             let gate = protected_mode::GateDescriptor::from_bytes(&raw);
             if !gate.is_present() {
                 log::warn!("Far CALL: call gate 0x{:04X} not present — #NP", selector);
@@ -600,10 +630,45 @@ impl Cpu {
                 });
                 return;
             }
-            self.push(self.cs, bus);
-            self.push(self.ip, bus);
-            self.ip = gate.offset;
-            self.load_segment_register(1, gate.selector, bus);
+
+            // Determine target DPL from the target code segment descriptor
+            let target_dpl = self.get_selector_dpl(gate.selector, bus);
+
+            if target_dpl < self.cpl {
+                // Inter-privilege call: switch stacks via TSS
+                let old_ss = self.ss;
+                let old_sp = self.sp;
+                let old_cs = self.cs;
+                let old_ip = self.ip;
+
+                // Read new SS:SP from TSS for the target privilege level
+                let (new_ss, new_sp) = self.read_tss_ring0_stack(bus);
+
+                // Switch to new stack
+                self.load_segment_register(2, new_ss, bus); // SS
+                self.sp = new_sp;
+
+                // Push caller's SS:SP onto new stack
+                self.push(old_ss, bus);
+                self.push(old_sp, bus);
+
+                // Push return CS:IP
+                self.push(old_cs, bus);
+                self.push(old_ip, bus);
+
+                // Update CPL to target privilege level
+                self.cpl = target_dpl;
+
+                // Load CS:IP from gate
+                self.ip = gate.offset;
+                self.load_segment_register(1, gate.selector, bus);
+            } else {
+                // Same-privilege call gate: no stack switch
+                self.push(self.cs, bus);
+                self.push(self.ip, bus);
+                self.ip = gate.offset;
+                self.load_segment_register(1, gate.selector, bus);
+            }
         } else {
             // Code segment: direct far call
             self.push(self.cs, bus);
@@ -1086,6 +1151,8 @@ impl Cpu {
         self.ldtr_base = 0;
         self.ldtr_limit = 0;
         self.tr = 0;
+        self.tr_base = 0;
+        self.tr_limit = 0;
         self.cpl = 0;
 
         // Set CPU to start at this location

@@ -480,7 +480,14 @@ impl Cpu {
                     match desc {
                         Some(d) if d.is_present() => {
                             self.tr = selector;
-                            log::debug!("LTR: selector=0x{:04X}, base=0x{:06X}", selector, d.base);
+                            self.tr_base = d.base;
+                            self.tr_limit = d.limit;
+                            log::debug!(
+                                "LTR: selector=0x{:04X}, base=0x{:06X}, limit=0x{:04X}",
+                                selector,
+                                d.base,
+                                d.limit
+                            );
                         }
                         Some(_) => {
                             log::warn!(

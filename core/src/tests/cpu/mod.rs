@@ -196,6 +196,20 @@ pub(crate) fn pm_step3_segments() {
     );
 }
 
+/// 286 Protected Mode Step 9: Privilege level transitions (ring 0 ↔ ring 3).
+/// Tests IRET to ring 3, CPL verification, DPL-checked data access,
+/// call gate from ring 3 to ring 0 with stack switch, and return.
+#[test_log::test]
+pub(crate) fn pm_step9_rings() {
+    run_test(
+        "cpu/pm_step9_rings",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 /// 286 Protected Mode Step 8: Far CALL/JMP through call gates.
 /// Tests call gate dispatch, far RET, return values, far JMP through gate,
 /// and direct far CALL to code segments.

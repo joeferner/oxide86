@@ -31,6 +31,10 @@ impl Cpu {
 
         let old_if = self.get_flag(cpu_flag::INTERRUPT);
 
+        // Check for inter-privilege return in protected mode
+        let target_rpl = new_cs & 0x03;
+        let inter_privilege = self.in_protected_mode() && target_rpl > self.cpl as u16;
+
         self.ip = new_ip;
         if self.in_protected_mode() {
             self.load_segment_register(1, new_cs, bus);
@@ -42,6 +46,15 @@ impl Cpu {
             CpuType::I80286 => (new_flags & 0x0FFF) | 0x0002,
             _ => (new_flags & 0x7FFF) | 0x0002,
         };
+
+        // Inter-privilege return: pop SS:SP from stack to restore outer ring stack
+        if inter_privilege {
+            let new_sp = self.pop(bus);
+            let new_ss = self.pop(bus);
+            self.load_segment_register(2, new_ss, bus); // SS
+            self.sp = new_sp;
+            self.cpl = target_rpl as u8;
+        }
 
         if self.exec_logging_enabled {
             log::info!("popped IP={:04X}", self.ip);
@@ -439,6 +452,11 @@ impl Cpu {
         // Pop IP and CS
         self.ip = self.pop(bus);
         let cs_val = self.pop(bus);
+
+        // Check for inter-privilege return in protected mode
+        let target_rpl = cs_val & 0x03;
+        let inter_privilege = self.in_protected_mode() && target_rpl > self.cpl as u16;
+
         if self.in_protected_mode() {
             self.load_segment_register(1, cs_val, bus);
         } else {
@@ -447,6 +465,15 @@ impl Cpu {
 
         // Add the immediate to SP (if CA)
         self.sp = self.sp.wrapping_add(bytes_to_pop);
+
+        // Inter-privilege return: pop SS:SP to restore outer ring stack
+        if inter_privilege {
+            let new_sp = self.pop(bus);
+            let new_ss = self.pop(bus);
+            self.load_segment_register(2, new_ss, bus); // SS
+            self.sp = new_sp;
+            self.cpl = target_rpl as u8;
+        }
 
         // RET far: 18 cycles (CB), 17 cycles (CA with pop)
         bus.increment_cycle_count(if opcode == 0xCA {

@@ -144,7 +144,7 @@ Far RET must pop CS:IP (and possibly SS:SP for inter-privilege returns) and vali
 
 ---
 
-### Step 9: Privilege Level Transitions (Ring 0 ↔ Ring 3)
+### ✅ Step 9: Privilege Level Transitions (Ring 0 ↔ Ring 3)
 
 Full CPL/RPL/DPL checking:
 - Code segment loads check CPL vs DPL (conforming vs non-conforming)
