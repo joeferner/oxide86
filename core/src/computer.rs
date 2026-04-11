@@ -225,16 +225,49 @@ impl Computer {
 
     pub fn reset(&mut self) {
         self.key_presses.clear();
+
+        // Read CMOS[0x0F] (shutdown status byte) before reset.
+        // It survives device::reset() because RTC only clears the register-select latch.
+        self.bus.io_write_u8(0x70, 0x0F);
+        let cmos_shutdown = self.bus.io_read_u8(0x71);
+
+        // Read the BDA warm-boot vector before reset.
+        // bda_reset() does not write to offsets 0x67-0x6B, so this survives bus::reset().
+        let warm_ip = self.bus.memory_read_u16(0x467);
+        let warm_cs = self.bus.memory_read_u16(0x469);
+
         if let Some((data, segment, offset)) = self.loaded_program.clone() {
-            self.bus.reset();
+            if cmos_shutdown == 0x0A {
+                log::info!(
+                    "Warm restart (CMOS[0x0F]=0x0A): resuming at {:04X}:{:04X}",
+                    warm_cs,
+                    warm_ip
+                );
+                self.bus.warm_reset();
+            } else {
+                self.bus.reset();
+            }
             self.apply_coprocessor_bda();
             let physical_addr = self.bus.physical_address(segment, offset);
             if let Err(e) = self.bus.load_at(physical_addr, &data) {
                 log::error!("Failed to reload program on reset: {e}");
             }
-            self.cpu.reset(segment, offset, None);
+            if cmos_shutdown == 0x0A {
+                self.cpu.reset(warm_cs, warm_ip, None);
+            } else {
+                self.cpu.reset(segment, offset, None);
+            }
         } else if let Some(drive) = self.boot_drive {
-            if let Err(e) = self.boot(drive) {
+            if cmos_shutdown == 0x0A {
+                log::info!(
+                    "Warm restart (CMOS[0x0F]=0x0A): resuming at {:04X}:{:04X}",
+                    warm_cs,
+                    warm_ip
+                );
+                self.bus.warm_reset();
+                self.apply_coprocessor_bda();
+                self.cpu.reset(warm_cs, warm_ip, None);
+            } else if let Err(e) = self.boot(drive) {
                 log::error!("Reset boot failed: {e}");
             }
         } else {

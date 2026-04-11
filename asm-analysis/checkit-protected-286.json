@@ -1,6 +1,20 @@
 {
-  "functions": {},
-  "labels": {},
+  "functions": {
+    "0030:1B5B": {
+      "label": "pm_test_teardown",
+      "comment": "PM test exit routine. Called once from 0x1DD3 after a 65536-iteration delay loop. Sequence: (1) CLI; (2) call func_0030_0B75(0) — reads CMOS register 0x8D as cleanup/delay; (3) check secondary completion flag at [BP+0x057E]; (4) if done: save SP, load ES = 0x0058 (descriptor with base 0x0400, i.e. the BDA), write warm-boot re-entry vector 0x1034:0x1BBE to [ES+0x0067] = physical [40:67], then INT 0x20 to trigger the shutdown/reset sequence. Note: physical address annotations in the exec log for ES:0x0067 show 0x5E7 (wrong — computed as selector×16+offset before the seg_to_phys fix); the actual write should hit physical 0x467 = BDA[67h]."
+    }
+  },
+  "labels": {
+    "0030:1CBB": {
+      "label": "pm_exit_check",
+      "comment": "Load PM data segment selector (from CS:0x0000 = 0x0028) and saved frame base (from CS:0x0002 = EDB0), then check test-completion flag at ES:[BP+0x0580]."
+    },
+    "0030:1CE6": {
+      "label": "pm_exit_reset",
+      "comment": "PM exit path: triggers CPU reset via keyboard controller (port 0x64 command 0xFE). On 286, this is the only way to leave protected mode. BIOS reads CMOS[0x0F]=0x0A on reset and jumps to the real-mode re-entry point at [40:67] instead of cold-booting."
+    }
+  },
   "lineComments": {
     "0019:5180": "iret used as the target of 'push cs + call 0x5180' trick — a safe 286 PM way to do popf by using iret to restore flags including IF",
     "0019:5166": "func: safe pushf/popf via iret trick (count=12719). Last call does NOT return to caller — lockup point.",
@@ -10,6 +24,21 @@
     "0019:51A8": "main 286 PM test loop — calls font functions, INT 0x2A, loops until condition met",
     "0019:51BC": "int 0x2a with AH=0x84 — not reached in last iteration (lockup happens inside call 0x83d8 before getting here)",
     "0019:843D": "call func_0019_85AF (count=8427) — sets up DS:SI=0070:0023 then calls func_0019_85B2",
-    "0019:8628": "jb 0x8608 — loop at lbl_0019_8608 (far calls + func_0019_876A), loops while CF set (12718 iterations)"
+    "0019:8628": "jb 0x8608 — loop at lbl_0019_8608 (far calls + func_0019_876A), loops while CF set (12718 iterations)",
+    "0030:1BA9": "ES = 0x0058 — GDT descriptor for the BDA segment (base=0x0400); ES:0x0067 = physical [40:67] = BIOS warm-boot re-entry vector",
+    "0030:1BB1": "write warm-boot IP (0x1BBE) to [40:67] — after reset, BIOS reads CMOS[0x0F]=0x0A and jumps to CS:IP stored here (exec log shows wrong phys 0x5E7 due to pre-fix seg_to_phys bug; actual target is 0x467)",
+    "0030:1BB6": "write warm-boot CS (0x1034) to [40:69] — completes the far pointer for post-reset BIOS re-entry into CheckIt",
+    "0030:1BBC": "INT 0x20 — dispatches to PM IDT handler which begins the shutdown sequence; execution resumes at 0x1CA9 (handler redirects IRET past the gap 0x1BBE-0x1CA8)",
+    "0030:1B60": "call func_0030_0B75(arg=0) — reads CMOS register 0x8D (RTC status D) as I/O delay/cleanup before exit",
+    "0030:1B64": "secondary completion flag at [BP+0x057E]; 0 = done, non-zero = error/abort path in gap 0x1B6B-0x1BA4 (not executed this run)",
+    "0030:1CA9": "begin CMOS shutdown-status write: select register 0x0F (Shutdown Status Byte) via port 0x70",
+    "0030:1CAF": "I/O delay: jmp-to-next-instr pairs required after OUT to CMOS ports on 286",
+    "0030:1CB4": "0x0A = CMOS shutdown status 'jump to dword at [40:67]': after CPU reset, BIOS resumes at the stored real-mode re-entry address rather than cold-booting",
+    "0030:1CB7": "I/O delay: jmp-to-next-instr pairs after writing CMOS data port",
+    "0030:1CBB": "read data segment selector from CS:0x0000 (GDT self-pointer area); CS:0x0002 holds saved frame base pointer",
+    "0030:1CBF": "mov es, ax — set ES = 0x0028 (PM data segment selector for the main data area)",
+    "0030:1CC6": "test-completion flag at ES:[BP+0x0580]; value 0x00 = test done (or passed), non-zero = still running",
+    "0030:1CCC": "if flag == 0 → jump to pm_exit_reset; non-zero path in gap 0x1CCE-0x1CE5 (not executed this run, likely error/abort path)",
+    "0030:1CE8": "port 0x64 command 0xFE = 8042 pulse reset line → CPU hard reset; BIOS reads CMOS[0x0F]=0x0A and jumps to real-mode re-entry point at [40:67]"
   }
 }

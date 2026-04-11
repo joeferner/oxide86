@@ -210,6 +210,23 @@ pub(crate) fn pm_mode_switch() {
     );
 }
 
+/// CMOS shutdown byte 0x0A warm-restart: after KBC reset, Computer::reset() reads
+/// CMOS[0x0F] and jumps to [40:67] instead of restarting from the program entry point.
+/// Requires a 286 computer because the RTC (CMOS) is only present on non-8086 configs.
+/// Also verifies the screen is NOT cleared on warm restart — "BEFORE RESET" written
+/// before the KBC reset must still be visible alongside "AFTER RESET" written after.
+#[test_log::test]
+pub(crate) fn pm_warm_restart() {
+    run_test(
+        "cpu/pm_warm_restart",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, video_buffer| {
+            computer.run();
+            super::assert_screen("cpu/pm_warm_restart", video_buffer);
+        },
+    );
+}
+
 /// 286 Protected Mode Step 9: Privilege level transitions (ring 0 ↔ ring 1 ↔ ring 3).
 /// Tests far-JMP to ring 1 (CPL tracking), IRET to ring 3, CPL verification,
 /// DPL-checked data access, call gate with stack switch, and the inline

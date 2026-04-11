@@ -84,6 +84,12 @@ pub trait Computer {
     fn es(&self) -> u16;
     /// Read one byte from a physical (20-bit) address.
     fn read_u8(&self, phys: u32) -> u8;
+    /// Translate a segment:offset pair to a physical address.
+    /// The default implementation uses real-mode addressing (segment << 4 + offset).
+    /// Override for protected-mode-aware translation.
+    fn seg_to_phys(&self, seg: u16, offset: u16) -> u32 {
+        ((seg as u32) << 4).wrapping_add(offset as u32)
+    }
     /// Return the raw 10-byte 80-bit representation and f64 approximation of FPU ST(i).
     fn fpu_st(&self, _i: u8) -> ([u8; 10], f64) {
         ([0; 10], 0.0)

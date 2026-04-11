@@ -55,7 +55,7 @@ fn load_program_data(name: &str) -> Vec<u8> {
     buffer
 }
 
-fn assert_screen(name: &str, video_buffer: Arc<RwLock<VideoBuffer>>) {
+pub(super) fn assert_screen(name: &str, video_buffer: Arc<RwLock<VideoBuffer>>) {
     let expected_image_data = {
         let filename = format!("src/test_data/{name}.png");
         if Path::new(&filename).exists() {

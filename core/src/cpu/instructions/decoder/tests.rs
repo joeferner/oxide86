@@ -855,3 +855,181 @@ fn rep_alone_stays_on_own_line() {
     assert!(line.contains("rep"), "asm column: {line}");
     assert!(!line.contains("rep nop"), "should not fold nop: {line}");
 }
+
+// ─── Protected-mode seg_to_phys override ─────────────────────────────────────
+
+/// A `FakeCpu` variant that simulates 286 protected mode by mapping each
+/// segment selector to a configurable base address instead of `seg * 16`.
+struct FakeCpuPm<'a> {
+    mem: &'a [u8],
+    /// Maps (selector → base).  Pairs checked in order; first match wins.
+    seg_bases: &'a [(u16, u32)],
+    ax: u16,
+    bx: u16,
+    cx: u16,
+    dx: u16,
+    sp: u16,
+    bp: u16,
+    si: u16,
+    di: u16,
+    cs: u16,
+    ds: u16,
+    ss: u16,
+    es: u16,
+}
+
+impl<'a> FakeCpuPm<'a> {
+    fn new(mem: &'a [u8], seg_bases: &'a [(u16, u32)]) -> Self {
+        Self {
+            mem,
+            seg_bases,
+            ax: 0,
+            bx: 0,
+            cx: 0,
+            dx: 0,
+            sp: 0,
+            bp: 0,
+            si: 0,
+            di: 0,
+            cs: 0,
+            ds: 0,
+            ss: 0,
+            es: 0,
+        }
+    }
+
+    fn base_for(&self, seg: u16) -> u32 {
+        self.seg_bases
+            .iter()
+            .find(|(s, _)| *s == seg)
+            .map(|(_, b)| *b)
+            .unwrap_or_else(|| (seg as u32) << 4) // fallback to real-mode
+    }
+}
+
+impl Computer for FakeCpuPm<'_> {
+    fn ax(&self) -> u16 {
+        self.ax
+    }
+    fn bx(&self) -> u16 {
+        self.bx
+    }
+    fn cx(&self) -> u16 {
+        self.cx
+    }
+    fn dx(&self) -> u16 {
+        self.dx
+    }
+    fn sp(&self) -> u16 {
+        self.sp
+    }
+    fn bp(&self) -> u16 {
+        self.bp
+    }
+    fn si(&self) -> u16 {
+        self.si
+    }
+    fn di(&self) -> u16 {
+        self.di
+    }
+    fn cs(&self) -> u16 {
+        self.cs
+    }
+    fn ds(&self) -> u16 {
+        self.ds
+    }
+    fn ss(&self) -> u16 {
+        self.ss
+    }
+    fn es(&self) -> u16 {
+        self.es
+    }
+    fn read_u8(&self, phys: u32) -> u8 {
+        self.mem.get(phys as usize).copied().unwrap_or(0)
+    }
+    fn seg_to_phys(&self, seg: u16, offset: u16) -> u32 {
+        self.base_for(seg).wrapping_add(offset as u32)
+    }
+}
+
+/// Decoder reads code from the PM physical address (base + IP), not the
+/// real-mode address (selector * 16 + IP).
+///
+/// Setup:
+///   CS = 0x0030, segment base = 0x10000, IP = 0x0050
+///   Real-mode address: 0x0030 * 16 + 0x0050 = 0x0350  → filled with 0x90 (nop)
+///   PM   address:      0x10000 + 0x0050 = 0x10050      → filled with 0xFA (cli)
+///
+/// Before the fix the decoder read from 0x0350 and produced "nop".
+/// After the fix it reads from 0x10050 and produces "cli".
+#[test]
+fn pm_code_fetch_uses_segment_base() {
+    let mut mem = vec![0u8; 0x20000];
+    let real_mode_phys: usize = (0x0030u32 << 4) as usize + 0x0050; // 0x0350
+    let pm_phys: usize = 0x10000 + 0x0050; // 0x10050
+
+    mem[real_mode_phys] = 0x90; // NOP — wrong location
+    mem[pm_phys] = 0xFA; // CLI — correct location
+
+    let bases: &[(u16, u32)] = &[(0x0030, 0x10000)];
+    let mut cpu = FakeCpuPm::new(&mem, bases);
+    cpu.cs = 0x0030;
+
+    let line = decode_line(&cpu, 0x0030, 0x0050);
+    assert!(
+        line.contains("cli"),
+        "should decode CLI from PM base, got: {line}"
+    );
+    assert!(
+        !line.contains("nop"),
+        "must NOT decode NOP from real-mode address: {line}"
+    );
+}
+
+/// Decoder resolves data-operand effective addresses through seg_to_phys too.
+///
+/// Setup:
+///   DS = 0x0018, segment base = 0x20000, BX = 0x0100
+///   Real-mode address: 0x0018 * 16 + 0x0100 = 0x0280  → word 0xBEEF
+///   PM   address:      0x20000 + 0x0100 = 0x20100      → word 0x1234
+///
+/// The decoder must annotate `mov ax, [bx]` with the PM value (0x1234).
+#[test]
+fn pm_data_fetch_uses_segment_base() {
+    let mut mem = vec![0u8; 0x30000];
+    let cs_base: u32 = 0x10000;
+    let ds_base: u32 = 0x20000;
+    let ip: u16 = 0x0000;
+
+    // Instruction at CS:IP (PM)
+    mem[(cs_base + ip as u32) as usize] = 0x8B; // MOV AX, r/m16
+    mem[(cs_base + ip as u32 + 1) as usize] = 0x07; // ModRM: mod=00, reg=AX, rm=BX → [bx]
+
+    // Word at real-mode DS:BX = 0x0018*16 + 0x0100 = 0x0280
+    let rm_phys: usize = ((0x0018u32 << 4) + 0x0100) as usize; // 0x0280
+    mem[rm_phys] = 0xEF;
+    mem[rm_phys + 1] = 0xBE; // 0xBEEF — wrong location
+
+    // Word at PM DS:BX = 0x20000 + 0x0100 = 0x20100
+    let pm_phys: usize = (ds_base + 0x0100) as usize;
+    mem[pm_phys] = 0x34;
+    mem[pm_phys + 1] = 0x12; // 0x1234 — correct location
+
+    let bases: &[(u16, u32)] = &[(0x0008, cs_base), (0x0010, ds_base)];
+    let mut cpu = FakeCpuPm::new(&mem, bases);
+    cpu.cs = 0x0008;
+    cpu.ds = 0x0010;
+    cpu.bx = 0x0100;
+    cpu.ax = 0x1234; // post-exec AX value for annotation
+
+    let line = decode_line(&cpu, 0x0008, ip);
+    assert!(line.contains("mov ax, [bx]"), "asm column: {line}");
+    assert!(
+        line.contains("[0x0100]=1234"),
+        "should show PM value 0x1234, got: {line}"
+    );
+    assert!(
+        !line.contains("beef"),
+        "must NOT use real-mode address value 0xBEEF: {line}"
+    );
+}

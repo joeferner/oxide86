@@ -489,6 +489,20 @@ impl Bus {
         bios_reset(self);
     }
 
+    /// Warm reset: like reset() but skips the video card so the screen is preserved.
+    /// On real hardware, a KBC-triggered CPU reset does not reinitialize the CGA/EGA/VGA
+    /// hardware — video memory and registers survive the warm restart.
+    pub(crate) fn warm_reset(&mut self) {
+        self.cycle_count = 0;
+        for device in &self.devices {
+            if device.borrow().as_any().type_id() == std::any::TypeId::of::<VideoCard>() {
+                continue;
+            }
+            device.borrow_mut().reset();
+        }
+        bios_reset(self);
+    }
+
     /// Get extended memory size in KB
     pub(crate) fn extended_memory_kb(&self) -> u16 {
         self.memory.extended_memory_kb()

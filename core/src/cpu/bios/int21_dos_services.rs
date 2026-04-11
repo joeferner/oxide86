@@ -38,6 +38,22 @@ pub(in crate::cpu) struct PendingDosRead {
 /// Side-table: DOS file handle → open file info.
 pub(in crate::cpu) type DosFileHandleTable = HashMap<u16, DosFileHandle>;
 
+/// Convert days since Unix epoch (1970-01-01) to (year, month, day).
+fn days_to_ymd(days: u32) -> (u16, u8, u8) {
+    // Algorithm from http://howardhinnant.github.io/date_algorithms.html
+    let z = days as i64 + 719468;
+    let era = if z >= 0 { z } else { z - 146096 } / 146097;
+    let doe = (z - era * 146097) as u32;
+    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
+    let y = yoe as i64 + era * 400;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = if m <= 2 { y + 1 } else { y };
+    (y as u16, m as u8, d as u8)
+}
+
 impl Cpu {
     pub(in crate::cpu) fn handle_int21_dos_services(&mut self, bus: &mut Bus) {
         bus.increment_cycle_count(500);
@@ -47,9 +63,45 @@ impl Cpu {
         match function {
             0x02 => self.int21_write_char(bus),
             0x09 => self.int21_write_string(bus),
+            0x2a => self.int21_get_date(),
+            0x2c => self.int21_get_time(),
             0x4c => self.int21_exit(bus),
             _ => log::warn!("Unhandled INT 0x21 function: AH=0x{function:02X}"),
         }
+    }
+
+    /// INT 21h, AH=2Ah - Get System Date
+    /// Returns: CX = year, DH = month (1-12), DL = day (1-31), AL = day of week (0=Sun)
+    fn int21_get_date(&mut self) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        // Compute date from Unix epoch (days since 1970-01-01)
+        let days = secs / 86400;
+        let dow = ((days + 4) % 7) as u8; // 1970-01-01 was a Thursday (4)
+        // Gregorian calendar calculation
+        let (year, month, day) = days_to_ymd(days as u32);
+        self.cx = year;
+        self.dx = ((month as u16) << 8) | (day as u16);
+        self.ax = (self.ax & 0xff00) | (dow as u16);
+    }
+
+    /// INT 21h, AH=2Ch - Get System Time
+    /// Returns: CH = hours, CL = minutes, DH = seconds, DL = hundredths
+    fn int21_get_time(&mut self) {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let day_secs = secs % 86400;
+        let hours = (day_secs / 3600) as u8;
+        let minutes = ((day_secs % 3600) / 60) as u8;
+        let seconds = (day_secs % 60) as u8;
+        self.cx = ((hours as u16) << 8) | (minutes as u16);
+        self.dx = (seconds as u16) << 8; // hundredths = 0
     }
 
     /// INT 21h, AH=02h - Write Character to STDOUT

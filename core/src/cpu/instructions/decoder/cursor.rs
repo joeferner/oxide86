@@ -27,13 +27,13 @@ impl<'a> Cursor<'a> {
 
     /// Read the next byte without consuming it.
     pub fn peek(&self) -> u8 {
-        let phys = ((self.seg as u32) << 4).wrapping_add(self.offset as u32);
+        let phys = self.cpu.seg_to_phys(self.seg, self.offset);
         self.cpu.read_u8(phys)
     }
 
     /// Fetch the next instruction byte and advance the cursor.
     pub fn fetch(&mut self) -> u8 {
-        let phys = ((self.seg as u32) << 4).wrapping_add(self.offset as u32);
+        let phys = self.cpu.seg_to_phys(self.seg, self.offset);
         let b = self.cpu.read_u8(phys);
         self.bytes.push(b);
         self.offset = self.offset.wrapping_add(1);
@@ -48,8 +48,7 @@ impl<'a> Cursor<'a> {
     }
 
     pub fn read_mem_u8(&self, seg: u16, ea: u16) -> u8 {
-        self.cpu
-            .read_u8(((seg as u32) << 4).wrapping_add(ea as u32))
+        self.cpu.read_u8(self.cpu.seg_to_phys(seg, ea))
     }
 
     pub fn read_mem_u16(&self, seg: u16, ea: u16) -> u16 {

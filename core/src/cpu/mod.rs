@@ -255,6 +255,15 @@ impl Computer for CpuBusComputer<'_> {
     fn read_u8(&self, phys: u32) -> u8 {
         self.bus.memory_read_u8(phys as usize)
     }
+    fn seg_to_phys(&self, seg: u16, offset: u16) -> u32 {
+        if self.cpu.in_protected_mode() {
+            let cache = self.cpu.cache_for_seg_value(seg);
+            self.bus
+                .apply_a20_pub(cache.base.wrapping_add(offset as u32) as usize) as u32
+        } else {
+            ((seg as u32) << 4).wrapping_add(offset as u32)
+        }
+    }
     fn fpu_st(&self, i: u8) -> ([u8; 10], f64) {
         let idx = (self.cpu.fpu_top.wrapping_add(i)) as usize & 7;
         let val = self.cpu.fpu_stack[idx];
