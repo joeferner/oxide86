@@ -1,0 +1,15 @@
+{
+  "functions": {},
+  "labels": {},
+  "lineComments": {
+    "0019:5180": "iret used as the target of 'push cs + call 0x5180' trick — a safe 286 PM way to do popf by using iret to restore flags including IF",
+    "0019:5166": "func: safe pushf/popf via iret trick (count=12719). Last call does NOT return to caller — lockup point.",
+    "0019:85B2": "call 0x5166 here (count=12719); next instr test [si+0x05],0x80 only runs 12718 times — 12719th call does not return",
+    "0019:85B5": "return target of call 0x5166 at 0x85B2 — only reached 12718/12719 times (lockup on last call)",
+    "0019:40C5": "INT 0x28 and INT 0x2A handler — just an iret, returns immediately to caller",
+    "0019:51A8": "main 286 PM test loop — calls font functions, INT 0x2A, loops until condition met",
+    "0019:51BC": "int 0x2a with AH=0x84 — not reached in last iteration (lockup happens inside call 0x83d8 before getting here)",
+    "0019:843D": "call func_0019_85AF (count=8427) — sets up DS:SI=0070:0023 then calls func_0019_85B2",
+    "0019:8628": "jb 0x8608 — loop at lbl_0019_8608 (far calls + func_0019_876A), loops while CF set (12718 iterations)"
+  }
+}

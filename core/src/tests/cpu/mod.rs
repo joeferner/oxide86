@@ -172,9 +172,9 @@ pub(crate) fn fpu_present() {
 /// Tests that SMSW returns the actual MSW, LMSW can set PE/MP/EM/TS bits,
 /// and LMSW cannot clear PE once set (286 behavior).
 #[test_log::test]
-pub(crate) fn pm_step1_msw() {
+pub(crate) fn pm_msw() {
     run_test(
-        "cpu/pm_step1_msw",
+        "cpu/pm_msw",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -186,9 +186,9 @@ pub(crate) fn pm_step1_msw() {
 /// Tests that MOV to segment registers uses GDT descriptor bases for
 /// address resolution, not (segment << 4).
 #[test_log::test]
-pub(crate) fn pm_step3_segments() {
+pub(crate) fn pm_segments() {
     run_test(
-        "cpu/pm_step3_segments",
+        "cpu/pm_segments",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -200,9 +200,9 @@ pub(crate) fn pm_step3_segments() {
 /// Tests PM entry, keyboard controller reset (0xFE), and PE=0 after reset.
 /// Uses CMOS shutdown byte (register 0x0F) to detect post-reset run.
 #[test_log::test]
-pub(crate) fn pm_step10_mode_switch() {
+pub(crate) fn pm_mode_switch() {
     run_test(
-        "cpu/pm_step10_mode_switch",
+        "cpu/pm_mode_switch",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -214,9 +214,9 @@ pub(crate) fn pm_step10_mode_switch() {
 /// Tests IRET to ring 3, CPL verification, DPL-checked data access,
 /// call gate from ring 3 to ring 0 with stack switch, and return.
 #[test_log::test]
-pub(crate) fn pm_step9_rings() {
+pub(crate) fn pm_rings() {
     run_test(
-        "cpu/pm_step9_rings",
+        "cpu/pm_rings",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -228,9 +228,9 @@ pub(crate) fn pm_step9_rings() {
 /// Tests call gate dispatch, far RET, return values, far JMP through gate,
 /// and direct far CALL to code segments.
 #[test_log::test]
-pub(crate) fn pm_step8_call_gate() {
+pub(crate) fn pm_call_gate() {
     run_test(
-        "cpu/pm_step8_call_gate",
+        "cpu/pm_call_gate",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -241,9 +241,9 @@ pub(crate) fn pm_step8_call_gate() {
 /// 286 Protected Mode Step 7: LLDT/SLDT/LTR/STR.
 /// Tests LDT and Task Register load/store, and loading a segment from the LDT.
 #[test_log::test]
-pub(crate) fn pm_step7_lldt() {
+pub(crate) fn pm_lldt() {
     run_test(
-        "cpu/pm_step7_lldt",
+        "cpu/pm_lldt",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -256,9 +256,9 @@ pub(crate) fn pm_step7_lldt() {
 /// #NP fires on loading a not-present segment, and error codes
 /// are pushed onto the stack.
 #[test_log::test]
-pub(crate) fn pm_step6_exceptions() {
+pub(crate) fn pm_exceptions() {
     run_test(
-        "cpu/pm_step6_exceptions",
+        "cpu/pm_exceptions",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -270,9 +270,9 @@ pub(crate) fn pm_step6_exceptions() {
 /// Tests that INT in protected mode dispatches through the IDT,
 /// interrupt gates clear IF, trap gates preserve IF, and IRET works.
 #[test_log::test]
-pub(crate) fn pm_step5_idt() {
+pub(crate) fn pm_idt() {
     run_test(
-        "cpu/pm_step5_idt",
+        "cpu/pm_idt",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -284,9 +284,9 @@ pub(crate) fn pm_step5_idt() {
 /// Tests that accesses within a segment's limit succeed, and accesses
 /// beyond the limit are blocked (#GP).
 #[test_log::test]
-pub(crate) fn pm_step4_limits() {
+pub(crate) fn pm_limits() {
     run_test(
-        "cpu/pm_step4_limits",
+        "cpu/pm_limits",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();
@@ -297,9 +297,9 @@ pub(crate) fn pm_step4_limits() {
 /// 286 Protected Mode Step 2: LGDT/LIDT/SGDT/SIDT.
 /// Tests that descriptor table registers can be loaded and stored correctly.
 #[test_log::test]
-pub(crate) fn pm_step2_gdt_idt() {
+pub(crate) fn pm_gdt_idt() {
     run_test(
-        "cpu/pm_step2_gdt_idt",
+        "cpu/pm_gdt_idt",
         make_computer!(cpu_type: CpuType::I80286),
         |computer, _video_buffer| {
             computer.run();

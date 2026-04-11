@@ -255,8 +255,7 @@ def main():
                             lbl = labels.get(jtarget, {})
                             call_label = lbl.get('label') or f"lbl_{jtseg:04X}_{jtoff:04X}"
 
-        line_key = f"{addr} {bytecode}"
-        line_comment = line_comments.get(line_key, '')
+        line_comment = line_comments.get(addr, '')
         if line_comment:
             for cline in _wrap_comment(line_comment, width=80):
                 print(f"   {cline}")
