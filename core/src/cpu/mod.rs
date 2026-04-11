@@ -520,6 +520,7 @@ impl Cpu {
                         1 => {
                             self.cs = selector;
                             self.cs_cache = cache;
+                            self.cpl = (selector & 0x03) as u8;
                         }
                         2 => {
                             self.ss = selector;
@@ -1004,6 +1005,19 @@ impl Cpu {
             }
         };
 
+        // Check for inter-privilege transition (exception handlers typically run at ring 0)
+        let target_dpl = self.get_selector_dpl(gate.selector, bus);
+        if target_dpl < self.cpl {
+            // Inter-privilege: switch to ring 0 stack from TSS, push old SS:SP
+            let old_ss = self.ss;
+            let old_sp = self.sp;
+            let (new_ss, new_sp) = self.read_tss_ring0_stack(bus);
+            self.load_segment_register(2, new_ss, bus); // SS
+            self.sp = new_sp;
+            self.push(old_ss, bus);
+            self.push(old_sp, bus);
+        }
+
         // Push FLAGS, CS, IP
         self.push(self.flags, bus);
         self.push(self.cs, bus);
@@ -1055,6 +1069,19 @@ impl Cpu {
             );
             self.dispatch_interrupt_real(bus, int_num);
             return;
+        }
+
+        // Check for inter-privilege transition (handlers typically run at ring 0)
+        let target_dpl = self.get_selector_dpl(gate.selector, bus);
+        if target_dpl < self.cpl {
+            // Inter-privilege: switch to ring 0 stack from TSS, push old SS:SP
+            let old_ss = self.ss;
+            let old_sp = self.sp;
+            let (new_ss, new_sp) = self.read_tss_ring0_stack(bus);
+            self.load_segment_register(2, new_ss, bus); // SS
+            self.sp = new_sp;
+            self.push(old_ss, bus);
+            self.push(old_sp, bus);
         }
 
         // Push FLAGS, CS, IP

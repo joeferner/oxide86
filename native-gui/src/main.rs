@@ -27,6 +27,7 @@ use pixels::{Pixels, SurfaceTexture, wgpu};
 use rodio::MixerDeviceSink;
 use std::sync::Mutex;
 use std::sync::{Arc, RwLock};
+use std::time::Instant;
 use winit::dpi::LogicalSize;
 use winit::dpi::PhysicalSize;
 use winit::event::{DeviceEvent, ElementState, Event, MouseButton, WindowEvent};
@@ -1003,6 +1004,9 @@ fn step_emulator(pixels: &mut Pixels, ctx: &mut StepContext) -> bool {
             .min(current_cycles + ctx.max_cycles_per_frame)
             .max(current_cycles + 1000);
 
+        // Cap wall-clock time per frame so exec logging (or any other slow path)
+        // doesn't block the UI event loop for more than ~16ms.
+        let frame_start = Instant::now();
         while ctx.computer.get_cycle_count() < frame_target {
             ctx.computer.step();
             // Only treat as a terminal halt when IF=0 (e.g. INT 20h / INT 21h AH=4Ch exit).
@@ -1022,6 +1026,11 @@ fn step_emulator(pixels: &mut Pixels, ctx: &mut StepContext) -> bool {
             // a breakpoint), step() returns without advancing cycles.  Break out now
             // so the winit event loop stays responsive instead of spinning forever.
             if ctx.computer.is_debug_paused() {
+                break;
+            }
+            // Yield back to the UI event loop if we've spent too long this frame.
+            // This keeps the window responsive even when exec logging is enabled.
+            if frame_start.elapsed().as_millis() >= 16 {
                 break;
             }
         }

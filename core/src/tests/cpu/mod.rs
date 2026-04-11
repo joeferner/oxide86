@@ -210,9 +210,12 @@ pub(crate) fn pm_mode_switch() {
     );
 }
 
-/// 286 Protected Mode Step 9: Privilege level transitions (ring 0 ↔ ring 3).
-/// Tests IRET to ring 3, CPL verification, DPL-checked data access,
-/// call gate from ring 3 to ring 0 with stack switch, and return.
+/// 286 Protected Mode Step 9: Privilege level transitions (ring 0 ↔ ring 1 ↔ ring 3).
+/// Tests far-JMP to ring 1 (CPL tracking), IRET to ring 3, CPL verification,
+/// DPL-checked data access, call gate with stack switch, and the inline
+/// "pushf / push cs / call <iret> / iret" trick used by 286 PM programs to safely
+/// restore flags at non-zero CPL — validates that cpl is updated on far CS changes
+/// so iret does NOT wrongly trigger an inter-privilege return.
 #[test_log::test]
 pub(crate) fn pm_rings() {
     run_test(

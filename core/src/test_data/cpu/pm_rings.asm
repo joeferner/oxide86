@@ -1,9 +1,12 @@
 [CPU 286]
 [ORG 0x100]
 
-; Protected Mode Step 9: Privilege Level Transitions (Ring 0 ↔ Ring 3)
+; Protected Mode Step 9: Privilege Level Transitions (Ring 0 ↔ Ring 1 ↔ Ring 3)
 ;
 ; Tests CPL/DPL checking and ring transitions via IRET and call gates.
+; Also tests the "iret trick" (push cs / call <iret> / iret) used by protected-mode
+; programs to safely restore flags — validates that CPL is tracked correctly
+; through far jumps so that iret does NOT wrongly trigger an inter-privilege return.
 ;
 ; GDT layout:
 ;   0x00: null descriptor
@@ -14,6 +17,9 @@
 ;   0x28: ring 3 stack — base=CS<<4, limit=0xFFFF, DPL 3, read/write
 ;   0x30: call gate → ring 0 code (selector 0x08), DPL 3, 0 params
 ;   0x38: TSS descriptor — for ring 0 SS:SP in the TSS
+;   0x40: ring 1 code — base=CS<<4, limit=0xFFFF, DPL 1, exec/read
+;   0x48: ring 1 data/stack — base=CS<<4, limit=0xFFFF, DPL 1, read/write
+;   0x50: call gate → ring 0 code (selector 0x08), DPL 1, 0 params
 ;
 ; IDT layout:
 ;   Entry 0x0D (#GP): interrupt gate → ring 0 handler
@@ -26,6 +32,11 @@
 ;   4. Call gate from ring 3 to ring 0 — CPL changes to 0,
 ;      stack switches to ring 0 SS:SP from TSS
 ;   5. After returning to ring 0 via call gate, verify CPL=0
+;   6. IRET from ring 0 to ring 1 — transition to CPL 1 via fake IRET
+;   7. In ring 1, verify CPL=1 by reading CS (low 2 bits)
+;   8. In ring 1, iret-trick (push cs / call <iret> / iret) returns correctly
+;      — validates CPL tracking: if CPL is wrong (0 instead of 1) the iret
+;      would misidentify as inter-privilege and pop extra SS:SP from stack
 
 section .text
 start:
@@ -54,21 +65,115 @@ pm_entry:
     mov ax, 0x0038
     ltr ax
 
-    ; --- Test 1: IRET from ring 0 to ring 3 ---
-    ; To transition to ring 3, we do a fake IRET that pops:
-    ;   SS:SP (ring 3 stack), FLAGS, CS:IP (ring 3 code)
-    ; Push in reverse order: SS, SP, FLAGS, CS, IP
-    push word 0x0028 | 3       ; ring 3 SS (selector 0x28, RPL=3 → 0x2B)
+    ; --- Enter ring 1 via far JMP to test CPL tracking ---
+    ; On real 286, far JMP from ring 0 to a ring 1 code segment would #GP
+    ; (privilege violation). In our emulator far_jmp_pm allows the jump but
+    ; must update self.cpl to CS & 3 = 1.  If cpl is NOT updated (the bug),
+    ; test 8 (iret trick SP check) will expose it.
+    jmp 0x0041:ring1_entry
+
+    hlt
+
+;=============================================================================
+; Ring 1 code — entered via far JMP from ring 0 (no HW stack switch)
+;=============================================================================
+ring1_entry:
+    ; Set up ring 1 stack and data manually — far JMP does not switch stacks.
+    mov ax, 0x0049               ; ring 1 data/stack selector (0x48 | RPL=1)
+    mov ss, ax
+    mov sp, 0xFF00
+    mov ds, ax
+    mov es, ax
+
+    ; --- Test 6: verify far JMP landed in ring 1 (CS selector = 0x41) ---
+    mov ax, cs
+    cmp ax, 0x0041
+    jne near .test6_fail
+    inc word [pass_count]
+    jmp near .test7
+.test6_fail:
+    inc word [fail_count]
+
+.test7:
+    ; --- Test 7: Verify CPL=1 by reading CS RPL bits ---
+    mov ax, cs
+    and ax, 0x0003
+    cmp ax, 1
+    jne near .test7_fail
+    inc word [pass_count]
+    jmp near .test8
+.test7_fail:
+    inc word [fail_count]
+
+.test8:
+    ; --- Test 8: inline iret trick — verifies cpl is tracked correctly ---
+    ;
+    ; This is the pattern used by CheckIt's 286 PM test (func_0019_5166):
+    ;   pushf / push cs / call near <iret_loc> / [iret_loc: iret]
+    ;
+    ; With correct cpl tracking (cpl=1 after far JMP):
+    ;   iret sees target_rpl(1) == cpl(1) → NOT inter-privilege
+    ;   pops only IP, CS, FLAGS → SP is fully restored
+    ;
+    ; With the bug (cpl still 0 after far JMP):
+    ;   iret sees target_rpl(1) > cpl(0) → inter_privilege=TRUE
+    ;   also pops NEW_SP and NEW_SS from the stack (2 extra words)
+    ;   SP is set to the value that was sitting on the stack above the trick
+    ;   (SP = content[BX+0] = 0 for uninitialized .bss)
+    ;
+    ; Detection: save SP in BX before the 3-word push sequence; after iret the
+    ; stack should be fully unwound and SP must equal BX again.
+
+    mov bx, sp                   ; BX = SP before trick (= 0xFF00)
+    pushf                        ; SP -= 2 → 0xFEFE
+    push cs                      ; SP -= 2 → 0xFEFC
+    call near .iret_loc          ; SP -= 2 → 0xFEFA; pushes return IP
+    ; *** correct path: iret popped IP/CS/FLAGS → SP = 0xFF00 = BX ***
+    ; *** buggy  path: iret also popped NEW_SP/NEW_SS → SP = mem[0xFF00] = 0 ***
+    cmp sp, bx
+    jne near .test8_fail
+    inc word [pass_count]
+    jmp near .ring1_done
+.iret_loc:
+    iret                         ; pops IP, CS, FLAGS — must NOT be inter-privilege
+.test8_fail:
+    inc word [fail_count]
+
+.ring1_done:
+    ; Restore ring 1 SS:SP in case test 8 corrupted them, so the call gate
+    ; below has a valid stack to work with.
+    mov ax, 0x0049
+    mov ss, ax
+    mov sp, 0xFE00
+
+    ; Return to ring 0 via call gate (selector 0x50, DPL=1)
+    db 0x9A
+    dw 0x0000
+    dw 0x0051                    ; 0x50 | RPL=1
+
+    hlt
+
+;=============================================================================
+; Ring 0 handler — called from ring 1 via call gate at 0x50
+; Transitions to ring 3 to run existing tests 1-5
+;=============================================================================
+ring1_gate_target_r0:
+    ; We're back in ring 0 from ring 1.
+    mov ax, 0x0010
+    mov ds, ax
+    mov ss, ax
+
+    ; Now fake-IRET to ring 3 (same as original pm_entry did before)
+    push word 0x0028 | 3       ; ring 3 SS (0x28 | RPL=3 → 0x2B)
     push word 0xFFF0           ; ring 3 SP
     pushf
-    pop ax                     ; get FLAGS
-    or ax, 0x0200              ; set IF
-    push ax                    ; push modified FLAGS
-    push word 0x0018 | 3       ; ring 3 CS (selector 0x18, RPL=3 → 0x1B)
-    push word ring3_entry      ; ring 3 IP
-    iret                       ; transition to ring 3!
+    pop ax
+    or ax, 0x0200
+    push ax
+    push word 0x0018 | 3       ; ring 3 CS (0x18 | RPL=3 → 0x1B)
+    push word ring3_entry
+    iret
 
-    ; Should not reach here
     hlt
 
 ;=============================================================================
@@ -155,7 +260,7 @@ ring3_entry:
     hlt
 
 ;=============================================================================
-; Ring 0 call gate target
+; Ring 0 call gate target (for ring 3 → ring 0 via selector 0x30)
 ; Reached via call gate from ring 3.
 ; On entry: stack has been switched to ring 0 stack (from TSS),
 ; ring 3 SS:SP and return CS:IP are on the ring 0 stack.
@@ -264,8 +369,7 @@ build_gdt:
     mov [gdt + 40 + 4], al
     mov byte [gdt + 40 + 5], 0xF2      ; P=1, DPL=3, data, read/write
 
-    ; Entry 6 (0x30): call gate → ring 0 code, DPL=3
-    ; DPL=3 so ring 3 code can call through it
+    ; Entry 6 (0x30): call gate → ring 0 code, DPL=3 (ring 3 can call)
     ; Access: P=1, DPL=3, S=0, type=0x04 (286 call gate) → 0xE4
     mov ax, gate_target_r0
     mov [gdt + 48 + 0], ax             ; offset
@@ -285,8 +389,32 @@ build_gdt:
     mov [gdt + 56 + 4], al
     mov byte [gdt + 56 + 5], 0x81      ; P=1, DPL=0, available 286 TSS
 
-    ; GDTR: limit = 8*8-1 = 63
-    mov word [gdtr_value], 0x003F
+    ; Entry 8 (0x40): ring 1 code
+    mov word [gdt + 64 + 0], 0xFFFF
+    mov ax, [cs_base_lo]
+    mov [gdt + 64 + 2], ax
+    mov al, [cs_base_hi]
+    mov [gdt + 64 + 4], al
+    mov byte [gdt + 64 + 5], 0xBA      ; P=1, DPL=1, code, exec/read
+
+    ; Entry 9 (0x48): ring 1 data/stack
+    mov word [gdt + 72 + 0], 0xFFFF
+    mov ax, [cs_base_lo]
+    mov [gdt + 72 + 2], ax
+    mov al, [cs_base_hi]
+    mov [gdt + 72 + 4], al
+    mov byte [gdt + 72 + 5], 0xB2      ; P=1, DPL=1, data, read/write
+
+    ; Entry 10 (0x50): call gate → ring 0 code, DPL=1 (ring 1 can call)
+    mov ax, ring1_gate_target_r0
+    mov [gdt + 80 + 0], ax
+    mov word [gdt + 80 + 2], 0x0008    ; target selector (ring 0 code)
+    mov byte [gdt + 80 + 4], 0x00      ; word count = 0
+    mov byte [gdt + 80 + 5], 0xC4      ; P=1, DPL=1, 286 call gate
+    mov word [gdt + 80 + 6], 0x0000
+
+    ; GDTR: limit = 11*8-1 = 87
+    mov word [gdtr_value], 0x0057
     mov ax, [cs_base_lo]
     add ax, gdt
     mov [gdtr_value + 2], ax
@@ -348,7 +476,7 @@ pass_count:     resw 1
 fail_count:     resw 1
 cs_base_lo:     resw 1
 cs_base_hi:     resb 1
-gdt:            resb 64        ; 8 entries * 8
+gdt:            resb 88        ; 11 entries * 8 bytes
 gdtr_value:     resb 6
 idt:            resb 0x70      ; covers INT 0x00–0x0D
 idtr_value:     resb 6
