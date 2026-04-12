@@ -1,0 +1,146 @@
+{
+  "functions": {
+    "0019:5186": {
+      "label": "func_check_pending_notify",
+      "comment": "Save flags via pushf, then check [0x0D0C] pending-operation flag. If non-zero, execute gap code at 518F (not observed in this log — likely an interrupt-sensitive operation). Restore the original flags using the IRET trick (push cs / near call to iret stub) so that IF is correctly restored on 286 protected mode. Returns with caller's flags intact."
+    },
+    "0019:5453": {
+      "label": "func_write_char_int29h",
+      "comment": "Write character in AL via INT 29h (fast console output) if the current output device is a character device that supports it. Calls func_0019_756F to locate the active output device record via SI. Checks device attribute bits and the DOS CON driver header for INT 29h support before issuing the interrupt. Returns with CF clear on success."
+    },
+    "0019:85B2": {
+      "label": "func_dev_driver_io_dispatch",
+      "comment": "Dispatch a DOS device driver I/O request. SI points to the device driver header (attribute word at [si+4-5], strategy offset at [si+6], interrupt offset at [si+8]); ES:BX points to the request packet (command code at [bx+2]). Wraps the operation with a flags-save/restore pair (func_0019_5166 on entry, func_check_pending_notify on exit). Character devices (bit 15 of attr word set) go directly to driver dispatch. Block devices are filtered to commands 0x04 (Read), 0x08 (Write), 0x09 (Write+Verify); other command codes jump straight to dispatch. For accepted data-transfer commands, calls func_0019_866D to verify preconditions, then conditionally extends the request packet and swaps the transfer pointer at [0x036E]. The dispatch loop at lbl_0019_8608 calls the strategy routine then the interrupt routine (both as far calls into segment 0x0070), then calls func_0019_876A to check completion; if not done, retries the dispatch loop."
+    },
+    "0019:54D7": {
+      "label": "func_console_output_char",
+      "comment": "Write character in AL to the console with column tracking and periodic housekeeping. Printable chars (0x20-0x7E) increment the column counter [0x01F9]; DEL (0x7F) outputs without incrementing. CR resets the column counter to 0 before output. BS and TAB have handlers in the gap (not observed in this log). Every 64 characters the throttle counter [0x0300] wraps to 0 and func_0019_90DB is called for periodic work. Output goes via func_write_char_int29h. If redirect flag [0x02FE] is non-zero after output, an alternate path (not observed) is taken."
+    },
+    "0C45:1EF6": {
+      "label": "func_print_string_cs",
+      "comment": "Print a '$'-terminated string in the SBPCD.SYS segment. Saves DS, sets DS=CS so the DX offset passed by the caller resolves within the driver's own segment (0C45), then calls INT 21h AH=09h (print string). Used to emit all driver status messages during initialization."
+    },
+    "0C45:1FB7": {
+      "label": "func_send_cmd_read_response",
+      "comment": "Issue a CD-ROM command and collect the response. Calls func_0C45_1FD7 to set up buffer pointers, func_0C45_20FF to build the command packet, func_0C45_2154 to write sector params, func_0C45_2166 to write command bytes to port base+0, then func_0C45_227D to read CX response bytes from the drive into the response buffer. Returns CF set on error."
+    },
+    "0C45:1FD7": {
+      "label": "func_setup_io_buffers",
+      "comment": "Initialize the send/receive buffer pointers for a CD-ROM command. Sets [0x0084]=0x0092 (send buffer — command packet base) and conditionally sets ES:DI and [0x0088]=0x009D (receive buffer — response data base for most commands). The buffers are in the SBPCD.SYS data segment (0C45)."
+    },
+    "0C45:20FF": {
+      "label": "func_build_command_packet",
+      "comment": "Build the outgoing command packet in the send buffer at [0x0084]. Writes command byte [0x0082] and flag byte [0x0083] as the first two bytes, then zero-fills the remaining bytes (up to 7 bytes total for standard commands, 4 for shorter ones). BH is set to 1 or 7 depending on whether the command is 0x81."
+    },
+    "0C45:2154": {
+      "label": "func_set_sector_params",
+      "comment": "Write the sector address / position parameters into the command packet. Stores AX at packet offset +7 and DX at offset +9 (the 32-bit sector address fields). Both are 0x0000 for commands that do not address a sector, such as command 0x00 (NOP/identify)."
+    },
+    "0C45:2166": {
+      "label": "func_send_command_bytes",
+      "comment": "Write CL command bytes from the send buffer (DS:SI = far pointer at [0x0084]) to the SB CD-ROM base port (base+0, default 0x0230). Each byte is written with interrupts disabled. CL is set by func_0C45_20FF (1 or 7 bytes depending on command)."
+    },
+    "0C45:227D": {
+      "label": "func_read_response_bytes",
+      "comment": "Read CX response bytes from the SB CD-ROM hardware into ES:DI (response buffer). For each byte: polls port base+1 (0x0231) until bit 2 (busy flag) clears, then reads one byte from port base+0 (0x0230) and stores it via stosb. On entry ES:DI = [0x0088] = 0C45:0x009D and CX=2 for command 0x00 (NOP/identify expecting [0xAA, 0x55])."
+    },
+    "0C45:2B0A": {
+      "label": "func_drive_presence_check",
+      "comment": "Check whether the SB CD-ROM drive is present. Writes drive number (BL=0) to port base+3 (0x0233, drive select). Sets command code [0x0082]=0x00 (NOP/identify) and CX=2 expected response bytes, then calls func_0C45_1FB7. On return calls lbl_0C45_2B35 to compare the response word at [0x009D] against 0x55AA. Returns CF clear if the drive acknowledges (word = 0x55AA), CF set if not present."
+    },
+    "0C45:2BBB": {
+      "label": "func_parse_config_options",
+      "comment": "Parse the SBPCD.SYS CONFIG.SYS driver command line to extract hardware options. Iterates '/X:' tokens via func_0C45_2C9C. Token 'p' triggers 3-hex-digit base-port parse via func_0C45_2C7E, computing [0x0076] = (hex_value × 0x10) + 0x10 (e.g., '220' → 0x0230). Token 'd' copies an 8-char drive-name into the driver's internal table."
+    },
+    "0C45:2C7E": {
+      "label": "func_ascii_hex_digit",
+      "comment": "Convert an ASCII decimal digit in AL to its numeric value (subtract 0x30). Returns CF clear if AL was in '0'-'9' range; CF set if out of range. Used by func_0C45_2BBB to parse the 3-digit base-port hex value from the CONFIG.SYS driver line."
+    },
+    "0C45:2C9C": {
+      "label": "func_read_config_token",
+      "comment": "Scan the config string at DS:SI for the next '/X:' option token. Advances SI past non-'/' characters, then checks for the pattern '/X:' (where X is a drive letter or option letter). Returns AL = lowercase option letter (e.g., 'p' for port, 'd' for drive name). Returns ZF set (AL=0x0A or 0x0D) at end of line."
+    }
+  },
+  "labels": {
+    "0019:51A1": {
+      "label": "restore_flags_ret",
+      "comment": "IRET-based flags restore: push cs places CS=0019 on stack; near call to iret stub pushes IP=51A5; IRET then pops [IP=51A5, CS=0019, FLAGS=saved-by-pushf], restoring all flags including IF correctly on 286. Execution resumes at the ret instruction."
+    },
+    "0019:54E4": {
+      "label": "output_char_common",
+      "comment": "Common output path: save DS/SI, run throttle check, call func_write_char_int29h, check redirect flag."
+    },
+    "0019:5537": {
+      "label": "control_char_dispatch"
+    },
+    "0019:555B": {
+      "label": "cr_handler"
+    },
+    "0019:85D0": {
+      "label": "data_xfer_prepare"
+    },
+    "0019:8608": {
+      "label": "driver_call_and_retry",
+      "comment": "Load strategy offset from [si+6] and interrupt offset from [si+8]; call both as far routines in segment 0x0070 (DOS kernel). Call func_0019_876A to check I/O completion; if incomplete (CF set), retry from the top of this label."
+    },
+    "0C45:2B35": {
+      "label": "presence_sig_check",
+      "comment": "Compare the 2-byte response word at [0x0C45:0x009D] against the Panasonic presence signature 0x55AA (little-endian: byte[0]=0xAA, byte[1]=0x55). A matching word means the drive and interface board are present. Mismatch falls through to presence_check_fail."
+    },
+    "0C45:2B46": {
+      "label": "presence_check_fail",
+      "comment": "Presence check failed: set CF=1 to signal the caller (0C45:2D31 jae). Caller loads 'NOT READY Interface Board or CD-ROM Drive is not ready' string (0x2962) and prints it via func_0C45_1EF6, then sets error flag [0x0028]=1."
+    }
+  },
+  "lineComments": {
+    "0019:85B5 F6 44 05 80": "test bit 7 of [si+5] = bit 15 of device attr word: character device; char devices skip command type check",
+    "0019:85BB 26 80 7F 02 04": "command 0x04 = Read (Input)",
+    "0019:85C2 26 80 7F 02 08": "command 0x08 = Write (Output)",
+    "0019:85C9 26 80 7F 02 09": "command 0x09 = Write with Verify",
+    "0019:85D5 F6 44 04 02": "test bit 1 of device attr low byte [si+4]",
+    "0019:85DB 26 80 07 08": "extend request packet size field by 8 bytes",
+    "0019:85DF 36 A1 6E 03": "save current transfer pointer [0x036E] to [0x0374]",
+    "0019:85E3 36 C7 06 6E 03 FF FF": "set [0x036E]=0xFFFF (null/sentinel for transfer pointer)",
+    "0019:85EE 36 A1 07 06": "save [0x0607] (sector position) to [0x0376]",
+    "0019:8608 8B 44 06": "load strategy routine offset from device header [si+6]",
+    "0019:860F 36 8C 1E 7A 03": "store driver segment 0x0070 (DOS kernel) into far-call slot [0x037A]",
+    "0019:8614 36 FF 1E 78 03": "call device driver strategy routine (submit request packet)",
+    "0019:8619 8B 44 08": "load interrupt routine offset from device header [si+8]",
+    "0019:8620 36 FF 1E 78 03": "call device driver interrupt routine (execute I/O)",
+    "0019:8628 72 DE": "I/O not complete: retry strategy + interrupt call",
+    "0019:5186 9C": "save flags (including IF) for restoration via IRET on return",
+    "0019:5187 36 80 3E 0C 0D 00": "check [0x0D0C] pending-operation flag (zero in this log)",
+    "0019:518D 74 0F": "no pending operation: skip gap code, jump to flags-restore path",
+    "0019:51A1 0E": "push CS=0x0019 so IRET will reload CS:IP = 0019:51A5 (the ret instruction)",
+    "0019:51A2 E8 FB FF": "near call pushes IP=51A5; IRET pops [IP, CS, FLAGS] restoring saved flags including IF",
+    "0019:5454 BB 01 00": "BX=1 command code passed to device dispatch",
+    "0019:545F 81 E3 80 80": "mask bits 15 and 7 of device attribute word (from byte[si+5] and byte[si+6])",
+    "0019:5463 81 FB 80 00": "require bit 15 set (character device) and bit 7 of byte[si+6] clear",
+    "0019:546A C5 5C 07": "load far pointer from [si+7] to DOS device driver header (CON at 0x0070:0x0023)",
+    "0019:546D F6 47 04 10": "test bit 4 of CON device attr low byte: indicates INT 29h fast output is supported",
+    "0019:5474 CD 29": "INT 29h: fast direct write of AL to console output device",
+    "0019:5476 F8": "CF=0 — signal success to caller",
+    "0019:54DB 3C 7F": "DEL (0x7F): treat as printable output but skip column increment",
+    "0019:54DF 36 FE 06 F9 01": "increment column counter [0x01F9] for printable chars",
+    "0019:54E6 36 FE 06 00 03": "increment per-char throttle counter [0x0300]",
+    "0019:54EB 36 80 26 00 03 3F": "wrap throttle counter mod 64 (values 0-63)",
+    "0019:54F1 75 05": "skip periodic call unless counter just wrapped to 0",
+    "0019:54F4 E8 E4 3B": "periodic housekeeping every 64 chars",
+    "0019:54FD 36 F6 06 FE 02 FF": "check redirect flag [0x02FE]; zero = normal return, non-zero = alternate output path (not observed in log)",
+    "0019:5541 75 A1": "other control chars (e.g. LF 0x0A): output as-is via INT 29h",
+    "0019:555B 36 C6 06 F9 01 00": "CR: reset column counter [0x01F9] to 0",
+    "0C45:2183 EE": "write one command byte to port base+0 (0x0230); 7-byte command packet written one byte at a time with interrupts disabled",
+    "0C45:229F EC": "read port base+1 (0x0231): Panasonic busy-flag register; bit 2=1=drive still processing, bit 2=0=result byte ready at base+0",
+    "0C45:22A2 A8 04": "test bit 2 of base+1 value: 0=drive ready to return result byte, 1=busy (inner loop re-polls up to 0x8000 times)",
+    "0C45:22B7 EC": "read port base+0 (0x0230): result data byte from drive, available after busy bit clears",
+    "0C45:22BA AA": "store result byte into response buffer at ES:DI ([0x0C45:0x009D] for command 0x00); CX decremented by loop",
+    "0C45:2B1E 2E C6 06 82 00 00": "command code 0x00 = NOP/identify; Panasonic drive responds with signature bytes [0xAA, 0x55]",
+    "0C45:2B2A B9 02 00": "CX=2: expect exactly 2 response bytes from command 0x00 (presence signature [0xAA, 0x55])",
+    "0C45:2B11 2E 8B 16 76 00": "load I/O base port address from [0x0076] (0x0230 = Panasonic/Matsushita SB CD-ROM interface default)",
+    "0C45:2B1B EE": "write drive number (BL=0) to port base+3 (0x0233): drive select register — selects drive 0",
+    "0C45:2B3C 81 3C AA 55": "compare response word at [0x0C45:0x009D] to 0x55AA: Panasonic presence signature; emulator bug — base+1 consumes result bytes instead of returning busy flag, so [0x009D]=0x0000 and check fails",
+    "0C45:2B46 F9": "stc: CF=1 = presence check failed; caller at 0C45:2D31 will print NOT READY and set error flag [0x0028]=1",
+    "0C45:2D2B EE": "write 0x00 to port base+1 (0x0231) to arm/reset the interface before issuing the presence-check command",
+    "0C45:2D33 BA 62 29": "load offset 0x2962 into DX: '$'-terminated 'NOT READY Interface Board or CD-ROM Drive is not ready' string in SBPCD.SYS segment"
+  }
+}
