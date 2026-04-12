@@ -92,7 +92,7 @@
   - [X] Audio
 - [X] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
   - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
-- [ ] CD-ROM
+- [ ] CD-ROM (see ai-analysis/cd-rom-sb.md)
 - [ ] WASM Joystick
 - [ ] WASM Disk browser/editor
 - [ ] WASM/CLI/GUI multiple hard drives
