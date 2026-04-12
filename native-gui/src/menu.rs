@@ -7,8 +7,8 @@ pub enum MenuAction {
     EjectFloppyA,
     InsertFloppyB,
     EjectFloppyB,
-    // TODO InsertCdRom,
-    // TODO EjectCdRom,
+    InsertCdrom,
+    EjectCdrom,
     Reset,
     SaveScreenshot,
     ToggleExecutionLogging,
@@ -48,7 +48,9 @@ impl MenuAction {
 pub struct AppMenu {
     floppy_a_present: bool,
     floppy_b_present: bool,
-    // TODO cdrom_present: bool,
+    pub cdrom_present: bool,
+    /// False when --disable-sound-blaster-cd was passed; greys out the CD-ROM submenu.
+    cdrom_available: bool,
     exec_logging_enabled: bool,
     is_paused: bool,
     show_performance_overlay: bool,
@@ -56,11 +58,12 @@ pub struct AppMenu {
 
 impl AppMenu {
     /// Create a new menu
-    pub fn new() -> Self {
+    pub fn new(cdrom_available: bool) -> Self {
         Self {
             floppy_a_present: false,
             floppy_b_present: false,
-            // TODO cdrom_present: false,
+            cdrom_present: false,
+            cdrom_available,
             exec_logging_enabled: false,
             is_paused: false,
             show_performance_overlay: false,
@@ -72,12 +75,6 @@ impl AppMenu {
         self.floppy_a_present = floppy_a_present;
         self.floppy_b_present = floppy_b_present;
     }
-
-    // Update CD-ROM present state
-    // TODO
-    // pub fn update_cdrom_state(&mut self, present: bool) {
-    //     self.cdrom_present = present;
-    // }
 
     /// Update debug menu states
     pub fn update_debug_states(&mut self, exec_logging: bool, paused: bool, show_overlay: bool) {
@@ -141,20 +138,22 @@ impl AppMenu {
                         }
                     });
 
-                    // TODO
-                    // ui.menu_button("CD-ROM", |ui| {
-                    //     if ui.button("Insert ISO...").clicked() {
-                    //         action = Some(MenuAction::InsertCdRom);
-                    //         ui.close_menu();
-                    //     }
-                    //     if ui
-                    //         .add_enabled(self.cdrom_present, egui::Button::new("Eject CD-ROM"))
-                    //         .clicked()
-                    //     {
-                    //         action = Some(MenuAction::EjectCdRom);
-                    //         ui.close_menu();
-                    //     }
-                    // });
+                    ui.add_enabled_ui(self.cdrom_available, |ui| {
+                        ui.menu_button("CD-ROM:", |ui| {
+                            if ui.button("Insert Disc...").clicked() {
+                                action = Some(MenuAction::InsertCdrom);
+                                ui.close_menu();
+                            }
+
+                            if ui
+                                .add_enabled(self.cdrom_present, egui::Button::new("Eject Disc"))
+                                .clicked()
+                            {
+                                action = Some(MenuAction::EjectCdrom);
+                                ui.close_menu();
+                            }
+                        });
+                    });
                 });
 
                 ui.menu_button("System", |ui| {

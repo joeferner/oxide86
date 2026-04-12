@@ -18,10 +18,11 @@ use crate::{
         },
     },
     devices::{
+        CdromController,
         clock::Clock,
         rtc::{CMOS_REG_FLOPPY_TYPES, RTC_IO_PORT_DATA, RTC_IO_PORT_REGISTER_SELECT},
     },
-    disk::{Disk, DiskError, DriveNumber},
+    disk::{Disk, DiskError, DriveNumber, cdrom::CdromBackend},
     memory::Memory,
     video::{VideoBuffer, VideoCard, VideoCardType},
 };
@@ -126,6 +127,26 @@ impl Computer {
 
     pub fn add_sound_card<T: Device + crate::devices::SoundCard + 'static>(&mut self, device: T) {
         self.bus.add_sound_card(device);
+    }
+
+    pub fn add_cdrom_controller<T: Device + CdromController + 'static>(&mut self, device: T) {
+        self.bus.add_cdrom_controller(device);
+    }
+
+    pub fn has_cdrom_controller(&self) -> bool {
+        self.bus.cdrom_controller().is_some()
+    }
+
+    pub fn load_cdrom_disc(&mut self, disc: Box<dyn CdromBackend>) {
+        if let Some(cdrom) = self.bus.cdrom_controller() {
+            cdrom.borrow_mut().load_disc(disc);
+        }
+    }
+
+    pub fn eject_cdrom_disc(&mut self) {
+        if let Some(cdrom) = self.bus.cdrom_controller() {
+            cdrom.borrow_mut().eject_disc();
+        }
     }
 
     /// Insert or eject the floppy disk for the given drive. Returns the previous disk if any.

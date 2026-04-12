@@ -2,13 +2,13 @@
 
 ## Background
 
-SBPCD.SYS drives Panasonic/Matsushita CR-52x/CR-56x CD-ROM drives via the Sound Blaster CD interface. The protocol is pure PIO — 4 IO ports at a configurable base (default `0x230`). No DMA is used. SBPCD.SYS can work in both polling and IRQ-5 mode; we will implement IRQ-5 support.
+SBPCD.SYS drives Panasonic/Matsushita CR-52x/CR-56x CD-ROM drives via the Sound Blaster CD interface. The protocol is pure PIO — 4 IO ports at a configurable base (default `0x230`). No DMA is used. SBPCD.SYS can work in both polling and IRQ mode; we implement full IRQ support with a configurable IRQ line (default 5).
 
 ---
 
-## Phase 1 — Core CD-ROM backend (`core/`)
+## ✅ Phase 1 — Core CD-ROM backend (`core/`)
 
-### 1.1 New file: `core/src/disk/cdrom.rs`
+### ✅ 1.1 New file: `core/src/disk/cdrom.rs`
 
 A thin sector-reading abstraction over the existing `DiskBackend` trait. CD-ROM sectors are 2048 bytes (ISO 9660 Mode 1). No ISO parsing is needed — SBPCD.SYS and DOS do that.
 
@@ -34,7 +34,7 @@ impl<B: DiskBackend> CdromBackend for BackedCdrom<B> {
 
 Add `pub mod cdrom;` to `core/src/disk/mod.rs`.
 
-### 1.2 New trait: `CdromController` in `core/src/devices/mod.rs`
+### ✅ 1.2 New trait: `CdromController` in `core/src/devices/mod.rs`
 
 This mirrors the existing `SoundCard` trait pattern so that Bus and PIC are decoupled from any specific CD-ROM interface type. Future interfaces (ATAPI/IDE, Mitsumi, Sony CDU31A, etc.) implement the same trait and slot in without touching Bus or PIC.
 
@@ -42,7 +42,10 @@ This mirrors the existing `SoundCard` trait pattern so that Bus and PIC are deco
 pub trait CdromController {
     fn load_disc(&mut self, disc: Box<dyn CdromBackend>);
     fn eject_disc(&mut self);
+    /// Called by the PIC to drain a pending IRQ. Returns `true` once per interrupt.
     fn take_pending_irq(&mut self) -> bool;
+    /// The PIC1 IRQ line this device raises (e.g. 5 for the default SB CD interface).
+    fn irq_line(&self) -> u8;
 }
 
 pub type CdromControllerRef = Rc<RefCell<dyn CdromController>>;
@@ -50,7 +53,7 @@ pub type CdromControllerRef = Rc<RefCell<dyn CdromController>>;
 
 `SoundBlasterCdrom` (and any future interface) must implement both `Device` and `CdromController`. The Bus/PIC/Computer never name the concrete type — they only hold a `CdromControllerRef`.
 
-### 1.3 New file: `core/src/devices/sound_blaster_cdrom.rs`
+### ✅ 1.3 New file: `core/src/devices/sound_blaster_cdrom.rs`
 
 Emulates the Panasonic/Matsushita CD interface used by SBPCD.SYS.
 
@@ -81,6 +84,12 @@ Idle → (write cmd byte to base+0) → RecvParams(n_remaining)
      → (all result bytes read) → Idle
 ```
 
+For the read sectors command the state machine has an additional `StreamSector` state:
+```
+Execute → StreamSector   (after emitting the 1-byte status result)
+        → (all sectors consumed) → Idle
+```
+
 **Commands to implement** (subset SBPCD.SYS needs):
 
 | Cmd | Name | Params | Result bytes | Notes |
@@ -107,7 +116,7 @@ lba = (M * 60 + S) * 75 + F - 150   (150 = 2-second pregap)
 **IRQ handling:**
 - After a command completes, if IRQ is enabled, set `pending_irq = true`
 - `take_pending_irq() -> bool` method for PIC to drain
-- IRQ 5 by default (matches real SB hardware)
+- IRQ line is configurable at construction time (default 5 matches real SB hardware)
 
 **Disc-not-present behavior:** When no ISO is loaded, status bit 5 is clear and bit 6 (door open) is set. All commands return an error status byte.
 
@@ -120,7 +129,6 @@ pub struct SoundBlasterCdrom {
     state: CdromState,
     command: u8,
     params: Vec<u8>,
-    params_remaining: u8,
     result_buf: VecDeque<u8>,
     // Current PIO read state
     read_lba: u32,
@@ -132,14 +140,37 @@ pub struct SoundBlasterCdrom {
     error: bool,
     pending_irq: bool,
     irq_enabled: bool,
+    irq_line: u8,
 }
 ```
 
-### 1.4 Modify `core/src/devices/pic.rs`
+`new()` signature:
+```rust
+pub fn new(base_port: u16, disc: Option<Box<dyn CdromBackend>>, irq_line: u8) -> Self
+```
 
-Add IRQ 5 support using the generic `CdromControllerRef`. Add a `cdrom: Option<CdromControllerRef>` field (not the concrete type) and check `cdrom.borrow_mut().take_pending_irq()` in the PIC polling loop, mapping it to IRQ 5 (vector `0x0D`). No change needed here when a second CD-ROM interface type is added later.
+### ✅ 1.4 Modify `core/src/devices/pic.rs`
 
-### 1.5 Modify `core/src/bus.rs`
+Add `cdrom: Option<CdromControllerRef>` field. The IRQ line and CPU vector are read dynamically from `cdrom.borrow().irq_line()` so the PIC needs no changes when the IRQ line is reconfigured or when a second CD-ROM interface type is added later.
+
+```rust
+// CD-ROM / Sound Blaster CD interface (IRQ line and CPU vector from device)
+if let Some(ref cdrom) = self.cdrom {
+    let irq = cdrom.borrow().irq_line();
+    let bit = 1u8 << irq;
+    let masked = self.mask & bit != 0;
+    let in_service = self.in_service & bit != 0;
+
+    if !masked && !in_service && cdrom.borrow_mut().take_pending_irq() {
+        self.in_service |= bit;
+        return Some(0x08 + irq);   // PIC1 base is 0x08
+    }
+}
+```
+
+No hardcoded `CDROM_CPU_IRQ` or `CDROM_IRQ_LINE` constants — the values come from the device.
+
+### ✅ 1.5 Modify `core/src/bus.rs`
 
 Add a `cdrom_controller: Option<CdromControllerRef>` field (generic, not `SoundBlasterCdrom`). Mirror the existing `add_sound_card()` pattern:
 
@@ -151,13 +182,13 @@ pub(crate) fn add_cdrom_controller<T: Device + CdromController + 'static>(
     let rc = Rc::new(RefCell::new(device));
     self.devices.push(rc.clone());                    // IO port dispatch
     self.cdrom_controller = Some(rc.clone());         // disc swap / IRQ access
-    self.pic.borrow_mut().set_cdrom(rc);              // IRQ 5 wiring
+    self.pic.borrow_mut().set_cdrom(rc);              // IRQ wiring
 }
 ```
 
 This is the only place that names `T` — everything above it (PIC, Computer, native-common, WASM) operates through `CdromControllerRef`.
 
-### 1.6 Modify `core/src/computer.rs`
+### ✅ 1.6 Modify `core/src/computer.rs`
 
 Expose a generic method and disc-swap helpers:
 ```rust
@@ -176,50 +207,65 @@ pub fn eject_cdrom_disc(&mut self) {
 }
 ```
 
-### 1.7 Modify `core/src/devices/mod.rs`
+### ✅ 1.7 Modify `core/src/devices/mod.rs`
 
 Export `pub mod sound_blaster_cdrom;`, re-export `SoundBlasterCdrom`, and re-export the new `CdromController` trait and `CdromControllerRef` type alias.
 
 ---
 
-## Phase 2 — Native command line support (`native-common/`)
+## ✅ Phase 2 — Native command line support (`native-common/`)
 
-### 2.1 Modify `native-common/src/cli.rs`
+### ✅ 2.1 Modify `native-common/src/cli.rs`
 
-Add to `CommonCli`:
+The Sound Blaster CD interface is **enabled by default**. Use `--disable-sound-blaster-cd` to turn it off. The IRQ line is configurable via `--sound-blaster-irq`.
+
 ```rust
-/// Enable the Sound Blaster CD-ROM interface (base port hex, e.g. 230)
-#[arg(long, value_name = "PORT")]
-pub sound_blaster: Option<String>,
+/// Sound Blaster CD-ROM interface base port
+#[arg(long = "sound-blaster-port", value_name = "PORT", default_value = "0x230")]
+pub sound_blaster_port: String,
 
-/// ISO image to mount as CD-ROM at startup (requires --sound-blaster)
-#[arg(long, value_name = "FILE")]
-pub cdrom: Option<PathBuf>,
+/// Disable the Sound Blaster CD-ROM interface
+#[arg(long = "disable-sound-blaster-cd")]
+pub disable_sound_blaster_cd: bool,
+
+/// Sound Blaster CD-ROM IRQ line (default: 5)
+#[arg(long = "sound-blaster-irq", value_name = "IRQ", default_value = "5")]
+pub sound_blaster_irq: u8,
+
+/// ISO image to mount as CD-ROM at startup
+#[arg(long = "cdrom", value_name = "FILE")]
+pub cdrom: Option<std::path::PathBuf>,
 ```
 
-The two flags are independent:
-- `--sound-blaster 230` registers the CD device with no disc loaded (door open). The GUI can load an ISO later.
-- `--sound-blaster 230 --cdrom game.iso` registers the device and mounts the ISO immediately.
-- Omitting `--sound-blaster` registers no CD device at all.
+Typical usage:
+- No flags — CD device registered at `0x230`, IRQ 5, door open (no disc). The GUI can load an ISO later.
+- `--cdrom game.iso` — device registered and ISO mounted immediately.
+- `--sound-blaster-port 0x250 --sound-blaster-irq 10` — non-default port and IRQ.
+- `--disable-sound-blaster-cd` — no CD device registered at all.
 
 `--sound-card adlib` remains separate (OPL2 audio) and is unaffected.
 
-### 2.2 Modify `native-common/src/lib.rs`
+### ✅ 2.2 Modify `native-common/src/lib.rs`
 
 In `create_computer()`, after existing device setup:
 ```rust
-if let Some(port_str) = &cli.sound_blaster {
-    let base_port = u16::from_str_radix(port_str, 16)?;
-    let disc = cli.cdrom.as_ref().map(|path| -> Result<_> {
-        let backend = FileDiskBackend::open(path)?;
-        Ok(Box::new(BackedCdrom::new(backend)) as Box<dyn CdromBackend>)
-    }).transpose()?;
-    let device = SoundBlasterCdrom::new(base_port, disc);
-    computer.add_cdrom_controller(device);  // generic — same call for any future interface
+if !cli.disable_sound_blaster_cd {
+    let port_str = &cli.sound_blaster_port;
+    let base_port = u16::from_str_radix(
+        port_str.trim_start_matches("0x").trim_start_matches("0X"), 16,
+    ).with_context(|| format!("Invalid Sound Blaster base port: {port_str}"))?;
+    let disc: Option<Box<dyn CdromBackend>> = if let Some(path) = &cli.cdrom {
+        let backend = FileDiskBackend::open(path_str, true)?;
+        Some(Box::new(BackedCdrom::new(backend)))
+    } else {
+        None
+    };
+    let device = SoundBlasterCdrom::new(base_port, disc, cli.sound_blaster_irq);
+    computer.add_cdrom_controller(device);
 }
 ```
 
-### 2.3 Modify `native-cli/src/command_mode.rs`
+### ✅ 2.3 Modify `native-cli/src/command_mode.rs`
 
 Add `load cd` and `eject cd` to the existing command mode. Follows the same pattern as `load a` / `eject a`.
 
@@ -252,9 +298,9 @@ Command::LoadCd(filename) => {
 }
 ```
 
-The `load cd` command only works if `--sound-blaster` was passed at startup (i.e. the device is registered). If the device is not present, `load_cdrom_disc()` is a no-op and a message should be printed: `"No CD-ROM device. Start with --sound-blaster."`.
+The `load cd` command only works if the CD device is registered (i.e. `--disable-sound-blaster-cd` was not passed). If the device is not present, `load_cdrom_disc()` is a no-op and a message is printed: `"No CD-ROM device. Remove --disable-sound-blaster-cd to enable."`.
 
-### 2.4 Modify `native-gui/src/menu.rs` and `native-gui/src/main.rs`
+### ✅ 2.4 Modify `native-gui/src/menu.rs` and `native-gui/src/main.rs`
 
 Add a **CD-ROM** submenu to the **Drives** menu, following the exact same pattern as Floppy A/B.
 
@@ -267,7 +313,8 @@ EjectCdrom,
 In `AppMenu`:
 ```rust
 cdrom_present: bool,
-cdrom_available: bool,  // false when --sound-blaster was not passed; greys out the whole submenu
+/// False when --disable-sound-blaster-cd was passed; greys out the whole submenu.
+cdrom_available: bool,
 ```
 
 In `AppMenu::render()`:
@@ -289,30 +336,16 @@ ui.add_enabled_ui(self.cdrom_available, |ui| {
 In `process_egui_frame()` in `main.rs`, handle the new actions:
 ```rust
 MenuAction::InsertCdrom => {
-    let result = rfd::FileDialog::new()
-        .add_filter("CD-ROM Images", &["iso"])
-        .pick_file();
-    if let Some(path) = result {
-        match FileDiskBackend::open(&path, true) {
-            Ok(backend) => {
-                computer.load_cdrom_disc(Box::new(BackedCdrom::new(backend)));
-                app_state.menu.cdrom_present = true;
-                app_state.notification = Some(Notification::new("CD-ROM inserted.", NotificationType::Success));
-            }
-            Err(err) => {
-                app_state.notification = Some(Notification::new(format!("Error: {err}"), NotificationType::Error));
-            }
-        }
-    }
+    insert_cdrom_dialog(computer, &mut app_state.cdrom_present,
+        &mut app_state.menu, &mut app_state.notification);
 }
 MenuAction::EjectCdrom => {
-    computer.eject_cdrom_disc();
-    app_state.menu.cdrom_present = false;
-    app_state.notification = Some(Notification::new("CD-ROM ejected.", NotificationType::Success));
+    eject_cdrom(computer, &mut app_state.cdrom_present,
+        &mut app_state.menu, &mut app_state.notification);
 }
 ```
 
-`cdrom_available` is set once at startup based on whether `--sound-blaster` was passed, so the submenu is visibly greyed out when no CD device is registered.
+`cdrom_available` is set once at startup based on `!cli.common.disable_sound_blaster_cd`, so the submenu is visibly greyed out when no CD device is registered.
 
 ---
 
@@ -343,10 +376,11 @@ In `power_on()`, if `cdrom` is set:
 ```rust
 if let Some(cdrom_data) = &self.cdrom {
     let base_port = /* parse config or default 0x230 */;
+    let irq_line = /* parse config or default 5 */;
     let backend = SharedMemBackend::new(Arc::clone(cdrom_data));
     let cdrom_backend = BackedCdrom::new(backend);
-    let device = SoundBlasterCdrom::new(base_port, Some(Box::new(cdrom_backend)));
-    computer.add_cdrom_controller(device);  // generic — same call for any future interface
+    let device = SoundBlasterCdrom::new(base_port, Some(Box::new(cdrom_backend)), irq_line);
+    computer.add_cdrom_controller(device);
 }
 ```
 
@@ -475,18 +509,18 @@ Add `pub mod sound_blaster_cdrom;`.
 |------|--------|
 | `core/src/disk/cdrom.rs` | **New** — `CdromBackend` trait + `BackedCdrom` |
 | `core/src/disk/mod.rs` | Add `pub mod cdrom` |
-| `core/src/devices/mod.rs` | Add `CdromController` trait + `CdromControllerRef` type alias; export `sound_blaster_cdrom` |
-| `core/src/devices/sound_blaster_cdrom.rs` | **New** — implements `Device` + `CdromController` |
-| `core/src/devices/pic.rs` | Add `cdrom: Option<CdromControllerRef>` field; poll IRQ 5 generically |
+| `core/src/devices/mod.rs` | Add `CdromController` trait (with `irq_line()`) + `CdromControllerRef` type alias; export `sound_blaster_cdrom` |
+| `core/src/devices/sound_blaster_cdrom.rs` | **New** — implements `Device` + `CdromController`; configurable `irq_line` field |
+| `core/src/devices/pic.rs` | Add `cdrom: Option<CdromControllerRef>` field; poll IRQ generically via `cdrom.borrow().irq_line()` |
 | `core/src/bus.rs` | Add `cdrom_controller: Option<CdromControllerRef>` field; `add_cdrom_controller<T>()` |
 | `core/src/computer.rs` | Expose generic `add_cdrom_controller<T>()`, `load/eject_cdrom_disc()` |
 | `core/src/tests/devices/sound_blaster_cdrom.rs` | **New** — unit tests |
 | `core/src/tests/devices/mod.rs` | Register test module |
 | `core/src/test_data/sbpcd_test.asm` | **New** — assembly test program |
-| `native-common/src/cli.rs` | Add `--sound-blaster PORT` (enables device), `--cdrom FILE` (optional disc at startup) |
-| `native-common/src/lib.rs` | Create `SoundBlasterCdrom`, register via `add_cdrom_controller()` |
+| `native-common/src/cli.rs` | `--sound-blaster-port PORT` (default `0x230`), `--disable-sound-blaster-cd`, `--sound-blaster-irq IRQ` (default `5`), `--cdrom FILE` |
+| `native-common/src/lib.rs` | Create `SoundBlasterCdrom` with configurable port + IRQ; enabled by default |
 | `native-cli/src/command_mode.rs` | Add `load cd <path>` and `eject cd` commands |
-| `native-gui/src/menu.rs` | Add `InsertCdrom` / `EjectCdrom` actions and CD-ROM submenu |
+| `native-gui/src/menu.rs` | Add `InsertCdrom` / `EjectCdrom` actions and CD-ROM submenu; grey out when `--disable-sound-blaster-cd` |
 | `native-gui/src/main.rs` | Handle `InsertCdrom` / `EjectCdrom` actions in `process_egui_frame()` |
 | `wasm/src/lib.rs` | Add `sound_blaster_port` to config, `load_cdrom_image()`, `insert_cdrom()`, `eject_cdrom()` methods |
 | `wasm/www/src/state.ts` | Add `cdromSignal`, `insertCdrom()`, `ejectCdrom()` |
@@ -496,23 +530,24 @@ Add `pub mod sound_blaster_cdrom;`.
 
 ---
 
-## Open questions / decisions needed
-
-1. **Base port default**: `0x230` is the most common SB CD base. Should it also support `0x250`, `0x260`, `0x270`? (These are just different values for `--sound-blaster-port`; no code change needed.)
-
-2. **IRQ number**: IRQ 5 is the SB default. Should this be configurable via CLI (`--sound-blaster-irq`)? SBPCD.SYS reads the IRQ from its config line in `CONFIG.SYS`.
-
-3. **Read sector timing**: Real drives take ~200ms per sector. Instant PIO delivery may be fine for compatibility but could also cause issues if software relies on timing. Recommend instant delivery for now.
-
-4. **Audio playback**: Out of scope per requirements — commands `0x0E` (Play Audio) and `0x0F` (Play Audio MSF) should return an "unsupported" error status rather than being silently ignored, so software degrades gracefully.
 
 ---
 
-## Future: Full Sound Blaster card
+## Future
+
+### Read sector timing
+
+Real drives take ~200ms per sector. Instant PIO delivery is currently used and is likely fine for compatibility, but some software may rely on timing delays. If issues arise, a cycle-counted delay between sector loads could be added to `stream_read_byte()`.
+
+### Audio playback
+
+Commands `0x0E` (Play Audio) and `0x0F` (Play Audio MSF) currently return an error status so software degrades gracefully. Full audio would require decoding Red Book audio frames from the ISO and feeding them through the existing `PcmRingBuffer` / Rodio pipeline. This is a significant addition and is deferred until there is a real use case.
+
+### Full Sound Blaster card
 
 On real hardware the CD-ROM interface is part of the Sound Blaster card — same PCB, same IRQ config. When SB audio (DSP/PCM, mixer, MPU-401) is added, `SoundBlasterCdrom` should be absorbed into a unified `SoundBlaster` struct rather than registering two separate devices.
 
-### Unified device traits
+#### Unified device traits
 
 `SoundBlaster` would implement all three traits:
 
@@ -524,7 +559,7 @@ impl CdromController for SoundBlaster { /* CD commands, delegated from current S
 
 The `CdromController` trait needs no changes — `SoundBlaster` simply adds the impl alongside `SoundCard`.
 
-### Shared inner state
+#### Shared inner state
 
 `Rc<RefCell<T>>` cannot be coerced to two different `dyn Trait` fat pointers simultaneously. The solution is to move all state into a `SoundBlasterInner` struct held behind a shared `Rc<RefCell<SoundBlasterInner>>`, with `SoundBlaster` being a thin shell that clones that `Rc` when registering:
 
@@ -541,7 +576,7 @@ pub(crate) fn add_sound_blaster<T: Device + SoundCard + CdromController + 'stati
 }
 ```
 
-### Migration steps
+#### Migration steps
 
 1. Rename `SoundBlasterCdrom` → `SoundBlaster`; move CD logic into a `SoundBlasterCdromInner` sub-struct
 2. Implement `SoundCard` on `SoundBlaster` (DSP/PCM/mixer ports at `0x220+`)

@@ -100,6 +100,10 @@
 - [ ] Add mounted drive support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
+- [ ] SoundBlaster (see future ai-analysis/cd-rom-sb.md)
+- [ ] Modem COM port
+  - [ ] mapping phone number to ip/host
+  - [ ] modem sounds
 - [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions
@@ -116,3 +120,5 @@
   - [ ] 80387 math coprocessors
 - [ ] Run "Day of the Tentacle"
 - [ ] Run "Sam and Max"
+- [ ] CD-ROM Read Sector Timing (see future ai-analysis/cd-rom-sb.md)
+- [ ] CD-ROM Audio Playback (see future ai-analysis/cd-rom-sb.md)

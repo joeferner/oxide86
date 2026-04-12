@@ -400,14 +400,38 @@ impl Device for DmaController {
                 true
             }
             // Page registers
-            0x0081 => { self.dma1.channels[2].page = val; true }
-            0x0082 => { self.dma1.channels[3].page = val; true }
-            0x0083 => { self.dma1.channels[1].page = val; true }
-            0x0087 => { self.dma1.channels[0].page = val; true }
-            0x0089 => { self.dma2.channels[2].page = val; true }
-            0x008A => { self.dma2.channels[3].page = val; true }
-            0x008B => { self.dma2.channels[1].page = val; true }
-            0x008F => { self.dma2.channels[0].page = val; true }
+            0x0081 => {
+                self.dma1.channels[2].page = val;
+                true
+            }
+            0x0082 => {
+                self.dma1.channels[3].page = val;
+                true
+            }
+            0x0083 => {
+                self.dma1.channels[1].page = val;
+                true
+            }
+            0x0087 => {
+                self.dma1.channels[0].page = val;
+                true
+            }
+            0x0089 => {
+                self.dma2.channels[2].page = val;
+                true
+            }
+            0x008A => {
+                self.dma2.channels[3].page = val;
+                true
+            }
+            0x008B => {
+                self.dma2.channels[1].page = val;
+                true
+            }
+            0x008F => {
+                self.dma2.channels[0].page = val;
+                true
+            }
             _ => false,
         }
     }

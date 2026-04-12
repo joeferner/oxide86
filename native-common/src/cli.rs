@@ -118,4 +118,24 @@ pub struct CommonCli {
     /// Pause emulation immediately on start (requires --debug-mcp).
     #[arg(long = "debug-mcp-pause-on-start", requires = "debug_mcp_port")]
     pub debug_mcp_pause_on_start: bool,
+
+    /// Sound Blaster CD-ROM interface base port
+    #[arg(
+        long = "sound-blaster-port",
+        value_name = "PORT",
+        default_value = "0x230"
+    )]
+    pub sound_blaster_port: String,
+
+    /// Disable the Sound Blaster CD-ROM interface
+    #[arg(long = "disable-sound-blaster-cd")]
+    pub disable_sound_blaster_cd: bool,
+
+    /// Sound Blaster CD-ROM IRQ line (default: 5)
+    #[arg(long = "sound-blaster-irq", value_name = "IRQ", default_value = "5")]
+    pub sound_blaster_irq: u8,
+
+    /// ISO image to mount as CD-ROM at startup
+    #[arg(long = "cdrom", value_name = "FILE")]
+    pub cdrom: Option<std::path::PathBuf>,
 }

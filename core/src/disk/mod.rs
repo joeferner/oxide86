@@ -1,6 +1,7 @@
 use anyhow::Result;
 
 mod backed_disk;
+pub mod cdrom;
 mod disk_error;
 mod disk_geometry;
 mod drive_number;

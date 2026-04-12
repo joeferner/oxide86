@@ -8,6 +8,7 @@ use oxide86_core::computer::Computer;
 use oxide86_core::devices::serial_mouse::SerialMouse;
 use oxide86_core::disk::BackedDisk;
 use oxide86_core::disk::DriveNumber;
+use oxide86_core::disk::cdrom::{BackedCdrom, CdromBackend};
 use oxide86_core::scan_code::{
     SCAN_CODE_E1_PREFIX, SCAN_CODE_EXTENDED_PREFIX, SCAN_CODE_LEFT_ALT, SCAN_CODE_LEFT_ALT_RELEASE,
     SCAN_CODE_LEFT_CTRL, SCAN_CODE_LEFT_CTRL_RELEASE, SCAN_CODE_RELEASE,
@@ -36,6 +37,7 @@ use winit::keyboard::{Key, KeyCode, KeyLocation, NamedKey, PhysicalKey};
 use winit::window::Window;
 use winit::window::{CursorGrabMode, WindowBuilder};
 
+use crate::menu::MenuAction;
 use crate::mouse_motion_state::MouseMotionState;
 use crate::notification::{Notification, NotificationType};
 use crate::performance_tracker::PerformanceTracker;
@@ -62,7 +64,7 @@ struct AppState {
     menu: AppMenu,
     floppy_a_present: bool,
     floppy_b_present: bool,
-    // TODO cdrom_present: bool,
+    cdrom_present: bool,
     is_paused: bool,
     show_performance_overlay: bool,
     perf_tracker: PerformanceTracker,
@@ -116,12 +118,15 @@ fn run(cli: Cli) -> Result<()> {
     // Initialize egui
     let (egui_ctx, mut egui_state, mut egui_renderer) = setup_egui(window, &pixels);
 
+    let cdrom_available = !cli.common.disable_sound_blaster_cd;
+    let cdrom_present_at_start = cli.common.cdrom.is_some();
+
     // Create application state
     let mut app_state = AppState {
-        menu: AppMenu::new(),
+        menu: AppMenu::new(cdrom_available),
         floppy_a_present: cli.common.floppy_a.is_some(),
         floppy_b_present: cli.common.floppy_b.is_some(),
-        // TODO cdrom_present: !cli.common.cdroms.is_empty(),
+        cdrom_present: cdrom_present_at_start,
         is_paused: false,
         show_performance_overlay: false,
         perf_tracker: PerformanceTracker::new(),
@@ -130,7 +135,7 @@ fn run(cli: Cli) -> Result<()> {
         target_mhz: cli.common.speed,
         audio_sink: audio_sink.map(Mutex::new),
     };
-    // TODO app_state.menu.update_cdrom_state(app_state.cdrom_present);
+    app_state.menu.cdrom_present = app_state.cdrom_present;
 
     let clock_speed = computer.get_clock_speed();
     let max_cycles_per_frame = (clock_speed as u64 / 40).max(100_000);
@@ -735,13 +740,22 @@ fn process_egui_frame(
 
             if let Some(action) = action {
                 match action {
-                    // TODO
-                    // MenuAction::InsertCdRom => {
-                    //     todo!();
-                    // }
-                    // MenuAction::EjectCdRom => {
-                    //     todo!();
-                    // }
+                    MenuAction::InsertCdrom => {
+                        insert_cdrom_dialog(
+                            computer,
+                            &mut app_state.cdrom_present,
+                            &mut app_state.menu,
+                            &mut app_state.notification,
+                        );
+                    }
+                    MenuAction::EjectCdrom => {
+                        eject_cdrom(
+                            computer,
+                            &mut app_state.cdrom_present,
+                            &mut app_state.menu,
+                            &mut app_state.notification,
+                        );
+                    }
                     _ if action.is_insert() => {
                         show_insert_floppy_dialog(
                             action.drive_number(),
@@ -875,6 +889,63 @@ fn load_and_insert_disk(
             ));
         }
     }
+}
+
+fn insert_cdrom_dialog(
+    computer: &mut Computer,
+    cdrom_present: &mut bool,
+    menu: &mut AppMenu,
+    notification: &mut Option<Notification>,
+) {
+    let result = rfd::FileDialog::new()
+        .add_filter("CD-ROM Images", &["iso"])
+        .set_directory(".")
+        .set_title("Select CD-ROM Image")
+        .pick_file();
+
+    if let Some(file) = result {
+        let path = file.to_string_lossy().to_string();
+        match FileDiskBackend::open(&path, true) {
+            Ok(backend) => {
+                computer
+                    .load_cdrom_disc(Box::new(BackedCdrom::new(backend)) as Box<dyn CdromBackend>);
+                *cdrom_present = true;
+                menu.cdrom_present = true;
+                let filename = std::path::Path::new(&path)
+                    .file_name()
+                    .and_then(|n| n.to_str())
+                    .unwrap_or(&path);
+                log::info!("Inserted CD-ROM: {}", path);
+                *notification = Some(Notification::new(
+                    format!("CD-ROM inserted: {}", filename),
+                    NotificationType::Success,
+                ));
+            }
+            Err(e) => {
+                log::error!("Failed to open CD-ROM image: {:#}", e);
+                *notification = Some(Notification::new(
+                    format!("Failed to load CD-ROM: {:#}", e),
+                    NotificationType::Error,
+                ));
+            }
+        }
+    }
+}
+
+fn eject_cdrom(
+    computer: &mut Computer,
+    cdrom_present: &mut bool,
+    menu: &mut AppMenu,
+    notification: &mut Option<Notification>,
+) {
+    computer.eject_cdrom_disc();
+    *cdrom_present = false;
+    menu.cdrom_present = false;
+    log::info!("CD-ROM ejected");
+    *notification = Some(Notification::new(
+        "CD-ROM ejected.".to_string(),
+        NotificationType::Success,
+    ));
 }
 
 fn eject_floppy_disk(

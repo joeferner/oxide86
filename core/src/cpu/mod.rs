@@ -331,7 +331,11 @@ impl Cpu {
             fpu_stack: [f80::F80::ZERO; 8],
             fpu_top: 0,
             // Bits 15-4 hardwired to 1 on real 286 hardware; SMSW returns 0xFFF0 in real mode.
-            cr0: if cpu_type.is_286_or_later() { 0xFFF0 } else { 0 },
+            cr0: if cpu_type.is_286_or_later() {
+                0xFFF0
+            } else {
+                0
+            },
             gdtr_base: 0,
             gdtr_limit: 0,
             idtr_base: 0,
@@ -1182,7 +1186,11 @@ impl Cpu {
 
         // Reset 286+ system registers
         // Bits 15-4 hardwired to 1 on real 286 hardware; SMSW returns 0xFFF0 in real mode.
-        self.cr0 = if self.cpu_type.is_286_or_later() { 0xFFF0 } else { 0 };
+        self.cr0 = if self.cpu_type.is_286_or_later() {
+            0xFFF0
+        } else {
+            0
+        };
         self.gdtr_base = 0;
         self.gdtr_limit = 0;
         self.idtr_base = 0;

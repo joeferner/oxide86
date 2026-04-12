@@ -12,7 +12,7 @@ use crate::{
     Device, DeviceRef,
     cpu::{CpuType, bios::bios_reset},
     devices::{
-        SoundCard, SoundCardRef,
+        CdromController, CdromControllerRef, SoundCard, SoundCardRef,
         clock::Clock,
         dma::{DmaController, DmaTransfer},
         floppy_disk_controller::FloppyDiskController,
@@ -62,6 +62,7 @@ pub(crate) struct Bus {
     rtc: Option<Rc<RefCell<Rtc>>>,
     video_card: Rc<RefCell<VideoCard>>,
     sound_card: Option<SoundCardRef>,
+    cdrom_controller: Option<CdromControllerRef>,
     dma: Rc<RefCell<DmaController>>,
     /// Devices connected to DMA channels, indexed by global channel number (0–7).
     /// The Bus calls `dma_read_u8` / `dma_write_u8` on these when executing transfers.
@@ -147,6 +148,7 @@ impl Bus {
             parallel_port,
             video_card: config.video_card,
             sound_card: None,
+            cdrom_controller: None,
             dma,
             dma_devices,
             cycle_count: 0,
@@ -297,9 +299,28 @@ impl Bus {
     }
 
     pub(crate) fn add_sound_card<T: Device + SoundCard + 'static>(&mut self, device: T) {
+        debug_assert!(self.sound_card.is_none(), "sound card already registered");
         let rc = Rc::new(RefCell::new(device));
         self.devices.push(rc.clone());
         self.sound_card = Some(rc);
+    }
+
+    pub(crate) fn add_cdrom_controller<T: Device + CdromController + 'static>(
+        &mut self,
+        device: T,
+    ) {
+        debug_assert!(
+            self.cdrom_controller.is_none(),
+            "CD-ROM controller already registered"
+        );
+        let rc = Rc::new(RefCell::new(device));
+        self.devices.push(rc.clone());
+        self.cdrom_controller = Some(rc.clone());
+        self.pic.borrow_mut().set_cdrom(rc);
+    }
+
+    pub(crate) fn cdrom_controller(&self) -> Option<&CdromControllerRef> {
+        self.cdrom_controller.as_ref()
     }
 
     pub(crate) fn memory_read_u8(&self, addr: usize) -> u8 {

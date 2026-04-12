@@ -5,6 +5,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+use crate::disk::cdrom::CdromBackend;
+
 pub mod adlib;
 pub mod clock;
 pub mod dma;
@@ -21,6 +23,8 @@ pub mod pit;
 pub mod rtc;
 pub mod serial_loopback;
 pub mod serial_mouse;
+pub mod sound_blaster_cdrom;
+pub use sound_blaster_cdrom::SoundBlasterCdrom;
 pub mod uart;
 
 /// Shared ring buffer used by native audio consumer threads (e.g., Rodio).
@@ -76,6 +80,22 @@ pub trait SoundCard {
 }
 
 pub type SoundCardRef = Rc<RefCell<dyn SoundCard>>;
+
+/// Trait for CD-ROM controller devices.
+///
+/// Mirrors the `SoundCard` trait pattern — `Bus` and `PIC` hold a `CdromControllerRef`
+/// and never name the concrete type. Future interfaces (ATAPI, Mitsumi, etc.) implement
+/// this trait and slot in without touching `Bus` or `PIC`.
+pub trait CdromController {
+    fn load_disc(&mut self, disc: Box<dyn CdromBackend>);
+    fn eject_disc(&mut self);
+    /// Called by the PIC to drain a pending IRQ. Returns `true` once per interrupt.
+    fn take_pending_irq(&mut self) -> bool;
+    /// The PIC1 IRQ line this device raises (e.g. 5 for the default SB CD interface).
+    fn irq_line(&self) -> u8;
+}
+
+pub type CdromControllerRef = Rc<RefCell<dyn CdromController>>;
 
 /// Which sound card to emulate. Parsed from the `--sound-card` / `sound_card` config option.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -3,8 +3,8 @@ use std::{any::Any, cell::RefCell, rc::Rc};
 use crate::{
     Device,
     devices::{
-        floppy_disk_controller::FloppyDiskController, keyboard_controller::KeyboardController,
-        pit::Pit, rtc::Rtc, uart::Uart,
+        CdromControllerRef, floppy_disk_controller::FloppyDiskController,
+        keyboard_controller::KeyboardController, pit::Pit, rtc::Rtc, uart::Uart,
     },
 };
 
@@ -66,6 +66,7 @@ pub(crate) struct Pic {
     uart: Rc<RefCell<Uart>>,
     fdc: Rc<RefCell<FloppyDiskController>>,
     rtc: Option<Rc<RefCell<Rtc>>>,
+    cdrom: Option<CdromControllerRef>,
 
     // PIC1 (master) state
     mask: u8,
@@ -95,6 +96,7 @@ impl Pic {
             uart,
             fdc,
             rtc,
+            cdrom: None,
             mask: 0,
             in_service: 0,
             pic2_mask: 0,
@@ -108,6 +110,10 @@ impl Pic {
     /// NON_PIT_POLL_INTERVAL instructions.
     pub(crate) fn notify_pending(&mut self) {
         self.non_pit_skip = NON_PIT_POLL_INTERVAL - 1;
+    }
+
+    pub(crate) fn set_cdrom(&mut self, cdrom: CdromControllerRef) {
+        self.cdrom = Some(cdrom);
     }
 
     pub(crate) fn is_keyboard_irq_in_service(&self) -> bool {
@@ -214,6 +220,19 @@ impl Pic {
             if !masked && !in_service && self.fdc.borrow_mut().take_pending_irq() {
                 self.in_service |= bit;
                 return Some(FDC_CPU_IRQ);
+            }
+        }
+
+        // CD-ROM / Sound Blaster CD interface (IRQ line and CPU vector from device)
+        if let Some(ref cdrom) = self.cdrom {
+            let irq = cdrom.borrow().irq_line();
+            let bit = 1u8 << irq;
+            let masked = self.mask & bit != 0;
+            let in_service = self.in_service & bit != 0;
+
+            if !masked && !in_service && cdrom.borrow_mut().take_pending_irq() {
+                self.in_service |= bit;
+                return Some(0x08 + irq);
             }
         }
 

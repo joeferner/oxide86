@@ -16,6 +16,7 @@ use oxide86_core::devices::clock::{Clock, LocalDate, LocalTime};
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
+    devices::SoundBlasterCdrom,
     devices::{
         SoundCardType,
         adlib::Adlib,
@@ -27,7 +28,10 @@ use oxide86_core::{
         serial_mouse::SerialMouse,
         uart::ComPortDevice,
     },
-    disk::{BackedDisk, Disk, DriveNumber},
+    disk::{
+        BackedDisk, Disk, DriveNumber,
+        cdrom::{BackedCdrom, CdromBackend},
+    },
     parse_hex_or_dec,
     video::{VideoBuffer, VideoCardType},
 };
@@ -185,6 +189,33 @@ pub fn create_computer(
             .with_context(|| format!("Failed to create disk from: {}", path))?;
         computer.set_floppy_disk(DriveNumber::floppy_b(), Some(Box::new(disk)));
         log::info!("Opened floppy B: from {} (read_only={})", path, read_only);
+    }
+
+    // Register Sound Blaster CD-ROM interface and optionally mount an ISO.
+    if !cli.disable_sound_blaster_cd {
+        let port_str = &cli.sound_blaster_port;
+        let base_port = u16::from_str_radix(
+            port_str.trim_start_matches("0x").trim_start_matches("0X"),
+            16,
+        )
+        .with_context(|| format!("Invalid Sound Blaster base port: {port_str}"))?;
+        let disc: Option<Box<dyn CdromBackend>> = if let Some(path) = &cli.cdrom {
+            let path_str = path
+                .to_str()
+                .ok_or_else(|| anyhow!("CD-ROM path is not valid UTF-8: {}", path.display()))?;
+            let backend = FileDiskBackend::open(path_str, true)
+                .with_context(|| format!("Failed to open CD-ROM image: {}", path.display()))?;
+            log::info!("Mounted CD-ROM image: {}", path.display());
+            Some(Box::new(BackedCdrom::new(backend)))
+        } else {
+            None
+        };
+        let device = SoundBlasterCdrom::new(base_port, disc, cli.sound_blaster_irq);
+        computer.add_cdrom_controller(device);
+        log::info!(
+            "Sound Blaster CD-ROM interface registered at port 0x{base_port:03X}, IRQ {}",
+            cli.sound_blaster_irq
+        );
     }
 
     computer.set_com_port_device(1, create_com_device(&cli.com1_device, &serial_mouse)?);
