@@ -116,8 +116,10 @@ impl SoundBlasterCdrom {
     /// Number of parameter bytes expected for each command.
     fn params_for_command(cmd: u8) -> u8 {
         match cmd {
-            0x00 => 0, // NOP
+            0x00 => 0, // NOP / presence check
             0x01 => 0, // Stop
+            0x81 => 0, // Get drive attention / ready status
+            0x83 => 0, // OEM identification inquiry
             0x05 => 0, // Read status
             0x09 => 1, // Set mode
             0x0A => 3, // Seek (MSF)
@@ -136,6 +138,20 @@ impl SoundBlasterCdrom {
         self.result_buf.clear();
 
         match self.command {
+            // OEM identification inquiry. SBPCD.SYS reads 12 bytes via base+0 and checks
+            // the first 8 against the expected manufacturer string. Matsushita/MKE drives
+            // return "MATSHITA" as bytes 0–7; the remaining 4 bytes are version/padding.
+            0x83 => {
+                for &b in b"MATSHITA" {
+                    self.result_buf.push_back(b);
+                }
+                self.result_buf.push_back(0x00); // bytes 8–11: version/padding
+                self.result_buf.push_back(0x00);
+                self.result_buf.push_back(0x00);
+                self.result_buf.push_back(0x00);
+                self.state = CdromState::SendResult;
+            }
+
             // NOP — drive presence check. Returns the 2-byte Panasonic presence signature
             // [0xAA, 0x55]; SBPCD.SYS reads these via base+0 and checks the word = 0x55AA.
             0x00 => {
@@ -147,6 +163,15 @@ impl SoundBlasterCdrom {
             // Stop
             0x01 => {
                 self.result_buf.push_back(RESULT_OK);
+                self.state = CdromState::SendResult;
+            }
+
+            // Get drive attention / ready status.
+            // MSCDEX polls this during initialization waiting for bit 3 (0x08 = drive ready /
+            // data disc) or bit 4 (0x10 = audio playing) to be set. Bit 3 is the data-ready
+            // path; always report it so the init loop can exit.
+            0x81 => {
+                self.result_buf.push_back(0x08);
                 self.state = CdromState::SendResult;
             }
 

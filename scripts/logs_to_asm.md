@@ -166,3 +166,74 @@ When using this tool as part of an LLM-assisted reverse engineering workflow, fo
 - Run the emulator with verbose CPU logging enabled so every executed instruction is captured in `oxide86.log`.
 - Pipe the output to a file for easier browsing: `python3 scripts/logs_to_asm.py oxide86.log config.json > listing.asm`
 - Keys in the JSON config are case-insensitive (normalised to uppercase internally).
+
+## Potential improvements
+
+These were identified during a real reverse-engineering session (SBPCD.SYS CD-ROM driver initialization) and represent gaps that made the analysis harder.
+
+### Port I/O annotation
+
+`IN`/`OUT` instructions show the port number but not its meaning. A `ports` config section would let you name ports so the port identity appears in the comment automatically:
+
+```json
+"ports": {
+  "0230": "SB-CD base+0 (cmd/result)",
+  "0231": "SB-CD base+1 (busy flag)",
+  "0233": "SB-CD base+3 (drive select)"
+}
+```
+
+Output would look like:
+
+```
+   out dx, al            ;  SB-CD base+0 (cmd/result)   7 -- 0C45:2183 EE
+   in al, dx             ;  SB-CD base+1 (busy flag)    2 -- 0C45:229F EC
+```
+
+The challenge is that the port is often in DX rather than an immediate, so the tool would need to look at the immediately preceding `mov dx, <imm>` or `add dx, <offset>` to resolve it. A simpler first step: match on the `[DX=NNNN]` register annotation already present in the log.
+
+### Data section annotation
+
+Driver data (strings, tables, signature bytes) lives at addresses never executed as code, so they appear as `; gap` blocks. A `data` config section (already partially present in the disassembler) would let you label these so references to them are annotated:
+
+```json
+"data": {
+  "0C45:28EA": { "type": "bytes", "length": 8, "label": "expected_oem_id", "comment": "MATSHITA — Matsushita/MKE drive OEM string" },
+  "0C45:2962": { "type": "string", "label": "str_not_ready" },
+  "0C45:29A3": { "type": "string", "label": "str_not_mke_drive" },
+  "0C45:2A58": { "type": "string", "label": "str_abort_msg" }
+}
+```
+
+Instructions that load these addresses into DX/SI/DI would then show the label name in their comment, making `mov dx, 0x2962` immediately readable as `; str_not_ready`.
+
+### Hot-loop flagging
+
+Instructions with an execution count above a configurable threshold (e.g., 10× the median) could be marked with a `[HOT]` tag or printed with a different prefix. During this session the busy-wait loop at `0C45:22F6` executed 402,735 times — it stood out visually but an automatic flag would have surfaced it immediately as a delay/spin loop.
+
+### Gap content hints
+
+When a gap exists between two executed blocks, the tool currently shows only the byte count. A `gaps` config section would let you annotate what's in there without having to disassemble the binary separately:
+
+```json
+"gaps": {
+  "0C45:2B79": "remaining 7 bytes of 8-byte OEM ID comparison loop",
+  "0C45:2D50": "success path: inc bh (MKE-verified drive count)"
+}
+```
+
+This is especially useful when the gap contains a path that is currently unreachable in the log (e.g., a success branch that can only be hit after fixing an emulator bug) but whose purpose is inferrable from context.
+
+### Memory address labels
+
+Instructions that load or compare specific memory offsets (e.g., `cmp [si], 0x55AA` where SI=0x009D) would benefit from a `memLabels` section that names well-known offsets within a segment:
+
+```json
+"memLabels": {
+  "0C45:0082": "cmd_code",
+  "0C45:009D": "response_buf",
+  "0C45:0076": "base_port"
+}
+```
+
+References such as `mov [0x0082], 0x83` and `mov dx, [0x0076]` would then annotate inline, removing the need to repeatedly look up what each offset means.

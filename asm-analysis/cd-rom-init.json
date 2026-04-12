@@ -59,6 +59,14 @@
     "0C45:2C9C": {
       "label": "func_read_config_token",
       "comment": "Scan the config string at DS:SI for the next '/X:' option token. Advances SI past non-'/' characters, then checks for the pattern '/X:' (where X is a drive letter or option letter). Returns AL = lowercase option letter (e.g., 'p' for port, 'd' for drive name). Returns ZF set (AL=0x0A or 0x0D) at end of line."
+    },
+    "0C45:22EE": {
+      "label": "func_delay",
+      "comment": "Busy-wait timing delay. Inner loop: CX is set to 0, which wraps to 65536 on the first LOOP decrement, giving 65536 NOP-equivalent iterations. Outer loop: BX=1, so one pass. Total ~65536 cycles per call. Called 7 times during initialization to pace hardware I/O commands and allow the drive time to respond between command bytes."
+    },
+    "0C45:2B49": {
+      "label": "func_oem_id_check",
+      "comment": "Send command 0x83 (OEM identification inquiry) and verify the drive is a Matsushita/MKE unit. Reads 12 response bytes via func_send_cmd_read_response into [0x009D]. Then compares bytes [0x009D..+7] against the 8-byte expected ID string in the driver's data at [0x28EA] (starts 0x4D='M', 'MATSHITA'). Returns CF clear if all 8 bytes match, CF set if any byte mismatches ('NOT MKE DRIVE' path)."
     }
   },
   "labels": {
@@ -90,6 +98,18 @@
     "0C45:2B46": {
       "label": "presence_check_fail",
       "comment": "Presence check failed: set CF=1 to signal the caller (0C45:2D31 jae). Caller loads 'NOT READY Interface Board or CD-ROM Drive is not ready' string (0x2962) and prints it via func_0C45_1EF6, then sets error flag [0x0028]=1."
+    },
+    "0C45:2B62": {
+      "label": "oem_id_compare",
+      "comment": "Set DS=ES=CS=0C45 (mov ax,cs; mov ds,ax; mov es,ax), point SI=0x009D (response buffer) and DI=0x28EA (expected 8-byte OEM ID string in driver data). Load CX=8, then compare response bytes one-by-one (lodsb + mov bl,[di]; cmp al,bl); mismatch jumps to lbl_0C45_2BB8 (stc). The gap 0x2B79–0x2BB4 contains the loop body for bytes 2–8."
+    },
+    "0C45:2D42": {
+      "label": "mke_id_check",
+      "comment": "Presence check passed (CF=0 from func_drive_presence_check). Now verify drive is MKE type. Initialises BH=0 (verified-MKE count), BL=0 (drive index), BP=0x2A, then calls func_oem_id_check. If CF=0 (OEM matches), gap code at 0x2D50–0x2D5A increments BH to 1. Both paths rejoin at lbl_0C45_2D5B."
+    },
+    "0C45:2D5B": {
+      "label": "drive_count_print",
+      "comment": "Common path after OEM check. inc BL (total drives with 0x55AA response = 1). [0x0015]=BH (MKE-verified drives: 1 if OEM check passed, 0 if failed). Prints: string(0x292F) + char('0'+BH) + string(0x2933). If [0x0015]=0 (no MKE drives), also prints string(0x29A3) ('NOT MKE DRIVE') and sets error flag [0x0028]=1."
     }
   },
   "lineComments": {
@@ -141,6 +161,23 @@
     "0C45:2B3C 81 3C AA 55": "compare response word at [0x0C45:0x009D] to 0x55AA: Panasonic presence signature; emulator bug — base+1 consumes result bytes instead of returning busy flag, so [0x009D]=0x0000 and check fails",
     "0C45:2B46 F9": "stc: CF=1 = presence check failed; caller at 0C45:2D31 will print NOT READY and set error flag [0x0028]=1",
     "0C45:2D2B EE": "write 0x00 to port base+1 (0x0231) to arm/reset the interface before issuing the presence-check command",
-    "0C45:2D33 BA 62 29": "load offset 0x2962 into DX: '$'-terminated 'NOT READY Interface Board or CD-ROM Drive is not ready' string in SBPCD.SYS segment"
+    "0C45:2D33 BA 62 29": "load offset 0x2962 into DX: '$'-terminated 'NOT READY Interface Board or CD-ROM Drive is not ready' string in SBPCD.SYS segment",
+    "0C45:22F0 BB 01 00": "BX=1: one outer delay iteration",
+    "0C45:22F3 B9 00 00": "CX=0: wraps to 65536 on first LOOP decrement → 65536 inner busy-wait iterations per outer pass",
+    "0C45:22F6 E2 FE": "inner busy-wait loop body; 402735 total executions across all 7 initialization calls",
+    "0C45:2B4B 2E C6 06 82 00 83": "command 0x83 = OEM identification inquiry; MKE drive responds with 'MATSHITA' in bytes 0–7 of a 12-byte response",
+    "0C45:2B57 B9 0C 00": "CX=12: read 12-byte OEM identification response via func_send_cmd_read_response",
+    "0C45:2B6B BF EA 28": "DI=0x28EA: expected OEM ID string in SBPCD.SYS driver data; byte[0]=0x4D ('M') = first char of 'MATSHITA'",
+    "0C45:2B6E B9 08 00": "CX=8: compare 8 bytes of OEM ID from response buffer against expected string at DI",
+    "0C45:2B72 26 8A 1D": "load expected OEM ID byte from driver data [0x28EA]; must match response byte in AL for drive to be recognized as MKE",
+    "0C45:2BB8 F9": "stc: CF=1 — OEM ID mismatch; func_oem_id_check returns failure; caller prints 'NOT MKE DRIVE'",
+    "0C45:2D47 B7 00": "BH=0: initialize MKE-verified drive counter (gap code at 0x2D50 increments BH to 1 when OEM check passes)",
+    "0C45:2D62 BA 2F 29": "print prefix string at 0x292F before drive count digit ('X CD-ROM drive(s) connected' message prefix)",
+    "0C45:2D68 8A D7": "DL=BH: use MKE-verified drive count as the digit to print",
+    "0C45:2D6A 80 C2 30": "add 0x30 to convert BH count to ASCII digit ('0'=0x30 when BH=0, '1'=0x31 when BH=1)",
+    "0C45:2D71 BA 33 29": "print suffix string at 0x2933 ('CD-ROM drive(s) connected')",
+    "0C45:2D7F 75 0F": "if [0x0015]=BH != 0 (at least one MKE drive recognized), skip NOT MKE DRIVE message and error flag",
+    "0C45:2D81 BA A3 29": "print string at 0x29A3 ('NOT MKE DRIVE') when no drives passed OEM identification check",
+    "0C45:2D87 2E C6 06 28 00 01": "set error flag [0x0028]=1; causes lbl_0C45_2DAD to print string at 0x2A58 and branch to 0x0DAE (abort init)"
   }
 }
