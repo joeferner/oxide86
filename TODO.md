@@ -84,21 +84,18 @@
     - [X] 09 - Mode 03h
     - [X] 10 - Mode 12h
 - [X] 286 Protected Mode (see ai-analysis/286-protected-mode.md)
-- [ ] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
-  - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
-  - [ ] Test Fractint Version 15.x and below
-  - [ ] Emulate 80287
-- [ ] WASM (see ai-analysis/wasm-ui-plan.md)
+- [X] WASM (see ai-analysis/wasm-ui-plan.md)
   - [X] Pre-load images
   - [X] Save last machine config
   - [X] COM Port/Mouse
   - [X] Download modified disk
   - [X] Audio
-  - [ ] Joystick
-  - [ ] Disk browser/editor
-  - [ ] Multiple hard drives
-- [ ] CLI multiple hard drives
+- [X] Emulate 8087 math coprocessor (see core/src/cpu/instructions/control_flow.rs:esc)
+  - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
 - [ ] CD-ROM
+- [ ] WASM Joystick
+- [ ] WASM Disk browser/editor
+- [ ] WASM/CLI/GUI multiple hard drives
 - [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
 - [ ] Add PS/2 mouse support
@@ -113,6 +110,9 @@
 - [ ] Commander Keen 1 laggy scrolling (see ai-analysis/commander-keen-1-laggy-scroll.md)
 - [ ] 386 Real Mode
 - [ ] 386 Protected Mode
-- [ ] 80387 math coprocessors
+- [ ] More math co-processor
+  - [ ] Test Fractint Version 15.x and below
+  - [ ] Emulate 80287
+  - [ ] 80387 math coprocessors
 - [ ] Run "Day of the Tentacle"
 - [ ] Run "Sam and Max"
