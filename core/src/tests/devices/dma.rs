@@ -4,6 +4,21 @@ use crate::{
     tests::run_test,
 };
 
+/// DMA2 channel 5 counter-advance test (286 system).
+/// Programs DMA2 channel 5 with a software-asserted DREQ and verifies the
+/// current-count register advances — proving DMA2 is alive on a 286 AT.
+/// Requires BIOS DMA2 initialisation and CASCADE mode handling in tick().
+#[test_log::test]
+pub(crate) fn counter_advances_286() {
+    run_test(
+        "devices/dma/counter_advances_286",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 #[test_log::test]
 pub(crate) fn counter_advances() {
     run_test(

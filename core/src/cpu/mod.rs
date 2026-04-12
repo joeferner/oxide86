@@ -170,6 +170,8 @@ pub(crate) struct Cpu {
     // --- 286+ system registers ---
     /// Machine Status Word / Control Register 0 (low 16 bits on 286).
     /// Bit 0 = PE (Protection Enable), Bit 1 = MP, Bit 2 = EM, Bit 3 = TS.
+    /// Bits 15-4 are undefined but hardwired to 1 on real 286 hardware; SMSW
+    /// therefore returns 0xFFF0 in real mode on a genuine 286.
     cr0: u16,
 
     /// Global Descriptor Table Register: base address (24-bit on 286)
@@ -328,7 +330,8 @@ impl Cpu {
             fpu_status_word: 0,
             fpu_stack: [f80::F80::ZERO; 8],
             fpu_top: 0,
-            cr0: 0,
+            // Bits 15-4 hardwired to 1 on real 286 hardware; SMSW returns 0xFFF0 in real mode.
+            cr0: if cpu_type.is_286_or_later() { 0xFFF0 } else { 0 },
             gdtr_base: 0,
             gdtr_limit: 0,
             idtr_base: 0,
@@ -1178,7 +1181,8 @@ impl Cpu {
         self.fpu_top = 0;
 
         // Reset 286+ system registers
-        self.cr0 = 0;
+        // Bits 15-4 hardwired to 1 on real 286 hardware; SMSW returns 0xFFF0 in real mode.
+        self.cr0 = if self.cpu_type.is_286_or_later() { 0xFFF0 } else { 0 };
         self.gdtr_base = 0;
         self.gdtr_limit = 0;
         self.idtr_base = 0;
@@ -1394,6 +1398,7 @@ mod tests {
         let video_buffer = Arc::new(RwLock::new(VideoBuffer::new()));
         let bus = Bus::new(BusConfig {
             memory: Memory::new(1024),
+            cpu_type: CpuType::I8086,
             cpu_clock_speed,
             clock: Some(Box::new(MockClock::new())),
             hard_disks: vec![],

@@ -10,7 +10,7 @@ use anyhow::Result;
 
 use crate::{
     Device, DeviceRef,
-    cpu::bios::bios_reset,
+    cpu::{CpuType, bios::bios_reset},
     devices::{
         SoundCard, SoundCardRef,
         clock::Clock,
@@ -41,6 +41,7 @@ const PORT_SYSTEM_CONTROL_A: u16 = 0x0092;
 
 pub(crate) struct BusConfig {
     pub memory: Memory,
+    pub cpu_type: CpuType,
     pub cpu_clock_speed: u32,
     pub clock: Option<Box<dyn Clock>>,
     pub hard_disks: Vec<Box<dyn Disk>>,
@@ -104,7 +105,7 @@ impl Bus {
         let hard_disk_controller =
             Rc::new(RefCell::new(HardDiskController::new(config.hard_disks)));
         let game_port = Rc::new(RefCell::new(GamePortDevice::new(config.cpu_clock_speed)));
-        let dma = Rc::new(RefCell::new(DmaController::new()));
+        let dma = Rc::new(RefCell::new(DmaController::new(config.cpu_type)));
         let parallel_port = Rc::new(RefCell::new(ParallelPort::new()));
         let rtc = config
             .clock

@@ -7,8 +7,10 @@
 //! - **DMA2** (channels 4–7): I/O ports 0x00C0–0x00DF, page registers 0x008F,
 //!   0x008B, 0x0089, 0x008A.
 //!
-//! Channel 0 on DMA1 is the memory-refresh channel; its DREQ line is permanently
-//! asserted by hardware.  When channel 0 is unmasked the controller advances its
+//! Channel 0 on DMA1 is traditionally used for DRAM memory refresh on the IBM
+//! PC/XT.  In this emulator DREQ must be asserted via the software request
+//! register (port 0x09) — there is no simulated hardware refresh line.  When
+//! channel 0 is unmasked and DREQ is active, the controller advances its
 //! `current_address` and decrements its `current_count` at approximately one DMA
 //! bus cycle per 4 CPU cycles (matching the real 8237A at 4.77 MHz).
 //!
@@ -16,7 +18,7 @@
 
 use std::any::Any;
 
-use crate::Device;
+use crate::{Device, cpu::CpuType};
 
 /// CPU cycles consumed per DMA bus cycle.  Real hardware runs one DMA cycle
 /// every ~4 CPU clocks; this ratio keeps the timing realistic without being
@@ -63,12 +65,11 @@ struct Dma8237 {
     /// Cycle count at the last tick, used to pace DMA transfers.
     last_tick_cycle: u32,
     /// Bitmask of channels with an active DMA request (DREQ).
-    /// Bit 0 is permanently set — channel 0 is the memory-refresh channel.
     dreq: u8,
 }
 
-impl Default for Dma8237 {
-    fn default() -> Self {
+impl Dma8237 {
+    fn new() -> Self {
         Self {
             channels: Default::default(),
             flip_flop: false,
@@ -76,7 +77,7 @@ impl Default for Dma8237 {
             status: 0,
             mask: 0x0F, // all channels masked on reset
             last_tick_cycle: 0,
-            dreq: 0x01, // channel 0 DREQ permanently active (memory refresh)
+            dreq: 0x00,
         }
     }
 }
@@ -127,11 +128,12 @@ impl Dma8237 {
                 if self.flip_flop {
                     self.channels[ch].base_address =
                         (self.channels[ch].base_address & 0x00FF) | ((val as u16) << 8);
+                    self.channels[ch].current_address = self.channels[ch].base_address;
                 } else {
                     self.channels[ch].base_address =
                         (self.channels[ch].base_address & 0xFF00) | val as u16;
+                    self.channels[ch].current_address = self.channels[ch].base_address;
                 }
-                self.channels[ch].current_address = self.channels[ch].base_address;
                 self.flip_flop = !self.flip_flop;
             }
             // Channel base/current count
@@ -140,16 +142,17 @@ impl Dma8237 {
                 if self.flip_flop {
                     self.channels[ch].base_count =
                         (self.channels[ch].base_count & 0x00FF) | ((val as u16) << 8);
+                    self.channels[ch].current_count = self.channels[ch].base_count;
                 } else {
                     self.channels[ch].base_count =
                         (self.channels[ch].base_count & 0xFF00) | val as u16;
+                    self.channels[ch].current_count = self.channels[ch].base_count;
                 }
-                self.channels[ch].current_count = self.channels[ch].base_count;
                 self.flip_flop = !self.flip_flop;
             }
             // Command register
             0x08 => self.command = val,
-            // Single channel request
+            // Single channel request (software DREQ)
             0x09 => {
                 let ch = val & 0x03;
                 if val & 0x04 != 0 {
@@ -157,8 +160,6 @@ impl Dma8237 {
                 } else {
                     self.dreq &= !(1 << ch);
                 }
-                // Channel 0 DREQ is always active regardless of software requests
-                self.dreq |= 0x01;
             }
             // Single channel mask
             0x0A => {
@@ -182,8 +183,7 @@ impl Dma8237 {
                 self.command = 0;
                 self.status = 0;
                 self.mask = 0x0F;
-                // Channel 0 DREQ survives reset (hardware line)
-                self.dreq = 0x01;
+                self.dreq = 0x00;
             }
             // Clear mask register (unmask all channels)
             0x0E => self.mask = 0,
@@ -286,13 +286,28 @@ impl Dma8237 {
 pub struct DmaController {
     dma1: Dma8237,
     dma2: Dma8237,
+    /// True when DMA1 channel 0 has a permanent hardware DREQ (8086/XT memory
+    /// refresh).  On 286 AT systems the refresh circuit does not hold DREQ
+    /// permanently, so this is false and ch0 only runs when software asserts
+    /// DREQ via port 0x09.
+    hw_dreq_ch0: bool,
 }
 
 impl DmaController {
-    pub fn new() -> Self {
+    pub fn new(cpu_type: CpuType) -> Self {
+        // On 8086/XT systems, DMA1 channel 0 DREQ is permanently driven by the
+        // memory-refresh timer circuit.  On 286+ AT systems the refresh is handled
+        // by a dedicated chipset path and the DMA DREQ line is not permanently
+        // asserted, so software must use port 0x09 to drive DREQ.
+        let hw_dreq_ch0 = !cpu_type.is_286_or_later();
+        let mut dma1 = Dma8237::new();
+        if hw_dreq_ch0 {
+            dma1.dreq = 0x01;
+        }
         Self {
-            dma1: Dma8237::default(),
-            dma2: Dma8237::default(),
+            dma1,
+            dma2: Dma8237::new(),
+            hw_dreq_ch0,
         }
     }
 
@@ -305,14 +320,16 @@ impl DmaController {
     }
 
     /// Assert or deassert a DREQ line on the given global channel (0–7).
-    /// Channel 0 DREQ is permanently active and cannot be cleared.
     pub(crate) fn set_dreq(&mut self, global_channel: u8, asserted: bool) {
         if global_channel < 4 {
             if asserted {
                 self.dma1.dreq |= 1 << global_channel;
             } else {
                 self.dma1.dreq &= !(1 << global_channel);
-                self.dma1.dreq |= 0x01; // channel 0 always active
+                // On 8086/XT the hardware refresh line keeps ch0 DREQ asserted.
+                if self.hw_dreq_ch0 {
+                    self.dma1.dreq |= 0x01;
+                }
             }
         } else {
             let ch = global_channel - 4;
@@ -331,8 +348,11 @@ impl Device for DmaController {
     }
 
     fn reset(&mut self) {
-        self.dma1 = Dma8237::default();
-        self.dma2 = Dma8237::default();
+        self.dma1 = Dma8237::new();
+        if self.hw_dreq_ch0 {
+            self.dma1.dreq = 0x01;
+        }
+        self.dma2 = Dma8237::new();
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -367,6 +387,11 @@ impl Device for DmaController {
             // DMA1: ports 0x0000–0x000F
             0x0000..=0x000F => {
                 self.dma1.write(port, val);
+                // On 8086/XT systems, ch0 DREQ is a permanent hardware line that
+                // survives even a master clear.
+                if self.hw_dreq_ch0 {
+                    self.dma1.dreq |= 0x01;
+                }
                 true
             }
             // DMA2: ports 0x00C0–0x00DF
@@ -375,38 +400,14 @@ impl Device for DmaController {
                 true
             }
             // Page registers
-            0x0081 => {
-                self.dma1.channels[2].page = val;
-                true
-            }
-            0x0082 => {
-                self.dma1.channels[3].page = val;
-                true
-            }
-            0x0083 => {
-                self.dma1.channels[1].page = val;
-                true
-            }
-            0x0087 => {
-                self.dma1.channels[0].page = val;
-                true
-            }
-            0x0089 => {
-                self.dma2.channels[2].page = val;
-                true
-            }
-            0x008A => {
-                self.dma2.channels[3].page = val;
-                true
-            }
-            0x008B => {
-                self.dma2.channels[1].page = val;
-                true
-            }
-            0x008F => {
-                self.dma2.channels[0].page = val;
-                true
-            }
+            0x0081 => { self.dma1.channels[2].page = val; true }
+            0x0082 => { self.dma1.channels[3].page = val; true }
+            0x0083 => { self.dma1.channels[1].page = val; true }
+            0x0087 => { self.dma1.channels[0].page = val; true }
+            0x0089 => { self.dma2.channels[2].page = val; true }
+            0x008A => { self.dma2.channels[3].page = val; true }
+            0x008B => { self.dma2.channels[1].page = val; true }
+            0x008F => { self.dma2.channels[0].page = val; true }
             _ => false,
         }
     }

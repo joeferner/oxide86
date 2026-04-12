@@ -99,6 +99,7 @@ impl Computer {
             cpu,
             bus: Bus::new(BusConfig {
                 memory,
+                cpu_type: config.cpu_type,
                 cpu_clock_speed,
                 clock,
                 hard_disks: config.hard_disks,

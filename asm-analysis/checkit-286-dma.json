@@ -1,0 +1,86 @@
+{
+  "functions": {
+    "1F15:0491": {
+      "label": "dma_test_channel",
+      "comment": "Per-channel register retention test. Arg: channel number (0-7).\n[bp-0x0a]=error flag, [bp-0x0c]=pattern counter, [bp-0x04]=pattern index,\n[bp-0x10]=saved address, [bp-0x08]=saved count,\n[bp-0x0e]=new address pattern, [bp-0x06]=new count pattern.\nOuter loop: 0x78 iterations. Inner loop: 0x64 delay cycles."
+    },
+    "1F15:0626": {
+      "label": "dma_clear_flipflop",
+      "comment": "Clear DMA byte flip-flop. Arg: channel number.\nWrites 0xFF to port 0x0C (DMA1, ch<4) or 0xD8 (DMA2, ch>=4)."
+    },
+    "1F15:064A": {
+      "label": "dma_read_address",
+      "comment": "Read 16-bit address from DMA channel. Arg: channel number.\nClears flip-flop, reads low byte then high byte from port table at 0x585e.\nReturns AX = (high<<8)|low."
+    },
+    "1F15:068B": {
+      "label": "dma_read_count",
+      "comment": "Read 16-bit count from DMA channel. Arg: channel number.\nClears flip-flop, reads low byte then high byte from port table at 0x586e.\nReturns AX = (high<<8)|low."
+    },
+    "1F15:06CC": {
+      "label": "dma_write_address",
+      "comment": "Write 16-bit address to DMA channel. Args: channel, value.\nClears flip-flop, writes low byte then high byte to port table at 0x585e."
+    },
+    "1F15:0709": {
+      "label": "dma_write_count",
+      "comment": "Write 16-bit count to DMA channel. Args: channel, value.\nClears flip-flop, writes low byte then high byte to port table at 0x586e."
+    },
+    "36C5:06EE": {
+      "label": "port_write",
+      "comment": "out dx, al — writes AL to port DX. Args: port, value."
+    },
+    "36C5:0744": {
+      "label": "cli_wrapper",
+      "comment": "cli; retf — disables interrupts before each test iteration."
+    },
+    "36C5:0A22": {
+      "label": "port_read",
+      "comment": "in al, dx — reads byte from port DX. Arg: port. Returns AX (AH=0)."
+    },
+    "1582:1197": {
+      "label": "delay_read",
+      "comment": "Delay loop (0x28 iterations) then call port_read. Arg: port. Returns AX."
+    },
+    "1582:11BC": {
+      "label": "delay_write",
+      "comment": "Delay loop (0x28 iterations) then call port_write. Args: port, value."
+    }
+  },
+  "labels": {
+    "1F15:0578": {
+      "label": "set_error_write_readback",
+      "comment": "Address mismatch after writing new pattern. Sets [bp-0x0a]=0xFFFF."
+    },
+    "1F15:057D": {
+      "label": "restore_phase",
+      "comment": "Begin restore: write original address and count back."
+    },
+    "1F15:05B5": {
+      "label": "set_error_restore_readback",
+      "comment": "Address mismatch after restoring original value. Sets [bp-0x0a]=0xFFFF."
+    },
+    "1F15:05BA": {
+      "label": "end_of_iteration",
+      "comment": "End of one outer iteration: call cli_wrapper, reset inner delay counter, loop."
+    },
+    "1F15:05C7": {
+      "label": "test_done",
+      "comment": "Return [bp-0x0a] (0=pass, 0xFFFF=fail) in AX."
+    }
+  },
+  "lineComments": {
+    "1F15:04B9 83 7E F6 00": "check error flag — non-zero means early exit",
+    "1F15:04C2 83 7E FE 78": "outer loop: 0x78 = 120 iterations",
+    "1F15:04B0 83 7E EE 64": "inner delay loop: 0x64 = 100 cycles",
+    "1F15:0564 3B 46 F2": "compare read-back address with written pattern",
+    "1F15:0573 3B 46 FA": "compare read-back count with written pattern",
+    "1F15:05A1 3B 46 F0": "compare restored address with original saved value",
+    "1F15:05B0 3B 46 F8": "compare restored count with original saved value",
+    "1F15:01BD 26 83 3E 98 01 01": "machine type 1 (IBM PC) — skip ch0 test",
+    "1F15:01C5 26 83 3E 98 01 02": "machine type 2 (IBM XT) — skip ch0 test",
+    "1F15:01CD 26 83 3E 98 01 03": "machine type 3 — skip ch0 test",
+    "1F15:01D5 26 83 3E 98 01 04": "machine type 4 (IBM AT) — skip ch0 test",
+    "1F15:01DD 26 83 3E 98 01 05": "machine type 5 — skip ch0 test",
+    "1F15:01E5 26 83 3E 98 01 06": "machine type 6 — skip ch0 test",
+    "1F15:01ED 26 83 3E A0 01 00": "if [0x01a0]==0, skip ch0 test; 286 has [0x01a0]=1 so ch0 IS tested"
+  }
+}
