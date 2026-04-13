@@ -1,0 +1,124 @@
+{
+  "functions": {
+    "0019:507A": {
+      "label": "func_test_req_flag",
+      "comment": "Tests bit 7 of request-record byte at [ES:DI+0x06] and returns with ZF\nreflecting the result (ZF=1 if bit is clear). Two-instruction helper; called\nimmediately after func_init_transfer_state, with result checked by caller's je/jne."
+    },
+    "0019:71D5": {
+      "label": "func_save_req_ptr",
+      "comment": "Sets the 'request in progress' flag ([0x0357]=1) and snapshots the current\nrequest-header far pointer ([0x059e]=offset, [0x05a0]=segment) into the\nsaved-pointer slot ([0x05e6:05e8]). Counterpart func_0019_71CF clears the flag."
+    },
+    "0019:5453": {
+      "label": "func_write_char_int29h",
+      "comment": "Write character in AL via INT 29h (fast console output) if the current output device is a character device that supports it. Calls func_0019_756F to locate the active output device record via SI. Checks device attribute bits and the DOS CON driver header for INT 29h support before issuing the interrupt. Returns with CF clear on success."
+    },
+    "0019:54D7": {
+      "label": "func_console_output_char",
+      "comment": "Write character in AL to the console with column tracking and periodic housekeeping. Printable chars (0x20-0x7E) increment the column counter [0x01F9]; DEL (0x7F) outputs without incrementing. CR resets the column counter to 0 before output. BS and TAB have handlers in the gap (not observed in this log). Every 64 characters the throttle counter [0x0300] wraps to 0 and func_0019_90DB is called for periodic work. Output goes via func_write_char_int29h. If redirect flag [0x02FE] is non-zero after output, an alternate path (not observed) is taken."
+    },
+    "0019:76F7": {
+      "label": "func_init_transfer_state",
+      "comment": "Initializes driver transfer-state variables from the current request record (ES:DI).\nLoads the buffer offset from [di+0x07] via lds (SI=0x0023); discards the lds-loaded\nsegment and hardcodes 0x0070 as the output-buffer segment, saving the far ptr to\n[0x058a:058c]. Saves the current output cursor [0x032c] to [0x05b8]. Clears byte\ncounter [0x0574]. Snapshots the 32-bit start position [di+0x15:17] to [0x05ce:05d0].\nTests request flags [di+0x05] for bits 0x8080; returns AX = CX + [0x032c] (total\nitems to transfer). The caller uses AX as the new CX for func_0019_78CF, which\nadvances [di+0x15:17] by that count."
+    },
+    "0019:4256": {
+      "label": "func_save_ctx",
+      "comment": "Saves the current register context for later restoration by func_restore_ctx\n(0019:423F). Pops its own return address into [0x05ee], pushes DS/BP/DI/SI/DX/CX/BX/AX\nonto the stack, then pushes the saved return address back. Also restores ES from the\nvalue pushed by the caller immediately before `call 0x4256`. Returns normally; the\nstacked registers are later unwound by func_restore_ctx, which jumps to [0x05ee].\nCalled at the start of func_issue_cmd (0019:83D8) to snapshot incoming registers\nbefore invoking the CD-ROM driver."
+    },
+    "0019:423F": {
+      "label": "func_restore_ctx",
+      "comment": "Restores the register context saved by func_save_ctx (0019:4256). Pops the caller's\nreturn address into [0x05ee], pops AX/BX/CX/DX/SI/DI/BP/DS from the saved frame,\nthen jumps to [0x05ee]. Flags at the jump reflect whatever was set before the\n`call 0x423f` (typically `and ah, 0x02` in func_issue_cmd), so callers see the\ndriver success/failure flag after restoration."
+    },
+    "0019:5036": {
+      "label": "func_dispatch_error",
+      "comment": "Dispatches on a command/error code by patching the caller's saved return address.\nStack on entry: [..., return-to-caller, table-ptr, cmd-code, ...]. Reads table header\nbyte CS:[table_ptr] for max entries; if cmd < max, computes handler address from\nCS:[table_ptr + 1 + cmd*2] and overwrites the saved return address ([bp+0x06]) with\nit. After stack cleanup, `ret` 'returns' to the handler instead of the normal\ncontinuation. For command AL=0x06 (Read Long), table[6] = 0019:92E7, which fires\nINT 24h (CDR101: Not ready). Called once from lbl_0019_46E3 with AX=0x1206\n(function 0x12, error code 0x06) and dispatch table at CS:0x3F6C."
+    },
+    "0019:51A6": {
+      "label": "func_wait_for_data",
+      "comment": "Polling loop: waits for the CD-ROM drive to become ready with data. Calls\nfunc_poll_drive (0019:90DB) in a loop; on success (ZF=1) sends Read Status\n(AH=0x05) via func_issue_cmd, fires INT 2Ah (multiplex yield), increments retry\ncounter [0x0d91], and loops. On failure (ZF=0) calls func_issue_cmd AH=0x00\n(abort), restores registers, and returns with error in AL. In this trace the drive\nnever became ready after 82 polls; loop exited with AL=0x0D."
+    },
+    "0019:756F": {
+      "label": "func_get_device_record",
+      "comment": "Returns DS:SI pointing to the MSCDEX device record for drive BX. If [0x0357]\n(request in-progress flag) is 0, calls func_0019_A62A to look up the record and\nsets DS=0x0116, SI=record offset. If [0x0357]=1 and BX<=1, loads the saved request\nfar pointer directly from [0x05e6:05e8]. Returns CF clear on success. Hot path:\ncalled 147 times (82 times from func_poll_drive, 62 from func_write_char_int29h,\n1 from func_console_output_char, 1 from func_0019_55CD, 1 from func_0019_90DB)."
+    },
+    "0019:83D8": {
+      "label": "func_issue_cmd",
+      "comment": "Issues a CD-ROM device driver command and returns the result. AH = command code\n(0x00=abort, 0x01=Media Check, 0x04=..., 0x05=Read Status, 0x84=...). Saves\ncontext via func_save_ctx (0019:4256), sets up the request block far pointer\n([0x038a:038c] = 0x0116:0x03bc), translates AH via dispatch table at CS:0x83C6/\n0x83CC, then invokes the driver via func_load_driver_ptr/func_call_cdrom_driver\n(0019:85AF/85B2). Returns AX=[0x03bc] (driver result) with flags set by\n`not [0x0380]; and 0x02`: ZF=1 on success (bit 1 of [0x0380] is set by SBPCD.SYS\nduring its interrupt routine). ZF=0 indicates driver failure ('not ready');\nthe one failing call (84th, AH=0x01 from func_poll_drive) returns AL=0x0D."
+    },
+    "0019:85AF": {
+      "label": "func_load_driver_ptr",
+      "comment": "Loads the CD-ROM driver data pointer from the MSCDEX device record, then falls\nthrough to func_call_cdrom_driver (0019:85B2). Reads the far pointer at [si+7]\n(stored in the device record at 0x0116:0x0114) → DS:SI = 0x0070:0x0023 (SBPCD.SYS\nrequest area). Called from func_issue_cmd (0019:83D8) 167 times."
+    },
+    "0019:85B2": {
+      "label": "func_call_cdrom_driver",
+      "comment": "Invokes the CD-ROM device driver strategy and interrupt routines. Checks device\nattribute bit 7 at [si+0x05] (0x0070:0x0028 = 0x80, always set for CD-ROM), then\nreads far addresses of strategy ([si+6]=0x06F5) and interrupt ([si+8]=0x0700)\nroutines. Calls strategy then interrupt via far ptr at [0x0378:037a] (segment\n0x0070). Strategy stores request pointer; interrupt executes the command and fills\nthe request block including the [0x0380] status byte read by func_issue_cmd.\nCalled 250 times (167 via func_load_driver_ptr + 83 direct from func_read_status).\nAfter each call, func_0019_876A checks [0x0db7] (always 0x00, never retries)."
+    },
+    "0019:9024": {
+      "label": "func_read_status",
+      "comment": "Sends Read Status (command 0x05) to the CD-ROM driver and tests for success.\nSets up the request: command=0x05 at [0x0394], length=0x0E at [0x0392], clears\n[0x0395:0396]. Loads the SBPCD.SYS request area via DS:SI=[0x0032] = 0x0070:0x0023\nand calls func_call_cdrom_driver (0019:85B2). After return, tests [0x0396] bit 1\nfor 'drive ready'; in this trace always succeeds ([0x0396]=0x03, bit 1 set),\nreturns AL=0. Called 83 times from func_poll_drive before each Media Check."
+    },
+    "0019:90DB": {
+      "label": "func_poll_drive",
+      "comment": "Polls the CD-ROM drive once. First calls func_read_status (0019:9024) to verify\ndrive state, then calls func_get_device_record (0019:756F, BX=0) to get DS:SI.\nIssues Media Check (AH=0x01) via func_issue_cmd (0019:83D8). On success (ZF=1)\ngoes to lbl_0019_90AD which yields via INT 28h and returns ZF=1 to the caller.\nOn failure, filters error code: AL=0x13→long timeout path (gap), AL=0x10→retry\ngap, AL=0x03→soft return. Any other code (including the observed AL=0x0D) falls\nthrough to a bare `ret` at 0019:90A9, propagating ZF=0 and AL to the caller.\nThe 84th call (from func_wait_for_data loop) returns AL=0x0D, ZF=0, triggering\nthe 'not ready' error."
+    },
+    "0019:A60D": {
+      "label": "func_get_drive_entry",
+      "comment": "Sets DS=0x0116 from [0x3dd7]/[0x0330], bounds-checks BX against drive count\nat [0x0032], then sets ES:DI = base of drive array [0x0034] + BX. Returns ES:DI\npointing to the BX-th logical drive mapping entry, CF set if out of range.\nCalled from func_lookup_drive_entry (0019:A62A) and func_0019_A7DD."
+    },
+    "0019:A62A": {
+      "label": "func_lookup_drive_entry",
+      "comment": "Looks up the MSCDEX device record for logical drive BX. Calls func_get_drive_entry\n(0019:A60D) to locate the drive entry in the mapping table, checks [di]=0xFF\n(invalid/unassigned). Reads the physical drive number from [di] into BL and\ncalls func_calc_device_record (0019:A644) to get ES:DI pointing to the record."
+    },
+    "0019:A644": {
+      "label": "func_calc_device_record",
+      "comment": "Computes ES:DI pointing to the MSCDEX device record for physical drive BX.\nLoads the device table at ES:DI from [0x002a] = 0x0116:0x00CC; bounds-checks\nBX against entry count at [di+4] (=5). Record stride is 0x3B bytes; DI =\n0x00CC + 0x3B*BX + 6. For BX=1 (observed): DI = 0x010D."
+    },
+    "0C45:218E": {
+      "label": "func_sbpcd_get_attn_status",
+      "comment": "Sends hardware cmd 0x81 (Get Attention/Drive Status) and reads the 1-byte result.\nWrites 0x81 to base+0, then polls base+1 bit 2 for busy=0 (up to 5×65536 loops).\nOn timeout returns CF=1. On success reads base+0 → AL, stores AL to [CS:0x0053],\nreturns CF=0. The result byte encodes drive state:\n  bit 3 (0x08) = drive ready / data disc present\n  bit 4 (0x10) = audio playing\n  bit 6 (0x40) = disc stable / not changed (bit clear = media changed)\n  bit 0 (0x01) = status-changed / ATN event (triggers geometry re-init at 0x0D33)\nCalled from the ATN handler at 0x0C56 after base+1 returned ATN=0x01."
+    },
+    "0C45:1AAE": {
+      "label": "func_sbpcd_read_disc_pos",
+      "comment": "Sends hardware cmd 0x8B (Read Disc Position/Mode, 6 result bytes) via\nfunc_sbpcd_issue_cmd_read (0x1FB7). On success processes the 6-byte result\nbuffer at [CS:0x9D]:\n  byte 0 → [CS:0x0075] (mode byte)\n  bytes 1-2 → [CS:0x003F/0x0040]\n  bytes 3-5 → [CS:0x0041] (AX), [CS:0x0043] (DX)\nThen executes `or byte [CS:0x2E], 0x10` to set bit 4 of the drive-init flags,\nreturns CF=0. On command failure returns CF=1 (AL=0xFF).\nCalled from 0x0CFA when [CS:0x002E] bit 4 is clear and [CS:0x0053] bit 0 is set."
+    },
+    "0C45:1FB7": {
+      "label": "func_sbpcd_issue_cmd_read",
+      "comment": "Top-level helper: sets up a result buffer pointer, sends the command bytes in\n[CS:0x0082]/[CS:0x0083] to the drive, then reads CX result bytes from base+0\ninto the buffer via func_sbpcd_read_result_loop (0x227D). The command byte\ncounts and buffer address are pre-configured by the caller in [CS:0x0082] and CX.\nReturns CF=0 on success, CF=1 on timeout."
+    },
+    "0C45:227D": {
+      "label": "func_sbpcd_read_result_loop",
+      "comment": "Reads CX result bytes from base+0 into ES:DI buffer. For each byte, polls\nbase+1 bit 2 for not-busy (up to 0x8000 loops); on timeout sets CF=1 and returns\nearly. On not-busy reads base+0 via `in al, dx` and stores with `stosb`.\nSpecial case: if [CS:0x0082]=0x84 or CX=0, returns immediately CF=0 (no data)."
+    }
+  },
+  "lineComments": {
+    "0019:507A 26 F6 45 06 80": "test bit 7 of request-record byte at offset 0x06; ZF=1 if clear",
+    "0019:71D5 C6 06 57 03 01": "set 'request in-progress' flag",
+    "0019:71DB A1 9E 05": "load offset of current request-header far ptr",
+    "0019:71DE A3 E6 05": "snapshot offset into saved-ptr slot [0x05e6]",
+    "0019:71E1 A1 A0 05": "load segment of current request-header far ptr",
+    "0019:71E4 A3 E8 05": "snapshot segment into saved-ptr slot [0x05e8]",
+    "0019:76FB 36 8C 1E 8C 05": "hardcode 0x0070 as output-buffer segment (lds-loaded segment is discarded)",
+    "0019:7722 26 F7 45 05 80 80": "test error/type bits 7 and 15 of request flags",
+    "0019:7768 03 06 2C 03": "AX = CX + prior output cursor → total items to transfer, returned to caller",
+    "0019:5050 2E 8B 1F": "load handler address from dispatch table: CS:[table_base + 1 + cmd*2]",
+    "0019:5053 89 5E 06": "overwrite saved return address in caller's frame → 'ret' jumps to error handler",
+    "0019:51AB 75 3B": "if func_poll_drive returned ZF=0 (driver error), exit polling loop with error in AL",
+    "0019:8424 2E 8A A7 C6 83": "look up command-type byte from table CS:0x83C6[AH]",
+    "0019:8458 8A 26 80 03": "driver response status: SBPCD.SYS writes this; bit 1 set = success, clear = not ready",
+    "0019:845E 80 E4 02": "ZF=1 (success) if bit 1 was set; ZF=0 → 'not ready', AL will be [0x03bc] error code",
+    "0019:8614 36 FF 1E 78 03": "call CD-ROM driver strategy routine (0x0070:0x06F5) — stores request block pointer",
+    "0019:8620 36 FF 1E 78 03": "call CD-ROM driver interrupt routine (0x0070:0x0700) — executes command, fills request block",
+    "0019:9056 36 F6 06 96 03 02": "bit 1 of Read Status result byte [0x0396]: 1 = drive ready (always set in this trace)",
+    "0019:90EC 74 BF": "success path (ZF=1, taken 83 times); once ZF=0 with AL=0x0D triggers 'not ready' exit",
+    "0019:9337 CD 24": "DOS Critical Error Handler: produces 'CDR101: Not ready reading drive D'",
+    "0019:A666 F6 E3": "BX×0x3B: offset into device record table (0x3B bytes per record)",
+    "0C45:0C52 A8 01": "ATN check: bit 0 of base+1 result; ZF=1 → no ATN → je 0x0C6D taken; ZF=0 → ATN → fall to 0x0C56 ATN handler (call func_sbpcd_get_attn_status, dispatch on bits 6/4 of result)",
+    "0C45:0C54 74 17": "skip ATN handler (0x0C56-0x0C6C): calls func_sbpcd_get_attn_status, re-reads [0x0053]; result bit 6=1→bit 4 check; bit 4=1→audio path (0x0C8A); bit 4=0→fall to 0x0C6D",
+    "0C45:0D23 2E F6 06 2E 00 04": "test drive-init flag [0x002e] bit 2 (set by 0x0D94 after cmd 0x88 geometry setup); if set → dispatch command; if clear → check [0x0053] bit 0",
+    "0C45:0D29 75 6F": "if [0x002e] bit 2 already set (drive previously initialized) → dispatch command directly",
+    "0C45:0D2B 2E F6 06 53 00 01": "fallback: if [0x0053] (cmd 0x81 result) bit 0 is CLEAR → also dispatch without re-init; bit 0 SET → fall to 0x0D33 geometry init path",
+    "0C45:0D31 74 67": "dispatch without geometry init (bit 0 clear = no disc-change event); bit 0 set triggers 0x0D33: cmd 0x88 → `or [0x002e],0x04` at 0x0D94",
+    "0C45:199F 2E F6 06 2E 00 04": "SECOND [0x002e] bit-2 check inside command handler: if clear (drive never initialized) → je 0x19BF → jmp 0x0DAE → error 0x81/0x02 (not ready); this is the actual failure point in the current trace",
+    "0C45:19A5 74 18": "if [0x002e] bit 2 not set → skip secondary checks → 0x19BF → not-ready error path",
+    "0C45:19BF E9 EC F3": "not-ready branch: → 0x0DAE (mov al,0x02; mov ah,0x81) → writes error status to request block → MSCDEX sees failure at 0019:8458"
+  }
+}

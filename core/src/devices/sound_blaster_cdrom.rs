@@ -57,6 +57,9 @@ pub struct SoundBlasterCdrom {
     pending_irq: bool,
     irq_enabled: bool,
     irq_line: u8,
+    // Panasonic ATN (attention) signal: bit 0 of base+1 asserted by drive after power-on
+    // or disc change to notify host of new status. Consumed on first base+1 read in Idle.
+    attention_pending: bool,
 }
 
 impl SoundBlasterCdrom {
@@ -66,6 +69,7 @@ impl SoundBlasterCdrom {
         // Leaving it true when no disc was given caused SBPCD.SYS to spin in a
         // "wait for tray to close" loop and report "NOT READY".
         let door_open = false;
+        let attention_pending = disc.is_some();
         Self {
             base_port,
             drive_selected: 0,
@@ -83,6 +87,7 @@ impl SoundBlasterCdrom {
             pending_irq: false,
             irq_enabled: true,
             irq_line,
+            attention_pending,
         }
     }
 
@@ -166,12 +171,16 @@ impl SoundBlasterCdrom {
                 self.state = CdromState::SendResult;
             }
 
-            // Get drive attention / ready status.
-            // MSCDEX polls this during initialization waiting for bit 3 (0x08 = drive ready /
-            // data disc) or bit 4 (0x10 = audio playing) to be set. Bit 3 is the data-ready
-            // path; always report it so the init loop can exit.
+            // Get drive attention / ready status (Panasonic attention poll).
+            // SBPCD polls this waiting for bit 3 (0x08 = drive ready / data disc) or bit 4
+            // (0x10 = audio playing). Bit 6 (0x40) means "disc stable / not changed" — SBPCD
+            // checks this in the IOCTL 0x09 "Return Media Changed" handler: bit 6 set → "not
+            // changed" (0x01), bit 6 clear → "changed" (0xFF). With disc: return 0x48 so the
+            // init loop exits (bit 3) and IOCTL 0x09 reports "not changed" (bit 6). Without
+            // disc: return 0x08 (ready, but disc absent/changed).
             0x81 => {
-                self.result_buf.push_back(0x08);
+                let result = if self.disc_present() { 0x08 | 0x40 } else { 0x08 };
+                self.result_buf.push_back(result);
                 self.state = CdromState::SendResult;
             }
 
@@ -426,6 +435,7 @@ impl Device for SoundBlasterCdrom {
         self.read_sector_pos = 2048;
         self.error = false;
         self.pending_irq = false;
+        self.attention_pending = false;
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -464,11 +474,20 @@ impl Device for SoundBlasterCdrom {
             }
             // base+1: busy flag (bit 2) while processing; sector data bytes once streaming.
             // SBPCD.SYS polls this register: bit 2=1 → busy, bit 2=0 → result ready at base+0.
+            // Bit 0 = Panasonic ATN (attention): drive has unsolicited status to report.
+            // SBPCD checks this on every command dispatch; if set it takes the attention path
+            // (gap 0C45:0C56) which reads drive status and updates internal flags like [0x002e].
             1 => {
                 let byte = match self.state {
                     CdromState::RecvParams(_) | CdromState::Execute => 0x04, // bit 2: busy
                     CdromState::StreamSector if self.result_buf.is_empty() => {
                         self.stream_read_byte()
+                    }
+                    CdromState::Idle if self.attention_pending => {
+                        // Assert ATN once; cleared after host reads it so it fires only once
+                        // per disc insertion / power-on cycle.
+                        self.attention_pending = false;
+                        0x01
                     }
                     _ => 0x00, // bit 2 clear: result ready / idle
                 };
@@ -543,6 +562,8 @@ impl CdromController for SoundBlasterCdrom {
         // Reset command state so driver can detect the new disc
         self.state = CdromState::Idle;
         self.result_buf.clear();
+        // Assert ATN so SBPCD picks up new disc status on next dispatch
+        self.attention_pending = true;
     }
 
     fn eject_disc(&mut self) {
@@ -551,6 +572,7 @@ impl CdromController for SoundBlasterCdrom {
         self.state = CdromState::Idle;
         self.result_buf.clear();
         self.read_remaining = 0;
+        self.attention_pending = false;
     }
 
     fn take_pending_irq(&mut self) -> bool {
