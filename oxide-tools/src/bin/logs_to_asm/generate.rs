@@ -257,3 +257,330 @@ pub fn generate<W: Write>(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use std::collections::{BTreeSet, HashMap};
+
+    use super::*;
+    use crate::config::{Config, LabelEntry};
+    use crate::parse::ParseResult;
+
+    /// Build a `ParseResult` from a slice of `(addr, bytes, disasm, count, val)` tuples.
+    /// `val = Some("AX=0001")` → consistent value; `val = None` → value varies.
+    fn make_result(
+        instructions: &[(&str, &str, &str, u64, Option<&str>)],
+        call_targets: Vec<&str>,
+        jump_targets: Vec<&str>,
+        int_handlers: Vec<(&str, u32)>,
+    ) -> ParseResult {
+        let mut counts: HashMap<Key, u64> = HashMap::new();
+        let mut info: HashMap<Key, String> = HashMap::new();
+        let mut values: HashMap<Key, Option<String>> = HashMap::new();
+        for &(addr, bytes, disasm, count, val) in instructions {
+            let key: Key = (addr.to_string(), bytes.to_string());
+            counts.insert(key.clone(), count);
+            info.insert(key.clone(), disasm.to_string());
+            values.insert(key, val.map(str::to_string));
+        }
+        let mut ih: HashMap<String, BTreeSet<u32>> = HashMap::new();
+        for (addr, n) in int_handlers {
+            ih.entry(addr.to_string()).or_default().insert(n);
+        }
+        ParseResult {
+            counts,
+            info,
+            values,
+            call_targets: call_targets.into_iter().map(String::from).collect(),
+            jump_targets: jump_targets.into_iter().map(String::from).collect(),
+            int_handlers: ih,
+        }
+    }
+
+    fn run(result: &ParseResult, config: &Config, threshold: u64) -> String {
+        let mut buf = Vec::new();
+        generate(&mut buf, result, config, threshold).unwrap();
+        String::from_utf8(buf).unwrap()
+    }
+
+    #[test]
+    fn test_basic_format() {
+        let result = make_result(
+            &[("0019:423F", "55", "push bp", 3, None)],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(out.contains("push bp"), "disasm");
+        assert!(out.contains("0019:423F"), "addr");
+        assert!(out.contains("55"), "bytecode");
+        assert!(out.contains("3"), "count");
+        assert!(!out.contains("[HOT]"), "should not be HOT");
+    }
+
+    #[test]
+    fn test_hot_at_threshold() {
+        let result = make_result(
+            &[("0019:0000", "90", "nop", 1000, None)],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(out.contains("[HOT]"));
+    }
+
+    #[test]
+    fn test_not_hot_below_threshold() {
+        let result = make_result(
+            &[("0019:0000", "90", "nop", 999, None)],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(!out.contains("[HOT]"));
+    }
+
+    #[test]
+    fn test_gap_detected() {
+        let result = make_result(
+            &[
+                ("0019:0000", "55", "push bp", 1, None), // 1 byte → ends at 0001
+                ("0019:0005", "5D", "pop bp", 1, None),  // gap: 0001..0005 = 4 bytes
+            ],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(out.contains("; gap 0019:0001 - 0019:0005 (4 bytes)"));
+    }
+
+    #[test]
+    fn test_no_gap_when_consecutive() {
+        let result = make_result(
+            &[
+                ("0019:0000", "55", "push bp", 1, None), // 1 byte → ends at 0001
+                ("0019:0001", "5D", "pop bp", 1, None),  // consecutive
+            ],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(!out.contains("; gap"));
+    }
+
+    #[test]
+    fn test_gap_with_annotation() {
+        let result = make_result(
+            &[
+                ("0019:0000", "55", "push bp", 1, None),
+                ("0019:0005", "5D", "pop bp", 1, None),
+            ],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let mut config = Config::default();
+        config
+            .gaps
+            .insert("0019:0001".to_string(), "unused error path".to_string());
+        let out = run(&result, &config, 1000);
+        assert!(out.contains("unused error path"));
+    }
+
+    #[test]
+    fn test_call_target_auto_label() {
+        let result = make_result(
+            &[("0019:0010", "55", "push bp", 1, None)],
+            vec!["0019:0010"],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(out.contains("func_0019_0010:"));
+    }
+
+    #[test]
+    fn test_custom_function_label() {
+        let result = make_result(
+            &[("0019:0010", "55", "push bp", 1, None)],
+            vec!["0019:0010"],
+            vec![],
+            vec![],
+        );
+        let mut config = Config::default();
+        config.functions.insert(
+            "0019:0010".to_string(),
+            LabelEntry {
+                label: Some("my_func".to_string()),
+                comment: None,
+            },
+        );
+        let out = run(&result, &config, 1000);
+        assert!(out.contains("my_func:   ; 0019:0010"));
+        assert!(!out.contains("func_0019_0010:"));
+    }
+
+    #[test]
+    fn test_function_comment_block() {
+        let result = make_result(
+            &[("0019:0010", "55", "push bp", 1, None)],
+            vec!["0019:0010"],
+            vec![],
+            vec![],
+        );
+        let mut config = Config::default();
+        config.functions.insert(
+            "0019:0010".to_string(),
+            LabelEntry {
+                label: Some("my_func".to_string()),
+                comment: Some("Does something useful".to_string()),
+            },
+        );
+        let out = run(&result, &config, 1000);
+        assert!(out.contains("; Does something useful"));
+    }
+
+    #[test]
+    fn test_jump_target_auto_label() {
+        let result = make_result(
+            &[("0019:0020", "90", "nop", 1, None)],
+            vec![],
+            vec!["0019:0020"],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(out.contains("lbl_0019_0020:"));
+    }
+
+    #[test]
+    fn test_jump_target_that_is_also_call_target_uses_func_label() {
+        let result = make_result(
+            &[("0019:0020", "90", "nop", 1, None)],
+            vec!["0019:0020"],
+            vec!["0019:0020"],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(out.contains("func_0019_0020:"));
+        assert!(!out.contains("lbl_0019_0020:"));
+    }
+
+    #[test]
+    fn test_int_handler_label() {
+        let result = make_result(
+            &[("0070:1234", "50", "push ax", 1, None)],
+            vec![],
+            vec![],
+            vec![("0070:1234", 0x21)],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(out.contains("int_21h:"));
+    }
+
+    #[test]
+    fn test_call_near_inline_annotation() {
+        let result = make_result(
+            &[
+                ("0019:0000", "E8 0E 00", "call 0x0010", 1, None),
+                ("0019:0010", "55", "push bp", 1, None),
+            ],
+            vec!["0019:0010"],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        let call_line = out.lines().find(|l| l.contains("call 0x0010")).unwrap();
+        assert!(
+            call_line.contains("func_0019_0010"),
+            "inline label missing: {call_line}"
+        );
+    }
+
+    #[test]
+    fn test_jmp_near_inline_annotation() {
+        let result = make_result(
+            &[
+                ("0019:0000", "EB 0E", "jmp 0x0010", 1, None),
+                ("0019:0010", "90", "nop", 1, None),
+            ],
+            vec![],
+            vec!["0019:0010"],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        let jmp_line = out.lines().find(|l| l.contains("jmp 0x0010")).unwrap();
+        assert!(
+            jmp_line.contains("lbl_0019_0010"),
+            "inline label missing: {jmp_line}"
+        );
+    }
+
+    #[test]
+    fn test_line_comment() {
+        let result = make_result(
+            &[("0019:0042", "3C 6C", "cmp al, 0x6c", 1, None)],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let mut config = Config::default();
+        config
+            .line_comments
+            .insert("0019:0042".to_string(), "compare end-of-line".to_string());
+        let out = run(&result, &config, 1000);
+        assert!(out.contains("; compare end-of-line"));
+        let comment_pos = out.find("; compare end-of-line").unwrap();
+        let instr_pos = out.find("cmp al, 0x6c").unwrap();
+        assert!(
+            comment_pos < instr_pos,
+            "comment should precede instruction"
+        );
+    }
+
+    #[test]
+    fn test_mem_label() {
+        let result = make_result(
+            &[("0019:0042", "A0 82 00", "mov al, [0x0082]", 1, None)],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let mut config = Config::default();
+        config
+            .mem_labels
+            .insert("0019:0082".to_string(), "cmd_code".to_string());
+        let out = run(&result, &config, 1000);
+        let line = out.lines().find(|l| l.contains("mov al")).unwrap();
+        assert!(line.contains("cmd_code"), "mem label missing: {line}");
+    }
+
+    #[test]
+    fn test_value_column_shown() {
+        let result = make_result(
+            &[("0019:0000", "90", "nop", 1, Some("AX=0001"))],
+            vec![],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        assert!(out.contains("[AX=0001]"));
+    }
+
+    #[test]
+    fn test_value_varies_not_shown() {
+        let result = make_result(
+            &[("0019:0000", "90", "nop", 2, None)], // None = varies
+            vec![],
+            vec![],
+            vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        let line = out.lines().find(|l| l.contains("nop")).unwrap();
+        assert!(!line.contains('['), "no value column expected: {line}");
+    }
+}
