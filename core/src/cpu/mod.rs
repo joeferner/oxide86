@@ -1352,7 +1352,7 @@ impl Cpu {
             // can clear its in_service bit and deliver future IRQs on the same line.
             // Without EOI, in_service stays set and the PIC silently drops all subsequent IRQs
             // on that line — e.g. IRQ5 (INT 0x0D, CD-ROM) before SBPCD.SYS installs its handler.
-            0x0A | 0x0B | 0x0C | 0x0D | 0x0E | 0x0F => {
+            0x0A..=0x0F => {
                 log::debug!("BIOS default handler for hardware IRQ 0x{irq:02X}: sending EOI");
                 bus.io_write_u8(
                     crate::devices::pic::PIC_IO_PORT_COMMAND,

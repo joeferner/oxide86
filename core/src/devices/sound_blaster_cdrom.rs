@@ -179,7 +179,11 @@ impl SoundBlasterCdrom {
             // init loop exits (bit 3) and IOCTL 0x09 reports "not changed" (bit 6). Without
             // disc: return 0x08 (ready, but disc absent/changed).
             0x81 => {
-                let result = if self.disc_present() { 0x08 | 0x40 } else { 0x08 };
+                let result = if self.disc_present() {
+                    0x08 | 0x40
+                } else {
+                    0x08
+                };
                 self.result_buf.push_back(result);
                 self.state = CdromState::SendResult;
             }
@@ -466,10 +470,7 @@ impl Device for SoundBlasterCdrom {
                     }
                     _ => self.status_byte(),
                 };
-                log::debug!(
-                    "SbCd R base+0 val=0x{byte:02X} state={:?}",
-                    self.state
-                );
+                log::debug!("SbCd R base+0 val=0x{byte:02X} state={:?}", self.state);
                 Some(byte)
             }
             // base+1: busy flag (bit 2) while processing; sector data bytes once streaming.
@@ -511,18 +512,12 @@ impl Device for SoundBlasterCdrom {
         let offset = port.wrapping_sub(self.base_port);
         match offset {
             0 => {
-                log::debug!(
-                    "SbCd W base+0 val=0x{val:02X} state={:?}",
-                    self.state
-                );
+                log::debug!("SbCd W base+0 val=0x{val:02X} state={:?}", self.state);
                 self.handle_write_base0(val);
                 true
             }
             1 => {
-                log::debug!(
-                    "SbCd W base+1 val=0x{val:02X} state={:?}",
-                    self.state
-                );
+                log::debug!("SbCd W base+1 val=0x{val:02X} state={:?}", self.state);
                 // Alternate param byte write (variant) — treat same as base+0 param
                 if let CdromState::RecvParams(remaining) = self.state {
                     self.params.push(val);

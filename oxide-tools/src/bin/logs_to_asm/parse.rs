@@ -94,7 +94,9 @@ impl ParseState {
         let key: Key = (addr.clone(), bytecode.clone());
 
         *self.counts.entry(key.clone()).or_insert(0) += 1;
-        self.info.entry(key.clone()).or_insert_with(|| disasm.clone());
+        self.info
+            .entry(key.clone())
+            .or_insert_with(|| disasm.clone());
 
         // Track whether the register-annotation value is consistent across runs.
         match self.values.get(&key) {
@@ -109,13 +111,16 @@ impl ParseState {
 
         // If the previous instruction was `int NN`, the next instruction logged
         // from a different segment is the handler entry point.
-        if let Some(PendingInt { int_num, caller_seg }) = self.pending_int.take() {
-            if &addr[..4] != caller_seg.as_str() {
-                self.int_handlers
-                    .entry(addr.clone())
-                    .or_default()
-                    .insert(int_num);
-            }
+        if let Some(PendingInt {
+            int_num,
+            caller_seg,
+        }) = self.pending_int.take()
+            && &addr[..4] != caller_seg.as_str()
+        {
+            self.int_handlers
+                .entry(addr.clone())
+                .or_default()
+                .insert(int_num);
         }
 
         let seg = addr[..4].to_string();
@@ -133,7 +138,10 @@ impl ParseState {
         }
         if let Some(cap) = self.pat.int_re.captures(&disasm) {
             let int_num = u32::from_str_radix(&cap[1][2..], 16)?;
-            self.pending_int = Some(PendingInt { int_num, caller_seg: seg });
+            self.pending_int = Some(PendingInt {
+                int_num,
+                caller_seg: seg,
+            });
             return Ok(());
         }
         if let Some(cap) = self.pat.jmp_near_re.captures(&disasm) {
@@ -150,7 +158,7 @@ impl ParseState {
         Ok(())
     }
 
-    fn to_parse_result(self) -> ParseResult {
+    fn into_parse_result(self) -> ParseResult {
         ParseResult {
             counts: self.counts,
             info: self.info,
@@ -170,9 +178,8 @@ pub fn parse_log(path: &PathBuf) -> Result<ParseResult> {
         state.add_line(&line?)?;
     }
 
-    Ok(state.to_parse_result())
+    Ok(state.into_parse_result())
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -198,7 +205,9 @@ mod tests {
     #[test]
     fn test_plain_instruction_count_and_info() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:423F", "55", "push bp", None)).unwrap();
+        state
+            .add_line(&make_line("0019:423F", "55", "push bp", None))
+            .unwrap();
         let key = ("0019:423F".to_string(), "55".to_string());
         assert_eq!(state.counts[&key], 1);
         assert_eq!(state.info[&key], "push bp");
@@ -227,8 +236,12 @@ mod tests {
     #[test]
     fn test_value_varies() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:423F", "55", "push bp", Some("AX=0001"))).unwrap();
-        state.add_line(&make_line("0019:423F", "55", "push bp", Some("AX=0002"))).unwrap();
+        state
+            .add_line(&make_line("0019:423F", "55", "push bp", Some("AX=0001")))
+            .unwrap();
+        state
+            .add_line(&make_line("0019:423F", "55", "push bp", Some("AX=0002")))
+            .unwrap();
         let key = ("0019:423F".to_string(), "55".to_string());
         assert_eq!(state.values[&key], None);
     }
@@ -236,7 +249,9 @@ mod tests {
     #[test]
     fn test_call_near() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:43E4", "E8 8E FE", "call 0x423f", None)).unwrap();
+        state
+            .add_line(&make_line("0019:43E4", "E8 8E FE", "call 0x423f", None))
+            .unwrap();
         assert!(state.call_targets.contains("0019:423F"));
         assert!(state.jump_targets.is_empty());
     }
@@ -244,7 +259,14 @@ mod tests {
     #[test]
     fn test_call_far() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:43E4", "9A 00 00 50 00", "call far 0x0050, 0x0000", None)).unwrap();
+        state
+            .add_line(&make_line(
+                "0019:43E4",
+                "9A 00 00 50 00",
+                "call far 0x0050, 0x0000",
+                None,
+            ))
+            .unwrap();
         assert!(state.call_targets.contains("0050:0000"));
         assert!(state.jump_targets.is_empty());
     }
@@ -252,8 +274,13 @@ mod tests {
     #[test]
     fn test_int_sets_pending() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:40EC", "CD 21", "int 0x21", None)).unwrap();
-        let p = state.pending_int.as_ref().expect("pending_int should be set");
+        state
+            .add_line(&make_line("0019:40EC", "CD 21", "int 0x21", None))
+            .unwrap();
+        let p = state
+            .pending_int
+            .as_ref()
+            .expect("pending_int should be set");
         assert_eq!(p.int_num, 0x21);
         assert_eq!(p.caller_seg, "0019");
     }
@@ -261,23 +288,33 @@ mod tests {
     #[test]
     fn test_int_handler_detected() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:40EC", "CD 21", "int 0x21", None)).unwrap();
-        state.add_line(&make_line("0070:1234", "50", "push ax", None)).unwrap();
+        state
+            .add_line(&make_line("0019:40EC", "CD 21", "int 0x21", None))
+            .unwrap();
+        state
+            .add_line(&make_line("0070:1234", "50", "push ax", None))
+            .unwrap();
         assert!(state.int_handlers["0070:1234"].contains(&0x21));
     }
 
     #[test]
     fn test_int_same_segment_no_handler() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:40EC", "CD 21", "int 0x21", None)).unwrap();
-        state.add_line(&make_line("0019:40EE", "90", "nop", None)).unwrap();
+        state
+            .add_line(&make_line("0019:40EC", "CD 21", "int 0x21", None))
+            .unwrap();
+        state
+            .add_line(&make_line("0019:40EE", "90", "nop", None))
+            .unwrap();
         assert!(state.int_handlers.is_empty());
     }
 
     #[test]
     fn test_jmp_near_conditional() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:42FA", "75 04", "jne 0x4300", None)).unwrap();
+        state
+            .add_line(&make_line("0019:42FA", "75 04", "jne 0x4300", None))
+            .unwrap();
         assert!(state.jump_targets.contains("0019:4300"));
         assert!(state.call_targets.is_empty());
     }
@@ -285,28 +322,41 @@ mod tests {
     #[test]
     fn test_jmp_near_short() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:42FA", "EB 04", "jmp short 0x4300", None)).unwrap();
+        state
+            .add_line(&make_line("0019:42FA", "EB 04", "jmp short 0x4300", None))
+            .unwrap();
         assert!(state.jump_targets.contains("0019:4300"));
     }
 
     #[test]
     fn test_jmp_near_loop() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:42FA", "E2 FC", "loop 0x42f8", None)).unwrap();
+        state
+            .add_line(&make_line("0019:42FA", "E2 FC", "loop 0x42f8", None))
+            .unwrap();
         assert!(state.jump_targets.contains("0019:42F8"));
     }
 
     #[test]
     fn test_jmp_near_jcxz() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:42FA", "E3 04", "jcxz 0x4300", None)).unwrap();
+        state
+            .add_line(&make_line("0019:42FA", "E3 04", "jcxz 0x4300", None))
+            .unwrap();
         assert!(state.jump_targets.contains("0019:4300"));
     }
 
     #[test]
     fn test_jmp_far() {
         let mut state = ParseState::new();
-        state.add_line(&make_line("0019:43E4", "EA 00 10 20 00", "jmp far 0x0020, 0x1000", None)).unwrap();
+        state
+            .add_line(&make_line(
+                "0019:43E4",
+                "EA 00 10 20 00",
+                "jmp far 0x0020, 0x1000",
+                None,
+            ))
+            .unwrap();
         assert!(state.jump_targets.contains("0020:1000"));
         assert!(state.call_targets.is_empty());
     }
