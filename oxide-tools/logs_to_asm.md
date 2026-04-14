@@ -12,6 +12,7 @@ Arguments:
 - `--log-file` — defaults to `oxide86.log`
 - `--out` — required; path to write the output file
 - `--config` — optional JSON config file for annotations
+- `--hot-threshold` — execution count at or above which an instruction is flagged `[HOT]`; defaults to `1000`
 
 ## Output format
 
@@ -22,6 +23,11 @@ Arguments:
 - 3-space indent
 - disassembly left-aligned in a 24-char column
 - `; <count> -- <SEG:OFF> <bytes>`
+- instructions at or above `--hot-threshold` executions are marked `[HOT]` immediately after the count:
+
+```
+   in al, dx               ; 402735 [HOT] -- 0C45:22F6 EC
+```
 
 ### Labels
 
@@ -94,6 +100,23 @@ Jump instructions (`jmp`, `jcc`, etc.) that target a `retf_targets` address are 
 
 Keyed by `"SEG:OFF"`. Inserts a comment line immediately before the instruction.
 
+### `gaps`
+
+Keyed by `"SEG:OFF"` of the gap's start address. Appends an annotation to the `; gap` line that appears between executed blocks:
+
+```
+   ; gap 0C45:2B79 - 0C45:2B80 (7 bytes) remaining 7 bytes of 8-byte OEM ID comparison loop
+```
+
+### `memLabels`
+
+Keyed by `"SEG:OFF"`. Names a well-known memory address so that instructions containing a direct `[0xNNNN]` reference to that offset (within the same segment) are annotated inline:
+
+```
+   mov [0x0082], 0x83    ;    1 -- 0C45:21A0 C6 06 82 00 83  cmd_code  
+   mov dx, [0x0076]      ;    3 -- 0C45:21C4 8B 16 76 00     base_port  
+```
+
 ### Example
 
 ```json
@@ -125,6 +148,13 @@ Keyed by `"SEG:OFF"`. Inserts a comment line immediately before the instruction.
   "lineComments": {
     "0019:40EC": "compare screen offset",
     "0019:40EF": "jump if at end of line"
+  },
+  "gaps": {
+    "0019:4310": "unreachable error path"
+  },
+  "memLabels": {
+    "0019:0082": "cmd_code",
+    "0019:0076": "base_port"
   }
 }
 ```
@@ -209,33 +239,3 @@ Driver data (strings, tables, signature bytes) lives at addresses never executed
 
 Instructions that load these addresses into DX/SI/DI would then show the label name in their comment, making `mov dx, 0x2962` immediately readable as `; str_not_ready`.
 
-### Hot-loop flagging
-
-Instructions with an execution count above a configurable threshold (e.g., 10× the median) could be marked with a `[HOT]` tag or printed with a different prefix. During this session the busy-wait loop at `0C45:22F6` executed 402,735 times — it stood out visually but an automatic flag would have surfaced it immediately as a delay/spin loop.
-
-### Gap content hints
-
-When a gap exists between two executed blocks, the tool currently shows only the byte count. A `gaps` config section would let you annotate what's in there without having to disassemble the binary separately:
-
-```json
-"gaps": {
-  "0C45:2B79": "remaining 7 bytes of 8-byte OEM ID comparison loop",
-  "0C45:2D50": "success path: inc bh (MKE-verified drive count)"
-}
-```
-
-This is especially useful when the gap contains a path that is currently unreachable in the log (e.g., a success branch that can only be hit after fixing an emulator bug) but whose purpose is inferrable from context.
-
-### Memory address labels
-
-Instructions that load or compare specific memory offsets (e.g., `cmp [si], 0x55AA` where SI=0x009D) would benefit from a `memLabels` section that names well-known offsets within a segment:
-
-```json
-"memLabels": {
-  "0C45:0082": "cmd_code",
-  "0C45:009D": "response_buf",
-  "0C45:0076": "base_port"
-}
-```
-
-References such as `mov [0x0082], 0x83` and `mov dx, [0x0076]` would then annotate inline, removing the need to repeatedly look up what each offset means.

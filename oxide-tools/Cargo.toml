@@ -5,7 +5,7 @@ edition = "2024"
 
 [[bin]]
 name = "logs-to-asm"
-path = "src/bin/logs_to_asm.rs"
+path = "src/bin/logs_to_asm/main.rs"
 
 [dependencies]
 oxide86-core = { path = "../core" }

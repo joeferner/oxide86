@@ -1,10 +1,13 @@
-use std::collections::{BTreeSet, HashMap, HashSet};
+mod parse;
+
+use std::collections::HashMap;
 use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter, Write};
+use std::io::{BufWriter, Write};
 use std::path::PathBuf;
 
 use anyhow::{Context, Result};
 use clap::Parser;
+use parse::{Key, ParseResult, Patterns, parse_log};
 use regex::Regex;
 use serde_json::Value;
 
@@ -25,6 +28,10 @@ struct Args {
     /// Output file path
     #[arg(long, short)]
     out: PathBuf,
+
+    /// Mark instructions executed at least this many times with [HOT]
+    #[arg(long, default_value_t = 1000)]
+    hot_threshold: u64,
 }
 
 /// A named label with optional comment block, from the config file.
@@ -40,139 +47,8 @@ struct Config {
     labels: HashMap<String, LabelEntry>,
     line_comments: HashMap<String, String>, // addr -> comment text
     retf_targets: HashMap<String, LabelEntry>,
-}
-
-/// (addr "SSSS:OOOO", bytecode "BB BB ...")
-type Key = (String, String);
-
-struct ParseResult {
-    counts: HashMap<Key, u64>,
-    info: HashMap<Key, String>,           // key -> disasm string
-    values: HashMap<Key, Option<String>>, // None = varies across executions
-    call_targets: HashSet<String>,
-    jump_targets: HashSet<String>,
-    int_handlers: HashMap<String, BTreeSet<u32>>, // addr -> set of int numbers
-}
-
-struct Patterns {
-    log_re: Regex,
-    call_near_re: Regex,
-    call_far_re: Regex,
-    int_re: Regex,
-    jmp_near_re: Regex,
-    jmp_far_re: Regex,
-}
-
-impl Patterns {
-    fn new() -> Self {
-        Self {
-            log_re: Regex::new(
-                r"\] ([0-9A-Fa-f]{4}:[0-9A-Fa-f]{4}) ((?:[0-9A-Fa-f]{2} )*[0-9A-Fa-f]{2})\s+(.*?)(?:\s{2,}(.*))?$"
-            ).unwrap(),
-            call_near_re: Regex::new(r"^call\s+(0x[0-9a-fA-F]+)$").unwrap(),
-            call_far_re: Regex::new(
-                r"^call\s+far\s+(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+)$"
-            ).unwrap(),
-            int_re: Regex::new(r"^int\s+(0x[0-9a-fA-F]+)$").unwrap(),
-            jmp_near_re: Regex::new(
-                r"^(jmp(?:\s+(?:short|near))?|j[a-z]+|loop[a-z]*|jcxz)\s+(0x[0-9a-fA-F]+)$"
-            ).unwrap(),
-            jmp_far_re: Regex::new(
-                r"^jmp\s+far\s+(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+)$"
-            ).unwrap(),
-        }
-    }
-}
-
-fn parse_log(path: &PathBuf) -> Result<ParseResult> {
-    let pat = Patterns::new();
-
-    let mut counts: HashMap<Key, u64> = HashMap::new();
-    let mut info: HashMap<Key, String> = HashMap::new();
-    let mut values: HashMap<Key, Option<String>> = HashMap::new();
-    let mut call_targets: HashSet<String> = HashSet::new();
-    let mut jump_targets: HashSet<String> = HashSet::new();
-    let mut int_handlers: HashMap<String, BTreeSet<u32>> = HashMap::new();
-    let mut pending_int: Option<(u32, String)> = None; // (int_num, caller_seg)
-
-    let file = File::open(path).with_context(|| format!("opening {}", path.display()))?;
-    for line in BufReader::new(file).lines() {
-        let line = line?;
-        let caps = match pat.log_re.captures(&line) {
-            Some(c) => c,
-            None => continue,
-        };
-
-        let addr = caps[1].to_uppercase();
-        let bytecode = caps[2].trim_end().to_string();
-        let disasm = caps[3].trim().to_string();
-        let val = caps
-            .get(4)
-            .map(|m| m.as_str().trim().to_string())
-            .unwrap_or_default();
-        let key: Key = (addr.clone(), bytecode.clone());
-
-        *counts.entry(key.clone()).or_insert(0) += 1;
-        info.entry(key.clone()).or_insert_with(|| disasm.clone());
-
-        // Track whether the register-annotation value is consistent across runs.
-        match values.get(&key) {
-            None => {
-                values.insert(key.clone(), Some(val.clone()));
-            }
-            Some(Some(existing)) if existing != &val => {
-                values.insert(key.clone(), None); // varies
-            }
-            _ => {}
-        }
-
-        // If the previous instruction was `int NN`, the next instruction logged
-        // from a different segment is the handler entry point.
-        let old_pending = pending_int.take();
-        if let Some((int_num, int_seg)) = old_pending {
-            if &addr[..4] != int_seg.as_str() {
-                int_handlers.entry(addr.clone()).or_default().insert(int_num);
-            }
-        }
-
-        let seg = addr[..4].to_string();
-
-        if let Some(cap) = pat.call_near_re.captures(&disasm) {
-            let off = u32::from_str_radix(&cap[1][2..], 16)?;
-            call_targets.insert(format!("{seg}:{off:04X}"));
-            continue;
-        }
-        if let Some(cap) = pat.call_far_re.captures(&disasm) {
-            let tseg = u32::from_str_radix(&cap[1][2..], 16)?;
-            let toff = u32::from_str_radix(&cap[2][2..], 16)?;
-            call_targets.insert(format!("{tseg:04X}:{toff:04X}"));
-            continue;
-        }
-        if let Some(cap) = pat.int_re.captures(&disasm) {
-            let int_num = u32::from_str_radix(&cap[1][2..], 16)?;
-            pending_int = Some((int_num, seg));
-            continue;
-        }
-        if let Some(cap) = pat.jmp_near_re.captures(&disasm) {
-            let off = u32::from_str_radix(&cap[2][2..], 16)?;
-            jump_targets.insert(format!("{seg}:{off:04X}"));
-            continue;
-        }
-        if let Some(cap) = pat.jmp_far_re.captures(&disasm) {
-            let tseg = u32::from_str_radix(&cap[1][2..], 16)?;
-            let toff = u32::from_str_radix(&cap[2][2..], 16)?;
-            jump_targets.insert(format!("{tseg:04X}:{toff:04X}"));
-        }
-    }
-
-    Ok(ParseResult {
-        counts,
-        info,
-        values,
-        call_targets,
-        jump_targets,
-        int_handlers,
-    })
+    gaps: HashMap<String, String>,       // gap-start addr -> annotation text
+    mem_labels: HashMap<String, String>, // addr -> label name
 }
 
 fn parse_label_entry(v: &Value) -> LabelEntry {
@@ -204,21 +80,24 @@ fn load_config(path: &PathBuf) -> Result<Config> {
             .unwrap_or_default()
     };
 
-    let line_comments = data
-        .get("lineComments")
-        .and_then(Value::as_object)
-        .map(|m| {
-            m.iter()
-                .map(|(k, v)| (k.to_uppercase(), v.as_str().unwrap_or("").to_string()))
-                .collect()
-        })
-        .unwrap_or_default();
+    let str_map = |key: &str| -> HashMap<String, String> {
+        data.get(key)
+            .and_then(Value::as_object)
+            .map(|m| {
+                m.iter()
+                    .map(|(k, v)| (k.to_uppercase(), v.as_str().unwrap_or("").to_string()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
 
     Ok(Config {
         functions: parse_entry_map("functions"),
         labels: parse_entry_map("labels"),
-        line_comments,
+        line_comments: str_map("lineComments"),
         retf_targets: parse_entry_map("retf_targets"),
+        gaps: str_map("gaps"),
+        mem_labels: str_map("memLabels"),
     })
 }
 
@@ -264,7 +143,7 @@ fn func_label_for(
 /// Return the label string for a jump target address (func_ if also a call/retf target, else lbl_).
 fn jump_label_for(
     addr: &str,
-    call_targets: &HashSet<String>,
+    call_targets: &std::collections::HashSet<String>,
     retf_targets: &HashMap<String, LabelEntry>,
     functions: &HashMap<String, LabelEntry>,
     labels: &HashMap<String, LabelEntry>,
@@ -281,30 +160,8 @@ fn jump_label_for(
     }
 }
 
-fn main() -> Result<()> {
-    let args = Args::parse();
-
-    let ParseResult {
-        counts,
-        info,
-        values,
-        call_targets,
-        jump_targets,
-        int_handlers,
-    } = parse_log(&args.log_file)?;
-
-    let Config {
-        functions,
-        labels,
-        line_comments,
-        retf_targets,
-    } = match &args.config {
-        Some(p) => load_config(p)?,
-        None => Config::default(),
-    };
-
-    // Sort by (seg_str, off_u32, bytecode_str) — same order as the Python script.
-    let mut keys: Vec<Key> = counts.keys().cloned().collect();
+fn sorted_keys(result: &ParseResult) -> Vec<Key> {
+    let mut keys: Vec<Key> = result.counts.keys().cloned().collect();
     keys.sort_by(|(a_addr, a_bc), (b_addr, b_bc)| {
         let a_off = u32::from_str_radix(&a_addr[5..], 16).unwrap_or(0);
         let b_off = u32::from_str_radix(&b_addr[5..], 16).unwrap_or(0);
@@ -313,28 +170,26 @@ fn main() -> Result<()> {
             .then(a_off.cmp(&b_off))
             .then(a_bc.cmp(b_bc))
     });
+    keys
+}
 
-    let mut out = BufWriter::new(
-        File::create(&args.out)
-            .with_context(|| format!("creating output file {}", args.out.display()))?,
-    );
-
-    writeln!(out, "; Generated by oxide86-tools logs-to-asm")?;
-    writeln!(out, "; Additional information can be found in scripts/logs_to_asm.md")?;
-    writeln!(out, "; Log: {}", args.log_file.display())?;
-    if let Some(cfg) = &args.config {
-        writeln!(out, "; Config: {}", cfg.display())?;
-    }
-    writeln!(out)?;
-
+fn generate<W: Write>(
+    out: &mut W,
+    result: &ParseResult,
+    config: &Config,
+    hot_threshold: u64,
+) -> Result<()> {
     let pat = Patterns::new();
+    // Matches a direct memory operand like [0x0082] or es:[0x0082]
+    let mem_ref_re = Regex::new(r"\[0x([0-9a-fA-F]{1,4})\]").unwrap();
+
     let mut prev_seg: Option<String> = None;
     let mut prev_end_off: Option<u32> = None;
 
-    for key in &keys {
+    for key in &sorted_keys(result) {
         let (addr, bytecode) = key;
-        let disasm = &info[key];
-        let count = counts[key];
+        let disasm = &result.info[key];
+        let count = result.counts[key];
 
         let seg = &addr[..4];
         let off_str = &addr[5..];
@@ -345,9 +200,15 @@ fn main() -> Result<()> {
         if prev_seg.as_deref() == Some(seg) {
             if let Some(end) = prev_end_off {
                 if cur_off > end {
+                    let gap_key = format!("{seg}:{end:04X}");
+                    let annotation = config
+                        .gaps
+                        .get(&gap_key)
+                        .map(|s| format!(" {s}"))
+                        .unwrap_or_default();
                     writeln!(
                         out,
-                        "   ; gap {seg}:{end:04X} - {seg}:{cur_off:04X} ({} bytes)",
+                        "   ; gap {seg}:{end:04X} - {seg}:{cur_off:04X} ({} bytes){annotation}",
                         cur_off - end
                     )?;
                 }
@@ -361,17 +222,20 @@ fn main() -> Result<()> {
         }
 
         // Interrupt handler labels
-        if let Some(ints) = int_handlers.get(addr.as_str()) {
+        if let Some(ints) = result.int_handlers.get(addr.as_str()) {
             for n in ints {
                 writeln!(out, "\nint_{n:02x}h:")?;
             }
         }
 
         // Function / jump target labels
-        if call_targets.contains(addr.as_str()) || retf_targets.contains_key(addr.as_str()) {
-            let entry = functions
+        if result.call_targets.contains(addr.as_str())
+            || config.retf_targets.contains_key(addr.as_str())
+        {
+            let entry = config
+                .functions
                 .get(addr.as_str())
-                .or_else(|| retf_targets.get(addr.as_str()));
+                .or_else(|| config.retf_targets.get(addr.as_str()));
             writeln!(out)?;
             if let Some(comment) = entry.and_then(|e| e.comment.as_deref()) {
                 for line in wrap_comment(comment, 80) {
@@ -383,8 +247,8 @@ fn main() -> Result<()> {
             } else {
                 writeln!(out, "func_{seg}_{off_str}:")?;
             }
-        } else if jump_targets.contains(addr.as_str()) {
-            let entry = labels.get(addr.as_str());
+        } else if result.jump_targets.contains(addr.as_str()) {
+            let entry = config.labels.get(addr.as_str());
             if let Some(comment) = entry.and_then(|e| e.comment.as_deref()) {
                 writeln!(out)?;
                 for line in wrap_comment(comment, 80) {
@@ -403,7 +267,8 @@ fn main() -> Result<()> {
             let off = u32::from_str_radix(&cap[1][2..], 16).unwrap_or(0);
             let target = format!("{seg}:{off:04X}");
             Some(
-                functions
+                config
+                    .functions
                     .get(&target)
                     .and_then(|e| e.label.as_deref())
                     .map(String::from)
@@ -414,7 +279,8 @@ fn main() -> Result<()> {
             let toff = u32::from_str_radix(&cap[2][2..], 16).unwrap_or(0);
             let target = format!("{tseg:04X}:{toff:04X}");
             Some(
-                functions
+                config
+                    .functions
                     .get(&target)
                     .and_then(|e| e.label.as_deref())
                     .map(String::from)
@@ -425,10 +291,10 @@ fn main() -> Result<()> {
             let jtarget = format!("{seg}:{joff:04X}");
             Some(jump_label_for(
                 &jtarget,
-                &call_targets,
-                &retf_targets,
-                &functions,
-                &labels,
+                &result.call_targets,
+                &config.retf_targets,
+                &config.functions,
+                &config.labels,
             ))
         } else if let Some(cap) = pat.jmp_far_re.captures(disasm) {
             let jtseg = u32::from_str_radix(&cap[1][2..], 16).unwrap_or(0);
@@ -436,17 +302,17 @@ fn main() -> Result<()> {
             let jtarget = format!("{jtseg:04X}:{jtoff:04X}");
             Some(jump_label_for(
                 &jtarget,
-                &call_targets,
-                &retf_targets,
-                &functions,
-                &labels,
+                &result.call_targets,
+                &config.retf_targets,
+                &config.functions,
+                &config.labels,
             ))
         } else {
             None
         };
 
         // Config line comment printed before the instruction
-        if let Some(lc) = line_comments.get(addr.as_str()) {
+        if let Some(lc) = config.line_comments.get(addr.as_str()) {
             if !lc.is_empty() {
                 for cline in wrap_comment(lc, 80) {
                     writeln!(out, "   {cline}")?;
@@ -454,20 +320,63 @@ fn main() -> Result<()> {
             }
         }
 
-        let comment_col = call_label
-            .as_deref()
-            .map(|l| format!("{l}  "))
-            .unwrap_or_default();
-        let val_col = match values.get(key) {
+        // Look up direct memory references ([0xNNNN]) in memLabels using the
+        // instruction's segment as the address qualifier.
+        let mem_label = mem_ref_re.captures(disasm).and_then(|cap| {
+            let off = u32::from_str_radix(&cap[1], 16).ok()?;
+            let key = format!("{seg}:{off:04X}");
+            config
+                .mem_labels
+                .get(&key)
+                .filter(|s| !s.is_empty())
+                .cloned()
+        });
+
+        let comment_col = match (call_label.as_deref(), mem_label.as_deref()) {
+            (Some(c), Some(m)) => format!("{c} {m}  "),
+            (Some(c), None) => format!("{c}  "),
+            (None, Some(m)) => format!("{m}  "),
+            (None, None) => String::new(),
+        };
+        let val_col = match result.values.get(key) {
             Some(Some(v)) if !v.is_empty() => format!("  [{v}]"),
             _ => String::new(),
         };
 
+        let hot = if count >= hot_threshold { " [HOT]" } else { "" };
         writeln!(
             out,
-            "   {disasm:<24}; {count:4} -- {addr} {bytecode:<19}{comment_col} {val_col}"
+            "   {disasm:<24}; {count:4}{hot} -- {addr} {bytecode:<19}{comment_col} {val_col}"
         )?;
     }
 
     Ok(())
+}
+
+fn main() -> Result<()> {
+    let args = Args::parse();
+
+    let result = parse_log(&args.log_file)?;
+    let config = match &args.config {
+        Some(p) => load_config(p)?,
+        None => Config::default(),
+    };
+
+    let mut out = BufWriter::new(
+        File::create(&args.out)
+            .with_context(|| format!("creating output file {}", args.out.display()))?,
+    );
+
+    writeln!(out, "; Generated by oxide86-tools logs-to-asm")?;
+    writeln!(
+        out,
+        "; Additional information can be found in scripts/logs_to_asm.md"
+    )?;
+    writeln!(out, "; Log: {}", args.log_file.display())?;
+    if let Some(cfg) = args.config {
+        writeln!(out, "; Config: {}", cfg.display())?;
+    }
+    writeln!(out)?;
+
+    generate(&mut out, &result, &config, args.hot_threshold)
 }
