@@ -134,6 +134,35 @@ For immediate ports (`in al, 0x21`) the port number is taken directly from the d
    in al, 0x21           ;  PIC1 data                   1 -- 0019:0100 E4 21
 ```
 
+### `data`
+
+Keyed by `"SEG:OFF"`. Labels known data regions (strings, byte tables, etc.) that live at addresses never executed as code. These appear as `; gap` blocks without annotation; the `data` section makes them readable.
+
+Each entry has:
+- `label` (required) — the name emitted as a label above the gap region
+- `type` — `"bytes"` (default) or `"string"`
+- `length` — optional byte count (shown in the label line for `"bytes"` entries)
+- `comment` — optional comment printed above the label
+
+The label is emitted at the start of the gap (or inline within a larger gap), splitting the gap line so the data region is clearly identified:
+
+```
+   ; gap 0C45:28E2 - 0C45:28EA (8 bytes)
+; MATSHITA — Matsushita/MKE drive OEM string
+expected_oem_id:   ; 0C45:28EA  bytes[8]
+   ; gap 0C45:28F2 - 0C45:2962 (112 bytes)
+str_not_ready:   ; 0C45:2962  string
+```
+
+Instructions that reference these addresses as plain immediates are annotated with the label name:
+
+```
+   mov si, 0x28ea        ;  expected_oem_id   1 -- 0C45:21B0 BE EA 28
+   mov dx, 0x2962        ;  str_not_ready     1 -- 0C45:21C4 BA 62 29
+```
+
+Note: bracket references like `mov ax, [0x2962]` are handled by `memLabels` and are not annotated by `data`.
+
 ### Example
 
 ```json
@@ -220,23 +249,3 @@ When using this tool as part of an LLM-assisted reverse engineering workflow, fo
 
 - Run the emulator with verbose CPU logging enabled so every executed instruction is captured in `oxide86.log`.
 - Keys in the JSON config are case-insensitive (normalised to uppercase internally).
-
-## Potential improvements
-
-These were identified during a real reverse-engineering session (SBPCD.SYS CD-ROM driver initialization) and represent gaps that made the analysis harder.
-
-### Data section annotation
-
-Driver data (strings, tables, signature bytes) lives at addresses never executed as code, so they appear as `; gap` blocks. A `data` config section (already partially present in the disassembler) would let you label these so references to them are annotated:
-
-```json
-"data": {
-  "0C45:28EA": { "type": "bytes", "length": 8, "label": "expected_oem_id", "comment": "MATSHITA — Matsushita/MKE drive OEM string" },
-  "0C45:2962": { "type": "string", "label": "str_not_ready" },
-  "0C45:29A3": { "type": "string", "label": "str_not_mke_drive" },
-  "0C45:2A58": { "type": "string", "label": "str_abort_msg" }
-}
-```
-
-Instructions that load these addresses into DX/SI/DI would then show the label name in their comment, making `mov dx, 0x2962` immediately readable as `; str_not_ready`.
-

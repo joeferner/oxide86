@@ -4,7 +4,7 @@ use std::io::Write;
 use anyhow::Result;
 use regex::Regex;
 
-use crate::config::{Config, LabelEntry};
+use crate::config::{Config, DataEntry, LabelEntry};
 use crate::parse::{Key, ParseResult, Patterns};
 
 pub fn wrap_comment(text: &str, width: usize) -> Vec<String> {
@@ -124,6 +124,40 @@ fn port_comment(
     None
 }
 
+/// Returns data entries whose start address falls within [gap_start, gap_end) for the given segment,
+/// sorted by offset.
+fn data_labels_in_range<'a>(
+    seg: &str,
+    gap_start: u32,
+    gap_end: u32,
+    data: &'a HashMap<String, DataEntry>,
+) -> Vec<(u32, &'a DataEntry)> {
+    let mut entries: Vec<(u32, &'a DataEntry)> = data
+        .iter()
+        .filter_map(|(key, entry)| {
+            let (kseg, koff) = key.split_once(':')?;
+            if kseg != seg {
+                return None;
+            }
+            let off = u32::from_str_radix(koff, 16).ok()?;
+            if off >= gap_start && off < gap_end {
+                Some((off, entry))
+            } else {
+                None
+            }
+        })
+        .collect();
+    entries.sort_by_key(|(off, _)| *off);
+    entries
+}
+
+fn kind_str(entry: &DataEntry) -> String {
+    match (entry.kind.as_str(), entry.length) {
+        ("bytes", Some(n)) => format!("bytes[{n}]"),
+        (k, _) => k.to_string(),
+    }
+}
+
 pub fn generate<W: Write>(
     out: &mut W,
     result: &ParseResult,
@@ -133,6 +167,8 @@ pub fn generate<W: Write>(
     let pat = Patterns::new();
     // Matches a direct memory operand like [0x0082] or es:[0x0082]
     let mem_ref_re = Regex::new(r"\[0x([0-9a-fA-F]{1,4})\]").unwrap();
+    // Matches any 0xNNNN immediate (including those inside brackets; filter below)
+    let imm_re = Regex::new(r"0x([0-9a-fA-F]{1,4})").unwrap();
 
     let mut prev_seg: Option<String> = None;
     let mut prev_end_off: Option<u32> = None;
@@ -147,22 +183,33 @@ pub fn generate<W: Write>(
         let cur_off = u32::from_str_radix(off_str, 16).unwrap_or(0);
         let byte_len = bytecode.split_whitespace().count() as u32;
 
-        // Gap detection within the same segment
+        // Gap detection within the same segment.
+        // Gaps are split at data label boundaries so each data region gets its own label.
         if prev_seg.as_deref() == Some(seg)
             && let Some(end) = prev_end_off
             && cur_off > end
         {
-            let gap_key = format!("{seg}:{end:04X}");
-            let annotation = config
-                .gaps
-                .get(&gap_key)
-                .map(|s| format!(" {s}"))
-                .unwrap_or_default();
-            writeln!(
-                out,
-                "   ; gap {seg}:{end:04X} - {seg}:{cur_off:04X} ({} bytes){annotation}",
-                cur_off - end
-            )?;
+            let mut gap_pos = end;
+            for (data_off, entry) in data_labels_in_range(seg, end, cur_off, &config.data) {
+                if data_off > gap_pos {
+                    let gap_key = format!("{seg}:{gap_pos:04X}");
+                    let annotation = config.gaps.get(&gap_key).map(|s| format!(" {s}")).unwrap_or_default();
+                    writeln!(out, "   ; gap {seg}:{gap_pos:04X} - {seg}:{data_off:04X} ({} bytes){annotation}", data_off - gap_pos)?;
+                }
+                writeln!(out)?;
+                if let Some(comment) = &entry.comment {
+                    for line in wrap_comment(comment, 80) {
+                        writeln!(out, "{line}")?;
+                    }
+                }
+                writeln!(out, "{}:   ; {seg}:{data_off:04X}  {}", entry.label, kind_str(entry))?;
+                gap_pos = data_off;
+            }
+            if gap_pos < cur_off {
+                let gap_key = format!("{seg}:{gap_pos:04X}");
+                let annotation = config.gaps.get(&gap_key).map(|s| format!(" {s}")).unwrap_or_default();
+                writeln!(out, "   ; gap {seg}:{gap_pos:04X} - {seg}:{cur_off:04X} ({} bytes){annotation}", cur_off - gap_pos)?;
+            }
         }
         if prev_seg.as_deref() != Some(seg) {
             prev_seg = Some(seg.to_string());
@@ -284,7 +331,23 @@ pub fn generate<W: Write>(
 
         let port_label = port_comment(disasm, result.values.get(key), &config.ports, &pat);
 
-        let annotations: Vec<&str> = [call_label.as_deref(), mem_label.as_deref(), port_label.as_deref()]
+        // Look up data labels from plain immediates (e.g. `mov dx, 0x2962`).
+        // Skip bracketed references — those are handled by memLabels.
+        let data_label = imm_re
+            .captures_iter(disasm)
+            .filter(|cap| {
+                let start = cap.get(0).unwrap().start();
+                start == 0 || disasm.as_bytes()[start - 1] != b'['
+            })
+            .find_map(|cap| {
+                let off = u32::from_str_radix(&cap[1], 16).ok()?;
+                config
+                    .data
+                    .get(&format!("{seg}:{off:04X}"))
+                    .map(|e| e.label.clone())
+            });
+
+        let annotations: Vec<&str> = [call_label.as_deref(), mem_label.as_deref(), port_label.as_deref(), data_label.as_deref()]
             .into_iter()
             .flatten()
             .collect();
@@ -313,7 +376,7 @@ mod tests {
     use std::collections::{BTreeSet, HashMap};
 
     use super::*;
-    use crate::config::{Config, LabelEntry};
+    use crate::config::{Config, DataEntry, LabelEntry};
     use crate::parse::ParseResult;
 
     /// Build a `ParseResult` from a slice of `(addr, bytes, disasm, count, val)` tuples.
@@ -762,5 +825,120 @@ mod tests {
         let out = run(&result, &Config::default(), 1000);
         let line = out.lines().find(|l| l.contains("in al, dx")).unwrap();
         assert!(line.contains("port varies"), "port varies missing: {line}");
+    }
+
+    // --- data section annotation tests ---
+
+    fn make_data(entries: &[(&str, &str, &str, Option<u32>, Option<&str>)]) -> HashMap<String, DataEntry> {
+        // (addr, label, kind, length, comment)
+        entries.iter().map(|(addr, label, kind, length, comment)| {
+            (addr.to_string(), DataEntry {
+                label: label.to_string(),
+                comment: comment.map(str::to_string),
+                kind: kind.to_string(),
+                length: *length,
+            })
+        }).collect()
+    }
+
+    #[test]
+    fn test_data_label_in_gap() {
+        // Two instructions with a gap; data entry at the gap start
+        let result = make_result(
+            &[
+                ("0C45:0000", "55", "push bp", 1, None),   // ends at 0001
+                ("0C45:000A", "5D", "pop bp", 1, None),    // gap 0001..000A
+            ],
+            vec![], vec![], vec![],
+        );
+        let mut config = Config::default();
+        config.data = make_data(&[("0C45:0001", "my_data", "bytes", Some(4), None)]);
+        let out = run(&result, &config, 1000);
+        assert!(out.contains("my_data:   ; 0C45:0001  bytes[4]"), "label missing:\n{out}");
+    }
+
+    #[test]
+    fn test_data_label_splits_gap() {
+        // Gap from 0001 to 000A; data at 0005 — should produce two gap lines
+        let result = make_result(
+            &[
+                ("0C45:0000", "55", "push bp", 1, None),
+                ("0C45:000A", "5D", "pop bp", 1, None),
+            ],
+            vec![], vec![], vec![],
+        );
+        let mut config = Config::default();
+        config.data = make_data(&[("0C45:0005", "mid_data", "string", None, None)]);
+        let out = run(&result, &config, 1000);
+        // First sub-gap: 0001..0005
+        assert!(out.contains("; gap 0C45:0001 - 0C45:0005 (4 bytes)"), "first sub-gap:\n{out}");
+        // Data label
+        assert!(out.contains("mid_data:   ; 0C45:0005  string"), "label:\n{out}");
+        // Second sub-gap: 0005..000A
+        assert!(out.contains("; gap 0C45:0005 - 0C45:000A (5 bytes)"), "second sub-gap:\n{out}");
+    }
+
+    #[test]
+    fn test_data_label_with_comment() {
+        let result = make_result(
+            &[
+                ("0019:0000", "55", "push bp", 1, None),
+                ("0019:0010", "5D", "pop bp", 1, None),
+            ],
+            vec![], vec![], vec![],
+        );
+        let mut config = Config::default();
+        config.data = make_data(&[("0019:0001", "oem_id", "bytes", Some(8), Some("OEM identifier string"))]);
+        let out = run(&result, &config, 1000);
+        assert!(out.contains("; OEM identifier string"), "comment:\n{out}");
+        // Comment should appear before label
+        let comment_pos = out.find("; OEM identifier string").unwrap();
+        let label_pos = out.find("oem_id:").unwrap();
+        assert!(comment_pos < label_pos);
+    }
+
+    #[test]
+    fn test_data_imm_annotation() {
+        // Instruction with an immediate that matches a data label address
+        let result = make_result(
+            &[("0019:0000", "BA 10 00", "mov dx, 0x0010", 1, None)],
+            vec![], vec![], vec![],
+        );
+        let mut config = Config::default();
+        config.data = make_data(&[("0019:0010", "str_hello", "string", None, None)]);
+        let out = run(&result, &config, 1000);
+        let line = out.lines().find(|l| l.contains("mov dx")).unwrap();
+        assert!(line.contains("str_hello"), "imm annotation missing: {line}");
+    }
+
+    #[test]
+    fn test_data_imm_no_annotation_for_bracket_ref() {
+        // [0x0010] is a memory reference (memLabels territory), not a data imm
+        let result = make_result(
+            &[("0019:0000", "8B 16 10 00", "mov dx, [0x0010]", 1, None)],
+            vec![], vec![], vec![],
+        );
+        let mut config = Config::default();
+        config.data = make_data(&[("0019:0010", "str_hello", "string", None, None)]);
+        let out = run(&result, &config, 1000);
+        let line = out.lines().find(|l| l.contains("mov dx")).unwrap();
+        // data_label should NOT fire for bracket refs (memLabels handles those)
+        assert!(!line.contains("str_hello"), "should not annotate bracket ref: {line}");
+    }
+
+    #[test]
+    fn test_data_label_not_in_gap_of_different_segment() {
+        let result = make_result(
+            &[
+                ("0019:0000", "55", "push bp", 1, None),
+                ("0019:000A", "5D", "pop bp", 1, None),
+            ],
+            vec![], vec![], vec![],
+        );
+        let mut config = Config::default();
+        // Data entry is in a different segment — should not appear
+        config.data = make_data(&[("001A:0005", "other_seg_data", "bytes", None, None)]);
+        let out = run(&result, &config, 1000);
+        assert!(!out.contains("other_seg_data"));
     }
 }

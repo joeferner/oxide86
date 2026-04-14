@@ -12,6 +12,13 @@ pub struct LabelEntry {
     pub comment: Option<String>,
 }
 
+pub struct DataEntry {
+    pub label: String,
+    pub comment: Option<String>,
+    pub kind: String,       // "bytes" or "string"
+    pub length: Option<u32>,
+}
+
 pub struct Config {
     pub functions: HashMap<String, LabelEntry>,
     pub labels: HashMap<String, LabelEntry>,
@@ -20,6 +27,7 @@ pub struct Config {
     pub gaps: HashMap<String, String>,       // gap-start addr -> annotation text
     pub mem_labels: HashMap<String, String>, // addr -> label name
     pub ports: HashMap<String, String>,      // port number (4 hex digits, uppercase) -> name
+    pub data: HashMap<String, DataEntry>,    // addr -> data entry
 }
 
 impl Default for Config {
@@ -32,6 +40,7 @@ impl Default for Config {
             gaps: HashMap::new(),
             mem_labels: HashMap::new(),
             ports: builtin_ports(),
+            data: HashMap::new(),
         }
     }
 }
@@ -204,6 +213,23 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
             .unwrap_or_default()
     };
 
+    let data_entry_map = |key: &str| -> HashMap<String, DataEntry> {
+        data.get(key)
+            .and_then(Value::as_object)
+            .map(|m| {
+                m.iter()
+                    .filter_map(|(k, v)| {
+                        let label = v.get("label")?.as_str()?.to_string();
+                        let comment = v.get("comment").and_then(Value::as_str).map(String::from);
+                        let kind = v.get("type").and_then(Value::as_str).unwrap_or("bytes").to_string();
+                        let length = v.get("length").and_then(Value::as_u64).map(|n| n as u32);
+                        Some((k.to_uppercase(), DataEntry { label, comment, kind, length }))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
+
     // Start from defaults (which include built-in port names), then override each field.
     // For ports specifically, user entries are merged in so they win over built-ins.
     let mut config = Config::default();
@@ -214,5 +240,6 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
     config.gaps = str_map("gaps");
     config.mem_labels = str_map("memLabels");
     config.ports.extend(str_map("ports")); // user wins on conflict
+    config.data = data_entry_map("data");
     Ok(config)
 }
