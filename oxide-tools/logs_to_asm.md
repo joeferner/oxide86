@@ -117,6 +117,23 @@ Keyed by `"SEG:OFF"`. Names a well-known memory address so that instructions con
    mov dx, [0x0076]      ;    3 -- 0C45:21C4 8B 16 76 00     base_port  
 ```
 
+### `ports`
+
+Keyed by port number (up to 4 hex digits, case-insensitive). Names well-known I/O ports so that `in`/`out` instructions are annotated with the port's meaning.
+
+For immediate ports (`in al, 0x21`) the port number is taken directly from the disassembly. For DX ports (`in al, dx` / `out dx, al`) the port is resolved from the `DX=NNNN` register annotation captured in the log:
+
+- Consistent port in config → port name shown in comment
+- Consistent port **not** in config → port number shown (`port 0xNNNN`) — useful when DX is not visible in the disassembly
+- Port varies across calls → `port varies` shown in comment
+
+```
+   out dx, al            ;  SB-CD base+0 (cmd/result)   7 -- 0C45:2183 EE
+   in al, dx             ;  SB-CD base+1 (busy flag)    2 -- 0C45:229F EC
+   in al, dx             ;  port varies                  3 -- 0C45:22A1 EC
+   in al, 0x21           ;  PIC1 data                   1 -- 0019:0100 E4 21
+```
+
 ### Example
 
 ```json
@@ -155,6 +172,11 @@ Keyed by `"SEG:OFF"`. Names a well-known memory address so that instructions con
   "memLabels": {
     "0019:0082": "cmd_code",
     "0019:0076": "base_port"
+  },
+  "ports": {
+    "0230": "SB-CD base+0 (cmd/result)",
+    "0231": "SB-CD base+1 (busy flag)",
+    "0233": "SB-CD base+3 (drive select)"
   }
 }
 ```
@@ -202,27 +224,6 @@ When using this tool as part of an LLM-assisted reverse engineering workflow, fo
 ## Potential improvements
 
 These were identified during a real reverse-engineering session (SBPCD.SYS CD-ROM driver initialization) and represent gaps that made the analysis harder.
-
-### Port I/O annotation
-
-`IN`/`OUT` instructions show the port number but not its meaning. A `ports` config section would let you name ports so the port identity appears in the comment automatically:
-
-```json
-"ports": {
-  "0230": "SB-CD base+0 (cmd/result)",
-  "0231": "SB-CD base+1 (busy flag)",
-  "0233": "SB-CD base+3 (drive select)"
-}
-```
-
-Output would look like:
-
-```
-   out dx, al            ;  SB-CD base+0 (cmd/result)   7 -- 0C45:2183 EE
-   in al, dx             ;  SB-CD base+1 (busy flag)    2 -- 0C45:229F EC
-```
-
-The challenge is that the port is often in DX rather than an immediate, so the tool would need to look at the immediately preceding `mov dx, <imm>` or `add dx, <offset>` to resolve it. A simpler first step: match on the `[DX=NNNN]` register annotation already present in the log.
 
 ### Data section annotation
 

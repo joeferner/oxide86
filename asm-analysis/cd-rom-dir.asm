@@ -2211,7 +2211,7 @@ lbl_0C45_0BFE:
    mov dx, [0x0076]        ;    2 -- 0C45:0C1A 2E 8B 16 76 00        [DX=0230 [0x0076]=0230 @0C45:0076(0C4C6)]
    add dx, 0x0003          ;    2 -- 0C45:0C1F 83 C2 03              [DX=0233]
    mov al, al              ;    2 -- 0C45:0C22 8A C0                 [AL=00 AL=00]
-   out dx, al              ;    2 -- 0C45:0C24 EE                    [DX=0233 AL=00]
+   out dx, al              ;    2 -- 0C45:0C24 EE                 port 0x0233     [DX=0233 AL=00]
    pop dx                  ;    2 -- 0C45:0C25 5A                  
    popf                    ;    2 -- 0C45:0C26 9D                  
    pop ds                  ;    2 -- 0C45:0C27 1F                    [DS=12B5]
@@ -2230,7 +2230,7 @@ lbl_0C45_0C44:
    push dx                 ;    2 -- 0C45:0C46 52                  
    mov dx, [0x0076]        ;    2 -- 0C45:0C47 2E 8B 16 76 00        [DX=0230 [0x0076]=0230 @0C45:0076(0C4C6)]
    add dx, 0x0001          ;    2 -- 0C45:0C4C 83 C2 01              [DX=0231]
-   in al, dx               ;    2 -- 0C45:0C4F EC                    [AL=00 DX=0231]
+   in al, dx               ;    2 -- 0C45:0C4F EC                 port 0x0231     [AL=00 DX=0231]
    pop dx                  ;    2 -- 0C45:0C50 5A                  
    popf                    ;    2 -- 0C45:0C51 9D                  
    test al, 0x01           ;    2 -- 0C45:0C52 A8 01                 [AL=00]

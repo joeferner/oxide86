@@ -25,6 +25,16 @@ pub struct Patterns {
     pub int_re: Regex,
     pub jmp_near_re: Regex,
     pub jmp_far_re: Regex,
+    /// `in reg, 0xNN` — captures the immediate port (group 1, with 0x prefix)
+    pub in_imm_re: Regex,
+    /// `out 0xNN, reg` — captures the immediate port (group 1, with 0x prefix)
+    pub out_imm_re: Regex,
+    /// `in reg, dx`
+    pub in_dx_re: Regex,
+    /// `out dx, reg`
+    pub out_dx_re: Regex,
+    /// Extracts `DX=NNNN` from a register-annotation string (group 1 = 4 hex digits)
+    pub dx_val_re: Regex,
 }
 
 impl Patterns {
@@ -44,6 +54,11 @@ impl Patterns {
             jmp_far_re: Regex::new(
                 r"^jmp\s+far\s+(0x[0-9a-fA-F]+),\s*(0x[0-9a-fA-F]+)$"
             ).unwrap(),
+            in_imm_re:  Regex::new(r"^in\s+\w+,\s+(0x[0-9a-fA-F]+)$").unwrap(),
+            out_imm_re: Regex::new(r"^out\s+(0x[0-9a-fA-F]+),").unwrap(),
+            in_dx_re:   Regex::new(r"^in\s+\w+,\s+dx$").unwrap(),
+            out_dx_re:  Regex::new(r"^out\s+dx,").unwrap(),
+            dx_val_re:  Regex::new(r"\bDX=([0-9A-Fa-f]{4})\b").unwrap(),
         }
     }
 }

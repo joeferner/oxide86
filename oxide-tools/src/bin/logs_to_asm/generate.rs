@@ -79,6 +79,51 @@ pub fn sorted_keys(result: &ParseResult) -> Vec<Key> {
     keys
 }
 
+/// Normalise any hex port string to a 4-digit uppercase key used in the ports map.
+/// `"21"` → `"0021"`, `"02F3"` → `"02F3"`, `"3da"` → `"03DA"`.
+fn normalize_port(hex: &str) -> String {
+    format!("{:04X}", u16::from_str_radix(hex, 16).unwrap_or(0))
+}
+
+/// Returns a port annotation for `in`/`out` instructions, or `None` for everything else.
+///
+/// - Immediate port in config → port name
+/// - Immediate port not in config → `None` (port already visible in disasm)
+/// - DX port, consistent, in config → port name
+/// - DX port, consistent, not in config → `"port 0xNNNN"` (port not visible in disasm)
+/// - DX port varies → `"port varies"`
+fn port_comment(
+    disasm: &str,
+    val: Option<&Option<String>>,
+    ports: &HashMap<String, String>,
+    pat: &Patterns,
+) -> Option<String> {
+    if let Some(cap) = pat.in_imm_re.captures(disasm) {
+        let port = normalize_port(&cap[1][2..]);
+        return ports.get(&port).cloned();
+    }
+    if let Some(cap) = pat.out_imm_re.captures(disasm) {
+        let port = normalize_port(&cap[1][2..]);
+        return ports.get(&port).cloned();
+    }
+    if pat.in_dx_re.is_match(disasm) || pat.out_dx_re.is_match(disasm) {
+        return match val {
+            Some(None) => Some("port varies".to_string()),
+            Some(Some(annotation)) => {
+                pat.dx_val_re.captures(annotation).map(|cap| {
+                    let port = normalize_port(&cap[1]);
+                    ports
+                        .get(&port)
+                        .cloned()
+                        .unwrap_or_else(|| format!("port 0x{port}"))
+                })
+            }
+            None => None,
+        };
+    }
+    None
+}
+
 pub fn generate<W: Write>(
     out: &mut W,
     result: &ParseResult,
@@ -237,11 +282,16 @@ pub fn generate<W: Write>(
                 .cloned()
         });
 
-        let comment_col = match (call_label.as_deref(), mem_label.as_deref()) {
-            (Some(c), Some(m)) => format!("{c} {m}  "),
-            (Some(c), None) => format!("{c}  "),
-            (None, Some(m)) => format!("{m}  "),
-            (None, None) => String::new(),
+        let port_label = port_comment(disasm, result.values.get(key), &config.ports, &pat);
+
+        let annotations: Vec<&str> = [call_label.as_deref(), mem_label.as_deref(), port_label.as_deref()]
+            .into_iter()
+            .flatten()
+            .collect();
+        let comment_col = if annotations.is_empty() {
+            String::new()
+        } else {
+            format!("{}  ", annotations.join(" "))
         };
         let val_col = match result.values.get(key) {
             Some(Some(v)) if !v.is_empty() => format!("  [{v}]"),
@@ -582,5 +632,135 @@ mod tests {
         let out = run(&result, &Config::default(), 1000);
         let line = out.lines().find(|l| l.contains("nop")).unwrap();
         assert!(!line.contains('['), "no value column expected: {line}");
+    }
+
+    // --- port_comment tests ---
+
+    fn make_patterns() -> Patterns {
+        Patterns::new()
+    }
+
+    fn ports(pairs: &[(&str, &str)]) -> HashMap<String, String> {
+        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+    }
+
+    #[test]
+    fn test_port_in_immediate_named() {
+        let pat = make_patterns();
+        let result = port_comment("in al, 0x21", Some(&Some("AX=0000".to_string())), &ports(&[("0021", "keyboard")]), &pat);
+        assert_eq!(result.as_deref(), Some("keyboard"));
+    }
+
+    #[test]
+    fn test_port_in_immediate_unnamed() {
+        let pat = make_patterns();
+        let result = port_comment("in al, 0x21", Some(&Some("AX=0000".to_string())), &ports(&[]), &pat);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_port_out_immediate_named() {
+        let pat = make_patterns();
+        let result = port_comment("out 0x43, al", Some(&Some("AX=0036".to_string())), &ports(&[("0043", "PIT cmd")]), &pat);
+        assert_eq!(result.as_deref(), Some("PIT cmd"));
+    }
+
+    #[test]
+    fn test_port_out_immediate_unnamed() {
+        let pat = make_patterns();
+        let result = port_comment("out 0x43, al", Some(&Some("AX=0036".to_string())), &ports(&[]), &pat);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_port_in_dx_named() {
+        let pat = make_patterns();
+        let annotation = Some("DX=02F3 AX=0000".to_string());
+        let result = port_comment("in al, dx", Some(&annotation), &ports(&[("02F3", "SB-CD data")]), &pat);
+        assert_eq!(result.as_deref(), Some("SB-CD data"));
+    }
+
+    #[test]
+    fn test_port_in_dx_unnamed_shows_number() {
+        let pat = make_patterns();
+        let annotation = Some("DX=02F3 AX=0000".to_string());
+        let result = port_comment("in al, dx", Some(&annotation), &ports(&[]), &pat);
+        assert_eq!(result.as_deref(), Some("port 0x02F3"));
+    }
+
+    #[test]
+    fn test_port_out_dx_named() {
+        let pat = make_patterns();
+        let annotation = Some("DX=0230 AX=0042".to_string());
+        let result = port_comment("out dx, al", Some(&annotation), &ports(&[("0230", "SB-CD cmd")]), &pat);
+        assert_eq!(result.as_deref(), Some("SB-CD cmd"));
+    }
+
+    #[test]
+    fn test_port_in_dx_varies() {
+        let pat = make_patterns();
+        let result = port_comment("in al, dx", Some(&None), &ports(&[("02F3", "SB-CD data")]), &pat);
+        assert_eq!(result.as_deref(), Some("port varies"));
+    }
+
+    #[test]
+    fn test_port_out_dx_varies() {
+        let pat = make_patterns();
+        let result = port_comment("out dx, al", Some(&None), &ports(&[]), &pat);
+        assert_eq!(result.as_deref(), Some("port varies"));
+    }
+
+    #[test]
+    fn test_builtin_port_no_config() {
+        // PIC1 command (0x20) should be annotated with no user config at all
+        let pat = make_patterns();
+        let result = port_comment(
+            "out 0x20, al",
+            Some(&Some("AX=0020".to_string())),
+            &Config::default().ports,
+            &pat,
+        );
+        assert_eq!(result.as_deref(), Some("PIC1 command"));
+    }
+
+    #[test]
+    fn test_user_port_overrides_builtin() {
+        let pat = make_patterns();
+        // 0x20 is built-in as "PIC1 command"; user renames it
+        let mut p = Config::default().ports;
+        p.insert("0020".to_string(), "my PIC".to_string());
+        let result = port_comment("out 0x20, al", Some(&Some("AX=0020".to_string())), &p, &pat);
+        assert_eq!(result.as_deref(), Some("my PIC"));
+    }
+
+    #[test]
+    fn test_port_non_io_instruction() {
+        let pat = make_patterns();
+        let result = port_comment("mov ax, bx", Some(&Some("AX=0001".to_string())), &ports(&[]), &pat);
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_port_in_generate_output() {
+        let result = make_result(
+            &[("0C45:2183", "EC", "in al, dx", 7, Some("DX=0230 AX=00FF"))],
+            vec![], vec![], vec![],
+        );
+        let mut config = Config::default();
+        config.ports.insert("0230".to_string(), "SB-CD cmd".to_string());
+        let out = run(&result, &config, 1000);
+        let line = out.lines().find(|l| l.contains("in al, dx")).unwrap();
+        assert!(line.contains("SB-CD cmd"), "port name missing: {line}");
+    }
+
+    #[test]
+    fn test_port_varies_in_generate_output() {
+        let result = make_result(
+            &[("0C45:229F", "EC", "in al, dx", 2, None)], // None = port varies
+            vec![], vec![], vec![],
+        );
+        let out = run(&result, &Config::default(), 1000);
+        let line = out.lines().find(|l| l.contains("in al, dx")).unwrap();
+        assert!(line.contains("port varies"), "port varies missing: {line}");
     }
 }
