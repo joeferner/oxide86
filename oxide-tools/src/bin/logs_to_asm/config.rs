@@ -15,7 +15,7 @@ pub struct LabelEntry {
 pub struct DataEntry {
     pub label: String,
     pub comment: Option<String>,
-    pub kind: String,       // "bytes" or "string"
+    pub kind: String, // "bytes" or "string"
     pub length: Option<u32>,
 }
 
@@ -24,10 +24,10 @@ pub struct Config {
     pub labels: HashMap<String, LabelEntry>,
     pub line_comments: HashMap<String, String>, // addr -> comment text
     pub retf_targets: HashMap<String, LabelEntry>,
-    pub gaps: HashMap<String, String>,       // gap-start addr -> annotation text
+    pub gaps: HashMap<String, String>, // gap-start addr -> annotation text
     pub mem_labels: HashMap<String, String>, // addr -> label name
-    pub ports: HashMap<String, String>,      // port number (4 hex digits, uppercase) -> name
-    pub data: HashMap<String, DataEntry>,    // addr -> data entry
+    pub ports: HashMap<String, String>, // port number (4 hex digits, uppercase) -> name
+    pub data: HashMap<String, DataEntry>, // addr -> data entry
 }
 
 impl Default for Config {
@@ -115,7 +115,10 @@ fn builtin_ports() -> HashMap<String, String> {
         // VGA / EGA
         ("03C0".into(), "VGA attr ctrl index/data".into()),
         ("03C1".into(), "VGA attr ctrl data (read)".into()),
-        ("03C2".into(), "VGA misc output (w) / input status 0 (r)".into()),
+        (
+            "03C2".into(),
+            "VGA misc output (w) / input status 0 (r)".into(),
+        ),
         ("03C4".into(), "VGA sequencer index".into()),
         ("03C5".into(), "VGA sequencer data".into()),
         ("03C6".into(), "VGA PEL mask".into()),
@@ -221,9 +224,21 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
                     .filter_map(|(k, v)| {
                         let label = v.get("label")?.as_str()?.to_string();
                         let comment = v.get("comment").and_then(Value::as_str).map(String::from);
-                        let kind = v.get("type").and_then(Value::as_str).unwrap_or("bytes").to_string();
+                        let kind = v
+                            .get("type")
+                            .and_then(Value::as_str)
+                            .unwrap_or("bytes")
+                            .to_string();
                         let length = v.get("length").and_then(Value::as_u64).map(|n| n as u32);
-                        Some((k.to_uppercase(), DataEntry { label, comment, kind, length }))
+                        Some((
+                            k.to_uppercase(),
+                            DataEntry {
+                                label,
+                                comment,
+                                kind,
+                                length,
+                            },
+                        ))
                     })
                     .collect()
             })
@@ -232,14 +247,17 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
 
     // Start from defaults (which include built-in port names), then override each field.
     // For ports specifically, user entries are merged in so they win over built-ins.
-    let mut config = Config::default();
-    config.functions = parse_entry_map("functions");
-    config.labels = parse_entry_map("labels");
-    config.line_comments = str_map("lineComments");
-    config.retf_targets = parse_entry_map("retf_targets");
-    config.gaps = str_map("gaps");
-    config.mem_labels = str_map("memLabels");
-    config.ports.extend(str_map("ports")); // user wins on conflict
-    config.data = data_entry_map("data");
+    let mut ports = Config::default().ports;
+    ports.extend(str_map("ports")); // user wins on conflict
+    let config = Config {
+        functions: parse_entry_map("functions"),
+        labels: parse_entry_map("labels"),
+        line_comments: str_map("lineComments"),
+        retf_targets: parse_entry_map("retf_targets"),
+        gaps: str_map("gaps"),
+        mem_labels: str_map("memLabels"),
+        ports,
+        data: data_entry_map("data"),
+    };
     Ok(config)
 }

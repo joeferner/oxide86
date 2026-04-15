@@ -109,15 +109,13 @@ fn port_comment(
     if pat.in_dx_re.is_match(disasm) || pat.out_dx_re.is_match(disasm) {
         return match val {
             Some(None) => Some("port varies".to_string()),
-            Some(Some(annotation)) => {
-                pat.dx_val_re.captures(annotation).map(|cap| {
-                    let port = normalize_port(&cap[1]);
-                    ports
-                        .get(&port)
-                        .cloned()
-                        .unwrap_or_else(|| format!("port 0x{port}"))
-                })
-            }
+            Some(Some(annotation)) => pat.dx_val_re.captures(annotation).map(|cap| {
+                let port = normalize_port(&cap[1]);
+                ports
+                    .get(&port)
+                    .cloned()
+                    .unwrap_or_else(|| format!("port 0x{port}"))
+            }),
             None => None,
         };
     }
@@ -193,8 +191,16 @@ pub fn generate<W: Write>(
             for (data_off, entry) in data_labels_in_range(seg, end, cur_off, &config.data) {
                 if data_off > gap_pos {
                     let gap_key = format!("{seg}:{gap_pos:04X}");
-                    let annotation = config.gaps.get(&gap_key).map(|s| format!(" {s}")).unwrap_or_default();
-                    writeln!(out, "   ; gap {seg}:{gap_pos:04X} - {seg}:{data_off:04X} ({} bytes){annotation}", data_off - gap_pos)?;
+                    let annotation = config
+                        .gaps
+                        .get(&gap_key)
+                        .map(|s| format!(" {s}"))
+                        .unwrap_or_default();
+                    writeln!(
+                        out,
+                        "   ; gap {seg}:{gap_pos:04X} - {seg}:{data_off:04X} ({} bytes){annotation}",
+                        data_off - gap_pos
+                    )?;
                 }
                 writeln!(out)?;
                 if let Some(comment) = &entry.comment {
@@ -202,13 +208,26 @@ pub fn generate<W: Write>(
                         writeln!(out, "{line}")?;
                     }
                 }
-                writeln!(out, "{}:   ; {seg}:{data_off:04X}  {}", entry.label, kind_str(entry))?;
+                writeln!(
+                    out,
+                    "{}:   ; {seg}:{data_off:04X}  {}",
+                    entry.label,
+                    kind_str(entry)
+                )?;
                 gap_pos = data_off;
             }
             if gap_pos < cur_off {
                 let gap_key = format!("{seg}:{gap_pos:04X}");
-                let annotation = config.gaps.get(&gap_key).map(|s| format!(" {s}")).unwrap_or_default();
-                writeln!(out, "   ; gap {seg}:{gap_pos:04X} - {seg}:{cur_off:04X} ({} bytes){annotation}", cur_off - gap_pos)?;
+                let annotation = config
+                    .gaps
+                    .get(&gap_key)
+                    .map(|s| format!(" {s}"))
+                    .unwrap_or_default();
+                writeln!(
+                    out,
+                    "   ; gap {seg}:{gap_pos:04X} - {seg}:{cur_off:04X} ({} bytes){annotation}",
+                    cur_off - gap_pos
+                )?;
             }
         }
         if prev_seg.as_deref() != Some(seg) {
@@ -347,10 +366,15 @@ pub fn generate<W: Write>(
                     .map(|e| e.label.clone())
             });
 
-        let annotations: Vec<&str> = [call_label.as_deref(), mem_label.as_deref(), port_label.as_deref(), data_label.as_deref()]
-            .into_iter()
-            .flatten()
-            .collect();
+        let annotations: Vec<&str> = [
+            call_label.as_deref(),
+            mem_label.as_deref(),
+            port_label.as_deref(),
+            data_label.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .collect();
         let comment_col = if annotations.is_empty() {
             String::new()
         } else {
@@ -704,34 +728,57 @@ mod tests {
     }
 
     fn ports(pairs: &[(&str, &str)]) -> HashMap<String, String> {
-        pairs.iter().map(|(k, v)| (k.to_string(), v.to_string())).collect()
+        pairs
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect()
     }
 
     #[test]
     fn test_port_in_immediate_named() {
         let pat = make_patterns();
-        let result = port_comment("in al, 0x21", Some(&Some("AX=0000".to_string())), &ports(&[("0021", "keyboard")]), &pat);
+        let result = port_comment(
+            "in al, 0x21",
+            Some(&Some("AX=0000".to_string())),
+            &ports(&[("0021", "keyboard")]),
+            &pat,
+        );
         assert_eq!(result.as_deref(), Some("keyboard"));
     }
 
     #[test]
     fn test_port_in_immediate_unnamed() {
         let pat = make_patterns();
-        let result = port_comment("in al, 0x21", Some(&Some("AX=0000".to_string())), &ports(&[]), &pat);
+        let result = port_comment(
+            "in al, 0x21",
+            Some(&Some("AX=0000".to_string())),
+            &ports(&[]),
+            &pat,
+        );
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_port_out_immediate_named() {
         let pat = make_patterns();
-        let result = port_comment("out 0x43, al", Some(&Some("AX=0036".to_string())), &ports(&[("0043", "PIT cmd")]), &pat);
+        let result = port_comment(
+            "out 0x43, al",
+            Some(&Some("AX=0036".to_string())),
+            &ports(&[("0043", "PIT cmd")]),
+            &pat,
+        );
         assert_eq!(result.as_deref(), Some("PIT cmd"));
     }
 
     #[test]
     fn test_port_out_immediate_unnamed() {
         let pat = make_patterns();
-        let result = port_comment("out 0x43, al", Some(&Some("AX=0036".to_string())), &ports(&[]), &pat);
+        let result = port_comment(
+            "out 0x43, al",
+            Some(&Some("AX=0036".to_string())),
+            &ports(&[]),
+            &pat,
+        );
         assert_eq!(result, None);
     }
 
@@ -739,7 +786,12 @@ mod tests {
     fn test_port_in_dx_named() {
         let pat = make_patterns();
         let annotation = Some("DX=02F3 AX=0000".to_string());
-        let result = port_comment("in al, dx", Some(&annotation), &ports(&[("02F3", "SB-CD data")]), &pat);
+        let result = port_comment(
+            "in al, dx",
+            Some(&annotation),
+            &ports(&[("02F3", "SB-CD data")]),
+            &pat,
+        );
         assert_eq!(result.as_deref(), Some("SB-CD data"));
     }
 
@@ -755,14 +807,24 @@ mod tests {
     fn test_port_out_dx_named() {
         let pat = make_patterns();
         let annotation = Some("DX=0230 AX=0042".to_string());
-        let result = port_comment("out dx, al", Some(&annotation), &ports(&[("0230", "SB-CD cmd")]), &pat);
+        let result = port_comment(
+            "out dx, al",
+            Some(&annotation),
+            &ports(&[("0230", "SB-CD cmd")]),
+            &pat,
+        );
         assert_eq!(result.as_deref(), Some("SB-CD cmd"));
     }
 
     #[test]
     fn test_port_in_dx_varies() {
         let pat = make_patterns();
-        let result = port_comment("in al, dx", Some(&None), &ports(&[("02F3", "SB-CD data")]), &pat);
+        let result = port_comment(
+            "in al, dx",
+            Some(&None),
+            &ports(&[("02F3", "SB-CD data")]),
+            &pat,
+        );
         assert_eq!(result.as_deref(), Some("port varies"));
     }
 
@@ -799,7 +861,12 @@ mod tests {
     #[test]
     fn test_port_non_io_instruction() {
         let pat = make_patterns();
-        let result = port_comment("mov ax, bx", Some(&Some("AX=0001".to_string())), &ports(&[]), &pat);
+        let result = port_comment(
+            "mov ax, bx",
+            Some(&Some("AX=0001".to_string())),
+            &ports(&[]),
+            &pat,
+        );
         assert_eq!(result, None);
     }
 
@@ -807,10 +874,14 @@ mod tests {
     fn test_port_in_generate_output() {
         let result = make_result(
             &[("0C45:2183", "EC", "in al, dx", 7, Some("DX=0230 AX=00FF"))],
-            vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
         );
         let mut config = Config::default();
-        config.ports.insert("0230".to_string(), "SB-CD cmd".to_string());
+        config
+            .ports
+            .insert("0230".to_string(), "SB-CD cmd".to_string());
         let out = run(&result, &config, 1000);
         let line = out.lines().find(|l| l.contains("in al, dx")).unwrap();
         assert!(line.contains("SB-CD cmd"), "port name missing: {line}");
@@ -820,7 +891,9 @@ mod tests {
     fn test_port_varies_in_generate_output() {
         let result = make_result(
             &[("0C45:229F", "EC", "in al, dx", 2, None)], // None = port varies
-            vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
         );
         let out = run(&result, &Config::default(), 1000);
         let line = out.lines().find(|l| l.contains("in al, dx")).unwrap();
@@ -829,16 +902,24 @@ mod tests {
 
     // --- data section annotation tests ---
 
-    fn make_data(entries: &[(&str, &str, &str, Option<u32>, Option<&str>)]) -> HashMap<String, DataEntry> {
+    fn make_data(
+        entries: &[(&str, &str, &str, Option<u32>, Option<&str>)],
+    ) -> HashMap<String, DataEntry> {
         // (addr, label, kind, length, comment)
-        entries.iter().map(|(addr, label, kind, length, comment)| {
-            (addr.to_string(), DataEntry {
-                label: label.to_string(),
-                comment: comment.map(str::to_string),
-                kind: kind.to_string(),
-                length: *length,
+        entries
+            .iter()
+            .map(|(addr, label, kind, length, comment)| {
+                (
+                    addr.to_string(),
+                    DataEntry {
+                        label: label.to_string(),
+                        comment: comment.map(str::to_string),
+                        kind: kind.to_string(),
+                        length: *length,
+                    },
+                )
             })
-        }).collect()
+            .collect()
     }
 
     #[test]
@@ -846,15 +927,20 @@ mod tests {
         // Two instructions with a gap; data entry at the gap start
         let result = make_result(
             &[
-                ("0C45:0000", "55", "push bp", 1, None),   // ends at 0001
-                ("0C45:000A", "5D", "pop bp", 1, None),    // gap 0001..000A
+                ("0C45:0000", "55", "push bp", 1, None), // ends at 0001
+                ("0C45:000A", "5D", "pop bp", 1, None),  // gap 0001..000A
             ],
-            vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
         );
         let mut config = Config::default();
         config.data = make_data(&[("0C45:0001", "my_data", "bytes", Some(4), None)]);
         let out = run(&result, &config, 1000);
-        assert!(out.contains("my_data:   ; 0C45:0001  bytes[4]"), "label missing:\n{out}");
+        assert!(
+            out.contains("my_data:   ; 0C45:0001  bytes[4]"),
+            "label missing:\n{out}"
+        );
     }
 
     #[test]
@@ -865,17 +951,28 @@ mod tests {
                 ("0C45:0000", "55", "push bp", 1, None),
                 ("0C45:000A", "5D", "pop bp", 1, None),
             ],
-            vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
         );
         let mut config = Config::default();
         config.data = make_data(&[("0C45:0005", "mid_data", "string", None, None)]);
         let out = run(&result, &config, 1000);
         // First sub-gap: 0001..0005
-        assert!(out.contains("; gap 0C45:0001 - 0C45:0005 (4 bytes)"), "first sub-gap:\n{out}");
+        assert!(
+            out.contains("; gap 0C45:0001 - 0C45:0005 (4 bytes)"),
+            "first sub-gap:\n{out}"
+        );
         // Data label
-        assert!(out.contains("mid_data:   ; 0C45:0005  string"), "label:\n{out}");
+        assert!(
+            out.contains("mid_data:   ; 0C45:0005  string"),
+            "label:\n{out}"
+        );
         // Second sub-gap: 0005..000A
-        assert!(out.contains("; gap 0C45:0005 - 0C45:000A (5 bytes)"), "second sub-gap:\n{out}");
+        assert!(
+            out.contains("; gap 0C45:0005 - 0C45:000A (5 bytes)"),
+            "second sub-gap:\n{out}"
+        );
     }
 
     #[test]
@@ -885,10 +982,18 @@ mod tests {
                 ("0019:0000", "55", "push bp", 1, None),
                 ("0019:0010", "5D", "pop bp", 1, None),
             ],
-            vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
         );
         let mut config = Config::default();
-        config.data = make_data(&[("0019:0001", "oem_id", "bytes", Some(8), Some("OEM identifier string"))]);
+        config.data = make_data(&[(
+            "0019:0001",
+            "oem_id",
+            "bytes",
+            Some(8),
+            Some("OEM identifier string"),
+        )]);
         let out = run(&result, &config, 1000);
         assert!(out.contains("; OEM identifier string"), "comment:\n{out}");
         // Comment should appear before label
@@ -902,7 +1007,9 @@ mod tests {
         // Instruction with an immediate that matches a data label address
         let result = make_result(
             &[("0019:0000", "BA 10 00", "mov dx, 0x0010", 1, None)],
-            vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
         );
         let mut config = Config::default();
         config.data = make_data(&[("0019:0010", "str_hello", "string", None, None)]);
@@ -916,14 +1023,19 @@ mod tests {
         // [0x0010] is a memory reference (memLabels territory), not a data imm
         let result = make_result(
             &[("0019:0000", "8B 16 10 00", "mov dx, [0x0010]", 1, None)],
-            vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
         );
         let mut config = Config::default();
         config.data = make_data(&[("0019:0010", "str_hello", "string", None, None)]);
         let out = run(&result, &config, 1000);
         let line = out.lines().find(|l| l.contains("mov dx")).unwrap();
         // data_label should NOT fire for bracket refs (memLabels handles those)
-        assert!(!line.contains("str_hello"), "should not annotate bracket ref: {line}");
+        assert!(
+            !line.contains("str_hello"),
+            "should not annotate bracket ref: {line}"
+        );
     }
 
     #[test]
@@ -933,7 +1045,9 @@ mod tests {
                 ("0019:0000", "55", "push bp", 1, None),
                 ("0019:000A", "5D", "pop bp", 1, None),
             ],
-            vec![], vec![], vec![],
+            vec![],
+            vec![],
+            vec![],
         );
         let mut config = Config::default();
         // Data entry is in a different segment — should not appear

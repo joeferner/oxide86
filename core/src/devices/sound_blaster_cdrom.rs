@@ -125,6 +125,8 @@ impl SoundBlasterCdrom {
             0x01 => 0, // Stop
             0x81 => 0, // Get drive attention / ready status
             0x83 => 0, // OEM identification inquiry
+            0x88 => 0, // Read disc geometry (5 result bytes)
+            0x8B => 0, // Read disc position/mode (6 result bytes)
             0x05 => 0, // Read status
             0x09 => 1, // Set mode
             0x0A => 3, // Seek (MSF)
@@ -175,12 +177,14 @@ impl SoundBlasterCdrom {
             // SBPCD polls this waiting for bit 3 (0x08 = drive ready / data disc) or bit 4
             // (0x10 = audio playing). Bit 6 (0x40) means "disc stable / not changed" — SBPCD
             // checks this in the IOCTL 0x09 "Return Media Changed" handler: bit 6 set → "not
-            // changed" (0x01), bit 6 clear → "changed" (0xFF). With disc: return 0x48 so the
-            // init loop exits (bit 3) and IOCTL 0x09 reports "not changed" (bit 6). Without
-            // disc: return 0x08 (ready, but disc absent/changed).
+            // changed" (0x01), bit 6 clear → "changed" (0xFF).
+            // Bit 0 (0x01) = "status changed" event: SBPCD.SYS checks this in both the ATN
+            // path and the command handler (0C45:19AF). Must remain set for all cmd 0x81
+            // responses while disc is present so the command handler check always passes.
+            // With disc: return 0x49 (ready + stable + status-changed). Without: 0x08.
             0x81 => {
                 let result = if self.disc_present() {
-                    0x08 | 0x40
+                    0x08 | 0x40 | 0x01
                 } else {
                     0x08
                 };
@@ -319,6 +323,21 @@ impl SoundBlasterCdrom {
                 self.result_buf.push_back(m);
                 self.result_buf.push_back(s);
                 self.result_buf.push_back(f);
+                self.state = CdromState::SendResult;
+            }
+
+            // Read disc geometry — 5 result bytes.
+            // Bytes 3-4 are the sector-unit size (BX); must be non-zero and divide 2048.
+            // Stub: BX=0x0800=2048 → geometry=151; sets [0x002e] bit 2 in SBPCD.
+            0x88 => {
+                self.result_buf.extend(&[0x00, 0x00, 0x00, 0x08, 0x00]);
+                self.state = CdromState::SendResult;
+            }
+
+            // Read disc position/mode — 6 result bytes.
+            // Stub: all zeros; sets [0x002e] bit 4 in SBPCD.
+            0x8B => {
+                self.result_buf.extend(&[0x00u8; 6]);
                 self.state = CdromState::SendResult;
             }
 
