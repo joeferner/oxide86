@@ -89,6 +89,16 @@
       "comment": "Reads CX result bytes from base+0 into ES:DI buffer. For each byte, polls\nbase+1 bit 2 for not-busy (up to 0x8000 loops); on timeout sets CF=1 and returns\nearly. On not-busy reads base+0 via `in al, dx` and stores with `stosb`.\nSpecial case: if [CS:0x0082]=0x84 or CX=0, returns immediately CF=0 (no data)."
     }
   },
+  "labels": {
+    "0019:4163": {
+      "label": "int21h_dispatch",
+      "comment": "INT 21h dispatch continuation. Reached via fall-through from int_21h (0019:40EB)\nafter all-register save and internal-stack setup (534 executions), and via\n`jmp 0x4163` from 0019:55F6 (1 execution = media-check retry).\nResets SP to MSCDEX private stack (0x07A0), re-enables interrupts, sets\nDS=0x0116, then dispatches to the actual INT 21h function handler via the\ndispatch table at 0019:41DD/41EC."
+    },
+    "0019:55F5": {
+      "label": "int21h_retry_dispatch",
+      "comment": "Reached from 0019:55E0 when the media-check IOCTL (cmd 4) confirms disc is\npresent/unchanged (original AL=0x01 from AX=0C01 saved at 0019:55CC).\nDisables interrupts then jumps back to int21h_dispatch (0019:4163) to\nre-process the pending DOS request now that the drive is confirmed ready."
+    }
+  },
   "lineComments": {
     "0019:507A 26 F6 45 06 80": "test bit 7 of request-record byte at offset 0x06; ZF=1 if clear",
     "0019:71D5 C6 06 57 03 01": "set 'request in-progress' flag",
@@ -111,6 +121,10 @@
     "0019:90EC 74 BF": "success path (ZF=1, taken 83 times); once ZF=0 with AL=0x0D triggers 'not ready' exit",
     "0019:9337 CD 24": "DOS Critical Error Handler: produces 'CDR101: Not ready reading drive D'",
     "0019:A666 F6 E3": "BX×0x3B: offset into device record table (0x3B bytes per record)",
+    "0019:55D5": "issue IOCTL Input (AH=4 = Media Check) to CD-ROM driver via func_issue_cmd",
+    "0019:55DC": "AH = restored original AL; AL=0x01 was the original INT 21h parameter (from AX=0C01 saved at 0019:55CC)",
+    "0019:55DE": "check original AL == 0x01 (disc present / not changed) → ready to proceed",
+    "0019:55E0": "disc confirmed present: jump to int21h_retry_dispatch (0019:55F5) → re-enter int21h_dispatch",
     "0C45:0C52 A8 01": "ATN check: bit 0 of base+1 result; ZF=1 → no ATN → je 0x0C6D taken; ZF=0 → ATN → fall to 0x0C56 ATN handler (call func_sbpcd_get_attn_status, dispatch on bits 6/4 of result)",
     "0C45:0C54 74 17": "skip ATN handler (0x0C56-0x0C6C): calls func_sbpcd_get_attn_status, re-reads [0x0053]; result bit 6=1→bit 4 check; bit 4=1→audio path (0x0C8A); bit 4=0→fall to 0x0C6D",
     "0C45:0D23 2E F6 06 2E 00 04": "test drive-init flag [0x002e] bit 2 (set by 0x0D94 after cmd 0x88 geometry setup); if set → dispatch command; if clear → check [0x0053] bit 0",

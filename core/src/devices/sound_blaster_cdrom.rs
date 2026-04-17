@@ -1,6 +1,6 @@
 use std::{any::Any, collections::VecDeque};
 
-use crate::{Device, devices::CdromController, disk::cdrom::CdromBackend};
+use crate::{Device, devices::CdromController, disk::cdrom::CdromBackend, utils::bcd_to_dec};
 
 // Status byte bits (read from base+0)
 const STATUS_RESULT_AVAIL: u8 = 0x01; // result data available at base+0
@@ -60,6 +60,9 @@ pub struct SoundBlasterCdrom {
     // Panasonic ATN (attention) signal: bit 0 of base+1 asserted by drive after power-on
     // or disc change to notify host of new status. Consumed on first base+1 read in Idle.
     attention_pending: bool,
+    // When true, StreamSector state serves data from base+0 reads (cmd 0x02 protocol).
+    // When false, data is served from base+1 reads (cmd 0x0B protocol).
+    stream_via_base0: bool,
 }
 
 impl SoundBlasterCdrom {
@@ -88,6 +91,7 @@ impl SoundBlasterCdrom {
             irq_enabled: true,
             irq_line,
             attention_pending,
+            stream_via_base0: false,
         }
     }
 
@@ -123,10 +127,7 @@ impl SoundBlasterCdrom {
         match cmd {
             0x00 => 0, // NOP / presence check
             0x01 => 0, // Stop
-            0x81 => 0, // Get drive attention / ready status
-            0x83 => 0, // OEM identification inquiry
-            0x88 => 0, // Read disc geometry (5 result bytes)
-            0x8B => 0, // Read disc position/mode (6 result bytes)
+            0x02 => 6, // Read sectors native (BCD MSF 3 + count16 2 + mode 1)
             0x05 => 0, // Read status
             0x09 => 1, // Set mode
             0x0A => 3, // Seek (MSF)
@@ -136,6 +137,11 @@ impl SoundBlasterCdrom {
             0x10 => 0, // Reset
             0x11 => 2, // Read TOC (first/last track)
             0x12 => 0, // Read disc info
+            0x81 => 0, // Get drive attention / ready status
+            0x83 => 0, // OEM identification inquiry
+            0x84 => 6, // Set drive parameters (fire-and-forget, no result)
+            0x88 => 0, // Read disc geometry (5 result bytes)
+            0x8B => 0, // Read disc position/mode (6 result bytes)
             _ => 0,
         }
     }
@@ -341,6 +347,42 @@ impl SoundBlasterCdrom {
                 self.state = CdromState::SendResult;
             }
 
+            // Read sectors (native Panasonic protocol, cmd 0x02).
+            // Params: M_BCD, S_BCD, F_BCD (BCD-encoded MSF address), count_hi, count_lo, mode.
+            // Unlike cmd 0x0B, SBPCD transfers 2048 data bytes via `rep insb` from base+0
+            // (func_0C45_22FE). No result byte is emitted; base+1 signals data-ready (bit 1).
+            0x02 => {
+                if !self.disc_present() {
+                    self.error = true;
+                    self.result_buf.push_back(RESULT_ERROR);
+                    self.state = CdromState::SendResult;
+                    if self.irq_enabled {
+                        self.pending_irq = true;
+                    }
+                    return;
+                }
+                let m = bcd_to_dec(self.params[0]);
+                let s = bcd_to_dec(self.params[1]);
+                let f = bcd_to_dec(self.params[2]);
+                let count = (self.params[3] as u32) << 8 | self.params[4] as u32;
+                self.read_lba = msf_to_lba(m, s, f);
+                self.read_remaining = count;
+                self.read_sector_pos = 2048; // force sector load on first read
+                self.stream_via_base0 = true;
+                if count > 0 {
+                    self.state = CdromState::StreamSector;
+                } else {
+                    self.state = CdromState::Idle;
+                }
+            }
+
+            // Set drive parameters (cmd 0x84).
+            // SBPCD sends this as a fire-and-forget: 7-byte packet, no result bytes read.
+            // func_sbpcd_read_result_loop special-cases cmd=0x84 and returns immediately.
+            0x84 => {
+                self.state = CdromState::Idle;
+            }
+
             // Audio play / stop — not implemented, return error
             0x0E | 0x0F => {
                 log::warn!(
@@ -360,11 +402,11 @@ impl SoundBlasterCdrom {
             }
         }
 
-        if matches!(
-            self.state,
-            CdromState::SendResult | CdromState::StreamSector
-        ) && self.irq_enabled
-        {
+        // cmd 0x02 uses polling (base+1 bit 1), not IRQ — suppress IRQ to avoid the ISR
+        // consuming the first sector byte from base+0 before the driver's rep insb runs.
+        let irq_on_stream =
+            matches!(self.state, CdromState::StreamSector) && !self.stream_via_base0;
+        if (matches!(self.state, CdromState::SendResult) || irq_on_stream) && self.irq_enabled {
             self.pending_irq = true;
         }
     }
@@ -459,6 +501,7 @@ impl Device for SoundBlasterCdrom {
         self.error = false;
         self.pending_irq = false;
         self.attention_pending = false;
+        self.stream_via_base0 = false;
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -487,6 +530,8 @@ impl Device for SoundBlasterCdrom {
                     CdromState::StreamSector if !self.result_buf.is_empty() => {
                         self.result_buf.pop_front().unwrap()
                     }
+                    // cmd 0x02: sector data streams directly from base+0 (no result byte)
+                    CdromState::StreamSector if self.stream_via_base0 => self.stream_read_byte(),
                     _ => self.status_byte(),
                 };
                 log::debug!("SbCd R base+0 val=0x{byte:02X} state={:?}", self.state);
@@ -500,9 +545,14 @@ impl Device for SoundBlasterCdrom {
             1 => {
                 let byte = match self.state {
                     CdromState::RecvParams(_) | CdromState::Execute => 0x04, // bit 2: busy
-                    CdromState::StreamSector if self.result_buf.is_empty() => {
+                    // cmd 0x0B: sector bytes stream from base+1 (after result byte consumed)
+                    CdromState::StreamSector
+                        if self.result_buf.is_empty() && !self.stream_via_base0 =>
+                    {
                         self.stream_read_byte()
                     }
+                    // cmd 0x02: base+1 bit 1 signals data ready; data itself is at base+0
+                    CdromState::StreamSector if self.stream_via_base0 => 0x02,
                     CdromState::Idle if self.attention_pending => {
                         // Assert ATN once; cleared after host reads it so it fires only once
                         // per disc insertion / power-on cycle.

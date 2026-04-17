@@ -11,6 +11,7 @@ pub mod dis;
 pub mod disk;
 pub mod memory;
 pub mod scan_code;
+pub(crate) mod utils;
 pub mod video;
 
 pub use disk::{DiskGeometry, SECTOR_SIZE};
