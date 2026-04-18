@@ -94,7 +94,7 @@
   - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
 - [X] Convert scripts/logs_to_asm.py to Rust.
 - [X] CD-ROM (see ai-analysis/cd-rom-sb.md)
-- [ ] Printer
+- [X] Printer
 - [ ] SoundBlaster (see future ai-analysis/cd-rom-sb.md)
 - [ ] WASM Joystick
 - [ ] WASM Disk browser/editor

@@ -7,12 +7,17 @@ edition = "2024"
 name = "logs-to-asm"
 path = "src/bin/logs_to_asm/main.rs"
 
+[[bin]]
+name = "prn-to-pdf"
+path = "src/bin/prn_to_pdf/main.rs"
+
 [dependencies]
 oxide86-core = { path = "../core" }
 anyhow = { workspace = true }
 clap = { workspace = true }
 env_logger = { workspace = true }
 log = { workspace = true }
+printpdf = "0.6"
 regex = "1"
 serde_json = "1"
 
