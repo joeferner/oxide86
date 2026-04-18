@@ -319,6 +319,22 @@ impl Bus {
         self.pic.borrow_mut().set_cdrom(rc);
     }
 
+    pub(crate) fn add_sound_blaster<T: Device + SoundCard + CdromController + 'static>(
+        &mut self,
+        device: T,
+    ) {
+        debug_assert!(self.sound_card.is_none(), "sound card already registered");
+        debug_assert!(
+            self.cdrom_controller.is_none(),
+            "CD-ROM controller already registered"
+        );
+        let rc = Rc::new(RefCell::new(device));
+        self.devices.push(rc.clone());
+        self.sound_card = Some(rc.clone());
+        self.cdrom_controller = Some(rc.clone());
+        self.pic.borrow_mut().set_cdrom(rc);
+    }
+
     pub(crate) fn cdrom_controller(&self) -> Option<&CdromControllerRef> {
         self.cdrom_controller.as_ref()
     }

@@ -9,4 +9,5 @@ pub(crate) mod pit;
 pub(crate) mod printer;
 pub(crate) mod rtc;
 pub(crate) mod serial_loopback;
+pub(crate) mod sound_blaster;
 pub(crate) mod uart;

@@ -24,8 +24,8 @@ pub mod printer;
 pub mod rtc;
 pub mod serial_loopback;
 pub mod serial_mouse;
-pub mod sound_blaster_cdrom;
-pub use sound_blaster_cdrom::SoundBlasterCdrom;
+pub mod sound_blaster;
+pub use sound_blaster::SoundBlaster;
 pub mod uart;
 
 /// Shared ring buffer used by native audio consumer threads (e.g., Rodio).
@@ -105,6 +105,8 @@ pub enum SoundCardType {
     None,
     /// AdLib Music Synthesizer Card (Yamaha OPL2, ports 0x388–0x389).
     AdLib,
+    /// Sound Blaster 16 (DSP + OPL3 + mixer + MPU-401 + CD-ROM interface).
+    SoundBlaster16,
 }
 
 impl SoundCardType {
@@ -112,6 +114,7 @@ impl SoundCardType {
     pub fn parse(s: &str) -> Option<Self> {
         match s.to_lowercase().trim() {
             "adlib" | "adl" => Some(SoundCardType::AdLib),
+            "sb16" | "sb" | "soundblaster" | "sound-blaster" => Some(SoundCardType::SoundBlaster16),
             "none" => Some(SoundCardType::None),
             _ => None,
         }

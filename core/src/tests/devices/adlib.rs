@@ -1,6 +1,6 @@
 use crate::{
     devices::adlib::Adlib,
-    tests::{run_test, load_program_data, TEST_OFFSET, TEST_SEGMENT},
+    tests::{TEST_OFFSET, TEST_SEGMENT, load_program_data, run_test},
 };
 
 fn create_adlib_computer() -> (
@@ -66,7 +66,10 @@ pub(crate) fn tone_produces_samples() {
     assert_eq!(Some(0), computer.get_exit_code());
 
     let available = consumer.available();
-    assert!(available > 0, "ring buffer must contain samples after playing a tone");
+    assert!(
+        available > 0,
+        "ring buffer must contain samples after playing a tone"
+    );
 
     let mut samples = vec![0.0f32; available];
     consumer.drain_into(&mut samples);

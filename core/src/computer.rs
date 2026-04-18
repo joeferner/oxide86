@@ -133,6 +133,13 @@ impl Computer {
         self.bus.add_cdrom_controller(device);
     }
 
+    pub fn add_sound_blaster<T: Device + crate::devices::SoundCard + CdromController + 'static>(
+        &mut self,
+        device: T,
+    ) {
+        self.bus.add_sound_blaster(device);
+    }
+
     pub fn has_cdrom_controller(&self) -> bool {
         self.bus.cdrom_controller().is_some()
     }

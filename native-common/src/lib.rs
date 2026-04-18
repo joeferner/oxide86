@@ -16,7 +16,7 @@ use oxide86_core::devices::clock::{Clock, LocalDate, LocalTime};
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
-    devices::SoundBlasterCdrom,
+    devices::SoundBlaster,
     devices::{
         SoundCardType,
         adlib::Adlib,
@@ -136,6 +136,10 @@ pub fn create_computer(
                 }
                 computer.add_sound_card(adlib);
             }
+            SoundCardType::SoundBlaster16 => {
+                // CD-ROM registration below handles SB16 via add_sound_blaster;
+                // audio backend wired in Phase 9.
+            }
         }
     } else {
         return Err(anyhow!(
@@ -211,8 +215,8 @@ pub fn create_computer(
         } else {
             None
         };
-        let device = SoundBlasterCdrom::new(base_port, disc, cli.sound_blaster_irq);
-        computer.add_cdrom_controller(device);
+        let device = SoundBlaster::with_cdrom(base_port, disc, cli.sound_blaster_irq, cpu_freq);
+        computer.add_sound_blaster(device);
         log::info!(
             "Sound Blaster CD-ROM interface registered at port 0x{base_port:03X}, IRQ {}",
             cli.sound_blaster_irq

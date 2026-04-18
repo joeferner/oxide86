@@ -537,7 +537,7 @@ The inline-byte convention (identical to `adlib_write_reg` in `adlib.asm`) keeps
 
 ---
 
-## Phase 2 — Absorb `SoundBlasterCdrom`
+## ✅ Phase 2 — Absorb `SoundBlasterCdrom`
 
 Create the `SoundBlaster` struct as the thinnest possible wrapper that absorbs the existing `SoundBlasterCdrom` device and stubs everything else. Goal: all existing CD-ROM tests pass unchanged; everything else compiles and returns safe defaults.
 
