@@ -75,6 +75,19 @@ pub(crate) fn opl_adlib_compat() {
     );
 }
 
+/// Mixer register write/read round-trips correctly; IRQ config register persists.
+#[test_log::test]
+pub(crate) fn mixer_readwrite() {
+    run_test(
+        "devices/sound_blaster/mixer_readwrite",
+        create_sb_computer(),
+        |computer, _video_buffer| {
+            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.run();
+        },
+    );
+}
+
 /// Playing an OPL voice via the SB port produces non-zero PCM samples.
 #[test_log::test]
 pub(crate) fn opl_tone_produces_samples() {

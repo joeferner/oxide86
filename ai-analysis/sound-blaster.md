@@ -1038,7 +1038,7 @@ This is the same logic as the existing `Adlib` struct, extracted as a sub-struct
 
 ---
 
-## Phase 6 — Mixer Chip
+## ✅ Phase 6 — Mixer Chip
 
 **Ports**: `base+0x4` (write index), `base+0x5` (read/write data)
 
@@ -1401,6 +1401,8 @@ When the DSP starts DMA, it asserts DREQ on the DMA controller so the controller
 **Ports**: `0x330` (data), `0x331` (command/status)
 
 ### Tests first
+
+Update **`examples/sound_blaster.asm`** with playing some midi notes 
 
 **`core/src/test_data/devices/sound_blaster/mpu_reset.asm`**
 

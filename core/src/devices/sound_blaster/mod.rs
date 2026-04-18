@@ -9,6 +9,8 @@ use crate::{
 
 mod dsp;
 use dsp::SoundBlasterDsp;
+mod mixer;
+use mixer::SoundBlasterMixer;
 mod opl;
 use opl::SoundBlasterOpl;
 
@@ -583,6 +585,7 @@ pub struct SoundBlaster {
     base_port: u16,
     cdrom: SoundBlasterCdromInner,
     dsp: SoundBlasterDsp,
+    mixer: SoundBlasterMixer,
     opl: SoundBlasterOpl,
     #[allow(dead_code)]
     cpu_freq: u64,
@@ -595,6 +598,7 @@ impl SoundBlaster {
             base_port: 0x220,
             cdrom: SoundBlasterCdromInner::new(0x230, None, 5),
             dsp: SoundBlasterDsp::new(),
+            mixer: SoundBlasterMixer::new(),
             opl: SoundBlasterOpl::new(cpu_freq),
             cpu_freq,
         }
@@ -611,6 +615,7 @@ impl SoundBlaster {
             base_port: 0x220,
             cdrom: SoundBlasterCdromInner::new(cdrom_base_port, disc, irq_line),
             dsp: SoundBlasterDsp::new(),
+            mixer: SoundBlasterMixer::new(),
             opl: SoundBlasterOpl::new(cpu_freq),
             cpu_freq,
         }
@@ -629,6 +634,7 @@ impl Device for SoundBlaster {
     fn reset(&mut self) {
         self.cdrom.reset();
         self.dsp.hardware_reset();
+        self.mixer.reset();
         self.opl.reset();
     }
 
@@ -647,6 +653,9 @@ impl Device for SoundBlaster {
             0x00 | 0x01 | 0x02 | 0x03 | 0x08 | 0x09 => {
                 return Some(self.opl.read_status(cycle_count));
             }
+            // Mixer ports
+            0x04 => return Some(0xFF), // index port reads back 0xFF on real HW
+            0x05 => return Some(self.mixer.read_data()),
             // DSP ports
             0x0A => return Some(self.dsp.read_data()),
             0x0C => return Some(0x00), // write-buffer status: never busy
@@ -682,6 +691,15 @@ impl Device for SoundBlaster {
             // OPL data port (chip 1: base+3)
             0x03 => {
                 self.opl.write_data(1, val, cycle_count);
+                return true;
+            }
+            // Mixer ports
+            0x04 => {
+                self.mixer.write_index(val);
+                return true;
+            }
+            0x05 => {
+                self.mixer.write_data(val);
                 return true;
             }
             // DSP ports
