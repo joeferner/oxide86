@@ -94,7 +94,9 @@ export function PeripheralsPanel(): React.ReactElement {
                                     variant="default"
                                     size="lg"
                                     disabled={!isPrinter || !isRunning}
-                                    onClick={() => { downloadPrinterOutput(port); }}
+                                    onClick={() => {
+                                        downloadPrinterOutput(port);
+                                    }}
                                     aria-label={`Download LPT${port} output`}
                                 >
                                     <i className="bi bi-download" />

@@ -1,27 +1,44 @@
-use std::sync::{Arc, RwLock};
+use std::{
+    io,
+    sync::{Arc, Mutex, RwLock},
+};
 
 use crate::{devices::printer::Printer, tests::run_test};
 
-fn make_printer_computer() -> (
-    crate::computer::Computer,
-    Arc<RwLock<crate::video::VideoBuffer>>,
-) {
-    let (mut computer, video_buffer) = make_computer!();
-    computer.set_lpt_device(1, Some(Arc::new(RwLock::new(Printer::new()))));
-    (computer, video_buffer)
+/// A `Write` sink backed by a shared `Arc<Mutex<Vec<u8>>>` so the test can
+/// read printer output after `computer.run()` without owning the `Printer`.
+struct SharedVecWriter(Arc<Mutex<Vec<u8>>>);
+
+impl io::Write for SharedVecWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 /// Send "Hello, Printer!\r\n" to LPT1 via direct I/O and verify the raw bytes
-/// are captured by `take_lpt_output`.
+/// reach the writer in order.
 #[test_log::test]
 pub(crate) fn printer_hello() {
+    let output: Arc<Mutex<Vec<u8>>> = Arc::new(Mutex::new(Vec::new()));
+
+    let (mut computer, video_buffer) = make_computer!();
+    computer.set_lpt_device(
+        1,
+        Some(Arc::new(RwLock::new(Printer::new(
+            Box::new(SharedVecWriter(Arc::clone(&output))) as Box<dyn std::io::Write + Send + Sync>,
+        )))),
+    );
+
     run_test(
         "devices/printer/printer_hello",
-        make_printer_computer(),
-        |computer, _video_buffer| {
-            computer.run();
-            let output = computer.take_lpt_output(1);
-            assert_eq!(output, b"Hello, Printer!\r\n");
+        (computer, video_buffer),
+        |comp, _| {
+            comp.run();
+            assert_eq!(*output.lock().unwrap(), b"Hello, Printer!\r\n");
         },
     );
 }

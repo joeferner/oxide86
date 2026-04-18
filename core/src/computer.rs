@@ -501,11 +501,6 @@ impl Computer {
         self.bus.parallel_port_mut().set_lpt_device(port, device)
     }
 
-    /// Drain and return any bytes accumulated by the LPT device on `port` (1-based).
-    pub fn take_lpt_output(&mut self, port: u8) -> Vec<u8> {
-        self.bus.parallel_port_mut().take_lpt_output(port)
-    }
-
     /// Inject a PS/2 mouse event.  The event is encoded as a 3-byte PS/2 packet
     /// and queued through the keyboard controller's auxiliary port, exactly as
     /// real hardware would do.  IRQ12 fires on the next step() call (provided

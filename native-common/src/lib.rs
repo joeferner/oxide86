@@ -224,9 +224,9 @@ pub fn create_computer(
     computer.set_com_port_device(3, create_com_device(&cli.com3_device, &serial_mouse)?);
     computer.set_com_port_device(4, create_com_device(&cli.com4_device, &serial_mouse)?);
 
-    computer.set_lpt_device(1, create_lpt_device(&cli.lpt1_device)?);
-    computer.set_lpt_device(2, create_lpt_device(&cli.lpt2_device)?);
-    computer.set_lpt_device(3, create_lpt_device(&cli.lpt3_device)?);
+    computer.set_lpt_device(1, create_lpt_device(&cli.lpt1_device, &cli.lpt1_output)?);
+    computer.set_lpt_device(2, create_lpt_device(&cli.lpt2_device, &cli.lpt2_output)?);
+    computer.set_lpt_device(3, create_lpt_device(&cli.lpt3_device, &cli.lpt3_output)?);
 
     if let Some(program_path) = &cli.program {
         // Load program from file
@@ -307,6 +307,7 @@ fn create_com_device(
 
 fn create_lpt_device(
     device_name: &Option<String>,
+    output_path: &Option<String>,
 ) -> Result<Option<Arc<RwLock<dyn LptPortDevice>>>> {
     if let Some(device_name) = device_name {
         let device_name = device_name.trim().to_lowercase();
@@ -315,7 +316,16 @@ fn create_lpt_device(
         } else if device_name == "loopback" {
             Ok(Some(Arc::new(RwLock::new(ParallelLoopback::new()))))
         } else if device_name == "printer" {
-            Ok(Some(Arc::new(RwLock::new(Printer::new()))))
+            let writer: Box<dyn std::io::Write + Send + Sync> = if let Some(path) = output_path {
+                let file = std::fs::File::create(path)
+                    .with_context(|| format!("Failed to create printer output file: {path}"))?;
+                log::info!("Printer output -> {path}");
+                Box::new(file)
+            } else {
+                log::warn!("Printer selected but no output path configured; output discarded");
+                Box::new(std::io::sink())
+            };
+            Ok(Some(Arc::new(RwLock::new(Printer::new(writer)))))
         } else {
             Err(anyhow!("Invalid LPT device name: {device_name}"))
         }

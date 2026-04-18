@@ -70,12 +70,6 @@ pub trait LptPortDevice {
     ///
     /// Bits 2:0 are reserved and ignored by the caller.
     fn status(&mut self) -> u8;
-
-    /// Drain and return any accumulated output bytes since the last call.
-    /// The default implementation returns an empty vec (device produces no output).
-    fn take_output(&mut self) -> Vec<u8> {
-        Vec::new()
-    }
 }
 
 /// State for one parallel port.
@@ -152,20 +146,6 @@ impl ParallelPort {
     }
 
     /// Drain accumulated output from the given LPT port (1-based).
-    /// Returns an empty vec if the port has no device or the device produces no output.
-    pub fn take_lpt_output(&mut self, port: u8) -> Vec<u8> {
-        let idx = match port {
-            1..=3 => (port - 1) as usize,
-            _ => return Vec::new(),
-        };
-        if let Some(ref dev) = self.ports[idx].device {
-            dev.write()
-                .map_or_else(|_| Vec::new(), |mut g| g.take_output())
-        } else {
-            Vec::new()
-        }
-    }
-
     /// Find which LPT port (if any) owns this I/O address, and return
     /// (port index, register offset 0–2).
     fn match_port(port: u16) -> Option<(usize, u16)> {

@@ -9,19 +9,25 @@ export function App(): React.ReactElement {
 
     useEffect(() => {
         const center = centerRef.current;
-        if (!center) return;
+        if (!center) {
+            return;
+        }
 
         const canvas = center.querySelector('canvas');
-        if (!canvas) return;
+        if (!canvas) {
+            return;
+        }
 
-        const updateHeight = () => {
+        const updateHeight = (): void => {
             center.style.height = `${canvas.offsetHeight}px`;
         };
 
         updateHeight();
         const ro = new ResizeObserver(updateHeight);
         ro.observe(canvas);
-        return () => ro.disconnect();
+        return () => {
+            ro.disconnect();
+        };
     }, []);
 
     return (

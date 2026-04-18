@@ -1,44 +1,44 @@
-//! Stub printer device for LPT1.
+//! Printer device for LPT ports.
 //!
-//! Accumulates the raw byte stream sent over the parallel port into an internal
-//! buffer. Callers drain it with [`Printer::take_output`] and are responsible
-//! for writing the bytes to a file or forwarding them elsewhere.
+//! Streams the raw byte sequence sent over the parallel port directly into a
+//! [`Write`] sink provided at construction time. The caller decides where the
+//! bytes go — a file on native, a shared in-memory buffer on WASM, or
+//! [`std::io::sink`] to discard output.
 //!
 //! The raw bytes are an unmodified copy of whatever the guest program sent to
 //! the printer port — ESC/P commands, plain text, PCL, PostScript, or anything
-//! else. A separate conversion tool can interpret the bytes later.
+//! else. A separate conversion tool can interpret them later.
+
+use std::io::Write;
 
 use crate::devices::parallel_port::LptPortDevice;
 
-/// Stub printer that buffers all LPT output for later retrieval.
+/// Printer that forwards each byte received via strobe to an inner [`Write`] sink.
 pub struct Printer {
-    output: Vec<u8>,
+    writer: Box<dyn Write + Send + Sync>,
 }
 
 impl Printer {
-    pub fn new() -> Self {
-        Self { output: Vec::new() }
+    pub fn new(writer: Box<dyn Write + Send + Sync>) -> Self {
+        Self { writer }
     }
 }
 
 impl LptPortDevice for Printer {
     fn reset(&mut self) {
         log::debug!("[printer] reset");
-        self.output.clear();
+        let _ = self.writer.flush();
     }
 
     fn write(&mut self, data: u8) -> bool {
-        self.output.push(data);
+        if let Err(e) = self.writer.write_all(&[data]) {
+            log::warn!("[printer] write error: {e}");
+        }
         true
     }
 
     fn status(&mut self) -> u8 {
-        // Report: not busy, ACK, selected, no error, no paper-out.
-        // Matches STATUS_READY in parallel_port.rs (0xDF).
+        // Report: not busy, ACK, selected, no error, no paper-out (0xDF).
         0xDF
-    }
-
-    fn take_output(&mut self) -> Vec<u8> {
-        std::mem::take(&mut self.output)
     }
 }

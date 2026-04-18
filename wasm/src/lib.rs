@@ -1,4 +1,5 @@
-use std::sync::{Arc, RwLock};
+use std::io::Write;
+use std::sync::{Arc, Mutex, RwLock};
 
 mod shared_mem_backend;
 use shared_mem_backend::SharedMemBackend;
@@ -137,6 +138,8 @@ pub struct Oxide86Computer {
     com_port_devices: [String; 4],
     /// Device name for each LPT port: index 0 = LPT1, 1 = LPT2, 2 = LPT3.
     lpt_port_devices: [String; 3],
+    /// Shared output buffers for LPT printer devices; `None` when no printer is attached.
+    lpt_output_bufs: [Option<Arc<Mutex<Vec<u8>>>>; 3],
     /// Retained Arc for any serial mouse so push_mouse_event can forward events to it.
     serial_mouse: Option<Arc<RwLock<SerialMouse>>>,
 }
@@ -168,6 +171,7 @@ impl Oxide86Computer {
             frame_buf: Vec::new(),
             com_port_devices: Default::default(),
             lpt_port_devices: Default::default(),
+            lpt_output_bufs: Default::default(),
             serial_mouse: None,
         })
     }
@@ -426,13 +430,18 @@ impl Oxide86Computer {
         Some(Uint8Array::from(data.as_slice()))
     }
 
-    /// Drain and return all raw bytes accumulated by the printer on the given LPT port (1–3).
-    /// Returns an empty array if the port has no printer or no data has been received.
-    /// The caller is responsible for saving or displaying the data (e.g. as a .prn download).
+    /// Drain and return all raw bytes written by the printer on the given LPT port (1–3)
+    /// since the last call. Returns an empty array if no printer is attached or no data
+    /// has arrived. Can be called while the emulator is running.
     pub fn get_lpt_output(&mut self, port: u8) -> js_sys::Uint8Array {
-        let data = match &mut self.state {
-            Some(state) => state.computer.take_lpt_output(port),
-            None => Vec::new(),
+        let idx = match port {
+            1..=3 => (port - 1) as usize,
+            _ => return js_sys::Uint8Array::new_with_length(0),
+        };
+        let data = if let Some(buf) = &self.lpt_output_bufs[idx] {
+            std::mem::take(&mut *buf.lock().unwrap())
+        } else {
+            Vec::new()
         };
         let arr = js_sys::Uint8Array::new_with_length(data.len() as u32);
         arr.copy_from(&data);
@@ -450,10 +459,11 @@ impl Oxide86Computer {
             }
         };
         self.lpt_port_devices[idx] = device.to_string();
+        let result = make_lpt_device(device);
+        self.lpt_output_bufs[idx] = result.buf;
         if let Some(state) = &mut self.state {
-            let dev = make_lpt_device(device);
-            let attached = dev.is_some();
-            state.computer.set_lpt_device(port, dev);
+            let attached = result.device.is_some();
+            state.computer.set_lpt_device(port, result.device);
             if attached {
                 log::info!("LPT{port}: attached {device}");
             } else {
@@ -496,11 +506,44 @@ struct WasmComPortDevice {
     mouse: Option<Arc<RwLock<SerialMouse>>>,
 }
 
-fn make_lpt_device(device: &str) -> Option<Arc<RwLock<dyn LptPortDevice>>> {
+/// A `Write` sink that appends into a shared `Arc<Mutex<Vec<u8>>>` buffer,
+/// allowing the WASM layer to read and drain printer output while the emulator runs.
+struct SharedVecWriter(Arc<Mutex<Vec<u8>>>);
+
+impl Write for SharedVecWriter {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+struct WasmLptDevice {
+    device: Option<Arc<RwLock<dyn LptPortDevice>>>,
+    /// Shared output buffer — `Some` only when device is a `Printer`.
+    buf: Option<Arc<Mutex<Vec<u8>>>>,
+}
+
+fn make_lpt_device(device: &str) -> WasmLptDevice {
     match device {
-        "printer" => Some(Arc::new(RwLock::new(Printer::new()))),
-        "loopback" => Some(Arc::new(RwLock::new(ParallelLoopback::new()))),
-        _ => None,
+        "printer" => {
+            let buf = Arc::new(Mutex::new(Vec::new()));
+            let writer = SharedVecWriter(Arc::clone(&buf));
+            WasmLptDevice {
+                device: Some(Arc::new(RwLock::new(Printer::new(Box::new(writer))))),
+                buf: Some(buf),
+            }
+        }
+        "loopback" => WasmLptDevice {
+            device: Some(Arc::new(RwLock::new(ParallelLoopback::new()))),
+            buf: None,
+        },
+        _ => WasmLptDevice {
+            device: None,
+            buf: None,
+        },
     }
 }
 
@@ -609,13 +652,14 @@ impl Oxide86Computer {
                 for (idx, device_name) in self.lpt_port_devices.iter().enumerate() {
                     if !device_name.is_empty() && device_name != "none" {
                         let port = (idx + 1) as u8;
-                        let dev = make_lpt_device(device_name);
-                        if dev.is_some() {
+                        let result = make_lpt_device(device_name);
+                        if result.device.is_some() {
                             log::info!("LPT{port}: attaching {device_name} on boot");
                         } else {
                             log::warn!("LPT{port}: unknown device '{device_name}', skipping");
                         }
-                        state.computer.set_lpt_device(port, dev);
+                        self.lpt_output_bufs[idx] = result.buf;
+                        state.computer.set_lpt_device(port, result.device);
                     }
                 }
 
