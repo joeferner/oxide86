@@ -3,9 +3,13 @@ import { Oxide86Computer, type WasmComputerConfig } from 'oxide86-wasm';
 
 const CONFIG_STORAGE_KEY = 'oxide86_machine_config';
 const COM_PORTS_STORAGE_KEY = 'oxide86_com_ports';
+const LPT_PORTS_STORAGE_KEY = 'oxide86_lpt_ports';
 
 export type ComPortDevice = 'none' | 'serial_mouse' | 'loopback';
 export const COM_PORT_COUNT = 4;
+
+export type LptPortDevice = 'none' | 'printer' | 'loopback';
+export const LPT_PORT_COUNT = 3;
 
 function loadComPorts(): ComPortDevice[] {
     try {
@@ -24,6 +28,25 @@ function loadComPorts(): ComPortDevice[] {
 
 function saveComPorts(ports: ComPortDevice[]): void {
     localStorage.setItem(COM_PORTS_STORAGE_KEY, JSON.stringify(ports));
+}
+
+function loadLptPorts(): LptPortDevice[] {
+    try {
+        const raw = localStorage.getItem(LPT_PORTS_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw) as unknown[];
+            if (Array.isArray(parsed)) {
+                return Array.from({ length: LPT_PORT_COUNT }, (_, i) => (parsed[i] as LptPortDevice) ?? 'none');
+            }
+        }
+    } catch {
+        // ignore
+    }
+    return Array(LPT_PORT_COUNT).fill('none') as LptPortDevice[];
+}
+
+function saveLptPorts(ports: LptPortDevice[]): void {
+    localStorage.setItem(LPT_PORTS_STORAGE_KEY, JSON.stringify(ports));
 }
 
 type PersistedConfig = Pick<
@@ -95,6 +118,7 @@ export class State {
     private readonly hddSignal = signal<File | null>(null);
     private readonly bootDriveSignal = signal<0 | 1 | 'hdd' | null>('hdd');
     private readonly comPortsSignal = signal<ComPortDevice[]>(loadComPorts());
+    private readonly lptPortsSignal = signal<LptPortDevice[]>(loadLptPorts());
     private soundAudio: SoundAudio | null = null;
 
     // ── Read-only signal accessors ────────────────────────────────────────────
@@ -129,6 +153,10 @@ export class State {
 
     public get comPorts(): ReadonlySignal<ComPortDevice[]> {
         return this.comPortsSignal;
+    }
+
+    public get lptPorts(): ReadonlySignal<LptPortDevice[]> {
+        return this.lptPortsSignal;
     }
 
     public get bootDrive(): ReadonlySignal<0 | 1 | 'hdd' | null> {
@@ -277,6 +305,13 @@ export class State {
             }
         });
 
+        // Push LPT port config into the new instance before boot.
+        this.lptPortsSignal.value.forEach((device, i) => {
+            if (device && device !== 'none') {
+                computer.set_lpt_port_device((i + 1) as 1 | 2 | 3, device);
+            }
+        });
+
         computer.power_on(hddImage, floppyAImage, floppyBImage, bootDrive);
 
         if (this.configSignal.value.sound_card === 'adlib') {
@@ -354,6 +389,17 @@ export class State {
         const computer = this.computerSignal.value;
         if (computer) {
             computer.set_com_port_device(port, device);
+        }
+    }
+
+    public setLptPortDevice(port: 1 | 2 | 3, device: LptPortDevice): void {
+        const next = [...this.lptPortsSignal.value] as LptPortDevice[];
+        next[port - 1] = device;
+        this.lptPortsSignal.value = next;
+        saveLptPorts(next);
+        const computer = this.computerSignal.value;
+        if (computer) {
+            computer.set_lpt_port_device(port, device);
         }
     }
 }

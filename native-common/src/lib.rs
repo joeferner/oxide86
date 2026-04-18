@@ -24,6 +24,7 @@ use oxide86_core::{
         parallel_port::LptPortDevice,
         parallel_port_loopback::ParallelLoopback,
         pc_speaker::{NullPcSpeaker, PcSpeaker},
+        printer::Printer,
         serial_loopback::SerialLoopback,
         serial_mouse::SerialMouse,
         uart::ComPortDevice,
@@ -313,6 +314,8 @@ fn create_lpt_device(
             Ok(None)
         } else if device_name == "loopback" {
             Ok(Some(Arc::new(RwLock::new(ParallelLoopback::new()))))
+        } else if device_name == "printer" {
+            Ok(Some(Arc::new(RwLock::new(Printer::new()))))
         } else {
             Err(anyhow!("Invalid LPT device name: {device_name}"))
         }

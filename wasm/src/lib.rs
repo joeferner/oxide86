@@ -11,7 +11,10 @@ use oxide86_core::{
         PcmRingBuffer,
         adlib::Adlib,
         clock::{EmulatedClock, LocalDate, LocalTime},
+        parallel_port::LptPortDevice,
+        parallel_port_loopback::ParallelLoopback,
         pc_speaker::NullPcSpeaker,
+        printer::Printer,
         serial_loopback::SerialLoopback,
         serial_mouse::SerialMouse,
         uart::ComPortDevice,
@@ -132,6 +135,8 @@ pub struct Oxide86Computer {
     frame_buf: Vec<u8>,
     /// Device name for each COM port: index 0 = COM1, 1 = COM2, 2 = COM3, 3 = COM4.
     com_port_devices: [String; 4],
+    /// Device name for each LPT port: index 0 = LPT1, 1 = LPT2, 2 = LPT3.
+    lpt_port_devices: [String; 3],
     /// Retained Arc for any serial mouse so push_mouse_event can forward events to it.
     serial_mouse: Option<Arc<RwLock<SerialMouse>>>,
 }
@@ -162,6 +167,7 @@ impl Oxide86Computer {
             boot_drive: None,
             frame_buf: Vec::new(),
             com_port_devices: Default::default(),
+            lpt_port_devices: Default::default(),
             serial_mouse: None,
         })
     }
@@ -420,6 +426,31 @@ impl Oxide86Computer {
         Some(Uint8Array::from(data.as_slice()))
     }
 
+    /// Attach a device to an LPT port. `port`: 1–3. `device`: "none", "printer", "loopback".
+    /// Takes effect immediately if the computer is running, and persists across reboots.
+    pub fn set_lpt_port_device(&mut self, port: u8, device: &str) {
+        let idx = match port {
+            1..=3 => (port - 1) as usize,
+            _ => {
+                log::warn!("set_lpt_port_device: invalid port {port}");
+                return;
+            }
+        };
+        self.lpt_port_devices[idx] = device.to_string();
+        if let Some(state) = &mut self.state {
+            let dev = make_lpt_device(device);
+            let attached = dev.is_some();
+            state.computer.set_lpt_device(port, dev);
+            if attached {
+                log::info!("LPT{port}: attached {device}");
+            } else {
+                log::info!("LPT{port}: detached (none)");
+            }
+        } else {
+            log::info!("LPT{port}: queued {device} (will attach on next power-on)");
+        }
+    }
+
     /// Attach a device to a COM port. `port`: 1–4. `device`: "none", "serial_mouse", "loopback".
     /// Takes effect immediately if the computer is running, and persists across reboots.
     pub fn set_com_port_device(&mut self, port: u8, device: &str) {
@@ -450,6 +481,14 @@ impl Oxide86Computer {
 struct WasmComPortDevice {
     device: Option<Arc<RwLock<dyn ComPortDevice>>>,
     mouse: Option<Arc<RwLock<SerialMouse>>>,
+}
+
+fn make_lpt_device(device: &str) -> Option<Arc<RwLock<dyn LptPortDevice>>> {
+    match device {
+        "printer" => Some(Arc::new(RwLock::new(Printer::new()))),
+        "loopback" => Some(Arc::new(RwLock::new(ParallelLoopback::new()))),
+        _ => None,
+    }
 }
 
 fn make_com_port_device(device: &str) -> WasmComPortDevice {
@@ -551,6 +590,19 @@ impl Oxide86Computer {
                             self.serial_mouse = result.mouse.clone();
                         }
                         state.computer.set_com_port_device(port, result.device);
+                    }
+                }
+
+                for (idx, device_name) in self.lpt_port_devices.iter().enumerate() {
+                    if !device_name.is_empty() && device_name != "none" {
+                        let port = (idx + 1) as u8;
+                        let dev = make_lpt_device(device_name);
+                        if dev.is_some() {
+                            log::info!("LPT{port}: attaching {device_name} on boot");
+                        } else {
+                            log::warn!("LPT{port}: unknown device '{device_name}', skipping");
+                        }
+                        state.computer.set_lpt_device(port, dev);
                     }
                 }
 

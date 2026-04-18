@@ -94,6 +94,8 @@
   - [X] Test CheckIt (see ai-analysis/f80-extended-precision.md)
 - [X] Convert scripts/logs_to_asm.py to Rust.
 - [X] CD-ROM (see ai-analysis/cd-rom-sb.md)
+- [ ] Printer
+- [ ] SoundBlaster (see future ai-analysis/cd-rom-sb.md)
 - [ ] WASM Joystick
 - [ ] WASM Disk browser/editor
 - [ ] WASM/CLI/GUI multiple hard drives
@@ -101,7 +103,6 @@
 - [ ] Add mounted drive support
 - [ ] Add PS/2 mouse support
   - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
-- [ ] SoundBlaster (see future ai-analysis/cd-rom-sb.md)
 - [ ] Modem COM port
   - [ ] mapping phone number to ip/host
   - [ ] modem sounds
