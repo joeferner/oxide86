@@ -1,3 +1,4 @@
+pub(crate) mod adlib;
 pub(crate) mod dma;
 pub(crate) mod game_port;
 pub(crate) mod keyboard;
