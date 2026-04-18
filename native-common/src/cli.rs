@@ -80,17 +80,29 @@ pub struct CommonCli {
     #[arg(long = "com4", value_name = "DEVICE")]
     pub com4_device: Option<String>,
 
-    /// Device to attach to LPT1 (e.g., "loopback")
+    /// Device to attach to LPT1 (e.g., "printer", "loopback")
     #[arg(long = "lpt1", value_name = "DEVICE")]
     pub lpt1_device: Option<String>,
 
-    /// Device to attach to LPT2 (e.g., "loopback")
+    /// File to write raw LPT1 printer output to (e.g. lpt1.prn). Only used when --lpt1 printer is set.
+    #[arg(long = "lpt1-output", value_name = "FILE")]
+    pub lpt1_output: Option<String>,
+
+    /// Device to attach to LPT2 (e.g., "printer", "loopback")
     #[arg(long = "lpt2", value_name = "DEVICE")]
     pub lpt2_device: Option<String>,
 
-    /// Device to attach to LPT3 (e.g., "loopback")
+    /// File to write raw LPT2 printer output to (e.g. lpt2.prn). Only used when --lpt2 printer is set.
+    #[arg(long = "lpt2-output", value_name = "FILE")]
+    pub lpt2_output: Option<String>,
+
+    /// Device to attach to LPT3 (e.g., "printer", "loopback")
     #[arg(long = "lpt3", value_name = "DEVICE")]
     pub lpt3_device: Option<String>,
+
+    /// File to write raw LPT3 printer output to (e.g. lpt3.prn). Only used when --lpt3 printer is set.
+    #[arg(long = "lpt3-output", value_name = "FILE")]
+    pub lpt3_output: Option<String>,
 
     /// Enable joystick/gamepad input on the game port (0x201). Uses the first connected gamepad.
     #[arg(long = "joystick")]

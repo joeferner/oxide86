@@ -258,6 +258,24 @@ fn main() -> Result<()> {
 
     terminal::disable_raw_mode()?;
 
+    // Flush any buffered printer output to the configured output files.
+    for (port, output_path) in [
+        (1u8, &cli.common.lpt1_output),
+        (2u8, &cli.common.lpt2_output),
+        (3u8, &cli.common.lpt3_output),
+    ] {
+        if let Some(path) = output_path {
+            let data = computer.take_lpt_output(port);
+            if !data.is_empty() {
+                if let Err(e) = std::fs::write(path, &data) {
+                    log::warn!("Failed to write LPT{port} output to {path}: {e}");
+                } else {
+                    log::info!("LPT{port}: wrote {} bytes to {path}", data.len());
+                }
+            }
+        }
+    }
+
     // use sink down here to make sure it doesn't get dropped
     if let Some(mut audio_sink) = audio_sink {
         audio_sink.log_on_drop(false);

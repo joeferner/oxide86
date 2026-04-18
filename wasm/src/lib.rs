@@ -426,6 +426,19 @@ impl Oxide86Computer {
         Some(Uint8Array::from(data.as_slice()))
     }
 
+    /// Drain and return all raw bytes accumulated by the printer on the given LPT port (1–3).
+    /// Returns an empty array if the port has no printer or no data has been received.
+    /// The caller is responsible for saving or displaying the data (e.g. as a .prn download).
+    pub fn get_lpt_output(&mut self, port: u8) -> js_sys::Uint8Array {
+        let data = match &mut self.state {
+            Some(state) => state.computer.take_lpt_output(port),
+            None => Vec::new(),
+        };
+        let arr = js_sys::Uint8Array::new_with_length(data.len() as u32);
+        arr.copy_from(&data);
+        arr
+    }
+
     /// Attach a device to an LPT port. `port`: 1–3. `device`: "none", "printer", "loopback".
     /// Takes effect immediately if the computer is running, and persists across reboots.
     pub fn set_lpt_port_device(&mut self, port: u8, device: &str) {

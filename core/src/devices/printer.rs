@@ -1,48 +1,34 @@
 //! Stub printer device for LPT1.
 //!
-//! Implements [`LptPortDevice`] and logs every data byte, control change, and
-//! strobe-triggered write. No actual output is produced; this is purely for
-//! debugging what a guest program sends to the parallel port.
+//! Accumulates the raw byte stream sent over the parallel port into an internal
+//! buffer. Callers drain it with [`Printer::take_output`] and are responsible
+//! for writing the bytes to a file or forwarding them elsewhere.
+//!
+//! The raw bytes are an unmodified copy of whatever the guest program sent to
+//! the printer port — ESC/P commands, plain text, PCL, PostScript, or anything
+//! else. A separate conversion tool can interpret the bytes later.
 
-use crate::{byte_to_printable_char, devices::parallel_port::LptPortDevice};
+use crate::devices::parallel_port::LptPortDevice;
 
-/// Stub printer that logs all LPT activity.
+/// Stub printer that buffers all LPT output for later retrieval.
 pub struct Printer {
-    /// Last data byte placed on the parallel bus.
-    data: u8,
+    output: Vec<u8>,
 }
 
 impl Printer {
     pub fn new() -> Self {
-        Self { data: 0 }
+        Self { output: Vec::new() }
     }
 }
 
 impl LptPortDevice for Printer {
     fn reset(&mut self) {
         log::debug!("[printer] reset");
-        self.data = 0;
-    }
-
-    fn data_changed(&mut self, data: u8) {
-        log::debug!(
-            "[printer] data register <- 0x{:02X} ('{}')",
-            data,
-            byte_to_printable_char(data)
-        );
-        self.data = data;
-    }
-
-    fn control_changed(&mut self, control: u8) {
-        log::debug!("[printer] control register <- 0x{:02X}", control);
+        self.output.clear();
     }
 
     fn write(&mut self, data: u8) -> bool {
-        log::debug!(
-            "[printer] strobe write 0x{:02X} ('{}')",
-            data,
-            byte_to_printable_char(data)
-        );
+        self.output.push(data);
         true
     }
 
@@ -50,5 +36,9 @@ impl LptPortDevice for Printer {
         // Report: not busy, ACK, selected, no error, no paper-out.
         // Matches STATUS_READY in parallel_port.rs (0xDF).
         0xDF
+    }
+
+    fn take_output(&mut self) -> Vec<u8> {
+        std::mem::take(&mut self.output)
     }
 }
