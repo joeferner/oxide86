@@ -1,4 +1,7 @@
-use crate::{devices::SoundBlaster, tests::run_test};
+use crate::{
+    devices::SoundBlaster,
+    tests::{TEST_OFFSET, TEST_SEGMENT, load_program_data, run_test},
+};
 
 fn create_sb_computer() -> (
     crate::computer::Computer,
@@ -43,5 +46,57 @@ pub(crate) fn dsp_speaker_control() {
             computer.add_sound_blaster(SoundBlaster::new(8_000_000));
             computer.run();
         },
+    );
+}
+
+/// OPL timer detection works at the SB base port (0x220/0x221).
+#[test_log::test]
+pub(crate) fn opl_detect_via_sb_port() {
+    run_test(
+        "devices/sound_blaster/opl_detect",
+        create_sb_computer(),
+        |computer, _video_buffer| {
+            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.run();
+        },
+    );
+}
+
+/// AdLib-compat ports (0x388/0x389) still work when SB16 is the active card.
+#[test_log::test]
+pub(crate) fn opl_adlib_compat() {
+    run_test(
+        "devices/sound_blaster/opl_adlib_compat",
+        create_sb_computer(),
+        |computer, _video_buffer| {
+            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.run();
+        },
+    );
+}
+
+/// Playing an OPL voice via the SB port produces non-zero PCM samples.
+#[test_log::test]
+pub(crate) fn opl_tone_produces_samples() {
+    let program_data = load_program_data("devices/sound_blaster/opl_play_tone");
+    let (mut computer, _video_buffer) = create_sb_computer();
+    let sb = SoundBlaster::new(8_000_000);
+    let opl_consumer = sb.opl_consumer();
+    computer.add_sound_blaster(sb);
+    computer
+        .load_program(&program_data, TEST_SEGMENT, TEST_OFFSET)
+        .unwrap();
+    computer.run();
+    assert_eq!(Some(0), computer.get_exit_code());
+    let available = opl_consumer.available();
+    assert!(
+        available > 0,
+        "ring buffer must contain samples after OPL tone"
+    );
+    let mut samples = vec![0.0f32; available];
+    opl_consumer.drain_into(&mut samples);
+    assert!(
+        samples.iter().any(|&s| s != 0.0),
+        "ring buffer must contain non-zero samples"
     );
 }

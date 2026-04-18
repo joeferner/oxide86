@@ -937,7 +937,7 @@ Write `0x01` to `base+0x6`, then `0x00`. After the `0x00` write the DSP enqueues
 
 ---
 
-## Phase 5 — OPL3 FM Integration
+## ✅ Phase 5 — OPL3 FM Integration
 
 The SB16 exposes the same `nuked_opl3` OPL3 chip at multiple port ranges. This phase makes the SB's OPL ports respond identically to the standalone `Adlib`.
 
@@ -1570,7 +1570,7 @@ OPL output is fixed at `44100 Hz`. DSP PCM uses the rate negotiated via command 
 2. **Phase 2 — Absorb SoundBlasterCdrom** ✅ — `SoundBlaster` struct created in `sound_blaster/mod.rs`; `SoundBlasterCdromInner` absorbed; `Bus::add_sound_blaster()` added.
 3. **Phase 3 — CLI, GUI, and WASM** ✅ — `--sound-card sb16` default; SB16 instantiation in `native-common` and WASM.
 4. **Phase 4 — DSP** ✅ — `dsp_reset.asm` + `dsp_speaker.asm` written; `SoundBlasterDsp` in `sound_blaster/dsp.rs`; reset handshake and basic commands implemented; all tests pass.
-5. **Phase 5 — OPL3 FM** — write `opl_detect.asm` + `opl_adlib_compat.asm` + `opl_play_tone.asm`, wire OPL3 ports at SB base and `0x388`, verify tests pass.
+5. **Phase 5 — OPL3 FM** ✅ — `opl_detect.asm` + `opl_adlib_compat.asm` + `opl_play_tone.asm` written; `SoundBlasterOpl` in `sound_blaster/opl.rs`; OPL ports wired at SB base (`0x220–0x223`, `0x228–0x229`) and AdLib-compat (`0x388–0x38B`); all tests pass.
 6. **Phase 6 — Mixer** — write `mixer_readwrite.asm`, implement `[u8; 256]` register array, verify test passes.
 7. **Phase 7 — PCM DMA** — write `dsp_pcm_single.asm` + `dsp_pcm_samples.asm`, implement 8-bit DMA path and IRQ, wire DMA slots in `Bus::add_sound_blaster()`, verify tests pass.
 8. **Phase 8 — MPU-401** — write `mpu_reset.asm`, implement UART mode stub, verify test passes.

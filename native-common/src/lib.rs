@@ -165,8 +165,10 @@ pub fn create_computer(
 
                 let sb =
                     SoundBlaster::with_cdrom(cd_base_port, disc, cli.sound_blaster_irq, cpu_freq);
+                if let Some(sink) = &sink {
+                    sink.mixer().add(RodioSoundCard::new(sb.opl_consumer()));
+                }
                 computer.add_sound_blaster(sb);
-                // Audio backend (OPL + PCM consumers → Rodio) wired in Phase 9.
                 log::info!(
                     "Sound Blaster 16 registered (CD-ROM at 0x{cd_base_port:03X}, IRQ {})",
                     cli.sound_blaster_irq

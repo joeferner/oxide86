@@ -2,13 +2,15 @@ use std::{any::Any, collections::VecDeque};
 
 use crate::{
     Device,
-    devices::{CdromController, SoundCard},
+    devices::{CdromController, PcmRingBuffer, SoundCard},
     disk::cdrom::CdromBackend,
     utils::bcd_to_dec,
 };
 
 mod dsp;
 use dsp::SoundBlasterDsp;
+mod opl;
+use opl::SoundBlasterOpl;
 
 // Status byte bits (read from base+0)
 const STATUS_RESULT_AVAIL: u8 = 0x01;
@@ -581,6 +583,7 @@ pub struct SoundBlaster {
     base_port: u16,
     cdrom: SoundBlasterCdromInner,
     dsp: SoundBlasterDsp,
+    opl: SoundBlasterOpl,
     #[allow(dead_code)]
     cpu_freq: u64,
 }
@@ -592,6 +595,7 @@ impl SoundBlaster {
             base_port: 0x220,
             cdrom: SoundBlasterCdromInner::new(0x230, None, 5),
             dsp: SoundBlasterDsp::new(),
+            opl: SoundBlasterOpl::new(cpu_freq),
             cpu_freq,
         }
     }
@@ -607,8 +611,13 @@ impl SoundBlaster {
             base_port: 0x220,
             cdrom: SoundBlasterCdromInner::new(cdrom_base_port, disc, irq_line),
             dsp: SoundBlasterDsp::new(),
+            opl: SoundBlasterOpl::new(cpu_freq),
             cpu_freq,
         }
+    }
+
+    pub fn opl_consumer(&self) -> PcmRingBuffer {
+        self.opl.consumer()
     }
 }
 
@@ -620,6 +629,7 @@ impl Device for SoundBlaster {
     fn reset(&mut self) {
         self.cdrom.reset();
         self.dsp.hardware_reset();
+        self.opl.reset();
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -633,11 +643,20 @@ impl Device for SoundBlaster {
     fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8> {
         let sb_off = port.wrapping_sub(self.base_port);
         match sb_off {
+            // OPL status (chip 0: base+0, base+1, base+8, base+9; chip 1: base+2, base+3)
+            0x00 | 0x01 | 0x02 | 0x03 | 0x08 | 0x09 => {
+                return Some(self.opl.read_status(cycle_count));
+            }
+            // DSP ports
             0x0A => return Some(self.dsp.read_data()),
             0x0C => return Some(0x00), // write-buffer status: never busy
             0x0E => return Some(self.dsp.read_status()),
             0x0F => return Some(self.dsp.read_ack16()),
             _ => {}
+        }
+        // AdLib-compat OPL ports
+        if let 0x388..=0x38B = port {
+            return Some(self.opl.read_status(cycle_count));
         }
         self.cdrom.io_read_u8(port, cycle_count)
     }
@@ -645,6 +664,27 @@ impl Device for SoundBlaster {
     fn io_write_u8(&mut self, port: u16, val: u8, cycle_count: u32) -> bool {
         let sb_off = port.wrapping_sub(self.base_port);
         match sb_off {
+            // OPL address ports (chip 0: base+0, base+8)
+            0x00 | 0x08 => {
+                self.opl.write_address(0, val, cycle_count);
+                return true;
+            }
+            // OPL data ports (chip 0: base+1, base+9)
+            0x01 | 0x09 => {
+                self.opl.write_data(0, val, cycle_count);
+                return true;
+            }
+            // OPL address port (chip 1: base+2)
+            0x02 => {
+                self.opl.write_address(1, val, cycle_count);
+                return true;
+            }
+            // OPL data port (chip 1: base+3)
+            0x03 => {
+                self.opl.write_data(1, val, cycle_count);
+                return true;
+            }
+            // DSP ports
             0x06 => {
                 self.dsp.write_reset_port(val);
                 return true;
@@ -655,15 +695,37 @@ impl Device for SoundBlaster {
             }
             _ => {}
         }
+        // AdLib-compat OPL ports
+        match port {
+            0x388 => {
+                self.opl.write_address(0, val, cycle_count);
+                return true;
+            }
+            0x389 => {
+                self.opl.write_data(0, val, cycle_count);
+                return true;
+            }
+            0x38A => {
+                self.opl.write_address(1, val, cycle_count);
+                return true;
+            }
+            0x38B => {
+                self.opl.write_data(1, val, cycle_count);
+                return true;
+            }
+            _ => {}
+        }
         self.cdrom.io_write_u8(port, val, cycle_count)
     }
 }
 
 impl SoundCard for SoundBlaster {
-    fn advance_to_cycle(&mut self, _cycle_count: u32) {}
+    fn advance_to_cycle(&mut self, cycle_count: u32) {
+        self.opl.advance_to_cycle(cycle_count);
+    }
 
     fn next_sample_cycle(&self) -> u32 {
-        u32::MAX
+        self.opl.next_sample_cycle()
     }
 }
 
