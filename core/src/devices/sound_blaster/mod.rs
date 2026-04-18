@@ -7,6 +7,9 @@ use crate::{
     utils::bcd_to_dec,
 };
 
+mod dsp;
+use dsp::SoundBlasterDsp;
+
 // Status byte bits (read from base+0)
 const STATUS_RESULT_AVAIL: u8 = 0x01;
 const STATUS_BUSY: u8 = 0x02;
@@ -572,31 +575,38 @@ impl SoundBlasterCdromInner {
 /// Sound Blaster 16 emulation.
 ///
 /// Phase 2: wraps the Panasonic CD-ROM interface (absorbed from `SoundBlasterCdrom`).
-/// All non-CD-ROM SB ports (DSP, OPL3, mixer, MPU-401) are stubs — added in later phases.
+/// Phase 4: adds DSP subsystem — reset handshake and basic commands.
+/// All other SB ports (OPL3, mixer, MPU-401) are stubs — added in later phases.
 pub struct SoundBlaster {
+    base_port: u16,
     cdrom: SoundBlasterCdromInner,
+    dsp: SoundBlasterDsp,
     #[allow(dead_code)]
     cpu_freq: u64,
 }
 
 impl SoundBlaster {
-    /// Create with default CD-ROM port 0x230, no disc, IRQ 5. Used by tests.
+    /// Create with default SB base 0x220, CD-ROM port 0x230, no disc, IRQ 5. Used by tests.
     pub fn new(cpu_freq: u64) -> Self {
         Self {
+            base_port: 0x220,
             cdrom: SoundBlasterCdromInner::new(0x230, None, 5),
+            dsp: SoundBlasterDsp::new(),
             cpu_freq,
         }
     }
 
     /// Create with explicit CD-ROM configuration for native/CLI use.
     pub fn with_cdrom(
-        base_port: u16,
+        cdrom_base_port: u16,
         disc: Option<Box<dyn CdromBackend>>,
         irq_line: u8,
         cpu_freq: u64,
     ) -> Self {
         Self {
-            cdrom: SoundBlasterCdromInner::new(base_port, disc, irq_line),
+            base_port: 0x220,
+            cdrom: SoundBlasterCdromInner::new(cdrom_base_port, disc, irq_line),
+            dsp: SoundBlasterDsp::new(),
             cpu_freq,
         }
     }
@@ -609,6 +619,7 @@ impl Device for SoundBlaster {
 
     fn reset(&mut self) {
         self.cdrom.reset();
+        self.dsp.hardware_reset();
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -620,10 +631,30 @@ impl Device for SoundBlaster {
     }
 
     fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8> {
+        let sb_off = port.wrapping_sub(self.base_port);
+        match sb_off {
+            0x0A => return Some(self.dsp.read_data()),
+            0x0C => return Some(0x00), // write-buffer status: never busy
+            0x0E => return Some(self.dsp.read_status()),
+            0x0F => return Some(self.dsp.read_ack16()),
+            _ => {}
+        }
         self.cdrom.io_read_u8(port, cycle_count)
     }
 
     fn io_write_u8(&mut self, port: u16, val: u8, cycle_count: u32) -> bool {
+        let sb_off = port.wrapping_sub(self.base_port);
+        match sb_off {
+            0x06 => {
+                self.dsp.write_reset_port(val);
+                return true;
+            }
+            0x0C => {
+                self.dsp.write_command_port(val);
+                return true;
+            }
+            _ => {}
+        }
         self.cdrom.io_write_u8(port, val, cycle_count)
     }
 }
@@ -646,6 +677,9 @@ impl CdromController for SoundBlaster {
     }
 
     fn take_pending_irq(&mut self) -> bool {
+        if self.dsp.take_pending_irq() {
+            return true;
+        }
         self.cdrom.take_pending_irq()
     }
 

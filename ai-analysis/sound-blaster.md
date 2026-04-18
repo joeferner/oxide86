@@ -663,7 +663,7 @@ Add `sound_blaster_port` to `WasmComputerConfig`. Instantiate `SoundBlaster` whe
 
 ---
 
-## Phase 4 — DSP: Detection and Basic Commands
+## ✅ Phase 4 — DSP: Detection and Basic Commands
 
 **File**: `core/src/devices/sound_blaster.rs` (new)
 
@@ -1545,10 +1545,11 @@ OPL output is fixed at `44100 Hz`. DSP PCM uses the rate negotiated via command 
 
 | File | Change |
 |------|--------|
-| `core/src/devices/sound_blaster.rs` | **New** — `SoundBlaster` implementing `Device + SoundCard + CdromController` |
+| `core/src/devices/sound_blaster/mod.rs` | **New** — `SoundBlaster` + `SoundBlasterCdromInner` implementing `Device + SoundCard + CdromController` |
+| `core/src/devices/sound_blaster/dsp.rs` | **New** — `SoundBlasterDsp` sub-struct (DSP state machine); grows each phase |
 | `core/src/devices/mod.rs` | Add `pub mod sound_blaster`; add `SoundCardType::SoundBlaster16`; **keep `SoundCardType::AdLib` and `adlib.rs` unchanged** |
 | `core/src/devices/adlib.rs` | **Unchanged** |
-| `core/src/devices/sound_blaster_cdrom.rs` | Remove after Phase 6 (absorbed) |
+| `core/src/devices/sound_blaster_cdrom.rs` | **Deleted** — absorbed into `sound_blaster/mod.rs` as `SoundBlasterCdromInner` |
 | `core/src/devices/pic.rs` | No changes |
 | `core/src/bus.rs` | Add `add_sound_blaster<T>()`; register DMA devices ch 1 and ch 5 |
 | `core/src/computer.rs` | Add `add_sound_blaster<T>()`; expose `opl_consumer()` / `pcm_consumer()` |
@@ -1566,9 +1567,9 @@ OPL output is fixed at `44100 Hz`. DSP PCM uses the rate negotiated via command 
 ## Implementation Order
 
 1. **Phase 1 — Example Program** ✅ — `examples/sound_blaster.asm` and `.com` are done.
-2. **Phase 2 — Absorb SoundBlasterCdrom** — create `SoundBlaster` struct wrapping `SoundBlasterCdromInner`, stub all non-CD-ROM IO, add `Bus::add_sound_blaster()`, verify all existing CD-ROM tests still pass.
-3. **Phase 3 — CLI, GUI, and WASM** — add `--sound-card sb16` flag, wire `SoundBlaster` instantiation in `native-common`, GUI, and WASM; now runnable with `--sound-card sb16 sound_blaster.com`.
-4. **Phase 4 — DSP** — write `dsp_reset.asm` + `dsp_speaker.asm`, implement reset handshake and basic DSP commands, verify tests pass.
+2. **Phase 2 — Absorb SoundBlasterCdrom** ✅ — `SoundBlaster` struct created in `sound_blaster/mod.rs`; `SoundBlasterCdromInner` absorbed; `Bus::add_sound_blaster()` added.
+3. **Phase 3 — CLI, GUI, and WASM** ✅ — `--sound-card sb16` default; SB16 instantiation in `native-common` and WASM.
+4. **Phase 4 — DSP** ✅ — `dsp_reset.asm` + `dsp_speaker.asm` written; `SoundBlasterDsp` in `sound_blaster/dsp.rs`; reset handshake and basic commands implemented; all tests pass.
 5. **Phase 5 — OPL3 FM** — write `opl_detect.asm` + `opl_adlib_compat.asm` + `opl_play_tone.asm`, wire OPL3 ports at SB base and `0x388`, verify tests pass.
 6. **Phase 6 — Mixer** — write `mixer_readwrite.asm`, implement `[u8; 256]` register array, verify test passes.
 7. **Phase 7 — PCM DMA** — write `dsp_pcm_single.asm` + `dsp_pcm_samples.asm`, implement 8-bit DMA path and IRQ, wire DMA slots in `Bus::add_sound_blaster()`, verify tests pass.
