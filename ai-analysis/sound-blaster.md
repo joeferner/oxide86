@@ -1151,7 +1151,7 @@ For the initial implementation, store all register values in the array and retur
 
 ---
 
-## Phase 7 — PCM Output via DMA
+## ✅ Phase 7 — PCM Output via DMA
 
 ### Tests first
 
@@ -1573,8 +1573,8 @@ OPL output is fixed at `44100 Hz`. DSP PCM uses the rate negotiated via command 
 3. **Phase 3 — CLI, GUI, and WASM** ✅ — `--sound-card sb16` default; SB16 instantiation in `native-common` and WASM.
 4. **Phase 4 — DSP** ✅ — `dsp_reset.asm` + `dsp_speaker.asm` written; `SoundBlasterDsp` in `sound_blaster/dsp.rs`; reset handshake and basic commands implemented; all tests pass.
 5. **Phase 5 — OPL3 FM** ✅ — `opl_detect.asm` + `opl_adlib_compat.asm` + `opl_play_tone.asm` written; `SoundBlasterOpl` in `sound_blaster/opl.rs`; OPL ports wired at SB base (`0x220–0x223`, `0x228–0x229`) and AdLib-compat (`0x388–0x38B`); all tests pass.
-6. **Phase 6 — Mixer** — write `mixer_readwrite.asm`, implement `[u8; 256]` register array, verify test passes.
-7. **Phase 7 — PCM DMA** — write `dsp_pcm_single.asm` + `dsp_pcm_samples.asm`, implement 8-bit DMA path and IRQ, wire DMA slots in `Bus::add_sound_blaster()`, verify tests pass.
+6. **Phase 6 — Mixer** ✅ — write `mixer_readwrite.asm`, implement `[u8; 256]` register array, verify test passes.
+7. **Phase 7 — PCM DMA** ✅ — write `dsp_pcm_single.asm` + `dsp_pcm_samples.asm`, implement 8-bit DMA path and IRQ, wire DMA slots in `Bus::add_sound_blaster()`, verify tests pass.
 8. **Phase 8 — MPU-401** — write `mpu_reset.asm`, implement UART mode stub, verify test passes.
 9. **Phase 9 — Native Audio Backend** — add `MixedSource` mixing OPL and PCM ring buffers, test manually with a game.
 

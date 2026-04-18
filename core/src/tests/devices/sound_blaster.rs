@@ -88,6 +88,45 @@ pub(crate) fn mixer_readwrite() {
     );
 }
 
+/// IRQ5 fires after single-cycle 8-bit DMA block completes.
+#[test_log::test]
+pub(crate) fn dsp_pcm_irq_fires() {
+    run_test(
+        "devices/sound_blaster/dsp_pcm_single",
+        create_sb_computer(),
+        |computer, _video_buffer| {
+            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.run();
+        },
+    );
+}
+
+/// 8-bit unsigned PCM DMA transfer pushes non-zero samples to the ring buffer.
+#[test_log::test]
+pub(crate) fn dsp_pcm_samples_in_ring_buffer() {
+    let program_data = load_program_data("devices/sound_blaster/dsp_pcm_samples");
+    let (mut computer, _video_buffer) = create_sb_computer();
+    let sb = SoundBlaster::new(8_000_000);
+    let pcm_consumer = sb.pcm_consumer();
+    computer.add_sound_blaster(sb);
+    computer
+        .load_program(&program_data, TEST_SEGMENT, TEST_OFFSET)
+        .unwrap();
+    computer.run();
+    assert_eq!(Some(0), computer.get_exit_code());
+    let available = pcm_consumer.available();
+    assert!(
+        available > 0,
+        "ring buffer must contain samples after PCM DMA"
+    );
+    let mut samples = vec![0.0f32; available];
+    pcm_consumer.drain_into(&mut samples);
+    assert!(
+        samples.iter().any(|&s| s != 0.0),
+        "ring buffer must contain non-zero samples"
+    );
+}
+
 /// Playing an OPL voice via the SB port produces non-zero PCM samples.
 #[test_log::test]
 pub(crate) fn opl_tone_produces_samples() {

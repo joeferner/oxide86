@@ -580,15 +580,19 @@ impl SoundBlasterCdromInner {
 ///
 /// Phase 2: wraps the Panasonic CD-ROM interface (absorbed from `SoundBlasterCdrom`).
 /// Phase 4: adds DSP subsystem — reset handshake and basic commands.
-/// All other SB ports (OPL3, mixer, MPU-401) are stubs — added in later phases.
+/// Phase 7: adds 8-bit DMA PCM playback via `pcm_out` ring buffer.
 pub struct SoundBlaster {
     base_port: u16,
     cdrom: SoundBlasterCdromInner,
     dsp: SoundBlasterDsp,
     mixer: SoundBlasterMixer,
     opl: SoundBlasterOpl,
-    #[allow(dead_code)]
+    pcm_out: crate::devices::PcmRingBuffer,
     cpu_freq: u64,
+    /// Last Direct DAC sample value (pending, not yet pushed to pcm_out).
+    last_dac_sample: f32,
+    /// Cycle count when the last Direct DAC sample arrived.
+    last_dac_cycle: Option<u32>,
 }
 
 impl SoundBlaster {
@@ -600,7 +604,10 @@ impl SoundBlaster {
             dsp: SoundBlasterDsp::new(),
             mixer: SoundBlasterMixer::new(),
             opl: SoundBlasterOpl::new(cpu_freq),
+            pcm_out: PcmRingBuffer::new_with_hold(44100 * 2, 44100),
             cpu_freq,
+            last_dac_sample: 0.0,
+            last_dac_cycle: None,
         }
     }
 
@@ -617,12 +624,19 @@ impl SoundBlaster {
             dsp: SoundBlasterDsp::new(),
             mixer: SoundBlasterMixer::new(),
             opl: SoundBlasterOpl::new(cpu_freq),
+            pcm_out: PcmRingBuffer::new_with_hold(44100 * 2, 44100),
             cpu_freq,
+            last_dac_sample: 0.0,
+            last_dac_cycle: None,
         }
     }
 
     pub fn opl_consumer(&self) -> PcmRingBuffer {
         self.opl.consumer()
+    }
+
+    pub fn pcm_consumer(&self) -> PcmRingBuffer {
+        self.pcm_out.clone()
     }
 }
 
@@ -636,6 +650,9 @@ impl Device for SoundBlaster {
         self.dsp.hardware_reset();
         self.mixer.reset();
         self.opl.reset();
+        self.pcm_out.clear();
+        self.last_dac_sample = 0.0;
+        self.last_dac_cycle = None;
     }
 
     fn memory_read_u8(&mut self, _addr: usize, _cycle_count: u32) -> Option<u8> {
@@ -644,6 +661,17 @@ impl Device for SoundBlaster {
 
     fn memory_write_u8(&mut self, _addr: usize, _val: u8, _cycle_count: u32) -> bool {
         false
+    }
+
+    fn dma_write_u8(&mut self, val: u8) -> bool {
+        let (sample, _done) = self.dsp.dma_receive_byte(val);
+        // Upsample from DSP rate to 44100 Hz by repeating each sample.
+        let dsp_rate = self.dsp.sample_rate();
+        let factor = (44100 / dsp_rate).max(1) as usize;
+        for _ in 0..factor {
+            self.pcm_out.push_sample(sample);
+        }
+        true
     }
 
     fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8> {
@@ -709,6 +737,21 @@ impl Device for SoundBlaster {
             }
             0x0C => {
                 self.dsp.write_command_port(val);
+                if let Some(byte) = self.dsp.take_direct_dac_byte() {
+                    let sample = (byte as f32 - 128.0) / 128.0;
+                    // Resample: push previous sample for the elapsed time, then record new one.
+                    let n_hold = if let Some(prev) = self.last_dac_cycle {
+                        let delta = cycle_count.wrapping_sub(prev);
+                        ((delta as u64 * 44100) / self.cpu_freq).max(1) as usize
+                    } else {
+                        1
+                    };
+                    for _ in 0..n_hold {
+                        self.pcm_out.push_sample(self.last_dac_sample);
+                    }
+                    self.last_dac_sample = sample;
+                    self.last_dac_cycle = Some(cycle_count);
+                }
                 return true;
             }
             _ => {}
@@ -744,6 +787,10 @@ impl SoundCard for SoundBlaster {
 
     fn next_sample_cycle(&self) -> u32 {
         self.opl.next_sample_cycle()
+    }
+
+    fn take_dreq_request(&mut self) -> Option<(u8, bool)> {
+        self.dsp.take_dreq_request().map(|asserted| (1u8, asserted))
     }
 }
 

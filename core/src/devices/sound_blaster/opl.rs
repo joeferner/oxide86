@@ -111,10 +111,10 @@ impl SoundBlasterOpl {
         }
         let mut buf = self.consumer.inner.lock().unwrap();
         for &s in &self.pending_flush {
-            if buf.len() >= self.consumer.capacity {
-                buf.pop_front();
+            if buf.samples.len() >= buf.capacity {
+                buf.samples.pop_front();
             }
-            buf.push_back(s);
+            buf.samples.push_back(s);
         }
         drop(buf);
         self.pending_flush.clear();
@@ -137,7 +137,7 @@ impl SoundBlasterOpl {
         self.cycle_acc = 0;
         self.last_cycle_count = 0;
         self.next_sample_cycle = (self.cpu_freq / OPL_SAMPLE_RATE as u64) as u32;
-        self.consumer.inner.lock().unwrap().clear();
+        self.consumer.inner.lock().unwrap().samples.clear();
     }
 
     pub(super) fn read_status(&mut self, cycle_count: u32) -> u8 {

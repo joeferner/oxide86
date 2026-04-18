@@ -96,10 +96,7 @@
 - [X] CD-ROM (see ai-analysis/cd-rom-sb.md)
 - [X] Printer
 - [ ] SoundBlaster (see ai-analysis/sound-blaster.md, future ai-analysis/cd-rom-sb.md)
-- [ ] Modem COM port
-  - [ ] support web socket or tcp
-  - [ ] mapping phone number to protocol ip/host
-  - [ ] modem sounds
+- [ ] Modem (see ai-analysis/modem.md)
 - [ ] WASM Joystick
 - [ ] WASM Disk browser/editor
 - [ ] WASM/CLI/GUI multiple hard drives

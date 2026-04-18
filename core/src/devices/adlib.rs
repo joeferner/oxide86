@@ -149,11 +149,11 @@ impl Adlib {
         }
         let mut buf = self.consumer.inner.lock().unwrap();
         for &s in &self.pending_flush {
-            if buf.len() >= self.consumer.capacity {
-                buf.pop_front();
+            if buf.samples.len() >= buf.capacity {
+                buf.samples.pop_front();
                 self.overflow_count += 1;
             }
-            buf.push_back(s);
+            buf.samples.push_back(s);
         }
         drop(buf);
 
@@ -255,6 +255,6 @@ impl Device for Adlib {
         self.cycle_acc = 0;
         self.last_cycle_count = 0;
         self.next_sample_cycle = (self.cpu_freq / ADLIB_SAMPLE_RATE as u64) as u32;
-        self.consumer.inner.lock().unwrap().clear();
+        self.consumer.inner.lock().unwrap().samples.clear();
     }
 }

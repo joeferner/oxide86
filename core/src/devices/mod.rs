@@ -36,37 +36,84 @@ pub mod uart;
 /// Thread safety is provided by the inner `Arc<Mutex<_>>`.
 #[derive(Clone)]
 pub struct PcmRingBuffer {
-    inner: Arc<Mutex<VecDeque<f32>>>,
-    capacity: usize,
+    inner: Arc<Mutex<PcmRingBufferInner>>,
     pub sample_rate: u32,
+    /// When true, holds the last written sample on underrun (correct for Direct DAC).
+    /// When false, fills underrun slots with 0.0 silence (correct for OPL).
+    hold_on_underrun: bool,
+}
+
+struct PcmRingBufferInner {
+    samples: VecDeque<f32>,
+    capacity: usize,
+    last_sample: f32,
 }
 
 impl PcmRingBuffer {
     pub fn new(capacity: usize, sample_rate: u32) -> Self {
         Self {
-            inner: Arc::new(Mutex::new(VecDeque::with_capacity(capacity))),
-            capacity,
+            inner: Arc::new(Mutex::new(PcmRingBufferInner {
+                samples: VecDeque::with_capacity(capacity),
+                capacity,
+                last_sample: 0.0,
+            })),
             sample_rate,
+            hold_on_underrun: false,
         }
     }
 
-    pub fn available(&self) -> usize {
-        self.inner.lock().unwrap().len()
+    /// Like `new` but holds the last sample on underrun instead of silence.
+    /// Use for Direct DAC output where the DAC holds voltage between software writes.
+    pub fn new_with_hold(capacity: usize, sample_rate: u32) -> Self {
+        Self {
+            inner: Arc::new(Mutex::new(PcmRingBufferInner {
+                samples: VecDeque::with_capacity(capacity),
+                capacity,
+                last_sample: 0.0,
+            })),
+            sample_rate,
+            hold_on_underrun: true,
+        }
     }
 
-    /// Drain up to `buf.len()` samples into `buf`, padding with 0.0 on underrun.
-    /// Acquires the lock exactly once. Returns the number of real samples written
-    /// (the rest of the slice is zero-filled).
+    pub fn push_sample(&self, sample: f32) {
+        let mut guard = self.inner.lock().unwrap();
+        if guard.samples.len() >= guard.capacity {
+            guard.samples.pop_front();
+        }
+        guard.last_sample = sample;
+        guard.samples.push_back(sample);
+    }
+
+    pub fn clear(&self) {
+        let mut guard = self.inner.lock().unwrap();
+        guard.samples.clear();
+        guard.last_sample = 0.0;
+    }
+
+    pub fn available(&self) -> usize {
+        self.inner.lock().unwrap().samples.len()
+    }
+
+    /// Drain up to `buf.len()` samples into `buf`.
+    /// On underrun: fills with 0.0 silence normally, or holds the last sample
+    /// when `hold_on_underrun` is set. Acquires the lock exactly once.
+    /// Returns the number of real samples written.
     pub fn drain_into(&self, buf: &mut [f32]) -> usize {
         let mut guard = self.inner.lock().unwrap();
-        let available = guard.len().min(buf.len());
+        let available = guard.samples.len().min(buf.len());
         if available == 0 && !buf.is_empty() {
             log::trace!("PCM buffer underrun: needed {} samples, had 0", buf.len());
         }
         for slot in buf[..available].iter_mut() {
-            *slot = guard.pop_front().unwrap();
+            *slot = guard.samples.pop_front().unwrap();
         }
-        buf[available..].fill(0.0);
+        let fill = if self.hold_on_underrun {
+            guard.last_sample
+        } else {
+            0.0
+        };
+        buf[available..].fill(fill);
         available
     }
 }
@@ -78,6 +125,12 @@ impl PcmRingBuffer {
 pub trait SoundCard {
     fn advance_to_cycle(&mut self, cycle_count: u32);
     fn next_sample_cycle(&self) -> u32;
+    /// Called by the Bus after each IO write to drain a pending DMA request assertion
+    /// or deassert. Returns `Some((global_channel, asserted))` when the device wants
+    /// to change DREQ state on a DMA channel; `None` if no change.
+    fn take_dreq_request(&mut self) -> Option<(u8, bool)> {
+        None
+    }
 }
 
 pub type SoundCardRef = Rc<RefCell<dyn SoundCard>>;

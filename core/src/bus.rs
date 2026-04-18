@@ -291,6 +291,11 @@ impl Bus {
                 self.notify_irq_pending();
             }
         }
+        // Channel 1 is the SB16 8-bit DMA channel; wake the PIC so it sees the IRQ
+        // immediately after the block completes rather than waiting up to 100 instructions.
+        if transfer.channel == 1 {
+            self.notify_irq_pending();
+        }
     }
 
     pub(crate) fn add_device<T: Device + 'static>(&mut self, device: T) {
@@ -332,6 +337,8 @@ impl Bus {
         self.devices.push(rc.clone());
         self.sound_card = Some(rc.clone());
         self.cdrom_controller = Some(rc.clone());
+        // Channel 1: 8-bit DMA for SB16 PCM playback.
+        self.dma_devices[1] = Some(rc.clone());
         self.pic.borrow_mut().set_cdrom(rc);
     }
 
@@ -502,6 +509,12 @@ impl Bus {
                 // This is how the FDC asserts DREQ when it enters DMA execution phase.
                 if let Some(dreq) = self.floppy_controller.borrow_mut().take_dreq_request() {
                     self.dma.borrow_mut().set_dreq(2, dreq);
+                }
+                // Drain any DREQ state change from the sound card (e.g. SB16 DMA start/stop).
+                if let Some(sc) = &self.sound_card
+                    && let Some((channel, asserted)) = sc.borrow_mut().take_dreq_request()
+                {
+                    self.dma.borrow_mut().set_dreq(channel, asserted);
                 }
                 return;
             }
