@@ -4,6 +4,7 @@ pub(crate) mod keyboard;
 pub(crate) mod mock_com_device;
 pub(crate) mod mouse;
 pub(crate) mod parallel_port_loopback;
+pub(crate) mod printer;
 pub(crate) mod pit;
 pub(crate) mod rtc;
 pub(crate) mod serial_loopback;
