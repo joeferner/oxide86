@@ -333,10 +333,21 @@ impl SoundBlasterCdrom {
             }
 
             // Read disc geometry — 5 result bytes.
-            // Bytes 3-4 are the sector-unit size (BX); must be non-zero and divide 2048.
-            // Stub: BX=0x0800=2048 → geometry=151; sets [0x002e] bit 2 in SBPCD.
+            // Bytes 0-2: disc capacity in binary MSF (total sectors + 150-frame pregap).
+            //   SBPCD converts these to a 32-bit LBA and stores it as the disc's
+            //   max-sector bound at [CS:0x003B] (low word) / [CS:0x003D] (high word).
+            //   Returning zeros causes [0x003D]=0, making every sector >= 0x10000 fail
+            //   SBPCD's bounds check with "drive not ready" (error 0x8105).
+            // Bytes 3-4: sector unit size, big-endian: 0x0800 = 2048 bytes/sector.
             0x88 => {
-                self.result_buf.extend(&[0x00, 0x00, 0x00, 0x08, 0x00]);
+                let total = self.disc.as_ref().map(|d| d.total_sectors()).unwrap_or(0);
+                // Same MSF encoding as cmd 0x12: add 150-frame pregap then convert to M:S:F
+                let total_frames = total + 150;
+                let f = (total_frames % 75) as u8;
+                let total_seconds = total_frames / 75;
+                let s = (total_seconds % 60) as u8;
+                let m = (total_seconds / 60) as u8;
+                self.result_buf.extend(&[m, s, f, 0x08, 0x00]);
                 self.state = CdromState::SendResult;
             }
 
@@ -446,7 +457,12 @@ impl SoundBlasterCdrom {
             self.read_remaining -= 1;
             self.read_sector_pos = 0;
 
-            if self.read_remaining == 0 {
+            // For cmd 0x0B (base+1 streaming): transition to Idle now so the
+            // driver sees end-of-data on the next read.
+            // For cmd 0x02 (base+0 streaming): keep StreamSector active so all
+            // 2048 bytes can still be read; the base+1 handler signals completion
+            // after the driver has consumed the last byte.
+            if self.read_remaining == 0 && !self.stream_via_base0 {
                 self.state = CdromState::Idle;
             }
         }
@@ -551,8 +567,23 @@ impl Device for SoundBlasterCdrom {
                     {
                         self.stream_read_byte()
                     }
-                    // cmd 0x02: base+1 bit 1 signals data ready; data itself is at base+0
-                    CdromState::StreamSector if self.stream_via_base0 => 0x02,
+                    // cmd 0x02 (stream_via_base0): base+1 signals transfer state.
+                    // bit 1 SET (0x02) = busy/not-ready; driver loops waiting for CLEAR.
+                    // bit 0 SET (0x01) = transfer complete (ATN); driver polls for this
+                    //   after the rep insb is done.
+                    // 0x00 = data ready (driver proceeds to read base+0) or in-progress.
+                    // Completion is detected when all sector bytes have been consumed
+                    // (read_sector_pos == 2048 and read_remaining == 0).
+                    CdromState::StreamSector if self.stream_via_base0 => {
+                        if self.read_sector_pos >= 2048 && self.read_remaining == 0 {
+                            // All data consumed — assert ATN completion signal
+                            self.state = CdromState::Idle;
+                            self.stream_via_base0 = false;
+                            0x01
+                        } else {
+                            0x00 // Data ready / transfer in progress
+                        }
+                    }
                     CdromState::Idle if self.attention_pending => {
                         // Assert ATN once; cleared after host reads it so it fires only once
                         // per disc insertion / power-on cycle.
