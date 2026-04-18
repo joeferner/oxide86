@@ -9,7 +9,7 @@ use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
     devices::{
-        PcmRingBuffer,
+        PcmRingBuffer, SoundBlaster,
         adlib::Adlib,
         clock::{EmulatedClock, LocalDate, LocalTime},
         parallel_port::LptPortDevice,
@@ -36,9 +36,12 @@ pub struct WasmComputerConfig {
     pub memory_kb: u32,
     pub clock_hz: u32,
     pub video_card: String,
-    /// Sound card to emulate: "none" or "adlib" (default: "none")
+    /// Sound card to emulate: "none", "adlib", or "sb16" (default: "none")
     #[serde(default)]
     pub sound_card: String,
+    /// Sound Blaster CD-ROM interface base port (default: 0x230). Only used when sound_card = "sb16".
+    #[serde(default)]
+    pub sound_blaster_cd_port: Option<u16>,
     /// Full year, e.g. 1990
     pub start_year: u16,
     pub start_month: u8,
@@ -105,13 +108,21 @@ impl ComputerState {
             math_coprocessor: config.has_fpu,
         });
 
-        let pcm_buffer = if matches!(config.sound_card.to_lowercase().trim(), "adlib" | "adl") {
-            let adlib = Adlib::new(clock_hz as u64);
-            let consumer = adlib.consumer();
-            computer.add_sound_card(adlib);
-            Some(consumer)
-        } else {
-            None
+        let pcm_buffer = match config.sound_card.to_lowercase().trim() {
+            "adlib" | "adl" => {
+                let adlib = Adlib::new(clock_hz as u64);
+                let consumer = adlib.consumer();
+                computer.add_sound_card(adlib);
+                Some(consumer)
+            }
+            "sb16" | "sb" | "soundblaster" | "sound-blaster" => {
+                let cd_base_port = config.sound_blaster_cd_port.unwrap_or(0x230);
+                let sb = SoundBlaster::with_cdrom(cd_base_port, None, 5, clock_hz as u64);
+                computer.add_sound_blaster(sb);
+                // Audio consumers (OPL + PCM) wired in Phase 9.
+                None
+            }
+            _ => None,
         };
 
         Ok(Self {

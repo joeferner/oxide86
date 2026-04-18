@@ -31,8 +31,8 @@ pub struct CommonCli {
     #[arg(long = "video-card", default_value = "vga")]
     pub video_card: String,
 
-    /// Sound card type to emulate (none, adlib)
-    #[arg(long = "sound-card", default_value = "adlib")]
+    /// Sound card type to emulate (none, adlib, sb16)
+    #[arg(long = "sound-card", default_value = "sb16")]
     pub sound_card: String,
 
     /// Enable execution logging (logs each instruction to oxide86.log)
@@ -131,21 +131,45 @@ pub struct CommonCli {
     #[arg(long = "debug-mcp-pause-on-start", requires = "debug_mcp_port")]
     pub debug_mcp_pause_on_start: bool,
 
-    /// Sound Blaster CD-ROM interface base port
+    /// Sound Blaster DSP/Mixer/OPL base port (SB16 only)
     #[arg(
         long = "sound-blaster-port",
         value_name = "PORT",
-        default_value = "0x230"
+        default_value = "0x220"
     )]
     pub sound_blaster_port: String,
+
+    /// Sound Blaster CD-ROM interface base port (SB16 only)
+    #[arg(
+        long = "sound-blaster-cd-port",
+        value_name = "PORT",
+        default_value = "0x230"
+    )]
+    pub sound_blaster_cd_port: String,
 
     /// Disable the Sound Blaster CD-ROM interface
     #[arg(long = "disable-sound-blaster-cd")]
     pub disable_sound_blaster_cd: bool,
 
-    /// Sound Blaster CD-ROM IRQ line (default: 5)
+    /// Sound Blaster IRQ line (default: 5; valid: 2, 5, 7, 10)
     #[arg(long = "sound-blaster-irq", value_name = "IRQ", default_value = "5")]
     pub sound_blaster_irq: u8,
+
+    /// Sound Blaster 8-bit DMA channel (default: 1; valid: 0, 1, 3)
+    #[arg(
+        long = "sound-blaster-dma8",
+        value_name = "CHANNEL",
+        default_value = "1"
+    )]
+    pub sound_blaster_dma8: u8,
+
+    /// Sound Blaster 16-bit DMA channel (default: 5; valid: 5, 6, 7)
+    #[arg(
+        long = "sound-blaster-dma16",
+        value_name = "CHANNEL",
+        default_value = "5"
+    )]
+    pub sound_blaster_dma16: u8,
 
     /// ISO image to mount as CD-ROM at startup
     #[arg(long = "cdrom", value_name = "FILE")]

@@ -617,7 +617,7 @@ pub(crate) fn add_sound_blaster<T: Device + SoundCard + CdromController + 'stati
 
 ---
 
-## Phase 3 — CLI, GUI, and WASM Updates
+## ✅ Phase 3 — CLI, GUI, and WASM Updates
 
 ### `native-common/src/cli.rs`
 
@@ -912,7 +912,7 @@ struct SoundBlasterDsp {
 }
 ```
 
-### Commands in Phase 1
+### Commands in Phase 4
 
 | Opcode | Name | Params | Notes |
 |--------|------|--------|-------|

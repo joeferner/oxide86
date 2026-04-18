@@ -137,8 +137,40 @@ pub fn create_computer(
                 computer.add_sound_card(adlib);
             }
             SoundCardType::SoundBlaster16 => {
-                // CD-ROM registration below handles SB16 via add_sound_blaster;
-                // audio backend wired in Phase 9.
+                let cd_port_str = &cli.sound_blaster_cd_port;
+                let cd_base_port = u16::from_str_radix(
+                    cd_port_str
+                        .trim_start_matches("0x")
+                        .trim_start_matches("0X"),
+                    16,
+                )
+                .with_context(|| format!("Invalid CD-ROM base port: {cd_port_str}"))?;
+
+                let disc: Option<Box<dyn CdromBackend>> = if !cli.disable_sound_blaster_cd {
+                    if let Some(path) = &cli.cdrom {
+                        let path_str = path.to_str().ok_or_else(|| {
+                            anyhow!("CD-ROM path is not valid UTF-8: {}", path.display())
+                        })?;
+                        let backend = FileDiskBackend::open(path_str, true).with_context(|| {
+                            format!("Failed to open CD-ROM image: {}", path.display())
+                        })?;
+                        log::info!("Mounted CD-ROM image: {}", path.display());
+                        Some(Box::new(BackedCdrom::new(backend)))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                let sb =
+                    SoundBlaster::with_cdrom(cd_base_port, disc, cli.sound_blaster_irq, cpu_freq);
+                computer.add_sound_blaster(sb);
+                // Audio backend (OPL + PCM consumers → Rodio) wired in Phase 9.
+                log::info!(
+                    "Sound Blaster 16 registered (CD-ROM at 0x{cd_base_port:03X}, IRQ {})",
+                    cli.sound_blaster_irq
+                );
             }
         }
     } else {
@@ -194,33 +226,6 @@ pub fn create_computer(
             .with_context(|| format!("Failed to create disk from: {}", path))?;
         computer.set_floppy_disk(DriveNumber::floppy_b(), Some(Box::new(disk)));
         log::info!("Opened floppy B: from {} (read_only={})", path, read_only);
-    }
-
-    // Register Sound Blaster CD-ROM interface and optionally mount an ISO.
-    if !cli.disable_sound_blaster_cd {
-        let port_str = &cli.sound_blaster_port;
-        let base_port = u16::from_str_radix(
-            port_str.trim_start_matches("0x").trim_start_matches("0X"),
-            16,
-        )
-        .with_context(|| format!("Invalid Sound Blaster base port: {port_str}"))?;
-        let disc: Option<Box<dyn CdromBackend>> = if let Some(path) = &cli.cdrom {
-            let path_str = path
-                .to_str()
-                .ok_or_else(|| anyhow!("CD-ROM path is not valid UTF-8: {}", path.display()))?;
-            let backend = FileDiskBackend::open(path_str, true)
-                .with_context(|| format!("Failed to open CD-ROM image: {}", path.display()))?;
-            log::info!("Mounted CD-ROM image: {}", path.display());
-            Some(Box::new(BackedCdrom::new(backend)))
-        } else {
-            None
-        };
-        let device = SoundBlaster::with_cdrom(base_port, disc, cli.sound_blaster_irq, cpu_freq);
-        computer.add_sound_blaster(device);
-        log::info!(
-            "Sound Blaster CD-ROM interface registered at port 0x{base_port:03X}, IRQ {}",
-            cli.sound_blaster_irq
-        );
     }
 
     computer.set_com_port_device(1, create_com_device(&cli.com1_device, &serial_mouse)?);
