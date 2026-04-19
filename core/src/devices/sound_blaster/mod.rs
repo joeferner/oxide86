@@ -11,6 +11,8 @@ mod dsp;
 use dsp::SoundBlasterDsp;
 mod mixer;
 use mixer::SoundBlasterMixer;
+mod midi;
+use midi::SoundBlasterMidi;
 mod mpu;
 use mpu::SoundBlasterMpu;
 mod opl;
@@ -584,10 +586,12 @@ impl SoundBlasterCdromInner {
 /// Phase 4: adds DSP subsystem — reset handshake and basic commands.
 /// Phase 7: adds 8-bit DMA PCM playback via `pcm_out` ring buffer.
 /// Phase 8: adds MPU-401 MIDI controller in UART mode (ports 0x330/0x331).
+/// Phase 9: adds MIDI synthesizer (rustysynth + bundled GM SoundFont).
 pub struct SoundBlaster {
     base_port: u16,
     cdrom: SoundBlasterCdromInner,
     dsp: SoundBlasterDsp,
+    midi: SoundBlasterMidi,
     mixer: SoundBlasterMixer,
     mpu: SoundBlasterMpu,
     opl: SoundBlasterOpl,
@@ -606,6 +610,7 @@ impl SoundBlaster {
             base_port: 0x220,
             cdrom: SoundBlasterCdromInner::new(0x230, None, 5),
             dsp: SoundBlasterDsp::new(),
+            midi: SoundBlasterMidi::new(cpu_freq),
             mixer: SoundBlasterMixer::new(),
             mpu: SoundBlasterMpu::new(),
             opl: SoundBlasterOpl::new(cpu_freq),
@@ -627,6 +632,7 @@ impl SoundBlaster {
             base_port: 0x220,
             cdrom: SoundBlasterCdromInner::new(cdrom_base_port, disc, irq_line),
             dsp: SoundBlasterDsp::new(),
+            midi: SoundBlasterMidi::new(cpu_freq),
             mixer: SoundBlasterMixer::new(),
             mpu: SoundBlasterMpu::new(),
             opl: SoundBlasterOpl::new(cpu_freq),
@@ -635,6 +641,10 @@ impl SoundBlaster {
             last_dac_sample: 0.0,
             last_dac_cycle: None,
         }
+    }
+
+    pub fn midi_consumer(&self) -> PcmRingBuffer {
+        self.midi.consumer()
     }
 
     pub fn opl_consumer(&self) -> PcmRingBuffer {
@@ -654,6 +664,7 @@ impl Device for SoundBlaster {
     fn reset(&mut self) {
         self.cdrom.reset();
         self.dsp.hardware_reset();
+        self.midi.reset();
         self.mixer.reset();
         self.mpu.reset();
         self.opl.reset();
@@ -790,6 +801,7 @@ impl Device for SoundBlaster {
             // MPU-401 ports
             0x330 => {
                 self.mpu.write_data(val);
+                self.midi.push_byte(val);
                 return true;
             }
             0x331 => {
@@ -804,6 +816,7 @@ impl Device for SoundBlaster {
 
 impl SoundCard for SoundBlaster {
     fn advance_to_cycle(&mut self, cycle_count: u32) {
+        self.midi.advance_to_cycle(cycle_count);
         self.opl.advance_to_cycle(cycle_count);
     }
 

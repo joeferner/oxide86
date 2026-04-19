@@ -166,6 +166,7 @@ pub fn create_computer(
                 let sb =
                     SoundBlaster::with_cdrom(cd_base_port, disc, cli.sound_blaster_irq, cpu_freq);
                 if let Some(sink) = &sink {
+                    sink.mixer().add(RodioSoundCard::new(sb.midi_consumer()));
                     sink.mixer().add(RodioSoundCard::new(sb.opl_consumer()));
                     sink.mixer().add(RodioSoundCard::new(sb.pcm_consumer()));
                 }
