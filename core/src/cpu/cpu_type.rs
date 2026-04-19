@@ -52,6 +52,12 @@ impl CpuType {
         !matches!(self, Self::I8086)
     }
 
+    /// Returns true if this CPU supports 386+ instructions (FS/GS overrides,
+    /// 32-bit operand/address size prefixes, bit manipulation, etc.).
+    pub(crate) fn is_386_or_later(&self) -> bool {
+        matches!(self, Self::I80386 | Self::I80486)
+    }
+
     // TODO
     // Check if this CPU supports 32-bit instructions
     // pub(crate) fn supports_32bit(&self) -> bool {

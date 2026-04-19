@@ -7,8 +7,7 @@ use rustysynth::{SoundFont, Synthesizer, SynthesizerSettings};
 
 use crate::devices::PcmRingBuffer;
 
-static SF2_BYTES: &[u8] =
-    include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/gm.sf2"));
+static SF2_BYTES: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/gm.sf2"));
 
 static SOUND_FONT: OnceLock<Arc<SoundFont>> = OnceLock::new();
 

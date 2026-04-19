@@ -193,9 +193,32 @@ impl Cpu {
 
             // FS: segment override prefix (64) - 80386+
             0x64 => {
-                self.segment_override = Some(self.fs);
-                self.exec_instruction(bus);
-                self.segment_override = None;
+                if self.cpu_type.is_386_or_later() {
+                    self.segment_override = Some(self.fs);
+                    self.exec_instruction(bus);
+                    self.segment_override = None;
+                } else {
+                    log::warn!(
+                        "FS override (0x64) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
+                    self.dispatch_interrupt(bus, 6);
+                }
+            }
+
+            // GS: segment override prefix (65) - 80386+
+            0x65 => {
+                if self.cpu_type.is_386_or_later() {
+                    self.segment_override = Some(self.gs);
+                    self.exec_instruction(bus);
+                    self.segment_override = None;
+                } else {
+                    log::warn!(
+                        "GS override (0x65) not supported on {:?} — firing INT 6",
+                        self.cpu_type
+                    );
+                    self.dispatch_interrupt(bus, 6);
+                }
             }
 
             // PUSH immediate (68: imm16, 6A: imm8 sign-extended) - 286+

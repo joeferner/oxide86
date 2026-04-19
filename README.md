@@ -25,6 +25,7 @@
 
 ### 🔊 Audio
 - **AdLib (OPL2/YM3812)**: 9-channel FM synthesis with ADSR envelopes, 4 waveforms, tremolo/vibrato LFOs, and hardware timers
+- **Sound Blaster 16**: DSP v4.05, 8-bit and 16-bit PCM via DMA, OPL3 FM, MPU-401 MIDI (UART mode), mixer
 - **PC Speaker**: Square-wave output driven by PIT Channel 2, with accurate frequency generation
 - Native audio via Rodio; browser audio via Web Audio API AudioWorklet
 
@@ -63,6 +64,25 @@ In both the CLI and GUI pressing F12 will exit exclusive mode.
 RUST_LOG=info cargo run -p oxide86-native-cli -- --boot --hdd hdd.img --boot-drive 0x80
 RUST_LOG=info cargo run -p oxide86-native-gui -- --boot --hdd hdd.img --boot-drive 0x80 --com1 mouse
 ```
+
+## Sound Blaster setup in DOS
+
+The emulator presents as a **Sound Blaster 16** (DSP v4.05). Set the `BLASTER` environment variable in your `AUTOEXEC.BAT` to match the emulator's defaults:
+
+```bat
+SET BLASTER=A220 I5 D1 T5 P330 H5
+```
+
+| Parameter | Value | Meaning |
+|-----------|-------|---------|
+| `A220` | 0x220 | Base I/O port |
+| `I5` | 5 | IRQ line (configurable via `--sound-blaster-irq`) |
+| `D1` | 1 | 8-bit DMA channel (configurable via `--sound-blaster-dma8`) |
+| `T5` | 5 | Card type: Sound Blaster 16 |
+| `P330` | 0x330 | MPU-401 MIDI interface port |
+| `H5` | 5 | 16-bit DMA channel (configurable via `--sound-blaster-dma16`) |
+
+> **Note:** Do **not** include an `E` (EMU8000) parameter — the AWE32 wavetable chip is not emulated. Applications that require EMU8000 detection (e.g. DOSMID in AWE mode) will fail with "no emu8000 chip detected". Use MPU-401 (`P330`) for MIDI output instead.
 
 ## Debugging with Claude Code
 
