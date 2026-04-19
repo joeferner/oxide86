@@ -180,6 +180,7 @@ impl SoundBlasterDsp {
                 self.test_reg = self.cmd_params.first().copied().unwrap_or(0);
             }
             0xE8 => self.out_buf.push_back(self.test_reg),
+            0x83 => self.out_buf.push_back(0x00), // ASP/proprietary: return 0 to unblock callers
             0xF2 => self.irq_pending_8 = true,
             0xF3 => self.irq_pending_16 = true,
             _ => log::warn!("SoundBlaster DSP: unknown command 0x{cmd:02X}"),

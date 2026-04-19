@@ -207,6 +207,7 @@ pub(crate) struct Cpu {
 /// (e.g. CS before a far jump, FPU ST(0) before a store-and-pop).
 struct PreExecState {
     cs: u16,
+    cs_cache: protected_mode::SegmentCache,
     fpu_st0: ([u8; 10], f64),
 }
 
@@ -258,13 +259,18 @@ impl Computer for CpuBusComputer<'_> {
         self.bus.memory_read_u8(phys as usize)
     }
     fn seg_to_phys(&self, seg: u16, offset: u16) -> u32 {
-        if self.cpu.in_protected_mode() {
-            let cache = self.cpu.cache_for_seg_value(seg);
-            self.bus
-                .apply_a20_pub(cache.base.wrapping_add(offset as u32) as usize) as u32
+        // Use descriptor cache in both real and protected mode: LOADALL can set a
+        // non-standard base while leaving PE clear (e.g. SVARDOS XMS driver).
+        // For the pre-execution CS (code fetch), use the pre-execution CS cache so
+        // that instructions like LOADALL — which overwrite all segment registers —
+        // don't cause the decoder to read from the wrong physical address.
+        let cache = if seg == self.pre.cs {
+            &self.pre.cs_cache
         } else {
-            ((seg as u32) << 4).wrapping_add(offset as u32)
-        }
+            self.cpu.cache_for_seg_value(seg)
+        };
+        self.bus
+            .apply_a20_pub(cache.base.wrapping_add(offset as u32) as usize) as u32
     }
     fn fpu_st(&self, i: u8) -> ([u8; 10], f64) {
         let idx = (self.cpu.fpu_top.wrapping_add(i)) as usize & 7;
@@ -397,11 +403,16 @@ impl Cpu {
     }
 
     /// Resolve segment:offset to a physical address.
-    /// In real mode: (segment << 4) + offset with A20 masking.
+    /// In real mode: descriptor cache base + offset with A20 masking.
     /// In protected mode: cached_base + offset with A20 masking, with limit check.
     /// If the offset exceeds the segment limit, sets pending_exception to #GP(13)
     /// and returns a dummy address (0). Callers should check pending_exception
     /// or let Computer::step() fire the exception before the next instruction.
+    ///
+    /// The 286 always uses the hidden descriptor cache for address translation.
+    /// In normal real mode the cache mirrors segment*16, but LOADALL can set an
+    /// arbitrary cache base while leaving PE=0 (e.g. the SVARDOS XMS driver sets
+    /// CS_selector=0 and CS_cache.base to a physical address in extended memory).
     fn seg_offset_to_phys(&mut self, segment: u16, offset: u16, bus: &Bus) -> usize {
         if self.in_protected_mode() {
             let cache = *self.cache_for_seg_value(segment);
@@ -421,7 +432,8 @@ impl Cpu {
             let addr = cache.base as usize + offset as usize;
             bus.apply_a20_pub(addr)
         } else {
-            bus.physical_address(segment, offset)
+            let base = self.cache_for_seg_value(segment).base;
+            bus.apply_a20_pub(base as usize + offset as usize)
         }
     }
 
@@ -447,7 +459,8 @@ impl Cpu {
             let addr = cache.base as usize + offset as usize;
             bus.apply_a20_pub(addr)
         } else {
-            bus.physical_address(segment, offset)
+            let base = self.cache_for_seg_value(segment).base;
+            bus.apply_a20_pub(base as usize + offset as usize)
         }
     }
 
@@ -882,6 +895,7 @@ impl Cpu {
             let val = self.fpu_stack[idx];
             Some(PreExecState {
                 cs: self.cs,
+                cs_cache: self.cs_cache,
                 fpu_st0: (val.to_bytes(), val.to_f64()),
             })
         } else {
@@ -918,10 +932,12 @@ impl Cpu {
                 self.suppress_next_exec_log = false;
             } else {
                 log::info!("{}", instr.format_line());
-                // If this instruction folded a prefix+body (e.g. "wait fpatan",
-                // "rep movsb"), the body will execute as the next step — suppress
-                // that log entry so it doesn't appear twice.
-                if instr.prefix.is_some() {
+                // WAIT (0x9B) is a two-step prefix: 0x9B advances IP by one byte,
+                // then the FPU body executes as the next step. Suppress that body
+                // so it doesn't appear as a duplicate log line.
+                // REP/REPNE/LOCK all call exec_instruction() recursively in the
+                // same step, so their body is already done — no suppression needed.
+                if instr.prefix == Some("wait") {
                     self.suppress_next_exec_log = true;
                 }
             }

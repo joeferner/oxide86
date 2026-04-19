@@ -353,6 +353,9 @@ impl Cpu {
                 // SGDT/SIDT/LGDT/LIDT/SMSW/LMSW — reg field in ModRM selects operation
                 0x01 => self.exec_0f_01(bus),
 
+                // LOADALL — load all CPU state from physical 0x800
+                0x05 => self.exec_0f_05(bus),
+
                 // CLTS — clear task-switched flag (TS, bit 3) in CR0
                 0x06 => {
                     log::debug!(
@@ -380,6 +383,116 @@ impl Cpu {
             );
             self.pop_segreg(0x0F, bus);
         }
+    }
+
+    /// 0F 05 — LOADALL (286, undocumented)
+    ///
+    /// Reads 102 bytes from physical address 0x800 and atomically loads all CPU
+    /// state. Table layout (little-endian words unless noted):
+    ///
+    ///   +0x00  MSW (CR0 low 16 bits)
+    ///   +0x02  reserved (14 bytes)
+    ///   +0x10  TR selector
+    ///   +0x12  FLAGS
+    ///   +0x14  IP
+    ///   +0x16  LDTR selector
+    ///   +0x18  DS  +0x1A  SS  +0x1C  CS  +0x1E  ES
+    ///   +0x20  DI  +0x22  SI  +0x24  BP  +0x26  SP
+    ///   +0x28  BX  +0x2A  DX  +0x2C  CX  +0x2E  AX
+    ///
+    /// Descriptor cache entries (6 bytes each: limit[2], base_low[2], base_hi[1], access[1]):
+    ///   +0x30  ES  +0x36  CS  +0x3C  SS  +0x42  DS
+    ///
+    /// GDTR/IDTR pseudo-descriptors (6 bytes each: limit[2], base_low[2], base_hi[1], unused[1]):
+    ///   +0x48  GDT  +0x4E  IDT
+    ///
+    /// Descriptor caches for LDTR and TR:
+    ///   +0x54  LDTR  +0x5A  TR
+    ///
+    /// Used by HIMEM.SYS to switch from protected mode back to real mode while
+    /// bypassing the normal descriptor-load rules.
+    fn exec_0f_05(&mut self, bus: &mut Bus) {
+        use crate::cpu::protected_mode::SegmentCache;
+
+        const BASE: usize = 0x800;
+
+        let r16 = |bus: &Bus, off: usize| bus.memory_read_u16(BASE + off);
+        let r8 = |bus: &Bus, off: usize| bus.memory_read_u8(BASE + off);
+        let cache = |bus: &Bus, off: usize| SegmentCache {
+            limit: bus.memory_read_u16(BASE + off),
+            base: (bus.memory_read_u16(BASE + off + 2) as u32)
+                | ((bus.memory_read_u8(BASE + off + 4) as u32) << 16),
+        };
+
+        let new_msw = r16(bus, 0x00);
+        let new_tr = r16(bus, 0x10);
+        let new_flags = r16(bus, 0x12);
+        let new_ip = r16(bus, 0x14);
+        let new_ldtr = r16(bus, 0x16);
+        let new_ds = r16(bus, 0x18);
+        let new_ss = r16(bus, 0x1A);
+        let new_cs = r16(bus, 0x1C);
+        let new_es = r16(bus, 0x1E);
+        let new_di = r16(bus, 0x20);
+        let new_si = r16(bus, 0x22);
+        let new_bp = r16(bus, 0x24);
+        let new_sp = r16(bus, 0x26);
+        let new_bx = r16(bus, 0x28);
+        let new_dx = r16(bus, 0x2A);
+        let new_cx = r16(bus, 0x2C);
+        let new_ax = r16(bus, 0x2E);
+
+        let new_es_cache = cache(bus, 0x30);
+        let new_cs_cache = cache(bus, 0x36);
+        let new_ss_cache = cache(bus, 0x3C);
+        let new_ds_cache = cache(bus, 0x42);
+
+        // GDTR: limit(2) + base_low(2) + base_hi(1) + unused(1)
+        let gdtr_limit = r16(bus, 0x48);
+        let gdtr_base_lo = r16(bus, 0x4A);
+        let gdtr_base_hi = r8(bus, 0x4C);
+        // IDTR
+        let idtr_limit = r16(bus, 0x4E);
+        let idtr_base_lo = r16(bus, 0x50);
+        let idtr_base_hi = r8(bus, 0x52);
+
+        // Apply all state atomically
+        self.cr0 = new_msw;
+        self.ip = new_ip;
+        self.flags = new_flags;
+
+        self.ax = new_ax;
+        self.bx = new_bx;
+        self.cx = new_cx;
+        self.dx = new_dx;
+        self.si = new_si;
+        self.di = new_di;
+        self.bp = new_bp;
+        self.sp = new_sp;
+
+        self.cs = new_cs;
+        self.cs_cache = new_cs_cache;
+        self.ds = new_ds;
+        self.ds_cache = new_ds_cache;
+        self.ss = new_ss;
+        self.ss_cache = new_ss_cache;
+        self.es = new_es;
+        self.es_cache = new_es_cache;
+
+        self.ldtr = new_ldtr;
+        self.tr = new_tr;
+
+        self.gdtr_limit = gdtr_limit;
+        self.gdtr_base = (gdtr_base_lo as u32) | ((gdtr_base_hi as u32) << 16);
+        self.idtr_limit = idtr_limit;
+        self.idtr_base = (idtr_base_lo as u32) | ((idtr_base_hi as u32) << 16);
+
+        log::debug!(
+            "LOADALL: new CS:IP={:04X}:{:04X} MSW={:04X}",
+            new_cs,
+            new_ip,
+            new_msw
+        );
     }
 
     /// 0F 01 — SGDT/SIDT/LGDT/LIDT/SMSW/LMSW (286+)

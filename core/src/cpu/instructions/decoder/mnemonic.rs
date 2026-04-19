@@ -187,6 +187,8 @@ pub enum Mnemonic {
     Fxtract,
     Fprem,
     Fscale,
+    // 286 undocumented
+    Loadall,
     // Unknown / unimplemented
     Unknown(u8),
 }
@@ -360,6 +362,7 @@ impl fmt::Display for Mnemonic {
             Mnemonic::Fxtract => "fxtract",
             Mnemonic::Fprem => "fprem",
             Mnemonic::Fscale => "fscale",
+            Mnemonic::Loadall => "loadall",
             Mnemonic::Unknown(b) => return write!(f, "db 0x{:02x}", b),
         };
         f.write_str(s)

@@ -439,6 +439,14 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
         }
         // POP Sreg
         0x07 => (Mnemonic::Pop, vec![Operand::Seg(SegReg::ES, cur.cpu.es())]),
+        0x0F => {
+            // 286+ two-byte prefix; 8086: POP CS (treated as unknown here)
+            let second = cur.fetch();
+            match second {
+                0x05 => (Mnemonic::Loadall, vec![]),
+                _ => (Mnemonic::Unknown(0x0F), vec![]),
+            }
+        }
         0x17 => (Mnemonic::Pop, vec![Operand::Seg(SegReg::SS, cur.cpu.ss())]),
         0x1F => (Mnemonic::Pop, vec![Operand::Seg(SegReg::DS, cur.cpu.ds())]),
 

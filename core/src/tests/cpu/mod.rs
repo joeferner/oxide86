@@ -92,6 +92,19 @@ pub(crate) fn op286() {
     );
 }
 
+/// LOADALL (0F 05): loads all GP registers and segment descriptor caches
+/// from the 102-byte table at physical 0x800.
+#[test_log::test]
+pub(crate) fn loadall() {
+    run_test(
+        "cpu/loadall",
+        make_computer!(cpu_type: CpuType::I80286),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}
+
 #[test_log::test]
 pub(crate) fn irq_chain() {
     run_test(

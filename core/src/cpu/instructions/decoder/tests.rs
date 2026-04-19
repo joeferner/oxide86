@@ -856,6 +856,17 @@ fn rep_alone_stays_on_own_line() {
     assert!(!line.contains("rep nop"), "should not fold nop: {line}");
 }
 
+// ─── 286 two-byte opcodes ─────────────────────────────────────────────────────
+
+#[test]
+fn loadall_decodes_as_loadall() {
+    // 0F 05  →  loadall
+    let cpu = FakeCpu::new(&[0x0F, 0x05]);
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("loadall"), "asm column: {line}");
+    assert!(line.contains("0F 05"), "bytes column: {line}");
+}
+
 // ─── Protected-mode seg_to_phys override ─────────────────────────────────────
 
 /// A `FakeCpu` variant that simulates 286 protected mode by mapping each
