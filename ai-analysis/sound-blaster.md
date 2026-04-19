@@ -1396,7 +1396,7 @@ When the DSP starts DMA, it asserts DREQ on the DMA controller so the controller
 
 ---
 
-## Phase 8 — MPU-401 MIDI (UART Mode)
+## ✅ Phase 8 — MPU-401 MIDI (UART Mode)
 
 **Ports**: `0x330` (data), `0x331` (command/status)
 

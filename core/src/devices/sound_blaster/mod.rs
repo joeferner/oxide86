@@ -11,6 +11,8 @@ mod dsp;
 use dsp::SoundBlasterDsp;
 mod mixer;
 use mixer::SoundBlasterMixer;
+mod mpu;
+use mpu::SoundBlasterMpu;
 mod opl;
 use opl::SoundBlasterOpl;
 
@@ -581,11 +583,13 @@ impl SoundBlasterCdromInner {
 /// Phase 2: wraps the Panasonic CD-ROM interface (absorbed from `SoundBlasterCdrom`).
 /// Phase 4: adds DSP subsystem — reset handshake and basic commands.
 /// Phase 7: adds 8-bit DMA PCM playback via `pcm_out` ring buffer.
+/// Phase 8: adds MPU-401 MIDI controller in UART mode (ports 0x330/0x331).
 pub struct SoundBlaster {
     base_port: u16,
     cdrom: SoundBlasterCdromInner,
     dsp: SoundBlasterDsp,
     mixer: SoundBlasterMixer,
+    mpu: SoundBlasterMpu,
     opl: SoundBlasterOpl,
     pcm_out: crate::devices::PcmRingBuffer,
     cpu_freq: u64,
@@ -603,6 +607,7 @@ impl SoundBlaster {
             cdrom: SoundBlasterCdromInner::new(0x230, None, 5),
             dsp: SoundBlasterDsp::new(),
             mixer: SoundBlasterMixer::new(),
+            mpu: SoundBlasterMpu::new(),
             opl: SoundBlasterOpl::new(cpu_freq),
             pcm_out: PcmRingBuffer::new_with_hold(44100 * 2, 44100),
             cpu_freq,
@@ -623,6 +628,7 @@ impl SoundBlaster {
             cdrom: SoundBlasterCdromInner::new(cdrom_base_port, disc, irq_line),
             dsp: SoundBlasterDsp::new(),
             mixer: SoundBlasterMixer::new(),
+            mpu: SoundBlasterMpu::new(),
             opl: SoundBlasterOpl::new(cpu_freq),
             pcm_out: PcmRingBuffer::new_with_hold(44100 * 2, 44100),
             cpu_freq,
@@ -649,6 +655,7 @@ impl Device for SoundBlaster {
         self.cdrom.reset();
         self.dsp.hardware_reset();
         self.mixer.reset();
+        self.mpu.reset();
         self.opl.reset();
         self.pcm_out.clear();
         self.last_dac_sample = 0.0;
@@ -694,6 +701,12 @@ impl Device for SoundBlaster {
         // AdLib-compat OPL ports
         if let 0x388..=0x38B = port {
             return Some(self.opl.read_status(cycle_count));
+        }
+        // MPU-401 ports
+        match port {
+            0x330 => return Some(self.mpu.read_data()),
+            0x331 => return Some(self.mpu.read_status()),
+            _ => {}
         }
         self.cdrom.io_read_u8(port, cycle_count)
     }
@@ -772,6 +785,15 @@ impl Device for SoundBlaster {
             }
             0x38B => {
                 self.opl.write_data(1, val, cycle_count);
+                return true;
+            }
+            // MPU-401 ports
+            0x330 => {
+                self.mpu.write_data(val);
+                return true;
+            }
+            0x331 => {
+                self.mpu.write_command(val);
                 return true;
             }
             _ => {}

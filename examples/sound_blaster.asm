@@ -99,6 +99,70 @@ start:
 
 .detected:
 
+; ─── MPU-401 MIDI notes via UART mode ─────────────────────────────────────────
+;
+; The SB16's MPU-401 controller is at ports 0x330 (data) and 0x331 (command/status).
+; Reset the MPU first, then enter UART mode, then stream raw MIDI bytes.
+;
+; MIDI bytes for a note:
+;   0x90 0x3C 0x7F  — Note On, channel 1, middle C (C4), velocity 127
+;   0x80 0x3C 0x00  — Note Off, channel 1, middle C, velocity 0
+
+    mov ah, 0x09
+    mov dx, msg_mpu
+    int 0x21
+
+    ; Send MPU-401 reset command (0xFF → 0x331)
+    mov dx, 0x331
+    mov al, 0xFF
+    out dx, al
+
+    ; Poll status bit 7 until ACK byte is available
+    mov cx, 5000
+.mpu_poll_rst:
+    in al, dx               ; dx = 0x331
+    test al, 0x80
+    jnz .mpu_read_rst
+    loop .mpu_poll_rst
+.mpu_read_rst:
+    mov dx, 0x330
+    in al, dx               ; consume 0xFE ACK
+
+    ; Enter UART mode (0x3F → 0x331)
+    mov dx, 0x331
+    mov al, 0x3F
+    out dx, al
+
+    ; Poll until ACK available
+    mov cx, 5000
+.mpu_poll_uart:
+    in al, dx               ; dx = 0x331
+    test al, 0x80
+    jnz .mpu_read_uart
+    loop .mpu_poll_uart
+.mpu_read_uart:
+    mov dx, 0x330
+    in al, dx               ; consume 0xFE ACK
+
+    ; Send Note On: channel 1, middle C (0x3C), velocity 127
+    mov dx, 0x330
+    mov al, 0x90            ; Note On, channel 1
+    out dx, al
+    mov al, 0x3C            ; Middle C
+    out dx, al
+    mov al, 0x7F            ; velocity 127
+    out dx, al
+
+    call delay_long
+
+    ; Send Note Off: channel 1, middle C, velocity 0
+    mov al, 0x80            ; Note Off, channel 1
+    out dx, al
+    mov al, 0x3C
+    out dx, al
+    xor al, al
+    out dx, al
+
 ; ─── Mixer — set master volume to maximum ─────────────────────────────────────
 ;
 ; The mixer is accessed via an index/data pair at base+4 (index write) and
@@ -421,6 +485,7 @@ tone_count   db 0
 half_cycles  db 0
 
 msg_found     db 'Sound Blaster detected.', 0x0D, 0x0A, '$'
+msg_mpu       db 'MPU-401: sending MIDI note via UART mode...', 0x0D, 0x0A, '$'
 msg_not_found db 'Sound Blaster not found (no DSP ready byte).', 0x0D, 0x0A, '$'
 msg_version   db 'DSP version X.Y (SB16 = 4.5)', 0x0D, 0x0A, '$'
 ;                            ^^ patched at runtime — offset 12 = major, 14 = minor
