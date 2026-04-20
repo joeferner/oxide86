@@ -856,6 +856,31 @@ fn rep_alone_stays_on_own_line() {
     assert!(!line.contains("rep nop"), "should not fold nop: {line}");
 }
 
+// ─── MOV Sreg (8C/8E) ────────────────────────────────────────────────────────
+
+#[test]
+fn mov_sreg_from_r16() {
+    // 8E DB  →  mov ds, bx   (reg=011=DS, rm=011=BX, mod=11)
+    let mut cpu = FakeCpu::new(&[0x8E, 0xDB]);
+    cpu.bx = 0x01BA;
+    cpu.ds = 0x01BA; // post-execution DS = BX
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("mov ds, bx"), "asm column: {line}");
+    assert!(line.contains("DS=01BA"), "DS annotation: {line}");
+    assert!(line.contains("BX=01BA"), "BX annotation: {line}");
+}
+
+#[test]
+fn mov_sreg_es_from_r16() {
+    // 8E C3  →  mov es, bx   (reg=000=ES, rm=011=BX, mod=11)
+    let mut cpu = FakeCpu::new(&[0x8E, 0xC3]);
+    cpu.bx = 0x01BA;
+    cpu.es = 0x01BA;
+    let line = decode_line(&cpu, 0, 0);
+    assert!(line.contains("mov es, bx"), "asm column: {line}");
+    assert!(line.contains("ES=01BA"), "ES annotation: {line}");
+}
+
 // ─── 286 two-byte opcodes ─────────────────────────────────────────────────────
 
 #[test]

@@ -391,23 +391,23 @@ impl Cpu {
     /// state. Table layout (little-endian words unless noted):
     ///
     ///   +0x00  MSW (CR0 low 16 bits)
-    ///   +0x02  reserved (14 bytes)
-    ///   +0x10  TR selector
-    ///   +0x12  FLAGS
-    ///   +0x14  IP
-    ///   +0x16  LDTR selector
-    ///   +0x18  DS  +0x1A  SS  +0x1C  CS  +0x1E  ES
-    ///   +0x20  DI  +0x22  SI  +0x24  BP  +0x26  SP
-    ///   +0x28  BX  +0x2A  DX  +0x2C  CX  +0x2E  AX
+    ///   +0x02  reserved (20 bytes)
+    ///   +0x16  TR selector
+    ///   +0x18  FLAGS
+    ///   +0x1A  IP
+    ///   +0x1C  LDTR selector
+    ///   +0x1E  DS  +0x20  SS  +0x22  CS  +0x24  ES
+    ///   +0x26  DI  +0x28  SI  +0x2A  BP  +0x2C  SP
+    ///   +0x2E  BX  +0x30  DX  +0x32  CX  +0x34  AX
     ///
-    /// Descriptor cache entries (6 bytes each: limit[2], base_low[2], base_hi[1], access[1]):
-    ///   +0x30  ES  +0x36  CS  +0x3C  SS  +0x42  DS
+    /// Descriptor cache entries (6 bytes each: base_lo[1], base_mid[1], base_hi[1], limit[2], access[1]):
+    ///   +0x36  ES  +0x3C  CS  +0x42  SS  +0x48  DS
     ///
     /// GDTR/IDTR pseudo-descriptors (6 bytes each: limit[2], base_low[2], base_hi[1], unused[1]):
-    ///   +0x48  GDT  +0x4E  IDT
+    ///   +0x4E  GDT  +0x54  IDT
     ///
     /// Descriptor caches for LDTR and TR:
-    ///   +0x54  LDTR  +0x5A  TR
+    ///   +0x5A  LDTR  +0x60  TR
     ///
     /// Used by HIMEM.SYS to switch from protected mode back to real mode while
     /// bypassing the normal descriptor-load rules.
@@ -419,42 +419,43 @@ impl Cpu {
         let r16 = |bus: &Bus, off: usize| bus.memory_read_u16(BASE + off);
         let r8 = |bus: &Bus, off: usize| bus.memory_read_u8(BASE + off);
         let cache = |bus: &Bus, off: usize| SegmentCache {
-            limit: bus.memory_read_u16(BASE + off),
-            base: (bus.memory_read_u16(BASE + off + 2) as u32)
-                | ((bus.memory_read_u8(BASE + off + 4) as u32) << 16),
+            base: (bus.memory_read_u8(BASE + off) as u32)
+                | ((bus.memory_read_u8(BASE + off + 1) as u32) << 8)
+                | ((bus.memory_read_u8(BASE + off + 2) as u32) << 16),
+            limit: bus.memory_read_u16(BASE + off + 3),
         };
 
         let new_msw = r16(bus, 0x00);
-        let new_tr = r16(bus, 0x10);
-        let new_flags = r16(bus, 0x12);
-        let new_ip = r16(bus, 0x14);
-        let new_ldtr = r16(bus, 0x16);
-        let new_ds = r16(bus, 0x18);
-        let new_ss = r16(bus, 0x1A);
-        let new_cs = r16(bus, 0x1C);
-        let new_es = r16(bus, 0x1E);
-        let new_di = r16(bus, 0x20);
-        let new_si = r16(bus, 0x22);
-        let new_bp = r16(bus, 0x24);
-        let new_sp = r16(bus, 0x26);
-        let new_bx = r16(bus, 0x28);
-        let new_dx = r16(bus, 0x2A);
-        let new_cx = r16(bus, 0x2C);
-        let new_ax = r16(bus, 0x2E);
+        let new_tr = r16(bus, 0x16);
+        let new_flags = r16(bus, 0x18);
+        let new_ip = r16(bus, 0x1A);
+        let new_ldtr = r16(bus, 0x1C);
+        let new_ds = r16(bus, 0x1E);
+        let new_ss = r16(bus, 0x20);
+        let new_cs = r16(bus, 0x22);
+        let new_es = r16(bus, 0x24);
+        let new_di = r16(bus, 0x26);
+        let new_si = r16(bus, 0x28);
+        let new_bp = r16(bus, 0x2A);
+        let new_sp = r16(bus, 0x2C);
+        let new_bx = r16(bus, 0x2E);
+        let new_dx = r16(bus, 0x30);
+        let new_cx = r16(bus, 0x32);
+        let new_ax = r16(bus, 0x34);
 
-        let new_es_cache = cache(bus, 0x30);
-        let new_cs_cache = cache(bus, 0x36);
-        let new_ss_cache = cache(bus, 0x3C);
-        let new_ds_cache = cache(bus, 0x42);
+        let new_es_cache = cache(bus, 0x36);
+        let new_cs_cache = cache(bus, 0x3C);
+        let new_ss_cache = cache(bus, 0x42);
+        let new_ds_cache = cache(bus, 0x48);
 
         // GDTR: limit(2) + base_low(2) + base_hi(1) + unused(1)
-        let gdtr_limit = r16(bus, 0x48);
-        let gdtr_base_lo = r16(bus, 0x4A);
-        let gdtr_base_hi = r8(bus, 0x4C);
+        let gdtr_limit = r16(bus, 0x4E);
+        let gdtr_base_lo = r16(bus, 0x50);
+        let gdtr_base_hi = r8(bus, 0x52);
         // IDTR
-        let idtr_limit = r16(bus, 0x4E);
-        let idtr_base_lo = r16(bus, 0x50);
-        let idtr_base_hi = r8(bus, 0x52);
+        let idtr_limit = r16(bus, 0x54);
+        let idtr_base_lo = r16(bus, 0x56);
+        let idtr_base_hi = r8(bus, 0x58);
 
         // Apply all state atomically
         self.cr0 = new_msw;
@@ -487,12 +488,32 @@ impl Cpu {
         self.idtr_limit = idtr_limit;
         self.idtr_base = (idtr_base_lo as u32) | ((idtr_base_hi as u32) << 16);
 
-        log::debug!(
-            "LOADALL: new CS:IP={:04X}:{:04X} MSW={:04X}",
-            new_cs,
-            new_ip,
-            new_msw
-        );
+        if log::log_enabled!(log::Level::Debug) {
+            let mut row = String::new();
+            for i in (0..0x60).step_by(2) {
+                if i % 16 == 0 {
+                    if !row.is_empty() {
+                        log::debug!("LOADALL table {:02X}: {}", i - 16, row);
+                        row.clear();
+                    }
+                }
+                row.push_str(&format!("{:04X} ", r16(bus, i)));
+            }
+            if !row.is_empty() {
+                log::debug!("LOADALL table {:02X}: {}", 0x50, row);
+            }
+            log::debug!(
+                "LOADALL: new CS:IP={:04X}:{:04X} MSW={:04X} SS={:04X} SP={:04X} AX={:04X} CX={:04X} FLAGS={:04X}",
+                new_cs,
+                new_ip,
+                new_msw,
+                new_ss,
+                new_sp,
+                new_ax,
+                new_cx,
+                new_flags,
+            );
+        }
     }
 
     /// 0F 01 — SGDT/SIDT/LGDT/LIDT/SMSW/LMSW (286+)

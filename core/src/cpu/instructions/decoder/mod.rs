@@ -283,10 +283,19 @@ fn decode_inner(cur: &mut Cursor) -> (Mnemonic, Vec<Operand>) {
                 vec![decode_rm(cur, m, true), Operand::Imm16(sv)],
             )
         }
-        // 8E/r  MOV Sreg, r/m16  (represent Sreg as Imm16)
+        // 8E/r  MOV Sreg, r/m16
         0x8E => {
             let m = cur.fetch();
-            (Mnemonic::Mov, vec![decode_rm(cur, m, true)])
+            let (seg, seg_val) = match (m >> 3) & 3 {
+                0 => (SegReg::ES, cur.cpu.es()),
+                1 => (SegReg::CS, cur.cpu.cs()),
+                2 => (SegReg::SS, cur.cpu.ss()),
+                _ => (SegReg::DS, cur.cpu.ds()),
+            };
+            (
+                Mnemonic::Mov,
+                vec![Operand::Seg(seg, seg_val), decode_rm(cur, m, true)],
+            )
         }
 
         // B0..B7  MOV r8, imm8

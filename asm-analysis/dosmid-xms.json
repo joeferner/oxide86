@@ -25,14 +25,10 @@
     "01BA:A6D5": "rotate GDT descriptor words for src at [A65C]",
     "01BA:A6D8": "clamp transfer count to max 0x7FFF words (INT 15h/87h limit)",
     "01BA:A6EB": "GDT segment: physical 0x0080*16 = 0x800 (where BIOS expects GDT for INT 15h/87h)",
-    "01BA:A6F5": "mov es, bx — ES = 01BA (disasm shows 'mov bx'; opcode 8E C3 = mov es, bx)",
     "01BA:A6FA": "disable interrupts before GDT manipulation",
     "01BA:A6FB": "save SP so XMS transfer can restore stack after protected-mode switch",
     "01BA:A700": "hardcoded save of DS=1BB5 (caller's data segment)",
-    "01BA:A70A": "mov ds, ax — DS = 0080 (GDT segment; disasm shows 'mov ax'; opcode 8E D8)",
     "01BA:A70E": "save current BIOS GDT area (102 bytes: DS:0000 → ES:A5A8)",
-    "01BA:A712": "mov es, ax — ES = 0080 (GDT segment; disasm shows 'mov ax'; opcode 8E C0)",
-    "01BA:A717": "mov ds, bx — DS = 01BA (disasm shows 'mov bx'; opcode 8E DB)",
     "01BA:A71B": "install XMS transfer GDT (102 bytes: 01BA:A60E → 0080:DI) for INT 15h/87h"
   },
   "gaps": {
