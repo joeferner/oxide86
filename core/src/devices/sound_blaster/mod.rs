@@ -724,6 +724,9 @@ impl Device for SoundBlaster {
                 };
                 return Some(val);
             }
+            // DSP reset port (write-only on HW); reading returns write-buffer-not-busy (0x7F)
+            // so SBMIDI.EXE's presence/write-ready poll sees the hardware as available.
+            0x06 => return Some(0x7F),
             // DSP ports
             0x0A => return Some(self.dsp.read_data()),
             0x0C => return Some(0x00), // write-buffer status: never busy

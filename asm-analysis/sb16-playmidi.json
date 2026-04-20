@@ -1,0 +1,48 @@
+{
+  "functions": {
+    "0019:440F": {
+      "label": "sbmidi_apply_config",
+      "comment": "Applies the SBMIDI hardware configuration table for the active device.\nCalls sbmidi_config_table_read only when [0x034A]==0 (first call)."
+    },
+    "0019:4427": {
+      "label": "sbmidi_config_table_read",
+      "comment": "Walks the packed config table at DS:0x3DDB searching for an entry matching\nthe current hardware type (BL) and version (BH).  On a match, unpacks\nthree fields into sbmidi_ready_flag [0x0323], [0x0326], and [0x0327].\nEntry format at DS:[SI]: { hw_type:u8, version:u8, config_byte:u8, flag_byte:u8 }\nTerminated by 0xFF."
+    },
+    "0019:445E": {
+      "label": "sbmidi_lookup_cmd",
+      "comment": "Table-search helper.  Scans the CS-segment table at 0x3DDB for AH=command.\nInput: AH=command byte, AL=version, BL=hw_type.\nOutput: AH=0 on match or fallback."
+    },
+    "0019:4499": {
+      "label": "sbmidi_not_ready",
+      "comment": "SBMIDI error stub installed while the driver is not yet initialised.\nUnconditionally sets sbmidi_ready_flag=0x01 (ERROR) and returns CF=1\nto signal the caller that SBMIDI is unavailable."
+    }
+  },
+  "retf_targets": {
+    "0019:44AA": {
+      "label": "sbmidi_int2fh_error",
+      "comment": "INT 2Fh error exit: calls sbmidi_not_ready (sets flag=1, CF=1) then far-returns.\nReached when the TSR is invoked but not yet fully initialised."
+    },
+    "0019:44AE": {
+      "label": "sbmidi_int2fh_ok",
+      "comment": "INT 2Fh success exit: clears CF then far-returns.\nReached when SBMIDI has accepted a function call successfully."
+    },
+    "0019:44B0": {
+      "label": "sbmidi_int2fh_handler",
+      "comment": "INT 2Fh multiplexer handler for SBMIDI (multiplex ID 0x11).\nChained from the previous INT 2Fh vector via 0B73:007D.\nDispatch:\n  AH != 0x11 → chain to next handler (jmp far 0070:0005)\n  AH == 0x11, AL == 0x00 → detection probe; return CF=0 (we are present)\n  AH == 0x11, AL != 0x00 → function call; if not ready, call sbmidi_not_ready (CF=1)"
+    }
+  },
+  "lineComments": {
+    "0019:44A2": "sbmidi_ready_flag = 0x01 → ERROR / driver not ready",
+    "0019:44A8": "CF=1 tells the INT 2Fh caller that SBMIDI is unavailable",
+    "0019:44B1": "multiplex ID 0x11 = SBMIDI TSR",
+    "0019:44B6": "AL=0 is the standard INT 2Fh detection probe; any non-zero value is a real function call",
+    "0019:44B8": "detection probe: return without calling sbmidi_not_ready so CF stays clear (we are installed)",
+    "0019:44BA": "function call when driver not initialised → always returns CF=1 error",
+    "0019:AA68": "sbmidi_ready_flag = 0x02 → partially initialised",
+    "0019:ABA5": "probe SBMIDI: INT 2Fh AH=0x11 AL=0x23 — ask SBMIDI to prepare MIDI output",
+    "0019:ABAA": "CF=0 (jae taken) = SBMIDI accepted the call; CF=1 = not installed or not ready → 'SBMIDI not installed'"
+  },
+  "memLabels": {
+    "0019:0323": "sbmidi_ready_flag"
+  }
+}

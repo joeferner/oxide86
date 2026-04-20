@@ -26,6 +26,8 @@ pub(super) struct SoundBlasterDsp {
     dreq_pending: Option<bool>,
     /// Byte from Direct DAC command (0x10) to be pushed to pcm_out by mod.rs.
     direct_dac_byte: Option<u8>,
+    /// CT1748A ASP register file, written via 0x0E and read via 0x0F.
+    asp_regs: [u8; 256],
 }
 
 impl SoundBlasterDsp {
@@ -50,6 +52,7 @@ impl SoundBlasterDsp {
             auto_init: false,
             dreq_pending: None,
             direct_dac_byte: None,
+            asp_regs: [0u8; 256],
         }
     }
 
@@ -90,6 +93,7 @@ impl SoundBlasterDsp {
         self.auto_init = false;
         self.dreq_pending = None;
         self.direct_dac_byte = None;
+        self.asp_regs = [0u8; 256];
     }
 
     pub(super) fn write_reset_port(&mut self, val: u8) {
@@ -102,6 +106,10 @@ impl SoundBlasterDsp {
 
     fn params_for_cmd(cmd: u8) -> u8 {
         match cmd {
+            0x04 => 1,        // SB16 ASP: set mode register
+            0x05 => 2,        // SB16 ASP: set codec parameter
+            0x0E => 2,        // SB16 ASP: write register (index, value)
+            0x0F => 1,        // SB16 ASP: read register (index)
             0x10 => 1,        // Direct DAC
             0x14 => 2,        // 8-bit single-cycle DMA (unsigned)
             0x16 => 2,        // 8-bit single-cycle DMA (signed)
@@ -139,6 +147,24 @@ impl SoundBlasterDsp {
 
     fn execute_command(&mut self, cmd: u8) {
         match cmd {
+            0x03 => self.out_buf.push_back(0x10), // SB16 ASP: probe/version; return non-zero to indicate ASP present
+            0x04 => {} // SB16 ASP: set mode register (param = mode byte); no response
+            0x05 => {} // SB16 ASP: set codec parameter; no response
+            0x08 => {} // SB16 ASP: init/mode select; no response
+            0x0E => {
+                // SB16 ASP: write register. params[0]=index, params[1]=value.
+                let idx = self.cmd_params.first().copied().unwrap_or(0);
+                let val = self.cmd_params.get(1).copied().unwrap_or(0);
+                self.asp_regs[idx as usize] = val;
+            }
+            0x0F => {
+                // SB16 ASP: read register. params[0]=index.
+                let idx = self.cmd_params.first().copied().unwrap_or(0);
+                self.out_buf.push_back(self.asp_regs[idx as usize]);
+            }
+            // CT1748A ASP presence probe: complement-echo test.
+            // Real hardware returns ~0x55 = 0xAA; absence returns 0x00.
+            0x55 => self.out_buf.push_back(0xAA),
             0x10 => {
                 // Direct DAC: output one sample byte immediately (no DMA).
                 self.direct_dac_byte = Some(self.cmd_params.first().copied().unwrap_or(0x80));
@@ -279,6 +305,8 @@ impl SoundBlasterDsp {
                 }
             }
             0x83 => self.out_buf.push_back(0x00), // ASP/proprietary: return 0 to unblock callers
+            0xFB => self.out_buf.push_back(0x00), // SB16 proprietary status: return 0
+            0xFC => self.out_buf.push_back(0x00), // ASP probe: return 0 (present, no version)
             0xF2 => self.irq_pending_8 = true,
             0xF3 => self.irq_pending_16 = true,
             _ => log::warn!("SoundBlaster DSP: unknown command 0x{cmd:02X}"),
