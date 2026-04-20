@@ -2,38 +2,176 @@
   "functions": {
     "01BA:A676": {
       "label": "xms_move_block",
-      "comment": "Copy words to/from extended memory via BIOS INT 15h/87h. Params on stack: dest addr (bp-0Eh/bp-0Ch), src addr (bp-12h/bp-10h), word count (bp-02h/bp-04h)."
+      "comment": "Copy words to/from XMS via 286 LOADALL trick. DOSMID's template at A60E adds a 6-byte prefix before the standard 286 layout, so all Intel-documented offsets are shifted +6 (ES cache at 0x36 instead of 0x30, DS cache at 0x48 instead of 0x42). LOADALL sets ES selector=0x8000 with cache.base from [A644] (rep movsw destination), DS selector=0x8000 with cache.base from [A656] (rep movsw source). For XMS writes: A644=0x110000+ (XMS), A656=0x02303A (conventional). For XMS reads: A644=conventional, A656=0x11xxxx (XMS). ES==DS selector collision is intentional; only the hidden caches differ."
     },
     "01BA:A7BE": {
       "label": "rotate_descriptor_words",
-      "comment": "Left-rotate 3 words at [BX]: new[0]=old[2], new[2]=old[4], new[4]=old[0]."
+      "comment": "Left-rotate 3 words at [BX]: new[0]=old[2], new[2]=old[4], new[4]=old[0]. Converts descriptor from (limit_hi+access, base_lo+base_mid, base_hi+limit_lo) storage format to the 286 LOADALL format (base_lo, base_mid, base_hi, limit_lo, limit_hi, access)."
+    },
+    "0019:40EB": {
+      "label": "int_21h_dispatch",
+      "comment": "DOS kernel INT 21h entry point. Saves all regs, sets up DOS stack, dispatches on AH value, then restores regs and IRETs. Segment 0019 is the DOS kernel."
+    },
+    "0019:4275": {
+      "label": "load_ds_si_from_stack_ptr",
+      "comment": "Loads DS from [0x3DD7] and SI from DOS stack-top pointer at [0x0584]. Used as a helper to get the current task's data pointer."
+    },
+    "0B73:0364": {
+      "label": "a20_after_xms",
+      "comment": "A20 gate management called after each XMS block transfer. Reads/writes port 0x92 to enable or disable A20. Segment 0B73 is the HIMEM.SYS / A20 controller. A20 is briefly enabled then immediately disabled during HIMEM init; the gate state during LOADALL transfers depends on HIMEM calling convention."
+    },
+    "1036:1941": {
+      "label": "track_seek_sync",
+      "comment": "If the dirty bit ([si+0x2E] bit 0) is set, issues DOS AH=42h (LSEEK) to [si+0x06]:[si+0x08], then clears the dirty bit. Called before every buffer refill."
+    },
+    "1036:197F": {
+      "label": "track_seek",
+      "comment": "Adjust track file position. DX=0: seek to start. DX=1: add signed 32-bit BX:CX to [si+0x06]:[si+0x08] (e.g. BX=CX=0xFFFF = seek -1 for running-status unget). DX=2: set position to BX:CX. Always sets dirty bit ([si+0x2E] |= 1) so track_seek_sync will re-lseek before next read."
+    },
+    "1036:1A2A": {
+      "label": "track_buffer_refill",
+      "comment": "Refills the 32-byte per-track file buffer. Calls track_seek_sync to sync the file pointer, then DOS AH=3Fh to read 32 bytes into [si+0x0A] (track data buffer). Updates [si+0x2A]:[si+0x2C] to the new buffer start position."
+    },
+    "1036:1B09": {
+      "label": "track_read_bytes",
+      "comment": "[HOT] Buffered track byte reader. AX=track ptr, BX=dest offset, CX=dest segment, DX=count. Checks whether the requested bytes fall within the 32-byte buffer; if not, calls track_buffer_refill. Then copies count bytes from [si+0x0A + (pos - buf_start)] to BX:CX."
+    },
+    "1036:1D76": {
+      "label": "schedule_midi_event_output",
+      "comment": "Schedule a MIDI event for output. AX=scheduler ptr (1BB5:9F28), DX:BX=segment:offset of event data, CX=segment for driver. Checks [0x15be]; if zero, calls func_1036_46D7 to dispatch via far-ptr driver at [0x9F44] with AH=0x0B."
+    },
+    "1036:1DB7": {
+      "label": "midi_timing_scheduler",
+      "comment": "Called once per MIDI event after processing. DX=0 and AX=0: mark song done and reset time. DX!=0: call func_1036_1E51 to compute elapsed time, then schedule event via func_1036_5609. Returns AX=0 normally, non-zero when song ends or transitions."
+    },
+    "1036:1E51": {
+      "label": "calc_event_timer_ticks",
+      "comment": "Convert MIDI timing to emulator timer ticks. BX=number of MIDI timing units (e.g. 0x000E). Reads accumulated time from [0x15C0]:[0x15C2], adds BX scaled by tempo at [0x9F2C] (observed 0x00EF), clamps against [0x9F2C], stores result back. Returns DX:AX = new time value."
+    },
+    "1036:1FDB": {
+      "label": "read_midi_delta",
+      "comment": "Reads a MIDI variable-length quantity (VLQ) delta-time from the current track position. Returns the 32-bit delta value in DX:AX and advances [si+0x06]:[si+0x08]. Stores result in [bp-0x16]:[bp-0x14] for the caller."
+    },
+    "1036:24E6": {
+      "label": "dispatch_midi_channel_msg",
+      "comment": "[HOT] Dispatch a MIDI channel message. BL=status byte, AX=scheduler ptr, DX=track ptr. Decodes command nibble (0xB0=control change, 0xC0=program change, 0xD0=aftertouch, 0xE0=pitch bend, 0x90=note on/off, 0xA0=poly aftertouch). Reads data bytes via track_read_bytes, stores into scheduler state, sets note bitmask for note-on. Called 525 times per song pass."
+    },
+    "1036:2AD6": {
+      "label": "mpu401_wait_write_ready",
+      "comment": "Spin until MPU-401 port 0x331 bit 6 (DRR) = 0 (output buffer empty, ready to accept data). DX=MPU-401 base port (0x330). Calls func_1036_2AC1 first, then polls status. With AL=0x3F (standard idle status), bit 6=0 so the loop exits immediately."
+    },
+    "1036:2B2D": {
+      "label": "mpu401_check_data",
+      "comment": "Check if MPU-401 has incoming data. Reads port AX+1 (0x331 status). Tests bit 7: if set (AL=0xBF = data in output buffer), branches to xor ax,ax / ret → returns 0. Always returns AX=0 during normal playback because the 0xFE UART-mode ACK stays in the MPU buffer unread."
+    },
+    "1036:2B80": {
+      "label": "timer_wait_loop",
+      "comment": "[HOT] Wait until the 32-bit timer at [0x15E4] reaches a target value. Calls mpu401_check_data (returns 0 = no MPU event), then reads current timer via func_1036_3BE4, compares against [bp-0x02]:[bp-0x04] target. Loops ~9785 times across 527 MIDI events (average ~5 timer ticks per event at ~50 IRQ/s)."
+    },
+    "1036:2BBA": {
+      "label": "mpu401_send_uart_cmd",
+      "comment": "Send MPU-401 enter-UART-mode command. DX=MPU-401 base port (0x330). Waits for write-ready via func_1036_2AD6, then writes 0x3F to port 0x331 (command port). The MPU queues 0xFE ACK in response."
+    },
+    "1036:3B00": {
+      "label": "pit_timer_isr",
+      "comment": "[HOT] PIT channel-0 interrupt handler (INT 8). Adds 0x035A to 32-bit timer at [0x15E4]:[0x15E6], increments mod-64 counter at [0x15E8]. Every 64 ticks: calls func_1036_94AA to chain to original BIOS handler. Always sends EOI (OUT 0x20, 0x20) via func_1036_5AA1 before IRET. Fired ~50 times/sec (DOSMID reprograms PIT for finer resolution). 2563 invocations in 51-second trace."
+    },
+    "1036:3BE4": {
+      "label": "read_timer_atomic",
+      "comment": "[HOT] Atomically read the 32-bit timer [0x15E4]:[0x15E6] into [BX]:[BX+2]. Wraps with CLI/STI to prevent partial reads across a timer tick interrupt. Called 9787 times from the timer wait loop."
+    },
+    "1036:3C41": {
+      "label": "screen_write_cell",
+      "comment": "[HOT] Write one character cell to the video buffer. AX=row, DX=column, BX=char+attribute word. Computes offset = (AX*80 + DX)*2, loads screen buffer far-ptr from [0x15EA] via LES, writes BX to ES:[SI+offset]. Called 3680 times — handles DOSMID's text-mode UI updates."
+    },
+    "1036:46D7": {
+      "label": "midi_driver_dispatch",
+      "comment": "Dispatch one MIDI event through the output driver. AX=scheduler ptr (9F28), DX:BX=segment:offset of event struct, CX:pushedstack=segment for copy. Copies event data to a local frame, sets AH=0x0B, calls far [0x9F44] (driver far-ptr). Returns AX=1 on success; called 527 times per pass."
+    },
+    "1036:5609": {
+      "label": "memcpy_es",
+      "comment": "[HOT] Copy BX bytes from DS:DX to ES:DI. Uses rep movsw + rep movsb for odd bytes. Returns AX=original DI. Called 530 times as the scheduler's buffer-copy helper."
+    },
+    "1036:5948": {
+      "label": "memcpy_with_seg",
+      "comment": "[HOT] Copy word-count in CX bytes from CX:AX (segment:offset) to ES:BX. Saves/restores DS around a rep movsw + movsb. Returns AX=original BX (destination offset). Called 1850 times from track_read_bytes."
+    },
+    "1036:5A99": {
+      "label": "io_read_byte",
+      "comment": "[HOT] Read one byte from I/O port AX (AX is converted to DX first). Returns AL=value, AH=0. Used exclusively to read MPU-401 status from port 0x331. Returns 0x3F (idle: bit6=0 ready-to-write, bit7=0 no-data) or 0xBF (data pending)."
+    },
+    "1036:5AA1": {
+      "label": "io_write_byte",
+      "comment": "[HOT] Write AL=DL to I/O port AX. Used for MPU-401 data/command writes (port 0x330/0x331) and PIC EOI (OUT 0x20, 0x20). Called 2895 times."
+    },
+    "1036:8E92": {
+      "label": "disable_interrupts",
+      "comment": "[HOT] CLI; RET. Wrapper used to atomically disable interrupts around timer reads. Called 9788 times."
+    },
+    "1036:8E94": {
+      "label": "enable_interrupts",
+      "comment": "[HOT] STI; RET. Paired with disable_interrupts. Called 9788 times."
+    },
+    "1036:94AA": {
+      "label": "chain_to_bios_timer",
+      "comment": "Chain INT 8 to the original BIOS handler. Called every 64 PIT ticks (41 times). Swaps AX/CX into the saved interrupt frame via XCHG, clears trap/overflow flags, then does POPF + RETF to transfer control to the saved CS:IP of the original timer vector."
     }
   },
   "labels": {
     "01BA:A6E9": {
       "label": "setup_gdt_transfer"
+    },
+    "1036:1B30": {
+      "label": "track_eof"
+    },
+    "1036:1B78": {
+      "label": "track_buffer_miss"
+    },
+    "1036:26D5": {
+      "label": "playback_loop"
+    },
+    "1036:2B80": {
+      "label": "timer_wait_loop"
     }
   },
   "lineComments": {
-    "01BA:A683": "swap new dest XMS addr (AX=low, DL=high) with static transfer state at [A656]/[A658]",
-    "01BA:A68D": "swap new src XMS addr (CX=low, DH=high) with static transfer state at [A644]/[A646]",
+    "01BA:A683": "swap new dest XMS addr (AX=low, DL=high) with static transfer state at [A656]/[A658]; A656 maps to DS cache (rep movsw source) in LOADALL table at offset 0x48",
+    "01BA:A68D": "swap new src XMS addr (CX=low, DH=high) with static transfer state at [A644]/[A646]; A644 maps to ES cache (rep movsw destination) in LOADALL table at offset 0x36",
     "01BA:A69D": "inc transfer counter; if wrapped to 0, skip normal descriptor update",
-    "01BA:A6C2": "CS: 0F 01 — LGDT or LIDT (descriptor table load; bytes not fully decoded)",
-    "01BA:A6C8": "CS: 0F 01 — second descriptor table load",
+    "01BA:A6C2": "0F 01 — LGDT-class instruction; installs GDT for upcoming LOADALL",
+    "01BA:A6C5": "0F 01 E0 — SMSW AX: reads CR0 low 16 bits to detect protected mode (returns 0x0000 = real mode; LOADALL trick requires real mode)",
+    "01BA:A6C8": "0F 01 — second descriptor table load",
     "01BA:A6CC": "rotate GDT descriptor words for dest at [A668]",
-    "01BA:A6D1": "CS: 0F 01 — third descriptor table load",
+    "01BA:A6D1": "0F 01 — third descriptor table load",
     "01BA:A6D5": "rotate GDT descriptor words for src at [A65C]",
     "01BA:A6D8": "clamp transfer count to max 0x7FFF words (INT 15h/87h limit)",
-    "01BA:A6EB": "GDT segment: physical 0x0080*16 = 0x800 (where BIOS expects GDT for INT 15h/87h)",
+    "01BA:A6EB": "GDT segment: physical 0x0080*16 = 0x800 (where LOADALL table lives)",
     "01BA:A6FA": "disable interrupts before GDT manipulation",
-    "01BA:A6FB": "save SP so XMS transfer can restore stack after protected-mode switch",
+    "01BA:A6FB": "save SP so XMS transfer can restore stack after LOADALL switch",
     "01BA:A700": "hardcoded save of DS=1BB5 (caller's data segment)",
-    "01BA:A70E": "save current BIOS GDT area (102 bytes: DS:0000 → ES:A5A8)",
-    "01BA:A71B": "install XMS transfer GDT (102 bytes: 01BA:A60E → 0080:DI) for INT 15h/87h"
+    "01BA:A70E": "save current BIOS GDT area (102 bytes: DS:0000 → ES:A5A8) before overwriting with XMS transfer table",
+    "01BA:A71B": "install XMS transfer GDT (102 bytes: 01BA:A60E → 0080:DI) for LOADALL; template has 6-byte prefix shifting all standard 286 offsets by +6",
+    "01BA:A71D": "0F 05 — 286 LOADALL: atomically loads ALL CPU state from phys 0x800. Sets CS:IP=01BB:A71F. Table offsets shifted +6 from Intel standard: ES cache at 0x36 (base from [A644]), DS cache at 0x48 (base from [A656]). First observed LOADALL: ES_cache.base=0x110000 (XMS write dest), DS_cache.base=0x02303A (conventional read src).",
+    "01BB:A71F": "GDT restore loop: CS:lodsw 51 times, writing back saved BIOS GDT words to [SS:BP] (= phys 0x800). Runs under the LOADALL-injected CS descriptor, then rep movsw transfers data using the LOADALL-set DS/ES caches.",
+    "01BB:A728": "mov ss, bx restores normal SS; the DS and ES caches (with XMS addresses) stay valid until an explicit segment load overwrites them",
+    "01BB:A72F": "rep movsw: actual XMS data transfer using LOADALL-set descriptor caches. Source=DS:SI (cache.base=DS phys from A656), Dest=ES:DI (cache.base=ES phys from A644). Both DS and ES selectors are 0x8000; the emulator must use the hidden caches, not selector*16.",
+    "01BB:A731": "far jmp back to 01BA to restore normal CS descriptor cache",
+    "1036:1952": "read current logical file pos from track struct",
+    "1036:1958": "AH=42h: DOS LSEEK command code stored in [bp-0x0E]",
+    "1036:1B4A": "check if current pos high word >= buffer-end high word (buffer miss test)",
+    "1036:1B51": "check if current pos low word >= buffer start (buffer miss test, low word)",
+    "1036:1B64": "compute buffer_end = [si+0x2A] + 32 for window check",
+    "1036:2700": "status byte (bit 7 set): save as running status in [bp-0x04]",
+    "1036:2703": "status byte path: jump directly to event processing (no seek-back needed)",
+    "1036:2705": "data byte (bit 7 clear): running status — seek back 1 byte so it's re-read as data for the current running status command",
+    "1036:270F": "call track_seek(-1): unget the data byte so the caller reads it again under the running status",
+    "1036:2AE4": "test bit 6 (DRR): 0=MPU ready to accept write; 0x3F & 0x40 = 0 so loop exits immediately on first check under normal conditions",
+    "1036:2B31": "test bit 7 of MPU-401 status (0x80): if set (=0xBF = data available), branch to ret AX=0; 0xBF is returned whenever the unread 0xFE ACK sits in the MPU output buffer",
+    "1036:3B0B": "add 0x035A (858) to 32-bit timer [0x15E4]:[0x15E6] each PIT tick; at ~50 IRQ/s accumulates ~42900/sec"
   },
   "gaps": {
     "01BA:A6A4": "normal-path descriptor updates; protected-mode instructions not decoded by disassembler",
-    "01BA:A71D": "INT 15h/87h extended-memory block copy, followed by GDT restore, segment restore, and return"
+    "01BA:A74B": "post-LOADALL return path: counts transferred words, decrements remaining count, loops or returns"
   },
   "memLabels": {
     "01BA:A5A8": "gdt_save_area",
@@ -41,12 +179,39 @@
     "01BA:A63A": "saved_sp",
     "01BA:A63C": "saved_ds",
     "01BA:A63E": "saved_word_count",
-    "01BA:A644": "xms_src_addr_low",
-    "01BA:A646": "xms_src_addr_high",
-    "01BA:A656": "xms_dest_addr_low",
-    "01BA:A658": "xms_dest_addr_high",
+    "01BA:A644": "xms_es_cache_base",
+    "01BA:A646": "xms_es_cache_high",
+    "01BA:A656": "xms_ds_cache_base",
+    "01BA:A658": "xms_ds_cache_high",
     "01BA:A65C": "xms_src_descriptor",
     "01BA:A668": "xms_dest_descriptor",
-    "01BA:A674": "xms_transfer_counter"
+    "01BA:A674": "xms_transfer_counter",
+    "1BB5:15BE": "timing_mode",
+    "1BB5:15C0": "timing_accum_low",
+    "1BB5:15C2": "timing_accum_high",
+    "1BB5:15C4": "timing_total_low",
+    "1BB5:15C6": "timing_total_high",
+    "1BB5:15E4": "timer_low",
+    "1BB5:15E6": "timer_high",
+    "1BB5:15E8": "timer_mod64",
+    "1BB5:15EA": "screen_buffer_far_ptr",
+    "1BB5:9F28": "event_queue_ptr",
+    "1BB5:9F2C": "midi_tempo",
+    "1BB5:9F2E": "next_event_time_low",
+    "1BB5:9F30": "next_event_time_high",
+    "1BB5:9F3C": "last_event_time_low",
+    "1BB5:9F3E": "last_event_time_high",
+    "1BB5:9F40": "bios_chain_period_low",
+    "1BB5:9F42": "bios_chain_period_high",
+    "1BB5:9F44": "midi_driver_far_ptr",
+    "1BB5:A802": "track_file_handle",
+    "1BB5:A804": "track_size_low",
+    "1BB5:A806": "track_size_high",
+    "1BB5:A808": "track_pos_low",
+    "1BB5:A80A": "track_pos_high",
+    "1BB5:A80C": "track_data_buffer",
+    "1BB5:A82C": "track_buf_start_low",
+    "1BB5:A82E": "track_buf_start_high",
+    "1BB5:A830": "track_flags"
   }
 }

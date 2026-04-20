@@ -464,6 +464,32 @@ impl Cpu {
         }
     }
 
+    /// Resolve a physical address from an explicit descriptor cache and offset.
+    /// Unlike `seg_offset_to_phys`, this bypasses `cache_for_seg_value` and uses
+    /// the supplied cache directly — required when two segment registers hold the
+    /// same selector value (e.g. after LOADALL sets ES == DS for XMS transfers).
+    fn seg_cache_to_phys(
+        &mut self,
+        cache: protected_mode::SegmentCache,
+        offset: u16,
+        bus: &Bus,
+    ) -> usize {
+        if self.in_protected_mode() && offset as u32 > cache.limit as u32 {
+            log::warn!(
+                "#GP: cache base 0x{:06X} offset 0x{:04X} exceeds limit 0x{:04X}",
+                cache.base,
+                offset,
+                cache.limit
+            );
+            self.pending_exception = Some(PendingException {
+                int_num: 13,
+                error_code: Some(0),
+            });
+            return 0;
+        }
+        bus.apply_a20_pub(cache.base as usize + offset as usize)
+    }
+
     /// Get the segment cache for a segment register value.
     /// In protected mode, looks up which segment register holds this value.
     fn cache_for_seg_value(&self, segment: u16) -> &protected_mode::SegmentCache {

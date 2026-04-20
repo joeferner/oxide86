@@ -34,8 +34,10 @@ impl Cpu {
     fn lods_once(&mut self, is_word: bool, bus: &Bus) {
         if is_word {
             // LODSW - Load word
-            let src_seg = self.segment_override.unwrap_or(self.ds);
-            let addr = self.seg_offset_to_phys(src_seg, self.si, bus);
+            let addr = match self.segment_override {
+                Some(seg) => self.seg_offset_to_phys(seg, self.si, bus),
+                None => self.seg_cache_to_phys(self.ds_cache, self.si, bus),
+            };
             self.ax = bus.memory_read_u16(addr);
 
             // Update SI based on direction flag
@@ -46,8 +48,10 @@ impl Cpu {
             }
         } else {
             // LODSB - Load byte
-            let src_seg = self.segment_override.unwrap_or(self.ds);
-            let addr = self.seg_offset_to_phys(src_seg, self.si, bus);
+            let addr = match self.segment_override {
+                Some(seg) => self.seg_offset_to_phys(seg, self.si, bus),
+                None => self.seg_cache_to_phys(self.ds_cache, self.si, bus),
+            };
             let value = bus.memory_read_u8(addr);
             self.ax = (self.ax & 0xFF00) | (value as u16);
 
@@ -98,7 +102,7 @@ impl Cpu {
     fn stos_once(&mut self, is_word: bool, bus: &mut Bus) {
         if is_word {
             // STOSW - Store word
-            let addr = self.seg_offset_to_phys(self.es, self.di, bus);
+            let addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             bus.memory_write_u16(addr, self.ax);
 
             // Update DI based on direction flag
@@ -109,7 +113,7 @@ impl Cpu {
             }
         } else {
             // STOSB - Store byte
-            let addr = self.seg_offset_to_phys(self.es, self.di, bus);
+            let addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             let al = (self.ax & 0xFF) as u8;
             bus.memory_write_u8(addr, al);
 
@@ -154,37 +158,37 @@ impl Cpu {
     fn movs_once(&mut self, is_word: bool, bus: &mut Bus) {
         if is_word {
             // MOVSW - Move word
-            let src_seg = self.segment_override.unwrap_or(self.ds);
-            let src_addr = self.seg_offset_to_phys(src_seg, self.si, bus);
-            let dst_addr = self.seg_offset_to_phys(self.es, self.di, bus); // ES:DI is always ES
+            let src_addr = match self.segment_override {
+                Some(seg) => self.seg_offset_to_phys(seg, self.si, bus),
+                None => self.seg_cache_to_phys(self.ds_cache, self.si, bus),
+            };
+            let dst_addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             let value = bus.memory_read_u16(src_addr);
             bus.memory_write_u16(dst_addr, value);
 
             // Update SI and DI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
-                // DF=1: decrement
                 self.si = self.si.wrapping_sub(2);
                 self.di = self.di.wrapping_sub(2);
             } else {
-                // DF=0: increment
                 self.si = self.si.wrapping_add(2);
                 self.di = self.di.wrapping_add(2);
             }
         } else {
             // MOVSB - Move byte
-            let src_seg = self.segment_override.unwrap_or(self.ds);
-            let src_addr = self.seg_offset_to_phys(src_seg, self.si, bus);
-            let dst_addr = self.seg_offset_to_phys(self.es, self.di, bus); // ES:DI is always ES
+            let src_addr = match self.segment_override {
+                Some(seg) => self.seg_offset_to_phys(seg, self.si, bus),
+                None => self.seg_cache_to_phys(self.ds_cache, self.si, bus),
+            };
+            let dst_addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             let value = bus.memory_read_u8(src_addr);
             bus.memory_write_u8(dst_addr, value);
 
             // Update SI and DI based on direction flag
             if self.get_flag(cpu_flag::DIRECTION) {
-                // DF=1: decrement
                 self.si = self.si.wrapping_sub(1);
                 self.di = self.di.wrapping_sub(1);
             } else {
-                // DF=0: increment
                 self.si = self.si.wrapping_add(1);
                 self.di = self.di.wrapping_add(1);
             }
@@ -251,9 +255,11 @@ impl Cpu {
     fn cmps_once(&mut self, is_word: bool, bus: &Bus) {
         if is_word {
             // CMPSW - Compare word
-            let src_seg = self.segment_override.unwrap_or(self.ds);
-            let src_addr = self.seg_offset_to_phys(src_seg, self.si, bus);
-            let dst_addr = self.seg_offset_to_phys(self.es, self.di, bus); // ES:DI is always ES
+            let src_addr = match self.segment_override {
+                Some(seg) => self.seg_offset_to_phys(seg, self.si, bus),
+                None => self.seg_cache_to_phys(self.ds_cache, self.si, bus),
+            };
+            let dst_addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             let src = bus.memory_read_u16(src_addr);
             let dst = bus.memory_read_u16(dst_addr);
 
@@ -271,9 +277,11 @@ impl Cpu {
             }
         } else {
             // CMPSB - Compare byte
-            let src_seg = self.segment_override.unwrap_or(self.ds);
-            let src_addr = self.seg_offset_to_phys(src_seg, self.si, bus);
-            let dst_addr = self.seg_offset_to_phys(self.es, self.di, bus); // ES:DI is always ES
+            let src_addr = match self.segment_override {
+                Some(seg) => self.seg_offset_to_phys(seg, self.si, bus),
+                None => self.seg_cache_to_phys(self.ds_cache, self.si, bus),
+            };
+            let dst_addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             let src = bus.memory_read_u8(src_addr);
             let dst = bus.memory_read_u8(dst_addr);
 
@@ -350,7 +358,7 @@ impl Cpu {
     fn scas_once(&mut self, is_word: bool, bus: &Bus) {
         if is_word {
             // SCASW - Scan word
-            let addr = self.seg_offset_to_phys(self.es, self.di, bus);
+            let addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             let value = bus.memory_read_u16(addr);
 
             // Compare AX with bus value (AX - value)
@@ -365,7 +373,7 @@ impl Cpu {
             }
         } else {
             // SCASB - Scan byte
-            let addr = self.seg_offset_to_phys(self.es, self.di, bus);
+            let addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             let value = bus.memory_read_u8(addr);
             let al = (self.ax & 0xFF) as u8;
 
@@ -470,7 +478,7 @@ impl Cpu {
             } else {
                 bus.io_read_u16(port)
             };
-            let addr = self.seg_offset_to_phys(self.es, self.di, bus);
+            let addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             bus.memory_write_u16(addr, value);
 
             // Update DI based on direction flag
@@ -482,7 +490,7 @@ impl Cpu {
         } else {
             // INSB - Input byte
             let value = bus.io_read_u8(port);
-            let addr = self.seg_offset_to_phys(self.es, self.di, bus);
+            let addr = self.seg_cache_to_phys(self.es_cache, self.di, bus);
             bus.memory_write_u8(addr, value);
 
             // Update DI based on direction flag
