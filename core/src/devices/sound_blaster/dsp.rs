@@ -10,6 +10,8 @@ pub(super) struct SoundBlasterDsp {
     pub(super) irq_pending_16: bool,
     /// Latched IRQ status for mixer reg 0x82; set with irq_pending_8 but only cleared by read_status() (port 0x22E ACK).
     pub(super) irq_status_8: bool,
+    /// Latched 16-bit IRQ status for mixer reg 0x82; set with irq_pending_16 but only cleared by read_ack16() (port 0x22F ACK).
+    pub(super) irq_status_16: bool,
     speaker_on: bool,
     test_reg: u8,
 
@@ -37,6 +39,7 @@ impl SoundBlasterDsp {
             irq_pending_8: false,
             irq_pending_16: false,
             irq_status_8: false,
+            irq_status_16: false,
             speaker_on: false,
             test_reg: 0,
             time_constant: 0,
@@ -63,6 +66,7 @@ impl SoundBlasterDsp {
         self.irq_pending_8 = false;
         self.irq_pending_16 = false;
         self.irq_status_8 = false;
+        self.irq_status_16 = false;
         self.dreq_pending = Some(false);
     }
 
@@ -75,6 +79,7 @@ impl SoundBlasterDsp {
         self.irq_pending_8 = false;
         self.irq_pending_16 = false;
         self.irq_status_8 = false;
+        self.irq_status_16 = false;
         self.speaker_on = false;
         self.test_reg = 0;
         self.time_constant = 0;
@@ -192,6 +197,16 @@ impl SoundBlasterDsp {
                     self.dreq_pending = Some(true);
                 }
             }
+            0x47 => {
+                // Continue 16-bit DMA: resume after pause or restart after single-cycle completion.
+                if self.dma_16bit && self.dma_block_len > 0 {
+                    if self.dma_bytes_remaining == 0 {
+                        self.dma_bytes_remaining = self.dma_block_len;
+                    }
+                    self.dma_active = true;
+                    self.dreq_pending = Some(true);
+                }
+            }
             0xD8 => self
                 .out_buf
                 .push_back(if self.speaker_on { 0xFF } else { 0x00 }),
@@ -285,6 +300,7 @@ impl SoundBlasterDsp {
     /// Acknowledges a pending 16-bit IRQ.
     pub(super) fn read_ack16(&mut self) -> u8 {
         self.irq_pending_16 = false;
+        self.irq_status_16 = false;
         0xFF
     }
 
@@ -318,6 +334,7 @@ impl SoundBlasterDsp {
             }
             if self.dma_16bit {
                 self.irq_pending_16 = true;
+                self.irq_status_16 = true;
             } else {
                 self.irq_pending_8 = true;
                 self.irq_status_8 = true;

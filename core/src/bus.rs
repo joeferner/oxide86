@@ -291,9 +291,9 @@ impl Bus {
                 self.notify_irq_pending();
             }
         }
-        // Channel 1 is the SB16 8-bit DMA channel; wake the PIC so it sees the IRQ
-        // immediately after the block completes rather than waiting up to 100 instructions.
-        if transfer.channel == 1 {
+        // Channels 1 and 5 are the SB16 8-bit and 16-bit DMA channels; wake the PIC so it sees
+        // the IRQ immediately after the block completes rather than waiting up to 100 instructions.
+        if transfer.channel == 1 || transfer.channel == 5 {
             self.notify_irq_pending();
         }
     }
@@ -339,6 +339,8 @@ impl Bus {
         self.cdrom_controller = Some(rc.clone());
         // Channel 1: 8-bit DMA for SB16 PCM playback.
         self.dma_devices[1] = Some(rc.clone());
+        // Channel 5: 16-bit DMA for SB16 PCM playback (DMA2 ch1, global ch5).
+        self.dma_devices[5] = Some(rc.clone());
         self.pic.borrow_mut().set_cdrom(rc);
     }
 

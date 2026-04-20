@@ -715,7 +715,7 @@ impl Device for SoundBlaster {
                     if self.dsp.irq_status_8 {
                         v |= 0x01;
                     }
-                    if self.dsp.irq_pending_16 {
+                    if self.dsp.irq_status_16 {
                         v |= 0x02;
                     }
                     v
