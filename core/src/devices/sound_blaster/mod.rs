@@ -681,6 +681,12 @@ impl Device for SoundBlaster {
         false
     }
 
+    fn dma_read_u8(&mut self) -> Option<u8> {
+        // ADC (device→memory) transfer: tick DSP byte counter with silence so IRQ fires on block complete.
+        self.dsp.dma_receive_byte(0x80);
+        Some(0x80)
+    }
+
     fn dma_write_u8(&mut self, val: u8) -> bool {
         let (sample, _done) = self.dsp.dma_receive_byte(val);
         // Upsample from DSP rate to 44100 Hz by repeating each sample.
@@ -701,7 +707,23 @@ impl Device for SoundBlaster {
             }
             // Mixer ports
             0x04 => return Some(0xFF), // index port reads back 0xFF on real HW
-            0x05 => return Some(self.mixer.read_data()),
+            0x05 => {
+                // Mixer reg 0x82 (IRQ status) reflects live DSP interrupt state.
+                // Bit 0 = 8-bit DMA IRQ, bit 1 = 16-bit DMA IRQ.
+                let val = if self.mixer.current_index() == 0x82 {
+                    let mut v = self.mixer.read_data();
+                    if self.dsp.irq_status_8 {
+                        v |= 0x01;
+                    }
+                    if self.dsp.irq_pending_16 {
+                        v |= 0x02;
+                    }
+                    v
+                } else {
+                    self.mixer.read_data()
+                };
+                return Some(val);
+            }
             // DSP ports
             0x0A => return Some(self.dsp.read_data()),
             0x0C => return Some(0x00), // write-buffer status: never busy
@@ -825,7 +847,10 @@ impl SoundCard for SoundBlaster {
     }
 
     fn take_dreq_request(&mut self) -> Option<(u8, bool)> {
-        self.dsp.take_dreq_request().map(|asserted| (1u8, asserted))
+        let channel = if self.dsp.dma_16bit { 5u8 } else { 1u8 };
+        self.dsp
+            .take_dreq_request()
+            .map(|asserted| (channel, asserted))
     }
 }
 

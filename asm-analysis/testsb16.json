@@ -1,0 +1,161 @@
+{
+  "functions": {
+    "1036:51D6": {
+      "label": "sb_test_and_init",
+      "comment": "Resets DSP, allocates DMA buffer, programs DMA1, starts playback, waits for IRQ; returns 0 on success or error code on failure"
+    },
+    "1036:532B": {
+      "label": "sb_dsp_write",
+      "comment": "Polls DSP write buffer busy bit (port 0x22C bit 7) then writes AL to DSP"
+    },
+    "1036:5341": {
+      "label": "sb_dsp_reset",
+      "comment": "Pulses DSP reset (port 0x226), polls read-status (0x22E), reads 0xAA from data port (0x22A)"
+    },
+    "1036:5383": {
+      "label": "sb_send_eoi",
+      "comment": "Sends non-specific EOI (0x20) to PIC1"
+    },
+    "1036:5393": {
+      "label": "sb_irq_handler",
+      "comment": "SB DSP IRQ handler installed at IVT[IRQ5]; reads mixer 0x82 to distinguish 8-bit vs 16-bit DMA, chains to saved handler"
+    },
+    "1036:5402": {
+      "label": "sb_irq_to_ivt_offset",
+      "comment": "Converts SB IRQ number in [sb_irq_num] to IVT byte offset; returns offset in BX"
+    },
+    "1036:541C": {
+      "label": "sb_unmask_irq",
+      "comment": "Clears the SB IRQ bit in PIC1 IMR; saves original mask to [sb_old_irq_mask]"
+    },
+    "1036:544D": {
+      "label": "sb_install_irq_handler",
+      "comment": "Saves original DSP IRQ vector and installs new handler at IVT[sb_irq_to_ivt_offset]"
+    },
+    "1036:5477": {
+      "label": "sb_install_int2_handler",
+      "comment": "Saves original INT 2 vector (IVT[0x0008]) and installs replacement handler at 1036:53D6"
+    },
+    "1036:549E": {
+      "label": "sb_restore_irq_mask",
+      "comment": "Restores PIC1 IMR to the value saved in [sb_old_irq_mask]"
+    },
+    "1036:54BB": {
+      "label": "sb_uninstall_irq_handler",
+      "comment": "Restores original DSP IRQ vector from [sb_saved_irq_off/seg]"
+    },
+    "1036:54DC": {
+      "label": "sb_uninstall_int2_handler",
+      "comment": "Restores original INT 2 vector from [sb_saved_int2_off/seg]"
+    },
+    "1036:54FA": {
+      "label": "sb_setup_dma",
+      "comment": "Programs DMA1 for SB transfer: clear flip-flop, set mode, write base addr/page/count"
+    },
+    "1036:5565": {
+      "label": "sb_set_dma_channel",
+      "comment": "Stores DMA addr/count/page port numbers for the given channel into [sb_dma_addr_port] etc."
+    },
+    "1036:561D": {
+      "label": "sb_alloc_dma_buffer",
+      "comment": "Allocates DMA bounce buffer (256 paragraphs = 4 KB) via DOS INT 21h/48h"
+    },
+    "1036:564F": {
+      "label": "sb_free_dma_buffer",
+      "comment": "Frees DMA buffer allocated by sb_alloc_dma_buffer via DOS INT 21h/49h"
+    },
+    "1036:565C": {
+      "label": "sb_start_playback",
+      "comment": "Sends DSP commands to begin audio DMA output: set time constant (0x40), start 8-bit DMA (0xC4 + mode + size)"
+    },
+    "1036:56AF": {
+      "label": "sb_exit_auto_init",
+      "comment": "Sends DSP command 0xDA (exit auto-init DMA mode) then busy-waits ~32 cycles for DSP to settle"
+    },
+    "1036:56CB": {
+      "label": "sb_ack_interrupt",
+      "comment": "Reads DSP read-status port (0x22E), sends continue command (0x45), sends PIC EOI"
+    },
+    "1036:56F7": {
+      "label": "sb_mask_dma_channel",
+      "comment": "Masks DMA channel via DMA1 single mask register (port 0x0A); OR channel with 0x04 sets mask bit"
+    },
+    "1036:570C": {
+      "label": "sb_unmask_dma_channel",
+      "comment": "Unmasks DMA channel via DMA1 single mask register (port 0x0A); AND with 0x03 clears mask bit"
+    },
+    "1036:5721": {
+      "label": "sb_fill_silence",
+      "comment": "Fills DMA buffer with 0x8080 (silence for unsigned 8-bit PCM) using rep stosw"
+    },
+    "1036:574B": {
+      "label": "sb_init_video_state",
+      "comment": "Reads CRT base address from BIOS data area (0040:0063), stores CRT status port and video segment"
+    }
+  },
+  "ports": {
+    "0020": "PIC1 command (EOI)",
+    "0021": "PIC1 IMR (interrupt mask register)",
+    "000A": "DMA1 single channel mask register",
+    "000B": "DMA1 mode register",
+    "000C": "DMA1 byte flip-flop (clear before 16-bit addr/count writes)",
+    "0224": "SB16 mixer address (base+4)",
+    "0225": "SB16 mixer data (base+5)",
+    "0226": "SB DSP reset (base+6)",
+    "022A": "SB DSP read data (base+A)",
+    "022C": "SB DSP write/busy (base+C)",
+    "022E": "SB DSP read status / 8-bit IRQ acknowledge (base+E)",
+    "0002": "DMA1 ch1 base address",
+    "0003": "DMA1 ch1 count",
+    "0083": "DMA1 page register ch1"
+  },
+  "memLabels": {
+    "3497:2BF0": "sb_timeout_tick",
+    "3497:2BF2": "sb_half_buf_size",
+    "3497:2BF4": "sb_dma_buf_seg",
+    "3497:2BF6": "sb_dma_buf_bytes",
+    "3497:2BF8": "sb_dma_buf_bytes_hi",
+    "3497:2BFA": "sb_dma_buf_offset",
+    "3497:2BFC": "sb_dma_buf_page",
+    "3497:2BFE": "sb_dma_done_flag",
+    "3497:2C01": "sb_old_irq_mask",
+    "3497:2C02": "sb_base_port",
+    "3497:2C04": "sb_irq_num",
+    "3497:2C05": "sb_dsp_version",
+    "3497:2C07": "sb_dma_channel",
+    "3497:2C0B": "sb_stereo_flag",
+    "3497:2C0D": "sb_dma_addr_port",
+    "3497:2C0F": "sb_dma_page_port",
+    "3497:2C11": "sb_dma_count_port",
+    "3497:2C19": "sb_saved_irq_off",
+    "3497:2C1B": "sb_saved_irq_seg",
+    "3497:2C1D": "sb_saved_int2_off",
+    "3497:2C1F": "sb_saved_int2_seg",
+    "3497:2C21": "sb_video_seg",
+    "3497:2C23": "sb_crt_status_port",
+    "3497:2C2C": "sb_base_port_copy",
+    "3497:2C30": "sb_irq_num_copy"
+  },
+  "lineComments": {
+    "1036:52B7": "zero sb_dma_done_flag before starting DMA — ISR sets it non-zero on completion",
+    "1036:52C8": "save current BIOS tick counter for 16-tick timeout",
+    "1036:52CF": "poll sb_dma_done_flag; also check elapsed BIOS ticks against 16-tick timeout",
+    "1036:52EB": "timeout: DMA block never completed — sb_dma_done_flag stayed 0",
+    "1036:5503": "mask off lower bit of address so buffer stays within one DMA page",
+    "1036:5505": "clear DMA address flip-flop before writing 16-bit addr/count as two bytes",
+    "1036:550D": "DMA mode 0x59 = auto-init | read (playback) | single-cycle | channel 1",
+    "1036:5377": "DSP responds with 0xAA after successful reset",
+    "1036:539B": "read mixer reg 0x82 = IRQ status: bit 0 = 8-bit DMA IRQ, bit 1 = 16-bit DMA IRQ",
+    "1036:53A6": "mixer reg 0x82 reads 0x00 in this trace: bit 0 (8-bit DMA IRQ) clear, so ACK block at 53B6 is skipped",
+    "1036:53B2": "skip 8-bit DMA ACK block if bit 0 clear; that block sets sb_dma_done_flag and reads port 0x22E",
+    "1036:53BF": "if sb_saved_irq_off == 0 (no saved handler), take no-chain EOI path at 53C6; else pushf+call far simulates chained INT",
+    "1036:5708": "AL = (channel | 0x04): bit 2 set = mask this channel",
+    "1036:571D": "AL = (channel & 0x03): bit 2 clear = unmask this channel",
+    "1036:5743": "fill DMA buffer with 0x8080: silence for unsigned 8-bit stereo PCM"
+  },
+  "gaps": {
+    "1036:53B6": "8-bit DMA IRQ ACK block — reads port 0x22E (8-bit DMA ACK) and writes 1 to sb_dma_done_flag; not executed in this trace because mixer reg 0x82 returned 0x00 (emulator bug; fixed)",
+    "1036:53C6": "ISR no-chain EOI path — executes when sb_saved_irq_off == 0 (no saved handler); sends PIC EOI and issues IRET directly without chaining",
+    "1036:53D6": "INT 2 replacement handler body — installed by sb_install_int2_handler at IVT[0x0008]; handles spurious PIC1 cascade and chains to saved INT 2 vector; 44 bytes"
+  }
+}

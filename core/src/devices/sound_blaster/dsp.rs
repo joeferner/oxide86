@@ -8,6 +8,8 @@ pub(super) struct SoundBlasterDsp {
     pub(super) out_buf: VecDeque<u8>,
     pub(super) irq_pending_8: bool,
     pub(super) irq_pending_16: bool,
+    /// Latched IRQ status for mixer reg 0x82; set with irq_pending_8 but only cleared by read_status() (port 0x22E ACK).
+    pub(super) irq_status_8: bool,
     speaker_on: bool,
     test_reg: u8,
 
@@ -16,6 +18,8 @@ pub(super) struct SoundBlasterDsp {
     pub(super) dma_block_len: u16,
     pub(super) dma_bytes_remaining: u16,
     pub(super) dma_active: bool,
+    pub(super) dma_16bit: bool,
+    auto_init: bool,
     /// Pending DREQ assertion/deassert to be drained by the Bus after IO write.
     dreq_pending: Option<bool>,
     /// Byte from Direct DAC command (0x10) to be pushed to pcm_out by mod.rs.
@@ -32,12 +36,15 @@ impl SoundBlasterDsp {
             out_buf: VecDeque::new(),
             irq_pending_8: false,
             irq_pending_16: false,
+            irq_status_8: false,
             speaker_on: false,
             test_reg: 0,
             time_constant: 0,
             dma_block_len: 0,
             dma_bytes_remaining: 0,
             dma_active: false,
+            dma_16bit: false,
+            auto_init: false,
             dreq_pending: None,
             direct_dac_byte: None,
         }
@@ -51,6 +58,11 @@ impl SoundBlasterDsp {
         self.out_buf.clear();
         self.out_buf.push_back(0xAA);
         self.dma_active = false;
+        self.dma_16bit = false;
+        self.auto_init = false;
+        self.irq_pending_8 = false;
+        self.irq_pending_16 = false;
+        self.irq_status_8 = false;
         self.dreq_pending = Some(false);
     }
 
@@ -62,12 +74,15 @@ impl SoundBlasterDsp {
         self.out_buf.clear();
         self.irq_pending_8 = false;
         self.irq_pending_16 = false;
+        self.irq_status_8 = false;
         self.speaker_on = false;
         self.test_reg = 0;
         self.time_constant = 0;
         self.dma_block_len = 0;
         self.dma_bytes_remaining = 0;
         self.dma_active = false;
+        self.dma_16bit = false;
+        self.auto_init = false;
         self.dreq_pending = None;
         self.direct_dac_byte = None;
     }
@@ -82,12 +97,15 @@ impl SoundBlasterDsp {
 
     fn params_for_cmd(cmd: u8) -> u8 {
         match cmd {
-            0x10 => 1, // Direct DAC
-            0x14 => 2, // 8-bit single-cycle DMA (unsigned)
-            0x16 => 2, // 8-bit single-cycle DMA (signed)
-            0x40 => 1, // Set time constant
-            0x41 => 2, // Set sample rate (SB16)
-            0x48 => 2, // Set DMA block size
+            0x10 => 1,        // Direct DAC
+            0x14 => 2,        // 8-bit single-cycle DMA (unsigned)
+            0x16 => 2,        // 8-bit single-cycle DMA (signed)
+            0x40 => 1,        // Set time constant
+            0x41 => 2,        // Set sample rate (SB16)
+            0x42 => 2,        // Set input sample rate (SB16)
+            0x48 => 2,        // Set DMA block size
+            0xB0..=0xBF => 3, // SB16 16-bit DMA (mode, len_lo, len_hi)
+            0xC0..=0xCF => 3, // SB16 8-bit DMA (mode, len_lo, len_hi)
             0xE0 | 0xE4 => 1,
             _ => 0,
         }
@@ -141,9 +159,16 @@ impl SoundBlasterDsp {
             0x40 => {
                 self.time_constant = self.cmd_params.first().copied().unwrap_or(0);
             }
+            0x20 => {
+                // Direct 8-bit ADC: return one silence sample.
+                self.out_buf.push_back(0x80);
+            }
             0x41 => {
                 // Set output sample rate (SB16): hi byte, lo byte.
                 // Store but don't use for now; timing is software-controlled.
+            }
+            0x42 => {
+                // Set input sample rate (SB16): hi byte, lo byte.
             }
             0x48 => {
                 // Set DMA block size for auto-init mode.
@@ -151,17 +176,43 @@ impl SoundBlasterDsp {
                 let hi = self.cmd_params.get(1).copied().unwrap_or(0);
                 self.dma_block_len = u16::from_le_bytes([lo, hi]).wrapping_add(1);
             }
-            0xD0 => {} // Halt 8-bit DMA (no-op: DMA re-enabled by D4)
+            0xD0 => {
+                // Halt 8-bit DMA.
+                self.dma_active = false;
+            }
             0xD1 => self.speaker_on = true,
             0xD3 => self.speaker_on = false,
-            0xD4 => {} // Continue 8-bit DMA
+            0xD4 | 0x45 => {
+                // Continue 8-bit DMA: resume after pause or restart after single-cycle completion.
+                if !self.dma_16bit && self.dma_block_len > 0 {
+                    if self.dma_bytes_remaining == 0 {
+                        self.dma_bytes_remaining = self.dma_block_len;
+                    }
+                    self.dma_active = true;
+                    self.dreq_pending = Some(true);
+                }
+            }
             0xD8 => self
                 .out_buf
                 .push_back(if self.speaker_on { 0xFF } else { 0x00 }),
+            0xD5 => {
+                // Pause 16-bit DMA.
+                self.dma_active = false;
+            }
+            0xD6 => {
+                // Continue 16-bit DMA.
+                if self.dma_16bit && self.dma_bytes_remaining > 0 {
+                    self.dma_active = true;
+                    self.dreq_pending = Some(true);
+                }
+            }
+            0xD9 => {
+                // Exit 16-bit auto-init DMA.
+                self.auto_init = false;
+            }
             0xDA => {
                 // Exit 8-bit auto-init DMA.
-                self.dma_active = false;
-                self.dreq_pending = Some(false);
+                self.auto_init = false;
             }
             0xE0 => {
                 let param = self.cmd_params.first().copied().unwrap_or(0);
@@ -180,6 +231,38 @@ impl SoundBlasterDsp {
                 self.test_reg = self.cmd_params.first().copied().unwrap_or(0);
             }
             0xE8 => self.out_buf.push_back(self.test_reg),
+            // SB16 8-bit DMA commands (0xC0-0xCF): mode, len_lo, len_hi
+            // Bit 3: auto-init, Bit 2: FIFO, Bit 1: ADC(1)/DAC(0)
+            cmd @ 0xC0..=0xCF => {
+                let lo = self.cmd_params.get(1).copied().unwrap_or(0);
+                let hi = self.cmd_params.get(2).copied().unwrap_or(0);
+                let is_adc = (cmd & 0x02) != 0;
+                if !is_adc {
+                    let len = u16::from_le_bytes([lo, hi]).wrapping_add(1);
+                    self.dma_block_len = len;
+                    self.dma_bytes_remaining = len;
+                    self.dma_active = true;
+                    self.dma_16bit = false;
+                    self.auto_init = (cmd & 0x08) != 0;
+                    self.dreq_pending = Some(true);
+                }
+            }
+            // SB16 16-bit DMA commands (0xB0-0xBF): mode, len_lo, len_hi
+            // Bit 3: auto-init, Bit 2: FIFO, Bit 1: ADC(1)/DAC(0)
+            cmd @ 0xB0..=0xBF => {
+                let lo = self.cmd_params.get(1).copied().unwrap_or(0);
+                let hi = self.cmd_params.get(2).copied().unwrap_or(0);
+                let is_adc = (cmd & 0x02) != 0;
+                if !is_adc {
+                    let len = u16::from_le_bytes([lo, hi]).wrapping_add(1);
+                    self.dma_block_len = len;
+                    self.dma_bytes_remaining = len;
+                    self.dma_active = true;
+                    self.dma_16bit = true;
+                    self.auto_init = (cmd & 0x08) != 0;
+                    self.dreq_pending = Some(true);
+                }
+            }
             0x83 => self.out_buf.push_back(0x00), // ASP/proprietary: return 0 to unblock callers
             0xF2 => self.irq_pending_8 = true,
             0xF3 => self.irq_pending_16 = true,
@@ -195,6 +278,7 @@ impl SoundBlasterDsp {
     pub(super) fn read_status(&mut self) -> u8 {
         let ready = if self.out_buf.is_empty() { 0x00 } else { 0x80 };
         self.irq_pending_8 = false;
+        self.irq_status_8 = false;
         ready
     }
 
@@ -226,8 +310,18 @@ impl SoundBlasterDsp {
         self.dma_bytes_remaining -= 1;
         let block_done = self.dma_bytes_remaining == 0;
         if block_done {
-            self.dma_active = false;
-            self.irq_pending_8 = true;
+            if self.auto_init {
+                self.dma_bytes_remaining = self.dma_block_len;
+            } else {
+                self.dma_active = false;
+                self.dreq_pending = Some(false);
+            }
+            if self.dma_16bit {
+                self.irq_pending_16 = true;
+            } else {
+                self.irq_pending_8 = true;
+                self.irq_status_8 = true;
+            }
         }
         (sample, block_done)
     }

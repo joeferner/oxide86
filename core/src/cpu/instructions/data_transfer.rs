@@ -491,11 +491,9 @@ impl Cpu {
         if log::log_enabled!(log::Level::Debug) {
             let mut row = String::new();
             for i in (0..0x60).step_by(2) {
-                if i % 16 == 0 {
-                    if !row.is_empty() {
-                        log::debug!("LOADALL table {:02X}: {}", i - 16, row);
-                        row.clear();
-                    }
+                if i % 16 == 0 && !row.is_empty() {
+                    log::debug!("LOADALL table {:02X}: {}", i - 16, row);
+                    row.clear();
                 }
                 row.push_str(&format!("{:04X} ", r16(bus, i)));
             }

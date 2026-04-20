@@ -94,8 +94,14 @@ fn bios_dma_reset(bus: &mut Bus) {
     bus.io_write_u8(0x0001, 0xFF); // high byte
     // Mode: single transfer | address increment | auto-init | verify | channel 0.
     bus.io_write_u8(0x000B, 0x58);
-    // Unmask channel 0 (bit 2 = 0 = unmask, bits 1-0 = 00 = channel 0).
-    bus.io_write_u8(0x000A, 0x00);
+    // Channel 1: single-cycle | increment | no-auto-init | read (mem→device) | ch1.
+    // IBM AT BIOS pre-initialises ch1 so drivers (e.g. SB16) only need to program
+    // address/count/page before asserting DREQ, without touching the mode register.
+    bus.io_write_u8(0x000B, 0x49);
+    // Channel 3: single-cycle | increment | no-auto-init | read | ch3 (generic default).
+    bus.io_write_u8(0x000B, 0x4B);
+    // Unmask all DMA1 channels (matching IBM AT BIOS POST behaviour).
+    bus.io_write_u8(0x000E, 0x00);
 }
 
 /// Writes the IBM 8x8 CGA font and IBM 8x14 EGA font into the BIOS ROM area and

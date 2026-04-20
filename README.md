@@ -75,12 +75,12 @@ SET BLASTER=A220 I5 D1 T5 P330 H5
 
 | Parameter | Value | Meaning |
 |-----------|-------|---------|
-| `A220` | 0x220 | Base I/O port |
-| `I5` | 5 | IRQ line (configurable via `--sound-blaster-irq`) |
-| `D1` | 1 | 8-bit DMA channel (configurable via `--sound-blaster-dma8`) |
-| `T5` | 5 | Card type: Sound Blaster 16 |
-| `P330` | 0x330 | MPU-401 MIDI interface port |
-| `H5` | 5 | 16-bit DMA channel (configurable via `--sound-blaster-dma16`) |
+| `A220`    | 0x220 | Base I/O port |
+| `I5`      | 5     | IRQ line (configurable via `--sound-blaster-irq`) |
+| `D1`      | 1     | 8-bit DMA channel (configurable via `--sound-blaster-dma8`) |
+| `T5`      | 5     | Card type: Sound Blaster 16 |
+| `P330`    | 0x330 | MPU-401 MIDI interface port |
+| `H5`      | 5     | 16-bit DMA channel (configurable via `--sound-blaster-dma16`) |
 
 > **Note:** Do **not** include an `E` (EMU8000) parameter — the AWE32 wavetable chip is not emulated. Applications that require EMU8000 detection (e.g. DOSMID in AWE mode) will fail with "no emu8000 chip detected". Use MPU-401 (`P330`) for MIDI output instead.
 

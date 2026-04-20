@@ -22,6 +22,10 @@ impl SoundBlasterMixer {
         *self = Self::new();
     }
 
+    pub(super) fn current_index(&self) -> u8 {
+        self.index
+    }
+
     pub(super) fn write_index(&mut self, val: u8) {
         self.index = val;
     }
