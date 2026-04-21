@@ -81,6 +81,7 @@ impl SoundBlasterMidi {
         self.synth.reset();
         self.out.clear();
         self.parser = MidiParser::new();
+        self.last_cycle = 0;
         self.sample_acc = 0;
     }
 }
