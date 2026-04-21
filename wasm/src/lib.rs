@@ -9,7 +9,7 @@ use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
     devices::{
-        PcmRingBuffer, SoundBlaster,
+        PcmRingBuffer, SoundBlaster, SoundBlasterModel,
         adlib::Adlib,
         clock::{EmulatedClock, LocalDate, LocalTime},
         parallel_port::LptPortDevice,
@@ -115,9 +115,39 @@ impl ComputerState {
                 computer.add_sound_card(adlib);
                 Some(consumer)
             }
+            "sb2" => {
+                let cd_base_port = config.sound_blaster_cd_port.unwrap_or(0x230);
+                let sb = SoundBlaster::with_cdrom(
+                    SoundBlasterModel::Sb2,
+                    cd_base_port,
+                    None,
+                    5,
+                    clock_hz as u64,
+                );
+                computer.add_sound_blaster(sb);
+                None
+            }
+            "sbpro" | "sb-pro" => {
+                let cd_base_port = config.sound_blaster_cd_port.unwrap_or(0x230);
+                let sb = SoundBlaster::with_cdrom(
+                    SoundBlasterModel::SbPro,
+                    cd_base_port,
+                    None,
+                    5,
+                    clock_hz as u64,
+                );
+                computer.add_sound_blaster(sb);
+                None
+            }
             "sb16" | "sb" | "soundblaster" | "sound-blaster" => {
                 let cd_base_port = config.sound_blaster_cd_port.unwrap_or(0x230);
-                let sb = SoundBlaster::with_cdrom(cd_base_port, None, 5, clock_hz as u64);
+                let sb = SoundBlaster::with_cdrom(
+                    SoundBlasterModel::Sb16,
+                    cd_base_port,
+                    None,
+                    5,
+                    clock_hz as u64,
+                );
                 computer.add_sound_blaster(sb);
                 // Audio consumers (OPL + PCM) wired in Phase 9.
                 None

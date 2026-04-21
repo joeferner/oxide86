@@ -1,6 +1,9 @@
 use std::collections::VecDeque;
 
+use super::SoundBlasterModel;
+
 pub(super) struct SoundBlasterDsp {
+    model: SoundBlasterModel,
     reset_seq: u8,
     cmd: Option<u8>,
     cmd_remaining: u8,
@@ -31,8 +34,9 @@ pub(super) struct SoundBlasterDsp {
 }
 
 impl SoundBlasterDsp {
-    pub(super) fn new() -> Self {
+    pub(super) fn new(model: SoundBlasterModel) -> Self {
         Self {
+            model,
             reset_seq: 0,
             cmd: None,
             cmd_remaining: 0,
@@ -260,8 +264,13 @@ impl SoundBlasterDsp {
                 self.out_buf.push_back(!param);
             }
             0xE1 => {
-                self.out_buf.push_back(0x04);
-                self.out_buf.push_back(0x05);
+                let (major, minor) = match self.model {
+                    SoundBlasterModel::Sb2 => (0x02, 0x01),
+                    SoundBlasterModel::SbPro => (0x03, 0x02),
+                    SoundBlasterModel::Sb16 => (0x04, 0x05),
+                };
+                self.out_buf.push_back(major);
+                self.out_buf.push_back(minor);
             }
             0xE3 => {
                 for &b in b"COPYRIGHT (C) CREATIVE TECHNOLOGY LTD, 1992.\0" {

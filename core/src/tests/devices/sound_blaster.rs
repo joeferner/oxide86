@@ -1,5 +1,5 @@
 use crate::{
-    devices::SoundBlaster,
+    devices::{SoundBlaster, SoundBlasterModel},
     tests::{TEST_OFFSET, TEST_SEGMENT, load_program_data, run_test},
 };
 
@@ -17,7 +17,7 @@ pub(crate) fn cdrom_nop_via_unified_card() {
         "devices/sound_blaster/cdrom_nop",
         create_sb_computer(),
         |computer, _video_buffer| {
-            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000));
             computer.run();
         },
     );
@@ -30,7 +30,7 @@ pub(crate) fn dsp_reset_and_version() {
         "devices/sound_blaster/dsp_reset",
         create_sb_computer(),
         |computer, _video_buffer| {
-            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000));
             computer.run();
         },
     );
@@ -43,7 +43,7 @@ pub(crate) fn dsp_speaker_control() {
         "devices/sound_blaster/dsp_speaker",
         create_sb_computer(),
         |computer, _video_buffer| {
-            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000));
             computer.run();
         },
     );
@@ -56,7 +56,7 @@ pub(crate) fn opl_detect_via_sb_port() {
         "devices/sound_blaster/opl_detect",
         create_sb_computer(),
         |computer, _video_buffer| {
-            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000));
             computer.run();
         },
     );
@@ -69,7 +69,7 @@ pub(crate) fn opl_adlib_compat() {
         "devices/sound_blaster/opl_adlib_compat",
         create_sb_computer(),
         |computer, _video_buffer| {
-            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000));
             computer.run();
         },
     );
@@ -82,7 +82,7 @@ pub(crate) fn mixer_readwrite() {
         "devices/sound_blaster/mixer_readwrite",
         create_sb_computer(),
         |computer, _video_buffer| {
-            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000));
             computer.run();
         },
     );
@@ -95,7 +95,7 @@ pub(crate) fn dsp_pcm_irq_fires() {
         "devices/sound_blaster/dsp_pcm_single",
         create_sb_computer(),
         |computer, _video_buffer| {
-            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000));
             computer.run();
         },
     );
@@ -106,7 +106,7 @@ pub(crate) fn dsp_pcm_irq_fires() {
 pub(crate) fn dsp_pcm_samples_in_ring_buffer() {
     let program_data = load_program_data("devices/sound_blaster/dsp_pcm_samples");
     let (mut computer, _video_buffer) = create_sb_computer();
-    let sb = SoundBlaster::new(8_000_000);
+    let sb = SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000);
     let pcm_consumer = sb.pcm_consumer();
     computer.add_sound_blaster(sb);
     computer
@@ -134,7 +134,7 @@ pub(crate) fn mpu_reset_and_uart_mode() {
         "devices/sound_blaster/mpu_reset",
         create_sb_computer(),
         |computer, _video_buffer| {
-            computer.add_sound_blaster(SoundBlaster::new(8_000_000));
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000));
             computer.run();
         },
     );
@@ -145,7 +145,7 @@ pub(crate) fn mpu_reset_and_uart_mode() {
 pub(crate) fn opl_tone_produces_samples() {
     let program_data = load_program_data("devices/sound_blaster/opl_play_tone");
     let (mut computer, _video_buffer) = create_sb_computer();
-    let sb = SoundBlaster::new(8_000_000);
+    let sb = SoundBlaster::new(SoundBlasterModel::Sb16, 8_000_000);
     let opl_consumer = sb.opl_consumer();
     computer.add_sound_blaster(sb);
     computer

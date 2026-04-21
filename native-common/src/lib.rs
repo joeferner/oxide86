@@ -16,9 +16,8 @@ use oxide86_core::devices::clock::{Clock, LocalDate, LocalTime};
 use oxide86_core::{
     computer::{Computer, ComputerConfig},
     cpu::CpuType,
-    devices::SoundBlaster,
     devices::{
-        SoundCardType,
+        SoundBlaster, SoundCardType,
         adlib::Adlib,
         clock::EmulatedClock,
         parallel_port::LptPortDevice,
@@ -136,7 +135,7 @@ pub fn create_computer(
                 }
                 computer.add_sound_card(adlib);
             }
-            SoundCardType::SoundBlaster16 => {
+            SoundCardType::SoundBlaster(model) => {
                 let cd_port_str = &cli.sound_blaster_cd_port;
                 let cd_base_port = u16::from_str_radix(
                     cd_port_str
@@ -163,8 +162,13 @@ pub fn create_computer(
                     None
                 };
 
-                let sb =
-                    SoundBlaster::with_cdrom(cd_base_port, disc, cli.sound_blaster_irq, cpu_freq);
+                let sb = SoundBlaster::with_cdrom(
+                    model,
+                    cd_base_port,
+                    disc,
+                    cli.sound_blaster_irq,
+                    cpu_freq,
+                );
                 if let Some(sink) = &sink {
                     sink.mixer().add(RodioSoundCard::new(sb.midi_consumer()));
                     sink.mixer().add(RodioSoundCard::new(sb.opl_consumer()));

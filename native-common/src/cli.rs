@@ -51,6 +51,10 @@ pub struct CommonCli {
     #[arg(long = "floppy-b")]
     pub floppy_b: Option<String>,
 
+    /// ISO image to mount as CD-ROM at startup
+    #[arg(long = "cdrom", value_name = "FILE")]
+    pub cdrom: Option<std::path::PathBuf>,
+
     /// Path to hard disk image file(s) - can be specified multiple times for C:, D:, etc.
     #[arg(long = "hdd", action = clap::ArgAction::Append)]
     pub hard_disks: Vec<String>,
@@ -170,8 +174,4 @@ pub struct CommonCli {
         default_value = "5"
     )]
     pub sound_blaster_dma16: u8,
-
-    /// ISO image to mount as CD-ROM at startup
-    #[arg(long = "cdrom", value_name = "FILE")]
-    pub cdrom: Option<std::path::PathBuf>,
 }

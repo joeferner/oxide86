@@ -214,7 +214,12 @@ impl Device for Pit {
                 // Bit 4: DRAM refresh request toggle (~15.09 kHz on real hardware).
                 // Programs use this to detect that time is passing without relying on interrupts.
                 let refresh_cycles = self.cpu_clock_speed as u64 / 15_090;
-                let refresh_bit = if refresh_cycles > 0 && (cycle_count as u64 / refresh_cycles) & 1 != 0 { 0x10 } else { 0x00 };
+                let refresh_bit =
+                    if refresh_cycles > 0 && (cycle_count as u64 / refresh_cycles) & 1 != 0 {
+                        0x10
+                    } else {
+                        0x00
+                    };
                 Some((self.port_b & 0x0F) | timer2_out | refresh_bit)
             }
             _ => None,

@@ -1,0 +1,55 @@
+{
+  "ports": {
+    "0220": "SB DSP base",
+    "0226": "SB DSP reset",
+    "022A": "SB DSP read data",
+    "022C": "SB DSP write-buffer status / write cmd",
+    "022E": "SB DSP read-buffer status"
+  },
+  "functions": {
+    "1047:0010": {
+      "label": "sb_init_ports",
+      "comment": "Stores per-port addresses derived from base arg (0x220) into globals at [05D0]-[05DA]"
+    },
+    "1047:006C": {
+      "label": "sb_dsp_write",
+      "comment": "Writes one command/data byte to DSP after polling write-buffer status (0x22C bit 7)"
+    },
+    "1047:00A6": {
+      "label": "sb_dsp_read",
+      "comment": "Reads one data byte from DSP after polling read-buffer status (0x22E bit 7)"
+    },
+    "1047:00DC": {
+      "label": "sb_dsp_reset",
+      "comment": "DSP reset: assert reset line (0x226=1), 5-NOP delay, deassert (0x226=0), wait for 0xAA ready byte from 0x22A"
+    },
+    "1047:0178": {
+      "label": "sb_get_version",
+      "comment": "Sends DSP command 0xE1 (get version), reads 2-byte major/minor response; got 4.5 in trace"
+    },
+    "1047:0A9A": {
+      "label": "io_read_port",
+      "comment": "Generic port-read helper: in al, dx where port is passed as stack arg"
+    },
+    "1047:0AA8": {
+      "label": "io_write_port",
+      "comment": "Generic port-write helper: out dx, al where port and value are passed as stack args"
+    }
+  },
+  "memLabels": {
+    "1047:05D0": "sb_write_status_port",
+    "1047:05D2": "sb_base_port",
+    "1047:05D4": "sb_reset_port",
+    "1047:05D6": "sb_read_status_port",
+    "1047:05D8": "sb_write_port",
+    "1047:05DA": "sb_read_data_port"
+  },
+  "lineComments": {
+    "1047:0081": "bit 7 clear = write buffer not full; write the byte",
+    "1047:00BB": "bit 7 set = read data available",
+    "1047:00FA": "5 NOPs: minimum reset pulse hold delay before deasserting",
+    "1047:0117": "bit 7 set = read data available after reset",
+    "1047:015F": "DSP acknowledges reset with magic byte 0xAA",
+    "1047:0183": "DSP command 0xE1 = get DSP version"
+  }
+}
