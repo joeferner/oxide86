@@ -1,5 +1,20 @@
 {
   "functions": {
+    "10D1:0330": {
+      "label": "sb_lazy_init_guard",
+      "comment": "One-shot initialisation guard for the SB/MIDI subsystem.\nChecks [0x0134] and [0x0135] init flags; if both are zero, runs the\nfirst-time MIDI device setup sequence: calls func_0AB2 with function codes\n0x42 (MIDI init, params 3/1), 0x70, and 0xB0, then sets [0x0135]=1 to\nprevent re-entry."
+    },
+    "10D1:036A": {
+      "comment": "SB/MIDI initialisation with mode selection.\nCalls func_014C to validate the mode argument, then runs the lazy init\nguard, then scans IVT entries 0x80–0xBF for a loaded SB16 TSR\n(via sb_find_tsr_segment).  If found, the TSR segment is passed as the\nmode to func_060C; if not found, 0 is passed (no-hardware fallback)."
+    },
+    "10D1:06B4": {
+      "label": "sb_find_tsr_segment",
+      "comment": "Scans IVT entries for INT 0x80 through INT 0xBF looking for a loaded\nSound Blaster 16 TSR.  For each entry, reads the CS (segment) field;\nif CS:0000 contains the 'SB' signature (0x4253, i.e. bytes 0x53 'S',\n0x42 'B'), the TSR has been found.\nReturns the TSR segment in AX, or 0 if no SB TSR is present.\nThe 35-byte gap at 06CD–06EF is the never-executed success path."
+    },
+    "10D1:060C": {
+      "label": "sb_init_with_mode",
+      "comment": "Initialises the SB/MIDI subsystem with a given mode.\nArg [bp+04]: mode (0 = no SB hardware found; non-zero = TSR segment).\nCalls the lazy init guard, then dispatches through func_0AB2 with\nfunction code 0x04E2 and the mode value."
+    },
     "0019:440F": {
       "label": "sbmidi_apply_config",
       "comment": "Applies the SBMIDI hardware configuration table for the active device.\nCalls sbmidi_config_table_read only when [0x034A]==0 (first call)."
@@ -31,7 +46,34 @@
       "comment": "INT 2Fh multiplexer handler for SBMIDI (multiplex ID 0x11).\nChained from the previous INT 2Fh vector via 0B73:007D.\nDispatch:\n  AH != 0x11 → chain to next handler (jmp far 0070:0005)\n  AH == 0x11, AL == 0x00 → detection probe; return CF=0 (we are present)\n  AH == 0x11, AL != 0x00 → function call; if not ready, call sbmidi_not_ready (CF=1)"
     }
   },
+  "labels": {
+    "10D1:06BB": {
+      "label": "sb_scan_loop_top"
+    },
+    "10D1:06F0": {
+      "label": "sb_scan_loop_next"
+    },
+    "10D1:0703": {
+      "label": "sb_scan_done"
+    },
+    "10D1:03DC": {
+      "label": "sb_tsr_not_found"
+    },
+    "10D1:03D3": {
+      "label": "sb_init_call"
+    }
+  },
   "lineComments": {
+    "10D1:06B8": "DI = 0x0202: CS field of IVT entry for INT 0x80 (scan start)",
+    "10D1:06BD": "read the CS (segment) of this IVT handler entry",
+    "10D1:06C0": "skip null/unset handlers",
+    "10D1:06C4": "point ES at the handler segment to probe it",
+    "10D1:06C6": "check for 'SB' signature (0x53,0x42) at segment offset 0",
+    "10D1:06F3": "loop until past INT 0xBF (DI >= 0x0300)",
+    "10D1:06F9": "not found: return AX=0",
+    "10D1:0395": "AX=0 means no SB TSR found in IVT",
+    "10D1:03DE": "pass 0 (no SB) as mode argument to sb_init_with_mode",
+    "10D1:0364": "[0x0135]=1 marks this one-shot init as done",
     "0019:44A2": "sbmidi_ready_flag = 0x01 → ERROR / driver not ready",
     "0019:44A8": "CF=1 tells the INT 2Fh caller that SBMIDI is unavailable",
     "0019:44B1": "multiplex ID 0x11 = SBMIDI TSR",
@@ -42,7 +84,13 @@
     "0019:ABA5": "probe SBMIDI: INT 2Fh AH=0x11 AL=0x23 — ask SBMIDI to prepare MIDI output",
     "0019:ABAA": "CF=0 (jae taken) = SBMIDI accepted the call; CF=1 = not installed or not ready → 'SBMIDI not installed'"
   },
+  "gaps": {
+    "10D1:06CD": "success path: reads TSR fields and returns CS in AX — never executes because no SB TSR is installed in IVT 0x80–0xBF",
+    "10D1:0399": "success path when SB TSR found — never executes in this log"
+  },
   "memLabels": {
-    "0019:0323": "sbmidi_ready_flag"
+    "0019:0323": "sbmidi_ready_flag",
+    "10D1:0134": "sb_init_flag_a",
+    "10D1:0135": "sb_lazy_init_done"
   }
 }
