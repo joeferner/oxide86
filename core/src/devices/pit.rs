@@ -187,7 +187,7 @@ impl Device for Pit {
         false
     }
 
-    fn io_read_u8(&mut self, port: u16, _cycle_count: u32) -> Option<u8> {
+    fn io_read_u8(&mut self, port: u16, cycle_count: u32) -> Option<u8> {
         match port {
             PIT_CHANNEL_0 => {
                 if let Some(count) = self.ch0.latched {
@@ -211,7 +211,11 @@ impl Device for Pit {
             PORT_B => {
                 // Bit 5: timer 2 output (high if channel 2 running and gate open).
                 let timer2_out = if self.port_b & 0x01 != 0 { 0x20 } else { 0x00 };
-                Some((self.port_b & 0x0F) | timer2_out)
+                // Bit 4: DRAM refresh request toggle (~15.09 kHz on real hardware).
+                // Programs use this to detect that time is passing without relying on interrupts.
+                let refresh_cycles = self.cpu_clock_speed as u64 / 15_090;
+                let refresh_bit = if refresh_cycles > 0 && (cycle_count as u64 / refresh_cycles) & 1 != 0 { 0x10 } else { 0x00 };
+                Some((self.port_b & 0x0F) | timer2_out | refresh_bit)
             }
             _ => None,
         }
