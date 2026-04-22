@@ -311,6 +311,11 @@ impl Device for Pic {
                             self.in_service &= !lowest_bit;
                         }
                     }
+                    // Specific EOI (OCW2 bits 7-5 = 011): clears the named IRQ's in-service bit.
+                    0x60..=0x67 => {
+                        let irq = val & 0x07;
+                        self.in_service &= !(1u8 << irq);
+                    }
                     _ => log::warn!("unhandled PIC1 command 0x{val:02X}"),
                 }
                 true
@@ -328,6 +333,11 @@ impl Device for Pic {
                                 self.pic2_in_service & self.pic2_in_service.wrapping_neg();
                             self.pic2_in_service &= !lowest_bit;
                         }
+                    }
+                    // Specific EOI for PIC2 IRQ lines.
+                    0x60..=0x67 => {
+                        let irq = val & 0x07;
+                        self.pic2_in_service &= !(1u8 << irq);
                     }
                     _ => log::warn!("unhandled PIC2 command 0x{val:02X}"),
                 }

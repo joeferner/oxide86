@@ -229,6 +229,9 @@ impl Device for SoundBlaster {
                 self.dsp.write_reset_port(val);
                 return true;
             }
+            0x0A => {
+                return true;
+            }
             0x0C => {
                 self.dsp.write_command_port(val);
                 if let Some(byte) = self.dsp.take_direct_dac_byte() {

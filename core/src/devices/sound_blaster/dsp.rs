@@ -115,15 +115,17 @@ impl SoundBlasterDsp {
             0x0E => 2,        // SB16 ASP: write register (index, value)
             0x0F => 1,        // SB16 ASP: read register (index)
             0x10 => 1,        // Direct DAC
-            0x14 => 2,        // 8-bit single-cycle DMA (unsigned)
-            0x16 => 2,        // 8-bit single-cycle DMA (signed)
+            0x14 => 2,        // 8-bit single-cycle DAC DMA (unsigned)
+            0x16 => 2,        // 8-bit single-cycle DAC DMA (signed)
+            0x24 => 2,        // 8-bit single-cycle ADC DMA (unsigned)
+            0x28 => 2,        // 8-bit single-cycle ADC DMA (signed)
             0x40 => 1,        // Set time constant
             0x41 => 2,        // Set sample rate (SB16)
             0x42 => 2,        // Set input sample rate (SB16)
             0x48 => 2,        // Set DMA block size
             0xB0..=0xBF => 3, // SB16 16-bit DMA (mode, len_lo, len_hi)
             0xC0..=0xCF => 3, // SB16 8-bit DMA (mode, len_lo, len_hi)
-            0xE0 | 0xE4 => 1,
+            0xE0 | 0xE2 | 0xE4 => 1,
             _ => 0,
         }
     }
@@ -166,9 +168,14 @@ impl SoundBlasterDsp {
                 let idx = self.cmd_params.first().copied().unwrap_or(0);
                 self.out_buf.push_back(self.asp_regs[idx as usize]);
             }
-            // CT1748A ASP presence probe: complement-echo test.
-            // Real hardware returns ~0x55 = 0xAA; absence returns 0x00.
-            0x55 => self.out_buf.push_back(0xAA),
+            // CT1748A ASP presence probe: complement-echo test. Only SB16 has the ASP chip.
+            // SB2/SBPro treat this as an unknown command and produce no response; drivers use
+            // the absence of a reply to confirm the card lacks ASP (i.e. is SB2-class).
+            0x55 => {
+                if self.model == SoundBlasterModel::Sb16 {
+                    self.out_buf.push_back(0xAA);
+                }
+            }
             0x10 => {
                 // Direct DAC: output one sample byte immediately (no DMA).
                 self.direct_dac_byte = Some(self.cmd_params.first().copied().unwrap_or(0x80));
@@ -188,6 +195,18 @@ impl SoundBlasterDsp {
                 let hi = self.cmd_params.get(1).copied().unwrap_or(0);
                 self.dma_block_len = u16::from_le_bytes([lo, hi]).wrapping_add(1);
                 self.dma_bytes_remaining = self.dma_block_len;
+                self.dma_active = true;
+                self.dreq_pending = Some(true);
+            }
+            0x24 | 0x28 => {
+                // 8-bit ADC single-cycle DMA (0x24 = unsigned, 0x28 = signed).
+                // Driver uses this as a DMA channel probe: starts a 1-byte ADC transfer, waits for
+                // the IRQ, and rejects the channel if the interrupt never arrives.
+                let lo = self.cmd_params.first().copied().unwrap_or(0);
+                let hi = self.cmd_params.get(1).copied().unwrap_or(0);
+                self.dma_block_len = u16::from_le_bytes([lo, hi]).wrapping_add(1);
+                self.dma_bytes_remaining = self.dma_block_len;
+                self.dma_16bit = false;
                 self.dma_active = true;
                 self.dreq_pending = Some(true);
             }
@@ -263,6 +282,12 @@ impl SoundBlasterDsp {
                 let param = self.cmd_params.first().copied().unwrap_or(0);
                 self.out_buf.push_back(!param);
             }
+            0xE2 => {
+                // DMA identification: driver verifies DMA+IRQ are functional.
+                // Fire IRQ8 immediately to simulate the 1-byte DMA completion.
+                self.irq_pending_8 = true;
+                self.irq_status_8 = true;
+            }
             0xE1 => {
                 let (major, minor) = match self.model {
                     SoundBlasterModel::Sb2 => (0x02, 0x01),
@@ -313,6 +338,7 @@ impl SoundBlasterDsp {
                     self.dreq_pending = Some(true);
                 }
             }
+            0xA5 => {} // undocumented/proprietary; no-op
             0x83 => self.out_buf.push_back(0x00), // ASP/proprietary: return 0 to unblock callers
             0xFB => self.out_buf.push_back(0x00), // SB16 proprietary status: return 0
             0xFC => self.out_buf.push_back(0x00), // ASP probe: return 0 (present, no version)

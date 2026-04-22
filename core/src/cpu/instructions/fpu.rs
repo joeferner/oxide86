@@ -650,6 +650,13 @@ impl Cpu {
                         self.fpu_stack[top] =
                             self.fpu_stack[top].mul(Self::fpu_read_m16int(bus, addr));
                     }
+                    // FICOMP m16 (DE /3): compare ST(0) vs m16int, set CC, pop
+                    (0xDE, 3) => {
+                        let other = Self::fpu_read_m16int(bus, addr);
+                        let st0 = self.fpu_stack[self.fpu_top as usize];
+                        self.fpu_set_cc(st0, other);
+                        self.fpu_pop();
+                    }
                     // FIADD m32 (DA /0): ST(0) += m32int
                     (0xDA, 0) => {
                         let top = self.fpu_top as usize;

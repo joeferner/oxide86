@@ -31,7 +31,7 @@ pub struct CommonCli {
     #[arg(long = "video-card", default_value = "vga")]
     pub video_card: String,
 
-    /// Sound card type to emulate (none, adlib, sb16)
+    /// Sound card type to emulate (none, adlib, sb2, sbpro, sb16)
     #[arg(long = "sound-card", default_value = "sb16")]
     pub sound_card: String,
 
@@ -135,7 +135,7 @@ pub struct CommonCli {
     #[arg(long = "debug-mcp-pause-on-start", requires = "debug_mcp_port")]
     pub debug_mcp_pause_on_start: bool,
 
-    /// Sound Blaster DSP/Mixer/OPL base port (SB16 only)
+    /// Sound Blaster DSP/Mixer/OPL base port
     #[arg(
         long = "sound-blaster-port",
         value_name = "PORT",
@@ -143,7 +143,7 @@ pub struct CommonCli {
     )]
     pub sound_blaster_port: String,
 
-    /// Sound Blaster CD-ROM interface base port (SB16 only)
+    /// Sound Blaster CD-ROM interface base port
     #[arg(
         long = "sound-blaster-cd-port",
         value_name = "PORT",

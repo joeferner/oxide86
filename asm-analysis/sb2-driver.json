@@ -1,0 +1,248 @@
+{
+  "functions": {
+    "0B8C:3C0E": {
+      "label": "validate_sb_base_port",
+      "comment": "Checks that the supplied base port == 0x0220. Returns 1 if valid, falls through to 0 otherwise."
+    },
+    "0B8C:3C2E": {
+      "label": "init_sb_struct",
+      "comment": "Initializes the SB port-address struct: stores base port and derived offsets for reset (base+6), data (base+A), cmd (base+C), and status (base+E) ports."
+    },
+    "0B8C:3C82": {
+      "label": "dsp_reset",
+      "comment": "DSP software reset: writes 1 then 0 to the reset port (base+6), then polls the read port for the 0xAA ready byte. Returns 0 on success, 1 on timeout."
+    },
+    "0B8C:3CC0": {
+      "label": "dsp_send_command",
+      "comment": "Sends one command byte to the DSP. Polls write-buffer-not-busy (bit 7 of 0x22C must be 0) before writing. Returns 0 on success."
+    },
+    "0B8C:3CF2": {
+      "label": "dsp_send_command_fast",
+      "comment": "Single-attempt DSP command write: reads write-status once, sends byte regardless of busy flag. Returns 0 on success."
+    },
+    "0B8C:3D22": {
+      "label": "dsp_send_n_bytes",
+      "comment": "Sends N command bytes to the DSP sequentially via dsp_send_command. Args: sb_struct ptr, count, byte0, byte1, ... Returns 0 on success."
+    },
+    "0B8C:3D50": {
+      "label": "dsp_read_byte_spin",
+      "comment": "Spins on DSP read-buffer status port (0x22E) until bit 7 is set, then reads one byte from 0x22A. No timeout."
+    },
+    "0B8C:3D6A": {
+      "label": "dsp_read_byte_timeout",
+      "comment": "Polls DSP read-buffer status (0x22E) up to 0x200 times. Stores byte via pointer arg if non-NULL. Returns 0 = byte received, 1 = timed out."
+    },
+    "0B8C:3DEC": {
+      "label": "get_sb2_version_range",
+      "comment": "Fills two output word pointers with the accepted DSP version range: min = 0x0200, max = 0x0263 (covers all SB2-class versions)."
+    },
+    "0B8C:3E78": {
+      "label": "dsp_test_spurious_data",
+      "comment": "Writes 0xC6 to the reset port (sets reset_seq=1 but never completes reset with 0x00), then reads data port. Expects no data in buffer. Returns 0 if buffer is empty (expected for SB2 without ASP)."
+    },
+    "0B8C:3ECC": {
+      "label": "dsp_get_version",
+      "comment": "Sends DSP command 0xE1 (Get DSP Version). Returns AX = packed word: high byte = major, low byte = minor (e.g. AX=0x0201 for SB2)."
+    },
+    "0B8C:3EFE": {
+      "label": "dsp_test_complement_echo",
+      "comment": "Complement-echo self-test (cmd 0xE0): sends a param byte, DSP must return its bitwise complement. Returns 0 on match, 1 on failure."
+    },
+    "0B8C:3F4E": {
+      "label": "dsp_test_register_rw",
+      "comment": "Test-register round-trip (cmds 0xE4 / 0xE8): writes param to DSP test register then reads it back. Returns 0 if values match."
+    },
+    "0B8C:3FEE": {
+      "label": "dma_start_check_stereo",
+      "comment": "If stereo flag ([bp+0x0a]) is non-zero, programs the SB for stereo DMA mode; otherwise falls through as no-op. Called from dma_start_transfer before sending the DSP command."
+    },
+    "0B8C:3BCA": {
+      "label": "dma_calc_sample_rate",
+      "comment": "Computes the time-constant-derived sample rate and stores it into [si+0x16] (offset 0x16 in SB struct). Validates that the computed rate is within the [min, max] range supplied by the caller."
+    },
+    "0B8C:4036": {
+      "label": "dma_start_transfer",
+      "comment": "Builds and sends the DSP DMA start command. Dispatches on DMA mode value (offset 0x10 in args) to select DAC/ADC, single/auto-init. For mode 8 (DMA channel 1 ADC single-cycle) sends cmd 0x24 + count_lo + count_hi via dsp_send_n_bytes. Called via vtable slot [si+0x20]."
+    },
+    "0B8C:4210": {
+      "label": "dsp_force_irq",
+      "comment": "Sends DSP command 0xF2 (Force 8-bit interrupt) to the DSP. Used by the IRQ-line test (func_0B8C_4C58) to verify IRQ5 is wired before attempting a real DMA transfer."
+    },
+    "0B8C:424E": {
+      "label": "dma_program_channel",
+      "comment": "Programs 8237A DMA CH1 for a single-cycle transfer: masks CH1, writes mode 0x45 (single, increment, write/device-to-memory), sets address=0xBB92, page=0x00, count=0x0000 (1 byte), then unmasks CH1 if [bp+0x06] != 0."
+    },
+    "0B8C:4348": {
+      "label": "dma_acquire_channel",
+      "comment": "Acquires and configures a DMA channel for use. Calls vtable slot [si] to select the channel, stores the channel number into [si+0x02], and returns 0 on success."
+    },
+    "0B8C:4370": {
+      "label": "dma_unmask_channel",
+      "comment": "Unmasks DMA1 channel 1: writes ch (no mask bit set) to port 0x0A."
+    },
+    "0B8C:43B4": {
+      "label": "dma_mask_channel",
+      "comment": "Masks DMA1 channel 1: writes ch | 0x04 to port 0x0A."
+    },
+    "0B8C:43DC": {
+      "label": "dma_setup_hardware",
+      "comment": "Sets up DMA hardware for the pending transfer: calls dma_calc_mode (func_0B8C_4228) to compute the 8237 mode byte, then calls dma_program_channel (func_0B8C_424E) to write all DMA registers. Called via vtable slot [si+0x02]."
+    },
+    "0B8C:483E": {
+      "label": "delay_ticks",
+      "comment": "Busy-wait delay. Args: timer_ptr (ptr to 32-bit tick counter maintained by the timer ISR), count_lo, count_hi. Spins until the counter at timer_ptr advances by at least count ticks."
+    },
+    "0B8C:490A": {
+      "label": "irq_hook_save",
+      "comment": "Reads the current IRQ5 vector from IVT[0x0D] (seg 0x0000, offset 0x0034) and saves the previous handler into the channel struct for chaining."
+    },
+    "0B8C:4964": {
+      "label": "irq_unmask",
+      "comment": "Unmasks the IRQ line stored in [di] (IRQ5 = 5) in PIC1 IMR (port 0x21): reads IMR, clears bit (irq & 7), writes back."
+    },
+    "0B8C:49BE": {
+      "label": "irq_mask_restore",
+      "comment": "Restores PIC1 IMR to the saved value from the channel struct's [di+0x0d] field, re-masking IRQ5 after the DMA test."
+    },
+    "0B8C:4AE2": {
+      "label": "pic_specific_eoi",
+      "comment": "Sends a specific EOI to PIC1 for the IRQ stored in [bx] (IRQ5): out 0x20, (0x60 | irq). Clears the PIC1 in-service bit so the same IRQ can fire again. Called from the IRQ5 ISR via func_0B8C_4BE0."
+    },
+    "0B8C:4B12": {
+      "label": "irq_install_hook",
+      "comment": "Hooks IRQ5 for DMA use: if not already installed ([si+0x02]==0), marks it installed, saves old IVT vector, installs new ISR (seg:off supplied as args), and unmasks IRQ5 in PIC1."
+    },
+    "0B8C:4B44": {
+      "label": "irq_unhook",
+      "comment": "Restores the previous IRQ5 IVT vector (saved by irq_install_hook), re-masks IRQ5 in PIC1, and marks the hook as uninstalled. Called after DMA tests complete."
+    },
+    "0B8C:4BA8": {
+      "label": "dma_set_irq_callback",
+      "comment": "Installs the DMA completion callback: stores callback address into [0x0a9a], then hooks IRQ5 IVT to point at the driver ISR at 0x0B8C:0x0AA2 via irq_install_hook."
+    },
+    "0B8C:4BD4": {
+      "label": "dma_post_irq_vtable",
+      "comment": "Calls vtable slot [bx+0x02] on the SB struct (vtable at [0x5DA2]). On return from the IRQ callback, triggers the next-pending DMA operation if any."
+    },
+    "0B8C:4BE0": {
+      "label": "dma_send_eoi",
+      "comment": "Sends specific EOI for IRQ5 to PIC1 by calling pic_specific_eoi with the DMA channel struct (DMA channel number = 5). Called from the IRQ5 ISR after the completion callback returns."
+    },
+    "0B8C:4C40": {
+      "label": "dma_irq_callback",
+      "comment": "DMA completion callback invoked from the IRQ5 ISR. If [0x5abc] != 0 (DMA test is armed), sets [0x5ea2]=1 (signals test complete) and clears [0x5abc]. Returns AX=0 (no further action needed)."
+    },
+    "0B8C:4C58": {
+      "label": "dma_test_irq_line",
+      "comment": "Phase 1 of D: parameter validation: tests that IRQ5 actually fires. Arms [0x5abc]=1, installs ISR callback, unmasks IRQ5, then sends DSP command 0xF2 (force interrupt). Polls [0x5ea2] up to 10 times. Returns 0 if [0x5ea2]==1 (IRQ arrived), 1 on timeout."
+    },
+    "0B8C:4CBC": {
+      "label": "dma_test_channel",
+      "comment": "Phase 2 of D: parameter validation: tests that DMA CH1 can complete a transfer and fire IRQ5. Programs DMA HW (mode 0x45, 1 byte ADC), arms [0x5abc]=1, sends DSP cmd 0x24 (8-bit ADC DMA) + count 0x0000. Polls [0x5ea2] up to 10 times. Returns 0 on success, 1 on timeout."
+    },
+    "0B8C:4D76": {
+      "label": "dma_validate_channel",
+      "comment": "Runs dma_test_channel (func_0B8C_4CBC) for DMA channel 1. Top-level wrapper called by the D: BLASTER parameter validator."
+    },
+    "0B8C:110E": {
+      "label": "validate_dma_channel",
+      "comment": "D: BLASTER parameter validator. Checks channel is 0 or 1, then runs dma_test_irq_line (func_0B8C_4C58) followed by dma_validate_channel (func_0B8C_4D76). Returns 0 if both pass, error if either fails (CTSOUND1010)."
+    },
+    "0B8C:0AA2": {
+      "label": "irq5_isr",
+      "comment": "Hardware IRQ5 (INT 0x0D) interrupt service routine. Saves all registers, switches to driver stack/segment, calls the registered callback at [0x0a9a] (set to dma_irq_callback / 0x4C40 during DMA tests), then calls dma_post_irq_vtable and dma_send_eoi (specific EOI 0x65 = 0x60|5 to PIC1), restores registers, and IRETs."
+    },
+    "0B8C:0F8A": {
+      "label": "detect_sb2_card",
+      "comment": "Full SB2 identification sequence: reset DSP, read version twice for consistency, test spurious-data absence, complement-echo, register R/W, and CT1748A ASP absence (cmd 0x55 must produce NO response on SB2). Returns 0 on success, 1 on failure."
+    },
+    "0B8C:0F72": {
+      "label": "report_error_and_fail",
+      "comment": "Prints the error string passed as argument then returns SI=1 (failure code)."
+    },
+    "0B8C:0FEC": {
+      "label": "init_sb2_driver",
+      "comment": "Top-level SB2 driver init: validates I/O port, resets DSP, runs self-tests (complement-echo + register R/W), checks version is in [0x0200, 0x0263], runs full card detect. Returns 0 on success."
+    },
+    "0B8C:44C6": {
+      "label": "print_char",
+      "comment": "Writes one character via INT 21h AH=02h. Appends CR (0x0D) after a bare LF."
+    },
+    "0B8C:44E0": {
+      "label": "print_string",
+      "comment": "Prints a null-terminated string by calling print_char for each byte."
+    }
+  },
+  "labels": {
+    "0B8C:0FE6": {
+      "label": "detect_sb2_fail",
+      "comment": "Card detection failed; set AX=1 and return."
+    },
+    "0B8C:105A": {
+      "label": "init_sb2_fail",
+      "comment": "Version check or card-detect failed; load error-string pointer and fall through to report_error_and_fail."
+    },
+    "0B8C:4C8A": {
+      "label": "dma_test_irq_poll_loop",
+      "comment": "Polling loop for dma_test_irq_line: checks [0x5ea2] up to 10 times with a delay_ticks(1) between attempts. Exits early if [0x5ea2]==1 (IRQ fired)."
+    },
+    "0B8C:4D3E": {
+      "label": "dma_test_channel_poll_loop",
+      "comment": "Polling loop for dma_test_channel: checks [0x5ea2] up to 10 times with a delay_ticks(1) between attempts. [0x5ea2] is set by dma_irq_callback when the DMA IRQ fires."
+    }
+  },
+  "lineComments": {
+    "0B8C:3C93": "write 1 to reset port — begins DSP reset sequence",
+    "0B8C:3C9A": "write 0 to reset port — completes reset; DSP enqueues 0xAA in read buffer",
+    "0B8C:3CA9": "verify DSP responded with 0xAA (reset acknowledged)",
+    "0B8C:3CDD": "poll: wait until write-buffer-not-busy (bit 7 of 0x22C == 0)",
+    "0B8C:3CE9": "write command byte to DSP via port 0x22C",
+    "0B8C:3D5C": "wait until DSP read-buffer has data (bit 7 of 0x22E == 1)",
+    "0B8C:3D7E": "poll DSP read-buffer status; timeout after 0x200 iterations",
+    "0B8C:3E96": "write 0xC6 to reset port (non-zero → reset_seq=1, but no completing 0x00 write)",
+    "0B8C:3EAF": "write to data port 0x22A — no-op on real hardware; used to probe for spurious data",
+    "0B8C:3EB9": "timeout (no data) = no spurious response = pass; fall-through (data present) = fail",
+    "0B8C:0FB3": "send cmd 0x08 (ASP mode select) — SB2 has no ASP, ignores this command",
+    "0B8C:0FC0": "send cmd 0x55 (CT1748A ASP complement-echo probe) — SB2 must NOT respond",
+    "0B8C:0FD9": "if DSP has data after cmd 0x55, card has a CT1748A ASP chip → not plain SB2 → fail",
+    "0B8C:1044": "DSP version (packed word) must be >= minimum accepted version 0x0200",
+    "0B8C:1049": "DSP version must be <= maximum accepted version 0x0263",
+    "0B8C:4283": "write mode 0x45 to DMA1 mode register (port 0x0B): single-cycle, increment, write (device→mem), ch1",
+    "0B8C:4289": "clear byte-pointer flip-flop (port 0x0C) before writing address/count",
+    "0B8C:4293": "write address low byte 0x92 to DMA1 CH1 base address port (0x02)",
+    "0B8C:429A": "write address high byte 0xBB to DMA1 CH1 base address port (0x02)",
+    "0B8C:42A4": "write page 0x00 to DMA1 CH1 page register (port 0x83)",
+    "0B8C:42AC": "write count low byte 0x00 to DMA1 CH1 count port (0x03) — count=0 means 1 byte",
+    "0B8C:42B3": "write count high byte 0x00 to DMA1 CH1 count port (0x03)",
+    "0B8C:4B01": "send specific EOI to PIC1: out 0x20, (0x60 | irq) — clears PIC1 in-service bit so IRQ can fire again",
+    "0B8C:4B2F": "call [0x0a9a] — invoke the registered DMA completion callback (dma_irq_callback at 0x4C40 during DMA tests)",
+    "0B8C:4C47": "[0x5abc] != 0 → DMA test is armed; set [0x5ea2]=1 to signal completion to the polling loop",
+    "0B8C:4C60": "arm DMA test: [0x5abc]=1 so the IRQ5 callback will set [0x5ea2]=1",
+    "0B8C:4C78": "clear [0x5ea2]=0 before starting DMA transfer so polling loop starts from a known state",
+    "0B8C:4CDC": "clear [0x5ea2]=0 before starting DMA CH1 ADC transfer",
+    "0B8C:4D13": "set [0x5abc]=1 to arm the IRQ callback before sending the DSP DMA start command",
+    "0B8C:4D65": "DMA test result: [0x5ea2]==1 means IRQ fired (DMA completed); ==0 means timeout → CTSOUND1010 failure"
+  },
+  "gaps": {
+    "0B8C:0FDB": "success path — SB2 confirmed (CT1748A ASP absent); AX=0 return (never reached in this trace)"
+  },
+  "ports": {
+    "0021": "PIC1 interrupt mask register (IMR): bit N masks IRQN; driver clears bit 5 to unmask IRQ5",
+    "0020": "PIC1 command port: 0x20 = non-specific EOI; 0x60-0x67 = specific EOI for IRQ0-7",
+    "0226": "DSP reset port (write 1 then 0 to reset; reads return 0x7F)",
+    "022A": "DSP read data port",
+    "022C": "DSP write command port / write-buffer status (bit 7: 1=busy)",
+    "022E": "DSP read-buffer status (bit 7: 1=data ready)",
+    "000B": "DMA1 mode register: write mode byte (bits 7-6=transfer type, 5=decrement, 4=auto-init, 3-2=xfer dir, 1-0=channel)",
+    "000C": "DMA1 byte-pointer flip-flop clear: any write resets the high/low flip-flop",
+    "0002": "DMA1 CH1 base/current address register (write low then high byte)",
+    "0003": "DMA1 CH1 base/current count register (write low then high byte; count = bytes-1)",
+    "0083": "DMA1 CH1 page register (high 8 bits of 24-bit physical address)",
+    "000A": "DMA1 single channel mask register: write (ch | 0x04) to mask, ch alone to unmask"
+  },
+  "variables": {
+    "0B8C:0A9A": "[0x0a9a]: DMA completion callback pointer — set by dma_set_irq_callback to dma_irq_callback (0x4C40) before each DMA test; called by irq5_isr",
+    "0B8C:5ABC": "[0x5abc]: DMA test armed flag — set to 1 before DSP DMA command, cleared to 0 by dma_irq_callback after IRQ fires",
+    "0B8C:5EA2": "[0x5ea2]: DMA IRQ completion flag — set to 1 by dma_irq_callback when IRQ fires while [0x5abc]==1; polled by dma_test_irq_line and dma_test_channel"
+  }
+}
