@@ -96,8 +96,8 @@
 - [X] CD-ROM (see ai-analysis/cd-rom-sb.md)
 - [X] Printer
 - [X] SoundBlaster (see ai-analysis/sound-blaster.md, future ai-analysis/cd-rom-sb.md)
-- [ ] dosmid with xms - implement 286 LOADALL. On a real 286, HIMEM.SYS uses 0F 05 to access extended memory, so a correct 286 emulator needs to handle it. Options 1 and 3 are workarounds that paper over the missing instruction rather than actually emulating the hardware.
 - [ ] Modem (see ai-analysis/modem.md)
+- [ ] dosmid with xms - implement 286 LOADALL. On a real 286, HIMEM.SYS uses 0F 05 to access extended memory, so a correct 286 emulator needs to handle it. Options 1 and 3 are workarounds that paper over the missing instruction rather than actually emulating the hardware.
 - [ ] WASM Joystick
 - [ ] WASM Disk browser/editor
 - [ ] WASM/CLI/GUI multiple hard drives

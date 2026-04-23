@@ -344,7 +344,7 @@ impl SoundBlasterDsp {
                     self.dreq_pending = Some(true);
                 }
             }
-            0xA5 => {} // undocumented/proprietary; no-op
+            0xA5 => {}                            // undocumented/proprietary; no-op
             0x83 => self.out_buf.push_back(0x00), // ASP/proprietary: return 0 to unblock callers
             0xFB => self.out_buf.push_back(0x00), // SB16 proprietary status: return 0
             0xFC => self.out_buf.push_back(0x00), // ASP probe: return 0 (present, no version)
