@@ -1,0 +1,118 @@
+{
+  "functions": {
+    "188F:01A0": {
+      "label": "func_run_dialog",
+      "comment": "Sets up and shows the dialog at struct 0x03B0, then handles input.\nPopulates status bar text (0x43DC) and title string (0x40F6) before drawing.\nCalled in response to a key press (F2). Closes and restores screen on exit."
+    },
+    "188F:11E0": {
+      "label": "func_set_pit_rate",
+      "comment": "Programs the PIT timer with a rate from the frequency table at 0x171E.\nIndex is [0x176C]; reload value stored in [0x17A0] then written to PIT via func_program_pit."
+    },
+    "188F:11F3": {
+      "label": "func_load_sound_config",
+      "comment": "Initializes FM voice state and loads sound parameters from config block at 0x43B0.\nIterates 5 voice structs at 0x1586, then reads settings (volume, tempo, voices, SB params)\nfrom 0x43B0 via lodsw and distributes them to their respective state variables."
+    },
+    "188F:12E1": {
+      "label": "func_start_audio",
+      "comment": "Starts the audio system: loads sound config, programs the PIT timer rate,\nsaves current INT 8/9/SB vectors, then installs own INT 8 (music tick at 188F:132E)\nand INT 9 (keyboard at 188F:1381) handlers. Sets [0x17AA]=1 when done."
+    },
+    "188F:151A": {
+      "label": "func_program_pit",
+      "comment": "Programs PIT channel 0 with the reload value in AX.\nWrites mode byte 0x36 (ch0, mode 3, 16-bit binary) to port 0x43, then AX low/high to port 0x40."
+    },
+    "188F:17C0": {
+      "label": "func_save_int_vectors",
+      "comment": "Saves current INT 8 (timer), INT 9 (keyboard), and SB hardware IRQ vectors.\nINT number for SB IRQ is read from [0x38B0]. Saved to [0x1770..177A] for later restore."
+    },
+    "188F:2BBA": {
+      "label": "func_dialog_event_loop",
+      "comment": "Stub — single ret. Would be the dialog interaction loop between func_start_audio and func_close_dialog_box."
+    },
+    "188F:4FEF": {
+      "label": "func_save_screen_region",
+      "comment": "Saves a rectangular text-mode screen region to a memory buffer.\nArgs: start_pos (AH=row, AL=col), end_pos (AH=row, AL=col), dest (far ptr), attr_filter\nSynchronizes each word copy with the CGA retrace signal to avoid snow."
+    },
+    "188F:50EA": {
+      "label": "func_draw_dialog_box",
+      "comment": "Draws a dialog box from a struct ptr (bp+0x04).\nStruct: +00 top_left, +02 bot_right (AH=row/AL=col), +04..09 border chars (┌─┐│└┘),\n+0a title str ptr, +0c/0e screen save buf (allocated here), +10 title attr, +11 body attr,\n+12 item attr, +18 items array ptr, +1a status bar str ptr (0=skip status bar save).\nReturns 1 on success."
+    },
+    "188F:506C": {
+      "label": "func_restore_screen_region",
+      "comment": "Restores a rectangular screen region from a memory buffer back to the CGA video buffer.\nMirror of func_save_screen_region: reads from source far ptr, writes to B800 with retrace sync."
+    },
+    "188F:55DA": {
+      "label": "func_close_dialog_box",
+      "comment": "Restores the screen saved by func_draw_dialog_box and frees the buffer.\nIf struct[+1a] is non-null, also restores the status bar row.\nPair of func_draw_dialog_box."
+    }
+  },
+  "labels": {
+    "188F:021F": {
+      "label": "dialog_done"
+    },
+    "188F:12F2": {
+      "label": "install_int_vectors"
+    },
+    "188F:5026": {
+      "label": "set_video_segment"
+    },
+    "188F:5035": {
+      "label": "compute_copy_dimensions"
+    },
+    "188F:504A": {
+      "label": "row_loop"
+    },
+    "188F:5050": {
+      "label": "retrace_wait"
+    },
+    "188F:5132": {
+      "label": "check_status_bar"
+    },
+    "188F:514F": {
+      "label": "save_dialog_area"
+    },
+    "188F:51A7": {
+      "label": "draw_frame"
+    },
+    "188F:526D": {
+      "label": "side_border_row_loop"
+    },
+    "188F:52B1": {
+      "label": "draw_bottom_border"
+    },
+    "188F:5370": {
+      "label": "fill_and_draw_items"
+    },
+    "188F:53BE": {
+      "label": "items_loop"
+    },
+    "188F:53EB": {
+      "label": "done"
+    }
+  },
+  "lineComments": {
+    "188F:01CC": "0x43DC = status bar text buffer for this dialog (struct[+1a]); populated before drawing",
+    "188F:01FA": "0x40F6 = dialog title string buffer (struct[+0a]); populated before drawing",
+    "188F:020E": "func_draw_dialog_box returns 0 if buffer allocation failed; skip input loop in that case",
+    "188F:021C": "close dialog: restore screen from saved buffer and free it",
+    "188F:11E8": "PIT reload value from frequency table: base 0x171E + [0x176C]*2; controls music tick rate",
+    "188F:12E8": "[0x02FE] = mode flag; 0 = initial state, skip conditional SB hardware init",
+    "188F:12FF": "INT 21h/25h: install own INT 9 (keyboard) handler at 188F:1381",
+    "188F:1307": "INT 21h/25h: install own INT 8 (timer) handler at 188F:132E for music ticks",
+    "188F:132A": "[0x17AA] = 1: audio system now active",
+    "188F:151D": "PIT mode byte 0x36: channel 0, mode 3 (square wave), 16-bit binary count",
+    "188F:17C0": "INT 21h/35h: get INT 9 (keyboard) vector; save offset to [0x1770], segment to [0x1772]",
+    "188F:17CD": "INT 21h/35h: get INT 8 (timer) vector; save to [0x1774/1776]",
+    "188F:17DA": "get SB hardware IRQ vector; interrupt number is dynamic, stored at [0x38B0]",
+    "188F:4FF9": "start_pos: AH=row, AL=col; sequence below computes SI = (row*80 + col)*2, the byte offset in the video buffer",
+    "188F:5018": "0xB800 = CGA color text segment; mode 7 (MDA mono) would use 0xB000 instead",
+    "188F:5028": "attr_filter: 0 = copy all chars; nonzero enables attribute-filtered path (gap at 502F, never executed)",
+    "188F:5048": "BL=0x09: CGA status mask — bit 0 = display enable / horizontal retrace, bit 3 = vertical sync",
+    "188F:505B": "0xA0 = 160 bytes per text row (80 cols * 2 bytes each); step to next source row",
+    "188F:5118": "0xA0 = 160 extra bytes at start of buffer to hold the optional status bar row",
+    "188F:5255": "AH = inner_row_count; packed into AH:00 then added to top_left pos to get first inner-row address",
+    "188F:52BC": "mask bot_right to row-only (clear AL), then add start_col to form bottom-left corner position",
+    "188F:534B": "scan for NUL to measure title string length; not+dec cx converts repne result to strlen",
+    "188F:5354": "halve the unused column gap to center the title: left_offset = (inner_width - title_len) / 2",
+    "188F:5381": "0x0101: skip one cell in row (AH) and col (AL) inward from each border to get fill area bounds"
+  }
+}

@@ -150,6 +150,44 @@ pub(crate) fn mode_10h_ega_640x350x16() {
     );
 }
 
+/// Tests EGA two-pass sprite rendering transparency in Mode 10h (640x350 16-color).
+///
+/// Pass 1 (shape mask): GC Enable Set/Reset=0x0E zeros planes 1-3 at glyph pixels
+/// while plane 0 receives CPU data.  Pass 2 (color fill): Read Mode 1 with
+/// Color Compare=0x08 / Color Don't Care=0x08 returns a bitmask of pixels where
+/// plane 3=1 (background).  Inverted result restricts the OR fill to sprite pixels.
+///
+/// Step 1 (noise): fresh black screen — plane 3=0 everywhere, so Read Mode 1
+/// returns 0x00 for every byte, inverted mask = 0xFF, entire bounding box filled.
+/// Glyph is a hollow rectangle; in this broken state the interior also fills with
+/// sprite color (solid rectangle instead of outline).
+///
+/// Step 2 (correct): plane 3 pre-filled to 1 across the whole screen before the
+/// two passes run.  Pass 2 now preserves background pixels (plane 3=1) and fills
+/// only glyph-outline pixels (plane 3=0 from pass 1) — hollow outline visible.
+#[test_log::test]
+pub(crate) fn ega_two_pass_sprite_noise() {
+    run_test(
+        "video/ega_two_pass_sprite_noise",
+        make_computer!(video_card_type: VideoCardType::EGA),
+        |computer, video_buffer| {
+            computer.run();
+            assert_screen(
+                "video/ega_two_pass_sprite_noise_step1_noise",
+                video_buffer.clone(),
+            );
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+            assert_screen(
+                "video/ega_two_pass_sprite_noise_step2_correct",
+                video_buffer.clone(),
+            );
+            computer.push_key_press(0x1C /* Enter */);
+            computer.run();
+        },
+    );
+}
+
 #[test_log::test]
 pub(crate) fn mode_11h_vga_640x480x2() {
     run_assert_screen_key_press_run_test(

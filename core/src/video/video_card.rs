@@ -53,6 +53,8 @@ const CGA_VSYNC_HZ: u64 = 60;
 const CGA_VSYNC_DUTY_DIVISOR: u64 = 12;
 /// CGA scanlines per frame (200 visible + 62 blanking).
 const CGA_LINES_PER_FRAME: u64 = 262;
+/// EGA Mode 10h (640x350) scanlines per frame: 21.85 kHz horiz / 60 Hz vert ≈ 364.
+const EGA_MODE10_LINES_PER_FRAME: u64 = 364;
 /// Horizontal retrace active for roughly 1/5 of each scanline (~20%).
 const CGA_HSYNC_DUTY_DIVISOR: u64 = 5;
 
@@ -1103,8 +1105,16 @@ impl Device for VideoCard {
                     let vsync_cycles = cycles_per_frame / CGA_VSYNC_DUTY_DIVISOR;
                     let phase = cycle_count as u64 % cycles_per_frame;
                     let in_vsync = phase < vsync_cycles;
-                    // Bit 0: horizontal retrace (~20% duty cycle at ~15.7 kHz)
-                    let cycles_per_line = cycles_per_frame / CGA_LINES_PER_FRAME;
+                    // Bit 0: horizontal retrace — use EGA line count for EGA Mode 10h
+                    let lines_per_frame = {
+                        let buf = self.buffer.read().unwrap();
+                        if matches!(buf.mode(), Mode::M10Ega640x350x16) {
+                            EGA_MODE10_LINES_PER_FRAME
+                        } else {
+                            CGA_LINES_PER_FRAME
+                        }
+                    };
+                    let cycles_per_line = cycles_per_frame / lines_per_frame;
                     let hsync_cycles = cycles_per_line / CGA_HSYNC_DUTY_DIVISOR;
                     let hphase = cycle_count as u64 % cycles_per_line;
                     let in_hsync = hphase < hsync_cycles;

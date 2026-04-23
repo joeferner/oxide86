@@ -1,0 +1,103 @@
+{
+  "functions": {
+    "1951:36BD": {
+      "label": "clear_offscreen_buffer",
+      "comment": "Clear offscreen sprite staging buffer at ES:0x4A40 (cx=0x8880 bytes), then blit to screen via sprite_render_pass1."
+    },
+    "1951:397E": {
+      "label": "render_frame",
+      "comment": "Main per-frame render entry. Calls clear_offscreen_buffer then iterates sprite list at DS:0x10EB calling sprite_dispatch for each active entry."
+    },
+    "1951:46E3": {
+      "label": "palette_scanline_split",
+      "comment": "Palette split for game area vs status bar. Waits for vsync rising edge, waits for vsync falling edge, writes first palette via palette_load_dac, then spin-waits ~60 hsyncs before writing second palette. The 60-hsync delay positions the palette boundary at the status bar scan line. In EGA Mode 10h this is ~60/364 of a frame; emulator CGA timing (262 lines) shifts this boundary downward."
+    },
+    "1951:4C4D": {
+      "label": "flip_display_buffer",
+      "comment": "Double-buffer flip. Loads render buffer base from [DS:0x1F76], passes it to crtc_set_start_address so the CRTC begins displaying the just-rendered frame, then swaps [0x1F76] and [0x1F78] so the next render targets the opposite buffer."
+    },
+    "1951:4C63": {
+      "label": "crtc_set_start_address",
+      "comment": "Hardware scroll: writes CRTC start address high byte to reg 0x0C and low byte to reg 0x0D via port 0x3D4/0x3D5."
+    },
+    "1951:4E1C": {
+      "label": "clear_vram",
+      "comment": "Clear full VRAM for Mode 10h (EGA 640x350 16-color planar). cx=0x6D60=28000=80 bytes/row*350 rows. Sets di=0 then falls through to vga_reg_setup_and_clear."
+    },
+    "1951:4E25": {
+      "label": "vga_reg_setup_and_clear",
+      "comment": "Configure VGA GC for full-plane clear then rep stosb to 0xA000:DI for CX bytes. Sets Enable Set/Reset=0x0F (all 4 planes receive set/reset value 0), Bit Mask=0xFF."
+    },
+    "1951:5356": {
+      "label": "palette_vsync_wait",
+      "comment": "Spin-wait for vertical sync before DAC palette update to avoid palette tearing."
+    },
+    "1951:542B": {
+      "label": "palette_load_dac",
+      "comment": "Load 16 RGB palette entries from dac_palette (DS:0x5534) into VGA DAC via ports 0x3C8/0x3C9. Each entry is 3 bytes of 6-bit R, G, B."
+    },
+    "1951:7C94": {
+      "label": "sprite_dispatch",
+      "comment": "Per-sprite render dispatcher. Called for each active sprite in the list."
+    },
+    "1951:8838": {
+      "label": "sprite_render_pass1",
+      "comment": "EGA sprite pass 1 (shape mask). Sets Map Mask=0x0F (all planes), Enable Set/Reset=0x0E (force planes 1-3 to 0, plane 0 = CPU data). Latches background via dummy read, writes glyph through GC Bit Mask. After this pass sprite pixels have planes 1-3 zeroed while background retains bright colors (plane 3=1). Stores render buffer base address from DX into [DS:0x1F76]; all sprite writes are offset from this base."
+    },
+    "1951:8852": {
+      "label": "sprite_render_pass1_setup",
+      "comment": "Pass 1 per-sprite setup (127 calls). Adds render buffer base [DS:0x1F76] to BX to get absolute VRAM destination for this sprite, then calls sprite_render_pass1_blit."
+    },
+    "1951:8950": {
+      "label": "sprite_render_pass1_blit",
+      "comment": "Pass 1 blit core. For each glyph byte: set GC Bit Mask to glyph byte, latch background at ES:DI, lodsb/stosb to write through mask."
+    },
+    "1951:8B84": {
+      "label": "sprite_render_pass2",
+      "comment": "EGA sprite pass 2 (color fill). Sets GC Mode=0x08 (Read Mode 1 / Write Mode 0), Data Rotate=0x10 (OR ALU), Color Compare=0x08 (match plane 3=1), Color Don't Care=0x08 (only check plane 3). Read Mode 1 returns pixels where background plane 3=1; inverted mask restricts writes to sprite-shape pixels (plane 3=0). NOISE CAUSE: after a fresh clear all planes are 0, so plane 3=0 everywhere, pass 2 sees the entire screen as sprite area and floods it with sprite color instead of only filling the sprite shape."
+    }
+  },
+  "labels": {
+    "1951:448A": {
+      "label": "main_game_loop",
+      "comment": "Main per-frame loop (36 iterations captured). Each iteration: wait vsync via palette_scanline_split, call render_frame to draw all sprites to back buffer, call flip_display_buffer to swap CRTC start address."
+    },
+    "1951:46AA": {
+      "label": "intro_fade_loop",
+      "comment": "Outer intro/fade-in loop (40 iterations). Exits when mouse button or key is detected (bit 0-2 of [DS:0x0014]). Each iteration calls palette_scanline_split to animate the palette."
+    },
+    "1951:89C3": {
+      "label": "pass1_plane_shift",
+      "comment": "Hot rcr chain (20470 calls): shr [si],1 extracts a pixel bit into CF; chain of rcr [si+N],1 across 8-9 bytes propagates CF through all bytes, converting packed pixel data to EGA bit-serial plane format."
+    },
+    "1951:89D3": {
+      "label": "pass1_plane_shift_b",
+      "comment": "Second rcr chain variant (20470 calls) for alternate byte grouping in sprite plane conversion."
+    },
+    "1951:89E5": {
+      "label": "pass1_inner_loop",
+      "comment": "Pass 1 inner pixel loop (6702 calls). Iterates sprite glyph bytes with GC Bit Mask set per byte."
+    },
+    "1951:8C02": {
+      "label": "pass2_inner_loop",
+      "comment": "Pass 2 hot inner loop (18401 calls). Reads ES:DI in Read Mode 1 (color-compare result: plane 3=1 pixels), inverts to get sprite-shape mask, sets GC Bit Mask, writes sprite color via lodsb/stosb."
+    }
+  },
+  "memLabels": {
+    "22FD:1F76": "render_buffer_base",
+    "22FD:1F78": "display_buffer_base"
+  },
+  "data": {
+    "22FD:5534": {
+      "label": "dac_palette",
+      "type": "bytes",
+      "length": 48,
+      "comment": "VGA DAC palette: 16 entries x 3 bytes (6-bit R, G, B). Written to hardware by palette_load_dac."
+    },
+    "22FD:10EB": {
+      "label": "sprite_list",
+      "type": "bytes",
+      "comment": "Active sprite table. Iterated by render_frame; each entry passed to sprite_dispatch."
+    }
+  }
+}
