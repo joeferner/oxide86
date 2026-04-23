@@ -96,7 +96,6 @@
 - [X] CD-ROM (see ai-analysis/cd-rom-sb.md)
 - [X] Printer
 - [X] SoundBlaster (see ai-analysis/sound-blaster.md, future ai-analysis/cd-rom-sb.md)
-- [ ] Unhandled INT 0x16 AH=0x6F (keyboard BIOS extended function)
 - [ ] Unhandled BIOS interrupt 0x68
 - [ ] Unhandled port 0x03C0 read (VGA Attribute Controller Index)
 - [ ] Add PS/2 mouse support

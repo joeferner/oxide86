@@ -33,6 +33,7 @@ impl Cpu {
             0x02 => self.int16_get_shift_flags(bus),
             0x12 => self.int16_get_extended_shift_flags(bus),
             0x55 => self.int16_word_tsr_check(),
+            0x6F => self.int16_bep_not_installed(),
             0x92 => self.int16_get_keyboard_capabilities(),
             0xA2 => self.int16_122_key_capability_check(),
             _ => {
@@ -128,6 +129,15 @@ impl Cpu {
             ext_flags |= 0x02;
         }
         self.ax = ((ext_flags as u16) << 8) | (flags1 as u16);
+    }
+
+    /// INT 16h, AH=6Fh - IBM Keyboard BIOS Enhancement Program (BEP) Detection
+    /// Programs check whether IBM's BEP TSR is installed by calling this and
+    /// testing if AH is still 0x6F on return (not installed).
+    /// Input: BX = sub-function (ignored; we don't emulate BEP)
+    /// Output: AX unchanged (AH=6Fh signals BEP NOT installed)
+    fn int16_bep_not_installed(&mut self) {
+        // Leave AX unchanged to signal BEP is not installed
     }
 
     /// INT 16h, AH=55h - Microsoft Word TSR Detection
