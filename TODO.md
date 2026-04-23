@@ -96,8 +96,6 @@
 - [X] CD-ROM (see ai-analysis/cd-rom-sb.md)
 - [X] Printer
 - [X] SoundBlaster (see ai-analysis/sound-blaster.md, future ai-analysis/cd-rom-sb.md)
-- [ ] Unhandled ports 0x0100/0x0101 (DMA page registers or POST diagnostic)
-- [ ] Unimplemented FPU instruction: opcode=0xDB reg=4 rm=4 (FLD 80-bit extended float load)
 - [ ] Unhandled INT 0x16 AH=0x6F (keyboard BIOS extended function)
 - [ ] Unhandled BIOS interrupt 0x68
 - [ ] Unhandled port 0x03C0 read (VGA Attribute Controller Index)

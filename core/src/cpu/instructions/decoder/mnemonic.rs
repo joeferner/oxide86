@@ -115,6 +115,7 @@ pub enum Mnemonic {
     // Control
     Fninit,
     Fnclex,
+    Fsetpm,
     Fnstsw,
     Fldcw,
     Fnstcw,
@@ -299,6 +300,7 @@ impl fmt::Display for Mnemonic {
             // FPU
             Mnemonic::Fninit => "fninit",
             Mnemonic::Fnclex => "fnclex",
+            Mnemonic::Fsetpm => "fsetpm",
             Mnemonic::Fnstsw => "fnstsw",
             Mnemonic::Fldcw => "fldcw",
             Mnemonic::Fnstcw => "fnstcw",

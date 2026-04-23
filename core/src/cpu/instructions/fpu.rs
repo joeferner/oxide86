@@ -528,6 +528,14 @@ impl Cpu {
                         self.set_flag(cpu_flag::SIGN, false);
                         self.set_flag(cpu_flag::AUXILIARY, false);
                     }
+                    // FSETPM (DB E4: reg=4, rm=4)
+                    // 287/387+: set protected mode — no-op (FPU manages PM automatically)
+                    // 8087: invalid opcode — set IE in status word
+                    (0xDB, 4, 4) => {
+                        if !self.cpu_type.is_286_or_later() {
+                            self.fpu_status_word |= 0x0001; // IE = invalid operation
+                        }
+                    }
                     // (DB /6 mod=11): reserved encoding, treat as NOP
                     (0xDB, 6, _) => {}
                     _ => log::warn!(

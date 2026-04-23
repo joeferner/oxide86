@@ -32,6 +32,7 @@ fn fpu_reg_decode(opcode: u8, reg: u8, rm: u8, cpu: &dyn Computer) -> (Mnemonic,
     match (opcode, reg, rm) {
         (0xDB, 4, 3) => (Fninit, vec![]),
         (0xDB, 4, 2) => (Fnclex, vec![]),
+        (0xDB, 4, 4) => (Fsetpm, vec![]),
         (0xDF, 4, 0) => (Fnstsw, vec![Operand::Reg16(Reg16::AX, cpu.ax())]),
         (0xD9, 0, i) => (Fld, vec![st(cpu, i)]),
         (0xD9, 1, i) => (Fxch, vec![st(cpu, i)]),
