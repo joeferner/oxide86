@@ -101,6 +101,12 @@ impl KeyboardController {
 
     /// Queue raw PS/2 mouse packet bytes into the auxiliary output buffer.
     /// No-op when the auxiliary port is disabled.
+    ///
+    /// When an unconsumed 3-byte packet is already sitting at the front of the
+    /// buffer, the new packet's motion deltas are folded into it (i8-clamped
+    /// accumulation) and the button state is updated in-place.  This keeps the
+    /// buffer at most one packet deep, preventing stale packets from building up
+    /// between interrupt firings while preserving every sub-frame motion delta.
     pub(crate) fn push_mouse_bytes(&mut self, bytes: &[u8]) {
         if !self.aux_enabled {
             return;
@@ -110,6 +116,19 @@ impl KeyboardController {
         if pos > 0 {
             self.aux_buf.drain(..pos);
             self.aux_read_pos = 0;
+        }
+        // If there is already exactly one unconsumed 3-byte packet, accumulate
+        // the new motion into it rather than queuing a second packet.
+        if self.aux_buf.len() == 3 && bytes.len() == 3 {
+            let dx = (self.aux_buf[1] as i8 as i32 + bytes[1] as i8 as i32).clamp(-128, 127) as i8;
+            let dy = (self.aux_buf[2] as i8 as i32 + bytes[2] as i8 as i32).clamp(-128, 127) as i8;
+            let sign_x: u8 = if dx < 0 { 0x10 } else { 0 };
+            let sign_y: u8 = if dy < 0 { 0x20 } else { 0 };
+            self.aux_buf[0] = 0x08 | (bytes[0] & 0x07) | sign_x | sign_y;
+            self.aux_buf[1] = dx as u8;
+            self.aux_buf[2] = dy as u8;
+            // pending_mouse is already true; IRQ12 will fire on the next PIC poll.
+            return;
         }
         self.aux_buf.extend_from_slice(bytes);
         self.pending_mouse = true;
