@@ -10,3 +10,14 @@ pub(crate) fn check_timer_tick() {
         },
     );
 }
+
+#[test_log::test]
+pub(crate) fn check_reprogram_rate() {
+    run_test(
+        "devices/pit/reprogram_rate",
+        create_computer(),
+        |computer, _video_buffer| {
+            computer.run();
+        },
+    );
+}

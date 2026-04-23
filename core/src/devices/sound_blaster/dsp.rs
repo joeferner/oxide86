@@ -26,7 +26,9 @@ pub(super) struct SoundBlasterDsp {
     pub(super) dma_16bit: bool,
     auto_init: bool,
     /// Pending DREQ assertion/deassert to be drained by the Bus after IO write.
-    dreq_pending: Option<bool>,
+    pub(super) dreq_pending: Option<bool>,
+    /// Byte to deliver via DMA for the 0xE2 identification command (param ^ 0x78).
+    pub(super) e2_pending: Option<u8>,
     /// Byte from Direct DAC command (0x10) to be pushed to pcm_out by mod.rs.
     direct_dac_byte: Option<u8>,
     /// CT1748A ASP register file, written via 0x0E and read via 0x0F.
@@ -55,6 +57,7 @@ impl SoundBlasterDsp {
             dma_16bit: false,
             auto_init: false,
             dreq_pending: None,
+            e2_pending: None,
             direct_dac_byte: None,
             asp_regs: [0u8; 256],
         }
@@ -75,6 +78,7 @@ impl SoundBlasterDsp {
         self.irq_status_8 = false;
         self.irq_status_16 = false;
         self.dreq_pending = Some(false);
+        self.e2_pending = None;
     }
 
     pub(super) fn hardware_reset(&mut self) {
@@ -96,6 +100,7 @@ impl SoundBlasterDsp {
         self.dma_16bit = false;
         self.auto_init = false;
         self.dreq_pending = None;
+        self.e2_pending = None;
         self.direct_dac_byte = None;
         self.asp_regs = [0u8; 256];
     }
@@ -283,10 +288,11 @@ impl SoundBlasterDsp {
                 self.out_buf.push_back(!param);
             }
             0xE2 => {
-                // DMA identification: driver verifies DMA+IRQ are functional.
-                // Fire IRQ8 immediately to simulate the 1-byte DMA completion.
-                self.irq_pending_8 = true;
-                self.irq_status_8 = true;
+                // DMA identification: card performs a 1-byte DMA WRITE (device→mem).
+                // Queue the result byte; DREQ asserted so DMA controller calls dma_read_u8().
+                let param = self.cmd_params.first().copied().unwrap_or(0);
+                self.e2_pending = Some(param ^ 0x78);
+                self.dreq_pending = Some(true);
             }
             0xE1 => {
                 let (major, minor) = match self.model {

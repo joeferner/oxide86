@@ -127,6 +127,19 @@ pub(crate) fn dsp_pcm_samples_in_ring_buffer() {
     );
 }
 
+/// DSP 0xE2 DMA identification: 1-byte DMA WRITE delivers param^0x78; for 0xA5 expects 0xDD.
+#[test_log::test]
+pub(crate) fn dsp_dma_detect() {
+    run_test(
+        "devices/sound_blaster/dsp_dma_detect",
+        create_sb_computer(),
+        |computer, _video_buffer| {
+            computer.add_sound_blaster(SoundBlaster::new(SoundBlasterModel::Sb2, 8_000_000));
+            computer.run();
+        },
+    );
+}
+
 /// MPU-401 reset returns 0xFE ACK; entering UART mode also returns 0xFE.
 #[test_log::test]
 pub(crate) fn mpu_reset_and_uart_mode() {

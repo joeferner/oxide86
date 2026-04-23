@@ -4,6 +4,10 @@
       "label": "func_run_dialog",
       "comment": "Sets up and shows the dialog at struct 0x03B0, then handles input.\nPopulates status bar text (0x43DC) and title string (0x40F6) before drawing.\nCalled in response to a key press (F2). Closes and restores screen on exit."
     },
+    "188F:0E95": {
+      "label": "func_note_sequencer",
+      "comment": "Music note sequencer called each timer tick from func_int8_music_tick.\nDecrements tick counter [0x125D]; returns early if not yet expired.\nOn expiry: advances voice state, reloads counter with 0x17 (23 ticks), then updates\nthe on-screen note display by writing char/attr words to the CGA video buffer (ES=0xB800)\nwith retrace sync (port [0x02FC]=0x03DA). Calls func_0AF0 on note transitions.\nDispatches to the next note-processing step via call si ([0x1266]).\nDoes NOT write to the OPL chip directly — FM output is handled by func_fm_voice_update."
+    },
     "188F:11E0": {
       "label": "func_set_pit_rate",
       "comment": "Programs the PIT timer with a rate from the frequency table at 0x171E.\nIndex is [0x176C]; reload value stored in [0x17A0] then written to PIT via func_program_pit."
@@ -20,13 +24,33 @@
       "label": "func_program_pit",
       "comment": "Programs PIT channel 0 with the reload value in AX.\nWrites mode byte 0x36 (ch0, mode 3, 16-bit binary) to port 0x43, then AX low/high to port 0x40."
     },
+    "188F:1960": {
+      "label": "func_fm_voice_update",
+      "comment": "Iterates all 5 FM voice structs at 0x1586 (stride 0x1D = 29 bytes each, end = 0x1617).\nFor each active voice (byte [bx+0x1A] != 0), decrements the per-voice timer at [bx+0x10].\nWhen the timer expires (goes negative), calls the OPL write callback via call [bx]\n(function pointer stored at voice struct offset 0). This is where FM register writes\nactually reach the sound card."
+    },
     "188F:17C0": {
       "label": "func_save_int_vectors",
       "comment": "Saves current INT 8 (timer), INT 9 (keyboard), and SB hardware IRQ vectors.\nINT number for SB IRQ is read from [0x38B0]. Saved to [0x1770..177A] for later restore."
     },
+    "188F:57F0": {
+      "label": "func_dsp_write",
+      "comment": "Write one byte to the DSP command/data port (base+0xC = 0x22C).\nPolls the write-buffer status by reading port 0x22C: loops while bit 7 is set (busy).\nWrites AL to port 0x22C once the buffer is free.\n[0x38A6] = SB base port (0x0220)."
+    },
+    "188F:5806": {
+      "label": "func_dsp_reset",
+      "comment": "Resets the SB DSP: writes 0x01 then 0x00 to port 0x226 (base+6) with a 256-iteration delay.\nPolls port 0x22E (status) for bit 7 set, then reads 0x22A expecting 0xAA (ready byte).\nReturns AX=0 on success."
+    },
+    "188F:7F5A": {
+      "label": "func_sb_dma_detect",
+      "comment": "SB DMA identification probe. Arg: [bp+8] = parameter byte (0xA5 in caller).\nInstalls a temporary IRQ5 handler at 188F:7FBF, programs DMA channel 1 for a\n1-byte WRITE (device→memory) transfer to the stack slot [bp+8], then sends\nDSP command 0xE2 + param to trigger the SB's DMA identification transfer.\nSpins up to 0x600 iterations waiting for DMA to write a non-zero result byte.\nReturns AX = DMA result byte, or 0 on timeout.\nCaller (func_sb_setup) checks for 0xDD: 0xDD = param (0xA5) XOR 0x78,\nconfirming the SB responded correctly. If result ≠ 0xDD, func_dialog_event_loop\nis patched to a single ret."
+    },
+    "188F:069A": {
+      "label": "func_sb_setup",
+      "comment": "Sound Blaster setup and card-selection wizard.\nStores a far pointer to func_dialog_event_loop at [bp-8] for conditional patching.\nCalls func_188F_3C00 (SB hardware detection) and func_188F_5680; if either returns 0\n(no card found) various init steps are skipped.\nShows the SB card-selection dialog via func_188F_7F5A (arg=0x00A5); if the result is\nnot 0xDD (user cancelled or no card configured), writes 0xC3 (ret) directly into the\nfirst byte of func_dialog_event_loop, permanently disabling it for this session."
+    },
     "188F:2BBA": {
       "label": "func_dialog_event_loop",
-      "comment": "Stub — single ret. Would be the dialog interaction loop between func_start_audio and func_close_dialog_box."
+      "comment": "Full SB-backed dialog event loop — but self-patched to a single ret when SB is absent.\nfunc_sb_setup (188F:069A) stores this address as a far pointer at [bp-8] and, if the\nSB card-selection dialog does not return 0xDD (success), executes:\n  les bx, [bp-8]          ; ES:BX = 188F:2BBA\n  mov byte es:[bx], 0xC3  ; overwrite entry point with ret\nThis happens once at startup; all subsequent calls to func_dialog_event_loop return\nimmediately without entering the keyboard/event loop."
     },
     "188F:4FEF": {
       "label": "func_save_screen_region",
@@ -45,12 +69,62 @@
       "comment": "Restores the screen saved by func_draw_dialog_box and frees the buffer.\nIf struct[+1a] is non-null, also restores the status bar row.\nPair of func_draw_dialog_box."
     }
   },
+  "retf_targets": {
+    "188F:132E": {
+      "label": "func_int8_music_tick",
+      "comment": "INT 8 (timer) handler installed by func_start_audio. Fires at the custom PIT tick rate.\nAccumulates PIT reload value [0x17A0] into [0x179E]; on carry (overflow), chains to the\noriginal BIOS INT 8 vector at [0x1774] via pushf+call (software-interrupt simulation)\nto keep the 18.2 Hz system clock ticking. Without carry, sends EOI directly to PIC1.\nRe-entrant guard [0x17A6] prevents nested invocations.\nOn each tick: increments position counter [0x17A2], then calls func_0E95 (note engine)\nand func_1960 (FM register update)."
+    },
+    "188F:1381": {
+      "label": "func_int9_keyboard",
+      "comment": "INT 9 (keyboard) handler installed by func_start_audio.\nReads scan code from port 0x60, saves to [0x17A7], acknowledges hardware via port 0x61\n(pulse bit 7), dispatches to the handler at [0x17B7] (= func_kbd_dispatcher), then sends EOI.\nDoes NOT chain to the original INT 9 handler — all keyboard input is captured until\nfunc_stop_audio restores the original vector. This is the root cause of the apparent\nlockup after the dialog closes with the stub event loop."
+    },
+    "188F:1495": {
+      "label": "func_kbd_dispatcher",
+      "comment": "Keyboard scan code dispatcher called indirectly from func_int9_keyboard via [0x17B7].\nWrites the current scan code ([0x17A7]) into the scan code buffer at far ptr [0x17A2:17A4],\nadvancing the position if the current slot is already occupied.\nThen calls func_10D2 to check whether the key matches a recognized dialog action;\nif so (ZF set), dispatches to the handler in BX."
+    }
+  },
   "labels": {
     "188F:021F": {
       "label": "dialog_done"
     },
+    "188F:0EAB": {
+      "label": "note_seq_wait"
+    },
+    "188F:0F66": {
+      "label": "cga_retrace_wait_note"
+    },
+    "188F:0F93": {
+      "label": "note_seq_ret"
+    },
     "188F:12F2": {
       "label": "install_int_vectors"
+    },
+    "188F:134E": {
+      "label": "int8_send_eoi"
+    },
+    "188F:1352": {
+      "label": "int8_check_reentrant"
+    },
+    "188F:136B": {
+      "label": "int8_do_tick"
+    },
+    "188F:1377": {
+      "label": "int8_epilogue"
+    },
+    "188F:14AB": {
+      "label": "kbd_write_scan_code"
+    },
+    "188F:14B1": {
+      "label": "kbd_check_recognized"
+    },
+    "188F:14BF": {
+      "label": "kbd_dispatch_done"
+    },
+    "188F:1963": {
+      "label": "fm_voice_loop"
+    },
+    "188F:1974": {
+      "label": "fm_voice_next"
     },
     "188F:5026": {
       "label": "set_video_segment"
@@ -94,12 +168,38 @@
     "188F:01FA": "0x40F6 = dialog title string buffer (struct[+0a]); populated before drawing",
     "188F:020E": "func_draw_dialog_box returns 0 if buffer allocation failed; skip input loop in that case",
     "188F:021C": "close dialog: restore screen from saved buffer and free it",
+    "188F:0E97": "[0x125D] = tick countdown; fires note event when it goes negative (every ~23 ticks)",
+    "188F:0EB2": "reload tick counter with 0x17 (23 ticks) for the next note interval",
+    "188F:0F46": "ES = [0x02FA] = 0xB800: writing note display to CGA screen buffer, NOT OPL output",
+    "188F:0F5B": "DX = [0x02FC] = 0x03DA: CGA status port for retrace-sync writes",
+    "188F:0F66": "CGA retrace wait (1508 executions per note event); HOT because each note update syncs to display",
+    "188F:0F91": "indirect dispatch via [0x1266] = 0x0F94: configurable pointer to next note-processing step",
     "188F:11E8": "PIT reload value from frequency table: base 0x171E + [0x176C]*2; controls music tick rate",
     "188F:12E8": "[0x02FE] = mode flag; 0 = initial state, skip conditional SB hardware init",
     "188F:12FF": "INT 21h/25h: install own INT 9 (keyboard) handler at 188F:1381",
     "188F:1307": "INT 21h/25h: install own INT 8 (timer) handler at 188F:132E for music ticks",
     "188F:132A": "[0x17AA] = 1: audio system now active",
+    "188F:1341": "accumulate PIT reload value [0x17A0] into [0x179E]; carry on overflow means BIOS chain is due",
+    "188F:1345": "CF=0 (no overflow): skip BIOS chain, send EOI directly at int8_send_eoi",
+    "188F:1347": "carry set: chain to original BIOS INT 8 via pushf+call far (software-interrupt simulation)",
+    "188F:134E": "no BIOS chain this tick: send EOI to PIC1 directly",
+    "188F:1352": "[0x17A6] = re-entrant guard; 1 = music tick already in progress, skip to epilogue",
+    "188F:1359": "[0x17A6] = 1: mark music tick in progress; cleared at end to allow next tick",
+    "188F:1360": "[0x17A2] = song position counter; 0xFFFF = no active song (skip increment, still tick FM)",
+    "188F:1390": "read keyboard scan code from port 0x60; save to [0x17A7] for func_kbd_dispatcher",
+    "188F:1395": "pulse bit 7 of port 0x61 high then low to acknowledge keyboard to the 8255/8042 controller",
+    "188F:13A1": "[0x17B7] = active keyboard handler (set to func_kbd_dispatcher by func_start_audio)",
+    "188F:149C": "ES:DI = far pointer into scan code buffer: DI=[0x17A2] offset, ES=[0x17A4] segment",
+    "188F:14A0": "if current buffer slot is non-zero (occupied), advance position before writing",
+    "188F:14AE": "write scan code into buffer slot ES:[DI]",
+    "188F:14B6": "func_10D2: check if scan code matches a recognized dialog key; sets ZF and BX if matched",
+    "188F:14BC": "recognized dialog key: call action handler in BX",
     "188F:151D": "PIT mode byte 0x36: channel 0, mode 3 (square wave), 16-bit binary count",
+    "188F:1967": "[bx+0x1A] = voice active flag; 0 = inactive, skip this voice",
+    "188F:196D": "[bx+0x10] = per-voice timer countdown; fires callback when it goes negative",
+    "188F:1972": "call [bx] = OPL write callback at voice struct offset 0 — actual FM register output to sound card",
+    "188F:1978": "stride 0x1D (29 bytes) between voice structs",
+    "188F:197B": "0x1617 = one past the 5th voice struct (0x1586 + 5 * 0x1D)",
     "188F:17C0": "INT 21h/35h: get INT 9 (keyboard) vector; save offset to [0x1770], segment to [0x1772]",
     "188F:17CD": "INT 21h/35h: get INT 8 (timer) vector; save to [0x1774/1776]",
     "188F:17DA": "get SB hardware IRQ vector; interrupt number is dynamic, stored at [0x38B0]",
@@ -113,6 +213,26 @@
     "188F:52BC": "mask bot_right to row-only (clear AL), then add start_col to form bottom-left corner position",
     "188F:534B": "scan for NUL to measure title string length; not+dec cx converts repne result to strlen",
     "188F:5354": "halve the unused column gap to center the title: left_offset = (inner_width - title_len) / 2",
-    "188F:5381": "0x0101: skip one cell in row (AH) and col (AL) inward from each border to get fill area bounds"
+    "188F:5381": "0x0101: skip one cell in row (AH) and col (AL) inward from each border to get fill area bounds",
+    "188F:06A8": "save func_dialog_event_loop offset (0x2BBA) to [bp-8]; will be used as patch target if SB not configured",
+    "188F:06AD": "save segment (0x188F) to [bp-6]; together with [bp-8] forms far ptr 188F:2BBA for LES patching",
+    "188F:07DA": "SB card-selection dialog result: 0xDD = success/configured; anything else means no SB",
+    "188F:07DD": "if result != 0xDD (no SB configured), jump to self-modify code that disables func_dialog_event_loop",
+    "188F:07E2": "les bx,[bp-8]: reload far ptr 188F:2BBA (func_dialog_event_loop) into ES:BX",
+    "188F:07E5": "self-modify: ES: override + mov byte [bx],0xC3 — writes ret into func_dialog_event_loop entry point",
+    "188F:7F64": "func_188F_59D5 saves current IRQ5 vector so it can be restored after the probe",
+    "188F:7F76": "func_188F_59C0: install 188F:7FBF as IRQ5 (INT 0x0D) handler for the duration of the DMA probe",
+    "188F:7F80": "func_188F_5788: program DMA channel 1 destination to the physical address of [bp+8] (the result slot)",
+    "188F:7F87": "func_188F_5A3A: configure DMA channel 1 — CX=0 (1 byte), DH=0x45 (single-cycle WRITE device→mem, ch1)",
+    "188F:7F8D": "write DSP command 0xE2 (DMA identification): triggers a 1-byte DMA transfer to the programmed destination",
+    "188F:7F94": "xchg: AL gets the probe parameter (0xA5); [bp+8] cleared to 0 — DMA will overwrite it with result",
+    "188F:7F97": "write DSP parameter 0xA5 to complete the 0xE2 command; expected DMA response = 0xA5 XOR 0x78 = 0xDD",
+    "188F:7F9D": "spin loop 0x600 (1536) iterations: exits early if DMA wrote a non-zero result to [bp+8]",
+    "188F:7FA5": "loop timed out or DMA completed — clean up DMA and restore IRQ5 vector",
+    "188F:57F1": "[0x38A6] = SB base port (0x0220); add 0x0C gives 0x022C (DSP write port)",
+    "188F:57FA": "poll write-buffer-ready: read 0x22C; bit 7 set means busy — spin until clear before writing"
+  },
+  "gaps": {
+    "188F:13B3": "SB hardware IRQ handler; passed as DX=0x13B3 to func_17F0 by func_start_audio for installation"
   }
 }

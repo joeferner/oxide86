@@ -127,6 +127,13 @@ impl Device for SoundBlaster {
     }
 
     fn dma_read_u8(&mut self) -> Option<u8> {
+        if let Some(byte) = self.dsp.e2_pending.take() {
+            // 0xE2 identification: deliver the result byte, fire IRQ8, deassert DREQ.
+            self.dsp.irq_pending_8 = true;
+            self.dsp.irq_status_8 = true;
+            self.dsp.dreq_pending = Some(false);
+            return Some(byte);
+        }
         // ADC (device→memory) transfer: tick DSP byte counter with silence so IRQ fires on block complete.
         self.dsp.dma_receive_byte(0x80);
         Some(0x80)
