@@ -1074,6 +1074,8 @@ impl Device for VideoCard {
                     0x02 => self.sequencer_map_mask,
                     _ => 0,
                 }),
+                // AC index read (EGA/VGA only): returns current index; does not affect flip-flop
+                AC_ADDR_DATA_PORT if is_ega_vga => Some(self.ac_address),
                 // AC data read (EGA/VGA only)
                 0x3C1 if is_ega_vga => Some(self.ac_registers[(self.ac_address & 0x0F) as usize]),
                 // Graphics Controller address/data read (EGA/VGA only)
