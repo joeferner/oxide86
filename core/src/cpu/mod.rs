@@ -1389,6 +1389,9 @@ impl Cpu {
             // Nothing to do; step() will call patch_flags_and_iret to IRET
             // back to wherever INT 70h originally interrupted.
             0xF3 => {}
+            // INT 68h - IBM PC LAN Program / NetBIOS presence check.
+            // Without network software installed, IRET with no side-effects is correct.
+            0x68 => {}
             // Unhandled PIC1 hardware IRQ vectors (0x0A–0x0F).
             // A real BIOS sends EOI before returning from any hardware IRQ handler so the PIC
             // can clear its in_service bit and deliver future IRQs on the same line.
