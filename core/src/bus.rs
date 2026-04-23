@@ -18,6 +18,7 @@ use crate::{
         floppy_disk_controller::FloppyDiskController,
         game_port::GamePortDevice,
         hard_disk_controller::HardDiskController,
+        mca_stub::McaStub,
         keyboard_controller::KeyboardController,
         parallel_port::ParallelPort,
         pc_speaker::PcSpeaker,
@@ -130,6 +131,7 @@ impl Bus {
             dma.clone(),
             parallel_port.clone(),
         ];
+        devices.push(Rc::new(RefCell::new(McaStub::new())));
         if let Some(ref rtc) = rtc {
             devices.push(rtc.clone());
         }

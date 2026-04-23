@@ -96,6 +96,15 @@
 - [X] CD-ROM (see ai-analysis/cd-rom-sb.md)
 - [X] Printer
 - [X] SoundBlaster (see ai-analysis/sound-blaster.md, future ai-analysis/cd-rom-sb.md)
+- [ ] Unhandled ports 0x0100/0x0101 (DMA page registers or POST diagnostic)
+- [ ] Unimplemented FPU instruction: opcode=0xDB reg=4 rm=4 (FLD 80-bit extended float load)
+- [ ] Unhandled INT 0x16 AH=0x6F (keyboard BIOS extended function)
+- [ ] Unhandled BIOS interrupt 0x68
+- [ ] Unhandled port 0x03C0 read (VGA Attribute Controller Index)
+- [ ] Add PS/2 mouse support
+  - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
+  - [ ] Unhandled INT 0x15 AH=0xC4 (PS/2 device detection)
+  - [ ] Unhandled ports 0x0094/0x0096 (PS/2 system control port A/B)
 - [ ] Modem (see ai-analysis/modem.md)
 - [ ] dosmid with xms - implement 286 LOADALL. On a real 286, HIMEM.SYS uses 0F 05 to access extended memory, so a correct 286 emulator needs to handle it. Options 1 and 3 are workarounds that paper over the missing instruction rather than actually emulating the hardware.
 - [ ] WASM Joystick
@@ -103,8 +112,6 @@
 - [ ] WASM/CLI/GUI multiple hard drives
 - [ ] Fix SvarDos thick cursor
 - [ ] Add mounted drive support
-- [ ] Add PS/2 mouse support
-  - [ ] Running `./scripts/compile-examples.sh && RUST_LOG=info cargo run -p oxide86-native-cli -- ./examples/mouse_ps2.com --ps2-mouse` currently locks up
 - [ ] Change "pub const" to "pub(crate) const" to cleanup possibly dead code
 - [ ] Add unit tests for current batch of instructions and interrupts
 - [ ] Check code coverage of instructions

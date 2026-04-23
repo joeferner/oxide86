@@ -14,6 +14,7 @@ pub mod floppy_disk_controller;
 pub mod game_port;
 pub mod hard_disk_controller;
 pub mod keyboard_controller;
+pub mod mca_stub;
 pub(crate) mod nuked_opl3;
 pub mod parallel_port;
 pub mod parallel_port_loopback;

@@ -30,6 +30,7 @@ impl Cpu {
             0xC0 => self.int15_get_system_config(),
             0xC1 => self.int15_get_ebda_segment(),
             0xC2 => self.int15_ps2_mouse_services(bus),
+            0xC4 => self.int15_mca_not_present(),
             _ => {
                 log::warn!("Unhandled INT 0x15 function: AH=0x{:02X}", function);
                 // Set carry flag to indicate function not supported
@@ -100,6 +101,15 @@ impl Cpu {
     /// post-interrupt processing. Not supported on standard AT-class hardware.
     fn int15_device_interrupt_complete(&mut self) {
         // Not supported on this system; caller should check CF and continue regardless
+        self.set_flag(cpu_flag::CARRY, true);
+    }
+
+    /// INT 15h AH=C4h - Programmable Option Select (MCA)
+    ///
+    /// MCA-only function; not present on ISA systems.
+    /// Output: CF=1, AH=86h (function not supported)
+    fn int15_mca_not_present(&mut self) {
+        self.ax = (self.ax & 0x00FF) | 0x8600;
         self.set_flag(cpu_flag::CARRY, true);
     }
 
