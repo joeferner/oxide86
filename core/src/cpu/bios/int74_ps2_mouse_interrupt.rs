@@ -44,6 +44,12 @@ impl Cpu {
         }
         let _ = mask; // stored in BDA but not used for per-event filtering
 
+        // Save registers before overwriting them for the callback.
+        // A real BIOS uses PUSHA/POPA around the FAR CALL; we emulate that here so
+        // that code interrupted between (e.g.) "mov ah, 0x01" and "int 0x16" sees
+        // the original AH on return rather than the 0 the callback setup would leave.
+        self.saved_for_int74 = Some((self.ax, self.bx, self.cx, self.dx));
+
         // Set up registers for the handler:
         //   AL = PS/2 status byte (buttons, sign bits, overflow)
         //   BL = X movement (signed byte)

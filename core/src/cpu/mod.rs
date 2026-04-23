@@ -128,6 +128,11 @@ pub(crate) struct Cpu {
     /// try drives in boot order rather than only the configured boot drive.
     bootstrap_request: bool,
 
+    /// Registers saved before INT 0x74 calls the application's PS/2 mouse callback.
+    /// Restored in the 0xF4 trampoline so the interrupted code sees the original
+    /// register values on return (mirrors real BIOS PUSHA/POPA around the FAR CALL).
+    saved_for_int74: Option<(u16, u16, u16, u16)>,
+
     /// Pending INT 0x21 AH=3Fh: buffer location to dump on return from DOS.
     pending_dos_read: Option<PendingDosRead>,
 
@@ -324,6 +329,7 @@ impl Cpu {
             wait_for_key_press_patch_flags: false,
             exec_logging_enabled: false,
             bootstrap_request: false,
+            saved_for_int74: None,
             pending_dos_read: None,
             pending_dos_open: None,
             pending_dos_seek: None,
@@ -1221,6 +1227,7 @@ impl Cpu {
         self.pending_exception = None;
         self.wait_for_key_press = false;
         self.wait_for_key_press_patch_flags = false;
+        self.saved_for_int74 = None;
         self.fpu_control_word = FPU_DEFAULT_CONTROL_WORD;
         self.fpu_status_word = 0;
         self.fpu_stack = [f80::F80::ZERO; 8];
@@ -1382,9 +1389,18 @@ impl Cpu {
             // back to wherever the original BIOS call interrupted.
             0xF6 => {}
             // PS/2 mouse callback RETF trampoline — the application's handler
-            // returned here.  Nothing to do; step() will call patch_flags_and_iret
-            // to IRET back to wherever INT 74h originally interrupted.
-            0xF4 => {}
+            // returned here.  Restore registers saved before the FAR CALL so that
+            // the interrupted code sees the original values on return; then
+            // step() will call patch_flags_and_iret to IRET back to the
+            // interrupted instruction.
+            0xF4 => {
+                if let Some((ax, bx, cx, dx)) = self.saved_for_int74.take() {
+                    self.ax = ax;
+                    self.bx = bx;
+                    self.cx = cx;
+                    self.dx = dx;
+                }
+            }
             // INT 4Ah IRET trampoline — the chained INT 4Ah user alarm handler returned here.
             // Nothing to do; step() will call patch_flags_and_iret to IRET
             // back to wherever INT 70h originally interrupted.
