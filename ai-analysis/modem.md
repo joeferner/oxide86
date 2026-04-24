@@ -178,11 +178,11 @@ The phonebook is loaded at startup and passed into `SerialModem::new()`.
 
 ---
 
-## Phase 3 — TCP Connection Bridge
+## ✅ Phase 3 — TCP Connection Bridge
 
 **Goal:** Wire `ATDT` to a real TCP connection. Bytes in data mode flow between the UART and the socket.
 
-### 3.1 Tests
+### ✅ 3.1 Tests
 
 **`core/src/test_data/devices/modem/tcp_echo.asm`**
 - Sends `ATDT0\r` (phonebook entry `0` → `127.0.0.1:<TEST_PORT>`)
@@ -193,7 +193,7 @@ The phonebook is loaded at startup and passed into `SerialModem::new()`.
 
 The Rust test in `core/src/tests/devices/modem.rs` spins up a `TcpListener` on a random port before running the assembly. The test server echoes every byte back.
 
-### 3.2 Connection state machine
+### ✅ 3.2 Connection state machine
 
 ```
 IDLE ──ATDT──► DIALING ──TCP connect ok──► CONNECTED
@@ -204,7 +204,7 @@ CONNECTED ──+++──► COMMAND_MODE (DCD stays high)
 COMMAND_MODE ──ATH──► IDLE (TCP close, DCD low)
 ```
 
-### 3.3 Threading model
+### ✅ 3.3 Threading model
 
 When `ATDT` resolves to a `SocketAddr`:
 
@@ -232,7 +232,7 @@ self.state = ModemState::Dialing;
 
 The reader sub-thread owns a `TcpStream::try_clone()` and pushes received bytes into `host_tx`. The main bridge thread owns the write half. On TCP close, the reader sends a sentinel value and the bridge thread queues `NO CARRIER` + drops DCD.
 
-### 3.4 Modem status lines
+### ✅ 3.4 Modem status lines
 
 | Line | Condition |
 |------|-----------|
@@ -241,7 +241,7 @@ The reader sub-thread owns a `TcpStream::try_clone()` and pushes received bytes 
 | CTS (bit 4) | High when not dialing (ready to accept TX bytes) |
 | RI  (bit 6) | Pulse when incoming connection arrives (future server mode) |
 
-### 3.5 Escape sequence (+++)
+### ✅ 3.5 Escape sequence (+++)
 
 Guard-time escape: when the guest writes `+` three consecutive times with no other characters, and then pauses for the guard time (configurable via `ATS12`, default ~1 second of emulated time / ~50ms wall-clock), switch from data mode to command mode without dropping the TCP connection. DCD stays high.
 

@@ -1,0 +1,100 @@
+; Modem MSR (Modem Status Register) test:
+;   MSR bits: CTS=bit4(0x10), DSR=bit5(0x20), DCD=bit7(0x80)
+;   CommandMode: CTS=1, DSR=1, DCD=0  → AL & 0xF0 == 0x30
+;   Connected:   CTS=1, DSR=1, DCD=1  → AL & 0xF0 == 0xB0
+;
+;   1. Initialize COM1 at 1200 baud
+;   2. Read MSR (INT 14h AH=03) → expect AL & 0xF0 == 0x30
+;   3. Send "ATDT0\r", drain echo, read "CONNECT\r\n"
+;   4. Read MSR → expect AL & 0xF0 == 0xB0
+;   5. Exit 0 on pass, 1 on fail
+
+[CPU 8086]
+org 0x0100
+
+start:
+    ; Initialize COM1: 1200 baud, no parity, 1 stop bit, 8 data bits
+    mov ah, 0x00
+    mov al, 0x43
+    mov dx, 0x00
+    int 0x14
+
+    ; Read MSR in command mode
+    mov ah, 0x03
+    mov dx, 0x00
+    int 0x14
+    and al, 0xF0
+    cmp al, 0x30            ; CTS=1 DSR=1 DCD=0
+    jne fail
+
+    ; Send "ATDT0\r"
+    mov si, dial_cmd
+    mov cx, dial_len
+.send_dial:
+    mov ah, 0x01
+    mov al, [si]
+    mov dx, 0x00
+    int 0x14
+    test ah, 0x80
+    jnz fail
+    inc si
+    loop .send_dial
+
+    ; Drain echo line (ATDT0\r\n)
+    call skip_line
+    test ax, ax
+    jnz fail
+
+    ; Read and verify "CONNECT\r\n"
+    mov si, connect_str
+    mov cx, connect_len
+.read_connect:
+    mov ah, 0x02
+    mov dx, 0x00
+    int 0x14
+    test ah, 0x80
+    jnz fail
+    cmp al, [si]
+    jne fail
+    inc si
+    loop .read_connect
+
+    ; Read MSR in connected state
+    mov ah, 0x03
+    mov dx, 0x00
+    int 0x14
+    and al, 0xF0
+    cmp al, 0xB0            ; CTS=1 DSR=1 DCD=1
+    jne fail
+
+    ; Success
+    mov ah, 0x4C
+    mov al, 0x00
+    int 0x21
+
+fail:
+    mov ah, 0x4C
+    mov al, 0x01
+    int 0x21
+
+; skip_line: reads and discards bytes until LF (0x0A).
+; Returns AX=0 on success, AX=1 on timeout.
+skip_line:
+    mov ah, 0x02
+    mov dx, 0x00
+    int 0x14
+    test ah, 0x80
+    jnz .timeout
+    cmp al, 0x0A
+    jne skip_line
+    xor ax, ax
+    ret
+.timeout:
+    mov ax, 1
+    ret
+
+dial_cmd:    db 'A','T','D','T','0',0x0D
+dial_len     equ $ - dial_cmd
+
+connect_str: db 'C','O','N','N','E','C','T',0x0D,0x0A
+connect_len  equ $ - connect_str

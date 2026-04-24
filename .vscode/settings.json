@@ -60,6 +60,7 @@
     "netbios",
     "OUTSB",
     "OUTSW",
+    "Phonebook",
     "POPF",
     "PUSHA",
     "PUSHF",

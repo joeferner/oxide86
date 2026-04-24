@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 /// 2. `+host:port` prefix — strip the `+` and use the rest literally.
 /// 3. `a.b.c.d/port` slash notation — convert `/` to `:`.
 /// 4. `None` — no match.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub struct ModemPhonebook {
     entries: HashMap<String, String>,
 }
