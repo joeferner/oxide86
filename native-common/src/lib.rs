@@ -248,10 +248,22 @@ pub fn create_computer(
         })
         .transpose()?;
 
-    computer.set_com_port_device(1, create_com_device(&cli.com1_device, &serial_mouse, &phonebook)?);
-    computer.set_com_port_device(2, create_com_device(&cli.com2_device, &serial_mouse, &phonebook)?);
-    computer.set_com_port_device(3, create_com_device(&cli.com3_device, &serial_mouse, &phonebook)?);
-    computer.set_com_port_device(4, create_com_device(&cli.com4_device, &serial_mouse, &phonebook)?);
+    computer.set_com_port_device(
+        1,
+        create_com_device(&cli.com1_device, &serial_mouse, &phonebook)?,
+    );
+    computer.set_com_port_device(
+        2,
+        create_com_device(&cli.com2_device, &serial_mouse, &phonebook)?,
+    );
+    computer.set_com_port_device(
+        3,
+        create_com_device(&cli.com3_device, &serial_mouse, &phonebook)?,
+    );
+    computer.set_com_port_device(
+        4,
+        create_com_device(&cli.com4_device, &serial_mouse, &phonebook)?,
+    );
 
     computer.set_lpt_device(1, create_lpt_device(&cli.lpt1_device, &cli.lpt1_output)?);
     computer.set_lpt_device(2, create_lpt_device(&cli.lpt2_device, &cli.lpt2_output)?);

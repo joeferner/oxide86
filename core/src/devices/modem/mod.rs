@@ -23,6 +23,12 @@ enum ModemState {
     Connected,
 }
 
+enum ExecuteResult {
+    Continue,
+    Terminal,
+    Error,
+}
+
 #[allow(dead_code)]
 enum ResultCode {
     Ok,
@@ -92,6 +98,10 @@ pub struct SerialModem {
     /// `None` = no escape pending; `Some(n)` = n polls done so far.
     escape_guard_reads: Option<u32>,
     #[cfg(not(target_arch = "wasm32"))]
+    /// Wall-clock timestamp of the 3rd '+'. Fallback guard for terminal software (e.g. Telix)
+    /// that waits via a timer rather than by reading the COM port between +++ and ATH.
+    escape_guard_time: Option<std::time::Instant>,
+    #[cfg(not(target_arch = "wasm32"))]
     tcp_bridge: Option<TcpBridge>,
 }
 
@@ -115,6 +125,8 @@ impl SerialModem {
             escape_count: 0,
             escape_guard_reads: None,
             #[cfg(not(target_arch = "wasm32"))]
+            escape_guard_time: None,
+            #[cfg(not(target_arch = "wasm32"))]
             tcp_bridge: None,
         }
     }
@@ -136,6 +148,7 @@ impl SerialModem {
         self.state = ModemState::CommandMode;
         #[cfg(not(target_arch = "wasm32"))]
         {
+            self.escape_guard_time = None;
             self.tcp_bridge = None;
         }
     }
@@ -169,8 +182,19 @@ impl SerialModem {
 
     fn process_command(&mut self) {
         let raw = std::mem::take(&mut self.cmd_buf);
-        let command = at_parser::parse(&raw);
-        self.execute(command);
+        log::debug!("modem: AT command: {:?}", raw.trim());
+        let commands = at_parser::parse(&raw);
+        for command in commands {
+            match self.execute(command) {
+                ExecuteResult::Continue => {}
+                ExecuteResult::Terminal => return,
+                ExecuteResult::Error => {
+                    self.send_result(ResultCode::Error);
+                    return;
+                }
+            }
+        }
+        self.send_result(ResultCode::Ok);
     }
 
     /// S12 guard-after: called on every read() poll while +++ escape is pending.
@@ -183,6 +207,10 @@ impl SerialModem {
         if new_count >= self.s_registers[12] as u32 {
             self.escape_guard_reads = None;
             self.escape_count = 0;
+            #[cfg(not(target_arch = "wasm32"))]
+            {
+                self.escape_guard_time = None;
+            }
             self.state = ModemState::CommandMode;
             self.send_result(ResultCode::Ok);
         } else {
@@ -231,26 +259,24 @@ impl SerialModem {
         }
     }
 
-    fn execute(&mut self, command: AtCommand) {
+    fn execute(&mut self, command: AtCommand) -> ExecuteResult {
         match command {
-            AtCommand::At => {
-                self.send_result(ResultCode::Ok);
-            }
+            AtCommand::At | AtCommand::Ignore => ExecuteResult::Continue,
             AtCommand::Reset | AtCommand::FactoryReset => {
                 self.reset_defaults();
-                self.send_result(ResultCode::Ok);
+                ExecuteResult::Continue
             }
             AtCommand::Echo(on) => {
                 self.echo = on;
-                self.send_result(ResultCode::Ok);
+                ExecuteResult::Continue
             }
             AtCommand::Verbose(on) => {
                 self.verbose = on;
-                self.send_result(ResultCode::Ok);
+                ExecuteResult::Continue
             }
             AtCommand::Quiet(on) => {
                 self.quiet = on;
-                self.send_result(ResultCode::Ok);
+                ExecuteResult::Continue
             }
             AtCommand::Dial(number) => {
                 let addr = self.phonebook.as_ref().and_then(|pb| pb.resolve(&number));
@@ -305,6 +331,7 @@ impl SerialModem {
                         self.send_result(ResultCode::NoDialtone);
                     }
                 }
+                ExecuteResult::Terminal
             }
             AtCommand::HangUp => {
                 // was_connected covers: Connected, Dialing, and CommandMode-with-DCD (post-+++)
@@ -322,22 +349,22 @@ impl SerialModem {
                 } else {
                     self.send_result(ResultCode::Ok);
                 }
+                ExecuteResult::Terminal
             }
             AtCommand::OffHook => {
                 self.send_result(ResultCode::Ok);
+                ExecuteResult::Terminal
             }
-            AtCommand::Answer => {
-                self.send_result(ResultCode::Error);
-            }
+            AtCommand::Answer => ExecuteResult::Error,
             AtCommand::SRegisterSet { reg, val } => {
                 if (reg as usize) < S_REGISTER_COUNT {
                     self.s_registers[reg as usize] = val;
                 }
-                self.send_result(ResultCode::Ok);
+                ExecuteResult::Continue
             }
             AtCommand::Info => {
                 self.queue_bytes(b"oxide86 Virtual Modem\r\n");
-                self.send_result(ResultCode::Ok);
+                ExecuteResult::Continue
             }
             AtCommand::SRegisterQuery(reg) => {
                 let val = if (reg as usize) < S_REGISTER_COUNT {
@@ -347,16 +374,16 @@ impl SerialModem {
                 };
                 let s = format!("{}\r\n", val);
                 self.queue_bytes(s.as_bytes());
-                self.send_result(ResultCode::Ok);
+                ExecuteResult::Continue
             }
             AtCommand::Escape => {
                 // AT+++ in command mode: already idle, just acknowledge
                 self.state = ModemState::CommandMode;
-                self.send_result(ResultCode::Ok);
+                ExecuteResult::Continue
             }
             AtCommand::Unknown(raw) => {
                 log::warn!("modem: unrecognised AT command: {}", raw.trim());
-                self.send_result(ResultCode::Error);
+                ExecuteResult::Error
             }
         }
     }
@@ -392,25 +419,44 @@ impl ComPortDevice for SerialModem {
                 if value == b'+' {
                     self.escape_count += 1;
                     if self.escape_count >= 3 && self.escape_guard_reads.is_none() {
-                        // Third '+' received — start S12 guard-after countdown.
-                        // escape_count stays ≥ 3 so a cancel can forward all buffered '+' bytes.
+                        // Third '+' received — start guard countdown (read-poll and wall-clock).
                         self.escape_guard_reads = Some(0);
+                        self.escape_guard_time = Some(std::time::Instant::now());
                     }
-                    // Don't forward '+' to TCP until escape is confirmed or cancelled
+                    // Don't forward '+' to TCP until escape is confirmed or cancelled.
+                    return true;
                 } else {
-                    // Non-'+' (or guard cancelled by new data): flush buffered '+' bytes then
-                    // send this byte.
-                    let pending = self.escape_count;
-                    self.escape_count = 0;
-                    self.escape_guard_reads = None;
-                    if let Some(bridge) = &self.tcp_bridge {
-                        for _ in 0..pending {
-                            let _ = bridge.outgoing.send(b'+');
+                    // Non-'+' byte arrived while escape may be pending.
+                    let guard_by_reads = self
+                        .escape_guard_reads
+                        .is_some_and(|n| n >= self.s_registers[12] as u32);
+                    let guard_by_time = self
+                        .escape_guard_time
+                        .map(|t| t.elapsed().as_millis() >= self.s_registers[12] as u128 * 20)
+                        .unwrap_or(false);
+                    if self.escape_count >= 3 && (guard_by_reads || guard_by_time) {
+                        // Guard expired — confirm escape and fall through to command-mode handling.
+                        self.escape_guard_reads = None;
+                        self.escape_guard_time = None;
+                        self.escape_count = 0;
+                        self.state = ModemState::CommandMode;
+                        self.send_result(ResultCode::Ok);
+                        // fall through: handle `value` as a command-mode character below
+                    } else {
+                        // Guard not expired — cancel escape and forward buffered '+' plus this byte.
+                        let pending = self.escape_count;
+                        self.escape_count = 0;
+                        self.escape_guard_reads = None;
+                        self.escape_guard_time = None;
+                        if let Some(bridge) = &self.tcp_bridge {
+                            for _ in 0..pending {
+                                let _ = bridge.outgoing.send(b'+');
+                            }
+                            let _ = bridge.outgoing.send(value);
                         }
-                        let _ = bridge.outgoing.send(value);
+                        return true;
                     }
                 }
-                return true;
             }
             if matches!(self.state, ModemState::Dialing) {
                 return true;
@@ -521,6 +567,9 @@ fn connect_tcp(args: TcpArgs) {
                     break;
                 }
             }
+            // Sender dropped (ATH / bridge torn down) or write failed — shut down the socket
+            // so the reader thread's read() unblocks and the remote end sees EOF.
+            let _ = writer.shutdown(std::net::Shutdown::Both);
         }
         Err(e) => {
             log::warn!("modem: TCP connect to {} failed: {}", addr, e);
