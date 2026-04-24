@@ -247,11 +247,11 @@ Guard-time escape: when the guest writes `+` three consecutive times with no oth
 
 ---
 
-## Phase 4 — Simple Echo Server Example
+## ✅ Phase 4 — Simple Echo Server Example
 
 **Goal:** A working example that demonstrates the modem end-to-end, including a real TCP server and setup instructions.
 
-### 4.1 Example directory layout
+### ✅ 4.1 Example directory layout
 
 ```
 examples/modem/
@@ -264,7 +264,7 @@ examples/modem/
         └── main.rs     ← TCP echo server on port 2323
 ```
 
-### 4.2 `modem_demo.asm`
+### ✅ 4.2 `modem_demo.asm`
 
 The assembly program:
 1. Initializes COM1 at 1200 baud via INT 14h
@@ -276,11 +276,11 @@ The assembly program:
 7. Sends `+++` pause `ATH\r` to hang up
 8. Displays `Done.` and exits
 
-### 4.3 Echo server (`echo_server/src/main.rs`)
+### ✅ 4.3 Echo server (`echo_server/src/main.rs`)
 
 Minimal TCP echo server: bind to `0.0.0.0:2323`, accept connections, echo every byte back. Prints each connection to stdout. No external dependencies.
 
-### 4.4 README.md (setup instructions)
+### ✅ 4.4 README.md (setup instructions)
 
 ```markdown
 ## Modem Echo Demo

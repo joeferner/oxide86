@@ -20,7 +20,7 @@ use oxide86_core::{
         SoundBlaster, SoundCardType,
         adlib::Adlib,
         clock::EmulatedClock,
-        modem::SerialModem,
+        modem::{SerialModem, phonebook::ModemPhonebook},
         parallel_port::LptPortDevice,
         parallel_port_loopback::ParallelLoopback,
         pc_speaker::{NullPcSpeaker, PcSpeaker},
@@ -237,10 +237,21 @@ pub fn create_computer(
         log::info!("Opened floppy B: from {} (read_only={})", path, read_only);
     }
 
-    computer.set_com_port_device(1, create_com_device(&cli.com1_device, &serial_mouse)?);
-    computer.set_com_port_device(2, create_com_device(&cli.com2_device, &serial_mouse)?);
-    computer.set_com_port_device(3, create_com_device(&cli.com3_device, &serial_mouse)?);
-    computer.set_com_port_device(4, create_com_device(&cli.com4_device, &serial_mouse)?);
+    let phonebook = cli
+        .modem_phonebook
+        .as_deref()
+        .map(|path| {
+            let json = std::fs::read_to_string(path)
+                .with_context(|| format!("Failed to read phonebook: {path}"))?;
+            ModemPhonebook::from_json(&json)
+                .with_context(|| format!("Failed to parse phonebook: {path}"))
+        })
+        .transpose()?;
+
+    computer.set_com_port_device(1, create_com_device(&cli.com1_device, &serial_mouse, &phonebook)?);
+    computer.set_com_port_device(2, create_com_device(&cli.com2_device, &serial_mouse, &phonebook)?);
+    computer.set_com_port_device(3, create_com_device(&cli.com3_device, &serial_mouse, &phonebook)?);
+    computer.set_com_port_device(4, create_com_device(&cli.com4_device, &serial_mouse, &phonebook)?);
 
     computer.set_lpt_device(1, create_lpt_device(&cli.lpt1_device, &cli.lpt1_output)?);
     computer.set_lpt_device(2, create_lpt_device(&cli.lpt2_device, &cli.lpt2_output)?);
@@ -302,6 +313,7 @@ pub fn create_computer(
 fn create_com_device(
     device_name: &Option<String>,
     serial_mouse: &Option<Arc<RwLock<SerialMouse>>>,
+    phonebook: &Option<ModemPhonebook>,
 ) -> Result<Option<Arc<RwLock<dyn ComPortDevice>>>> {
     if let Some(device_name) = device_name {
         let device_name = device_name.trim().to_lowercase();
@@ -316,7 +328,9 @@ fn create_com_device(
         } else if device_name == "loopback" {
             Ok(Some(Arc::new(RwLock::new(SerialLoopback::new()))))
         } else if device_name == "modem" {
-            Ok(Some(Arc::new(RwLock::new(SerialModem::new()))))
+            Ok(Some(Arc::new(RwLock::new(SerialModem::with_phonebook(
+                phonebook.clone(),
+            )))))
         } else {
             Err(anyhow!("Invalid COM device name: {device_name}"))
         }

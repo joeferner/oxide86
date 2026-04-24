@@ -8,6 +8,8 @@ cd "${SCRIPT_DIR}/.."
 cargo build --all
 cargo fmt
 cargo clippy --all -- -D warnings
+cargo build --manifest-path examples/modem/echo_server/Cargo.toml
+cargo clippy --manifest-path examples/modem/echo_server/Cargo.toml -- -D warnings
 ./wasm/scripts/build.sh
 ./scripts/run-tests.sh
 

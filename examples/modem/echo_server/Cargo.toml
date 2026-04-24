@@ -1,0 +1,10 @@
+[workspace]
+
+[package]
+name = "echo-server"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "echo-server"
+path = "src/main.rs"
