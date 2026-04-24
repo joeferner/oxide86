@@ -31,11 +31,11 @@ Assembly tests exit with code `0` on pass, non-zero for specific failures.
 
 ---
 
-## Phase 1 — Stub Modem Device + CLI Wiring
+## ✅ Phase 1 — Stub Modem Device + CLI Wiring
 
 **Goal:** Attach a modem stub to a COM port so that early integration testing can happen immediately. The device accepts AT commands and responds with `OK` / `ERROR`. No TCP connection yet.
 
-### 1.1 Test first
+### ✅ 1.1 Test first
 
 **`core/src/test_data/devices/modem/at_basic.asm`**
 
@@ -48,7 +48,7 @@ Assembly tests exit with code `0` on pass, non-zero for specific failures.
 
 Rust test in `core/src/tests/devices/modem.rs` runs this assembly and asserts exit code 0.
 
-### 1.2 New file: `core/src/devices/modem.rs`
+### ✅ 1.2 New file: `core/src/devices/modem.rs`
 
 Implement `SerialModem` with:
 
@@ -85,7 +85,7 @@ BUSY      NO ANSWER  CONNECT 2400 …
 
 Numeric equivalents: 0, 1, 2, 3, 4, 6, 7, 8, 10 …
 
-### 1.3 CLI — `native-common/src/cli.rs`
+### ✅ 1.3 CLI — `native-common/src/cli.rs`
 
 Add `modem` as a valid `--com1` / `--com2` / `--com3` / `--com4` option alongside the existing `mouse` and `loopback` values.
 
@@ -97,11 +97,11 @@ Add new flags:
 
 Update `create_com_device()` in `native-common/src/lib.rs` to construct `SerialModem` when the device name is `"modem"`.
 
-### 1.4 WASM — `wasm/src/lib.rs`
+### ✅ 1.4 WASM — `wasm/src/lib.rs`
 
 Add `modem_com: Option<u32>` and `modem_phonebook: Option<String>` to `WasmComputerConfig`. The WASM modem can only connect to WebSocket endpoints (phase 3 extension); in phase 1 it is wired as a command-mode stub only so the AT parser can be tested.
 
-### 1.5 Register in `core/src/devices/mod.rs`
+### ✅ 1.5 Register in `core/src/devices/mod.rs`
 
 ```rust
 pub mod modem;
@@ -111,11 +111,11 @@ No changes to `Bus` or `Pic` needed — the modem routes through the existing UA
 
 ---
 
-## Phase 2 — AT Command Parser + Phonebook Configuration
+## ✅ Phase 2 — AT Command Parser + Phonebook Configuration
 
 **Goal:** Full Hayes AT command parsing and a phonebook config that maps short dial strings to `host:port` pairs.
 
-### 2.1 Tests
+### ✅ 2.1 Tests
 
 **`core/src/test_data/devices/modem/at_dial_reject.asm`**
 - Sends `ATDT555\r`
@@ -125,7 +125,7 @@ No changes to `Bus` or `Pic` needed — the modem routes through the existing UA
 **`core/src/test_data/devices/modem/at_hangup.asm`**
 - Sends `ATDT0\r`, waits for result, sends `ATH\r`, expects `OK\r\n`
 
-### 2.2 Commands added in phase 2
+### ✅ 2.2 Commands added in phase 2
 
 | Command | Action |
 |---------|--------|
@@ -140,7 +140,7 @@ No changes to `Bus` or `Pic` needed — the modem routes through the existing UA
 | `ATI` | Return modem identity string |
 | `AT?` | Return current register value |
 
-### 2.3 Phonebook file format
+### ✅ 2.3 Phonebook file format
 
 `phonebook.json`:
 ```json
@@ -158,7 +158,7 @@ ATDT+192.168.1.1:23     → connect to 192.168.1.1:23 directly
 ATDT555                 → phonebook lookup → bbs.example.com:23
 ```
 
-### 2.4 `ModemPhonebook` struct
+### ✅ 2.4 `ModemPhonebook` struct
 
 New file `core/src/devices/modem_phonebook.rs`:
 

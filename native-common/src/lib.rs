@@ -20,6 +20,7 @@ use oxide86_core::{
         SoundBlaster, SoundCardType,
         adlib::Adlib,
         clock::EmulatedClock,
+        modem::SerialModem,
         parallel_port::LptPortDevice,
         parallel_port_loopback::ParallelLoopback,
         pc_speaker::{NullPcSpeaker, PcSpeaker},
@@ -314,6 +315,8 @@ fn create_com_device(
             }
         } else if device_name == "loopback" {
             Ok(Some(Arc::new(RwLock::new(SerialLoopback::new()))))
+        } else if device_name == "modem" {
+            Ok(Some(Arc::new(RwLock::new(SerialModem::new()))))
         } else {
             Err(anyhow!("Invalid COM device name: {device_name}"))
         }

@@ -12,6 +12,7 @@ use oxide86_core::{
         PcmRingBuffer, SoundBlaster, SoundBlasterModel,
         adlib::Adlib,
         clock::{EmulatedClock, LocalDate, LocalTime},
+        modem::SerialModem,
         parallel_port::LptPortDevice,
         parallel_port_loopback::ParallelLoopback,
         pc_speaker::NullPcSpeaker,
@@ -42,6 +43,9 @@ pub struct WasmComputerConfig {
     /// Sound Blaster CD-ROM interface base port (default: 0x230). Only used when sound_card = "sb16".
     #[serde(default)]
     pub sound_blaster_cd_port: Option<u16>,
+    /// JSON phonebook for the modem device. Only used when a COM port is set to "modem".
+    #[serde(default)]
+    pub modem_phonebook: Option<String>,
     /// Full year, e.g. 1990
     pub start_year: u16,
     pub start_month: u8,
@@ -515,7 +519,7 @@ impl Oxide86Computer {
         }
     }
 
-    /// Attach a device to a COM port. `port`: 1–4. `device`: "none", "serial_mouse", "loopback".
+    /// Attach a device to a COM port. `port`: 1–4. `device`: "none", "serial_mouse", "loopback", "modem".
     /// Takes effect immediately if the computer is running, and persists across reboots.
     pub fn set_com_port_device(&mut self, port: u8, device: &str) {
         let idx = match port {
@@ -599,6 +603,10 @@ fn make_com_port_device(device: &str) -> WasmComPortDevice {
         }
         "loopback" => WasmComPortDevice {
             device: Some(Arc::new(RwLock::new(SerialLoopback::new()))),
+            mouse: None,
+        },
+        "modem" => WasmComPortDevice {
+            device: Some(Arc::new(RwLock::new(SerialModem::new()))),
             mouse: None,
         },
         _ => WasmComPortDevice {
