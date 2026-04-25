@@ -37,13 +37,22 @@ pub enum AtCommand {
 /// Parse a complete AT command string (must include the `AT` prefix).
 /// Returns a vec of commands — Telix and similar terminal software chains multiple
 /// commands in a single `AT...` string (e.g. `AT&C1&D2S7=60`).
+/// A leading `+++` is accepted and stripped before the `AT` check; some BBS software
+/// (e.g. WWIV) sends `+++AT...` as a single line when the modem is in command mode.
 pub fn parse(input: &str) -> Vec<AtCommand> {
     let trimmed = input.trim();
     let upper = trimmed.to_ascii_uppercase();
 
-    let rest = match upper.strip_prefix("AT") {
+    let after_escape = upper.strip_prefix("+++").unwrap_or(&upper);
+
+    let rest = match after_escape.strip_prefix("AT") {
         Some(r) => r,
-        None => return vec![AtCommand::Unknown(trimmed.to_owned())],
+        None => {
+            if after_escape.is_empty() {
+                return vec![AtCommand::Escape];
+            }
+            return vec![AtCommand::Unknown(trimmed.to_owned())];
+        }
     };
 
     if rest.is_empty() {
@@ -284,6 +293,17 @@ mod tests {
     #[test]
     fn at_escape() {
         assert_eq!(parse("AT+++"), vec![AtCommand::Escape]);
+    }
+
+    #[test]
+    fn at_escape_prefix_inline() {
+        // WWIV and similar BBS software send +++AT... as a single string in command mode.
+        assert_eq!(
+            parse("+++ATS0=1"),
+            vec![AtCommand::SRegisterSet { reg: 0, val: 1 }]
+        );
+        assert_eq!(parse("+++ATH"), vec![AtCommand::HangUp]);
+        assert_eq!(parse("+++"), vec![AtCommand::Escape]);
     }
 
     #[test]

@@ -366,14 +366,6 @@ impl Bus {
     pub(crate) fn memory_write_u8(&mut self, addr: usize, val: u8) {
         let addr = self.apply_a20(addr);
         let cycle_count = self.cycle_count;
-        if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
-            for device in &self.devices {
-                if device.borrow_mut().memory_write_u8(addr, val, cycle_count) {
-                    return;
-                }
-            }
-        }
-
         if !self.watchpoints.is_empty() && self.watchpoints.contains(&addr) {
             log::info!(
                 "[WATCH] 0x{addr:05X} written: 0x{val:02X} by {:04X}:{:04X}",
@@ -394,6 +386,14 @@ impl Bus {
                 *dbg.watchpoint_hit.lock().unwrap() =
                     Some((addr as u32, val, self.watch_cs, self.watch_ip));
                 dbg.pause_requested.store(true, Ordering::SeqCst);
+            }
+        }
+
+        if (MEMORY_MAPPED_IO_START..MEMORY_MAPPED_IO_END).contains(&addr) {
+            for device in &self.devices {
+                if device.borrow_mut().memory_write_u8(addr, val, cycle_count) {
+                    return;
+                }
             }
         }
 
