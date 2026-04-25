@@ -99,6 +99,8 @@
     "watchpoints",
     "wgpu",
     "winit",
+    "wwiv",
+    "wwivd",
     "XCHG",
     "XLAT"
   ],

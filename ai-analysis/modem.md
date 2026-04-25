@@ -309,11 +309,11 @@ Minimal TCP echo server: bind to `0.0.0.0:2323`, accept connections, echo every 
 
 ---
 
-## Phase 6 — Docker Compose: tcpser + WWIV BBS
+## ✅ Phase 6 — Docker Compose: tcpser + WWIV BBS
 
 **Goal:** A self-contained Docker Compose setup that runs a classic BBS reachable via the emulated modem.
 
-### 6.1 Directory layout
+### ✅ 6.1 Directory layout
 
 ```
 docker/bbs/
@@ -326,7 +326,7 @@ docker/bbs/
 └── README.md
 ```
 
-### 6.2 `docker-compose.yml`
+### ✅ 6.2 `docker-compose.yml`
 
 ```yaml
 version: "3.9"
@@ -356,7 +356,7 @@ volumes:
 
 **WWIV** is the BBS itself; the image runs `wwivd` and pre-configures a single sysop account.
 
-### 6.3 Phonebook entry
+### ✅ 6.3 Phonebook entry
 
 ```json
 {
@@ -366,7 +366,7 @@ volumes:
 
 Dial `1` from any DOS terminal software to reach the BBS.
 
-### 6.4 README.md (setup instructions)
+### ✅ 6.4 README.md (setup instructions)
 
 ```markdown
 ## WWIV BBS via tcpser
@@ -390,7 +390,7 @@ Inside Telix: dial "1" → WWIV BBS login screen appears.
 docker compose down
 ```
 
-### 6.5 Notes on tcpser
+### ✅ 6.5 Notes on tcpser
 
 `tcpser` (by Jim Meritt) wraps a TCP connection in a Hayes command emulation layer. The emulated modem in the emulator dials → tcpser answers → tcpser forwards the data to WWIV. This is the standard way vintage DOS BBS software reaches modern TCP servers. `tcpser` source: https://github.com/jmeberlein/tcpser
 

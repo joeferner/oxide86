@@ -1,0 +1,11 @@
+services:
+  wwiv:
+    build: ./wwiv
+    tty: true
+    ports:
+      - "2323:2323"
+    volumes:
+      - wwiv_data:/opt/wwiv
+
+volumes:
+  wwiv_data:
