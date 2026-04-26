@@ -39,8 +39,12 @@ use oxide86_core::{
 };
 
 use crate::{
-    cli::CommonCli, clock::NativeClock, disk::FileDiskBackend, gilrs_joystick::GilrsJoystick,
-    modem_transport::NativeDialer, rodio_pc_speaker::RodioPcSpeaker,
+    cli::CommonCli,
+    clock::NativeClock,
+    disk::FileDiskBackend,
+    gilrs_joystick::GilrsJoystick,
+    modem_transport::NativeDialer,
+    rodio_pc_speaker::RodioPcSpeaker,
     rodio_sound_card::RodioSoundCard,
 };
 use rodio::{DeviceSinkBuilder, MixerDeviceSink};
@@ -342,11 +346,10 @@ fn create_com_device(
         } else if device_name == "loopback" {
             Ok(Some(Arc::new(RwLock::new(SerialLoopback::new()))))
         } else if device_name == "modem" {
+            let dialer: Box<dyn oxide86_core::devices::modem::transport::ModemDialer> =
+                Box::new(NativeDialer::new());
             Ok(Some(Arc::new(RwLock::new(
-                SerialModem::with_phonebook_and_dialer(
-                    phonebook.clone(),
-                    Some(Box::new(NativeDialer::new())),
-                ),
+                SerialModem::with_phonebook_and_dialer(phonebook.clone(), Some(dialer)),
             ))))
         } else {
             Err(anyhow!("Invalid COM device name: {device_name}"))

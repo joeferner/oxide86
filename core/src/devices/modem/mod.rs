@@ -86,6 +86,22 @@ pub struct SerialModem {
     dialer: Option<Box<dyn ModemDialer>>,
 }
 
+fn log_bytes(direction: &str, bytes: &[u8]) {
+    const HEX_COL_WIDTH: usize = 16 * 3 - 1;
+    for chunk in bytes.chunks(16) {
+        let hex: String = chunk
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<Vec<_>>()
+            .join(" ");
+        let ascii: String = chunk
+            .iter()
+            .map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '.' })
+            .collect();
+        log::debug!("{direction} {hex:<HEX_COL_WIDTH$}  {ascii}");
+    }
+}
+
 impl SerialModem {
     pub fn new() -> Self {
         Self::with_phonebook_and_dialer(None, None)
@@ -207,7 +223,12 @@ impl SerialModem {
         // Drain incoming bytes unless escape guard is pending (guest expects OK next).
         if self.escape_guard_reads.is_none() {
             if let Some(t) = &mut self.transport {
+                let before = self.rx_queue.len();
                 t.poll_incoming(&mut self.rx_queue);
+                if log::log_enabled!(log::Level::Debug) && self.rx_queue.len() > before {
+                    let received: Vec<u8> = self.rx_queue.iter().skip(before).copied().collect();
+                    log_bytes("rx", &received);
+                }
             }
             if !self.rx_queue.is_empty() {
                 self.irq_pending = true;
@@ -395,6 +416,11 @@ impl ComPortDevice for SerialModem {
                                 t.send_byte(b'+');
                             }
                             t.send_byte(value);
+                            if log::log_enabled!(log::Level::Debug) {
+                                let mut sent = vec![b'+'; pending as usize];
+                                sent.push(value);
+                                log_bytes("tx", &sent);
+                            }
                         }
                         return true;
                     }
