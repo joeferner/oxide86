@@ -97,7 +97,7 @@
 - [X] Printer
 - [X] SoundBlaster (see ai-analysis/sound-blaster.md, future ai-analysis/cd-rom-sb.md)
 - [X] Add PS/2 mouse support
-- [ ] Modem (see ai-analysis/modem.md)
+- [X] Modem (see ai-analysis/modem.md)
 - [ ] dosmid with xms - implement 286 LOADALL. On a real 286, HIMEM.SYS uses 0F 05 to access extended memory, so a correct 286 emulator needs to handle it. Options 1 and 3 are workarounds that paper over the missing instruction rather than actually emulating the hardware.
 - [ ] WASM Joystick
 - [ ] WASM Disk browser/editor
