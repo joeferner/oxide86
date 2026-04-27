@@ -96,7 +96,13 @@ fn log_bytes(direction: &str, bytes: &[u8]) {
             .join(" ");
         let ascii: String = chunk
             .iter()
-            .map(|&b| if b.is_ascii_graphic() || b == b' ' { b as char } else { '.' })
+            .map(|&b| {
+                if b.is_ascii_graphic() || b == b' ' {
+                    b as char
+                } else {
+                    '.'
+                }
+            })
             .collect();
         log::debug!("{direction} {hex:<HEX_COL_WIDTH$}  {ascii}");
     }

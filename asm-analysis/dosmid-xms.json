@@ -8,6 +8,54 @@
       "label": "rotate_descriptor_words",
       "comment": "Left-rotate 3 words at [BX]: new[0]=old[2], new[2]=old[4], new[4]=old[0]. Converts descriptor from (limit_hi+access, base_lo+base_mid, base_hi+limit_lo) storage format to the 286 LOADALL format (base_lo, base_mid, base_hi, limit_lo, limit_hi, access)."
     },
+    "FDC8:44A6": {
+      "label": "set_xms_lock_flag",
+      "comment": "Loads DS from [FDC8:3DE7] (=0x0116), sets [0x0116:0323]=1, then STCs before returning. Called from xms_stub_fail (FDC8:44B7) to record a failed XMS lock attempt. The carry flag set here propagates through retf to callers."
+    },
+    "FDC8:44B7": {
+      "label": "xms_stub_fail",
+      "comment": "Far-entry stub that signals failure: calls set_xms_lock_flag (sets [0116:0323]=1, CF=1), then retf. Reached via far pointer at [0116:00C8] (offset 0x44B7). Called once from FDC8:6B4C. Contrast with xms_stub_success (FDC8:44BB) which always returns CF=0."
+    },
+    "FDC8:44BB": {
+      "label": "xms_stub_success",
+      "comment": "Far-entry no-op stub: CLC; RETF. Always returns CF=0 (success) without any side effect. All three far vectors [0116:0094], [0116:00B0], and [0116:00C0] point here (offset 0x44BB, segment FDC8). 103 far calls total: 101 from xms_block_access hot path + 1 from B38B + 1 from FDC8:AFAB. Indicates the driver considers these XMS operations trivially satisfied."
+    },
+    "FDC8:513A": {
+      "label": "irq_save",
+      "comment": "Save interrupt state and enter critical section. PUSHF to snapshot IF; checks nesting counter [0116:0D0C]: if zero (not already in critical section), gap code (A6CE-equivalent) handles CLI+counter increment; always exits via PUSH CS + CALL IRET to restore flags on the iret trick path. Paired with irq_restore (515A). Called 105 times."
+    },
+    "FDC8:515A": {
+      "label": "irq_restore",
+      "comment": "Restore interrupt state and leave critical section. Mirror of irq_save (513A): PUSHF, check nesting counter [0116:0D0C], restore saved flags via PUSH CS + CALL IRET trick. Decrements nesting counter when leaving outermost critical section. Called 105 times."
+    },
+    "FDC8:6B88": {
+      "label": "xms_block_move_once",
+      "comment": "Cold-path (1 call) wrapper: calls irq_save (513A), loads XMS handle from [0116:001A]=3 into CX, pushes CX, calls xms_block_access_once (B38B) → xms_stub_success (clc;retf), pops CX, checks CF via jae. On success calls irq_restore (515A). Called once from FDC8:6B3B during init/teardown sequence."
+    },
+    "FDC8:B342": {
+      "label": "xms_block_access",
+      "comment": "Hot-path (101 calls) XMS block access trampoline. Loads XMS handle [0116:001A]=3 into BX, pushes BX and AX, calls far [0116:00B0] → xms_stub_success (FDC8:44BB, clc;retf), pops both. Checks CF via jae; gap FDC8:B350 handles error. Called from func_FDC8_7681 once per XMS block transfer."
+    },
+    "FDC8:B38B": {
+      "label": "xms_block_access_once",
+      "comment": "Cold-path (1 call) 2-instruction trampoline: CALL FAR [0116:0094] (→ xms_stub_success, FDC8:44BB, clc;retf); RET. Called from xms_block_move_once (6B88) with XMS handle CX=3 on stack. CF=0 on return. Identical pattern to the hot-path xms_block_access (B342) which uses far vector [0116:00B0] instead of [0116:0094]; both targets resolve to the same clc;retf stub."
+    },
+    "FF6D:A4C0": {
+      "label": "xms_block_move",
+      "comment": "Far entry for XMS block move in the FF6D driver. Allocates 18-byte frame, reads 32-bit byte count from ES:[SI] into [bp-0x04]:[bp-0x02], calls func_FF6D_A560 twice to resolve dest (ES:[SI+4]) and src (ES:[SI+0xA]) XMS handle+offset pairs to 24-bit physical addresses, halves the byte count to word count (shr/rcr at A507), calls far [A00E] to lock A20, calls xms_block_copy_loadall, then calls far [A012] to unlock. Returns AX=1 on success. Called 752 times."
+    },
+    "FF6D:A560": {
+      "label": "xms_resolve_physical",
+      "comment": "Resolve an XMS block descriptor to a 24-bit physical address. BX points to a 6-byte structure: [BX]=ptr to block control record, [BX+2]=byte offset within block, [BX+4]=block index or segment. If control ptr is null: physical = [BX+4]*16 + [BX+2] (real-mode segment:offset). If control ptr is non-null and bit 1 set: maps XMS handle to physical via block_base_in_KB*1024 + offset; validates space >= transfer count, increments lock count. Returns AX=physical addr low, DX=physical addr high byte (24-bit). Called 1504 times (twice per xms_block_move)."
+    },
+    "FF6D:A6A0": {
+      "label": "xms_block_copy_loadall",
+      "comment": "Inner XMS block copy via 286 LOADALL. Reads dest/src 24-bit physical addresses from caller frame ([bp-0x0e]/[bp-0x0c] and [bp-0x12]/[bp-0x10]) and writes them into the static GDT template vars [A680]/[A682] (dest) and [A66E]/[A670] (src). Increments counter [A69E]; normally falls through to the gap at A6CE (286 descriptor-setup instructions) then rotates both GDT descriptors via rotate_descriptor_words. Loops: clamps chunk to 0x7FFF words, saves 51 BIOS GDT words from phys 0x800 to [A5D2], installs XMS transfer GDT from [A638], executes LOADALL (CS:IP → FF6E:A749), post-LOADALL code restores BIOS GDT and runs rep movsw, then advances addresses and subtracts transferred words from [bp-0x04]:[bp-0x02] until zero. Decrements [A69E] before return. Called 752 times. KNOWN BUG: post-LOADALL stub issues STI at FF6E:A758 then immediately executes rep movsw at A759. If a timer interrupt fires in that 1-instruction window, the INT 8 handler at 0575:3AF7 executes 'pop es; pop ds' (restoring both to 0x8000), which destroys the LOADALL-set DS/ES descriptor cache bases used by rep movsw for the XMS transfer. The corrupt rep movsw then copies to/from wrong addresses; in the observed trace ~50% of iterations are corrupted this way."
+    },
+    "FF6D:A7E8": {
+      "label": "rotate_descriptor_words",
+      "comment": "Left-rotate 3 words at [BX]: new[0]=old[2], new[2]=old[4], new[4]=old[0]. Identical to 01BA:A7BE. Converts a GDT descriptor from storage format to 286 LOADALL layout. Called twice per XMS transfer: first with BX=A692 (dest descriptor), then with BX=A686 (src descriptor)."
+    },
     "0019:40EB": {
       "label": "int_21h_dispatch",
       "comment": "DOS kernel INT 21h entry point. Saves all regs, sets up DOS stack, dispatches on AH value, then restores regs and IRETs. Segment 0019 is the DOS kernel."
@@ -75,6 +123,10 @@
     "1036:3B00": {
       "label": "pit_timer_isr",
       "comment": "[HOT] PIT channel-0 interrupt handler (INT 8). Adds 0x035A to 32-bit timer at [0x15E4]:[0x15E6], increments mod-64 counter at [0x15E8]. Every 64 ticks: calls func_1036_94AA to chain to original BIOS handler. Always sends EOI (OUT 0x20, 0x20) via func_1036_5AA1 before IRET. Fired ~50 times/sec (DOSMID reprograms PIT for finer resolution). 2563 invocations in 51-second trace."
+    },
+    "0575:3AF7": {
+      "label": "timer_handler_xms_context",
+      "comment": "INT 8 timer handler that fires during HIMEM.SYS LOADALL XMS transfers. Runs in segment 0575 (HIMEM.SYS or related driver). Pushes AX, CX, DX, BX, BX again, DX, CX, AX to save state; calls io_write_byte (1036:5AA1) with DX=0x0020 / AX=0x0020 to send PIC EOI; then pops AX, AX, ES, DS restoring ES=0x8000 and DS=0x8000 (their pre-interrupt values). CRITICAL: the pop es (0575:3B4B) and pop ds (0575:3B4C) reset es_cache.base and ds_cache.base to 0x8000*16=0x80000, destroying the LOADALL-set descriptor cache bases that rep movsw at FF6E:A759 relies on for the XMS transfer. After IRET to FF6E:A759, rep movsw copies from/to physical 0x80000 instead of the correct XMS addresses, silently corrupting the XMS data transfer."
     },
     "1036:3BE4": {
       "label": "read_timer_atomic",
@@ -167,11 +219,53 @@
     "1036:270F": "call track_seek(-1): unget the data byte so the caller reads it again under the running status",
     "1036:2AE4": "test bit 6 (DRR): 0=MPU ready to accept write; 0x3F & 0x40 = 0 so loop exits immediately on first check under normal conditions",
     "1036:2B31": "test bit 7 of MPU-401 status (0x80): if set (=0xBF = data available), branch to ret AX=0; 0xBF is returned whenever the unread 0xFE ACK sits in the MPU output buffer",
-    "1036:3B0B": "add 0x035A (858) to 32-bit timer [0x15E4]:[0x15E6] each PIT tick; at ~50 IRQ/s accumulates ~42900/sec"
+    "1036:3B0B": "add 0x035A (858) to 32-bit timer [0x15E4]:[0x15E6] each PIT tick; at ~50 IRQ/s accumulates ~42900/sec",
+    "0575:3B41": "mov dx, 0x0020 — load PIC1 command port for EOI",
+    "0575:3B44": "mov ax, dx — AX = 0x0020 (EOI value)",
+    "0575:3B46": "call 0x5aa1 — io_write_byte: OUT 0x20, 0x20 (send PIC EOI)",
+    "0575:3B49": "pop ax — restore saved AX (second pop)",
+    "0575:3B4A": "pop ax — restore saved AX (first pop)",
+    "0575:3B4B": "pop es — restores ES=0x8000; RESETS es_cache.base to 0x80000, destroying LOADALL-set XMS destination address",
+    "0575:3B4C": "pop ds — restores DS=0x8000; RESETS ds_cache.base to 0x80000, destroying LOADALL-set XMS source address",
+    "0575:3B55": "iret — returns to FF6E:A759; rep movsw will now copy from/to physical 0x80000 (wrong) instead of XMS addresses",
+    "FF6D:A507": "shr/rcr: divide 32-bit byte count by 2 to convert to word count for LOADALL transfers",
+    "FF6D:A50F": "far call to lock A20 gate (via far-ptr [A00E]) before LOADALL-based copy",
+    "FF6D:A51C": "far call to unlock A20 gate (via far-ptr [A012]) after copy completes",
+    "FF6D:A6A1": "load dest physical addr low word from caller frame into AX",
+    "FF6D:A6A4": "load dest physical addr high byte from frame into DL",
+    "FF6D:A6A7": "load src physical addr low word from frame into CX",
+    "FF6D:A6AA": "load src physical addr high byte from frame into DH",
+    "FF6D:A6AD": "swap dest addr low word (AX) with static [A680]; installs new dest base and discards old",
+    "FF6D:A6B2": "swap dest addr high byte (DL) with [A682]",
+    "FF6D:A6B7": "swap src addr low word (CX) with static [A66E]; installs new src base",
+    "FF6D:A6BC": "swap src addr high byte (DH) with [A670]",
+    "FF6D:A6C1": "BX=A692 → dest descriptor (xms_dest_descriptor)",
+    "FF6D:A6C4": "SI=A686 → src descriptor (xms_src_descriptor)",
+    "FF6D:A6C7": "inc transfer counter [A69E]; je at A6CC skips gap (descriptor setup) only on 65536-transfer wrap",
+    "FF6D:A702": "top of chunk loop; clamp this transfer to min(remaining, 0x7FFF) words",
+    "FF6D:A715": "AX=0080 → segment for LOADALL table (phys 0x0080*16 = 0x800)",
+    "FF6D:A718": "BX=FF6D → current data segment (used to restore DS/ES after LOADALL)",
+    "FF6D:A71A": "DX=0x33=51 words — size of GDT save/restore area",
+    "FF6D:A725": "save SP into template so post-LOADALL code can restore the stack",
+    "FF6D:A72A": "save SS=10F4 into template at [A666]",
+    "FF6D:A72F": "store clamped word count for this chunk into template at [A668]",
+    "FF6D:A738": "rep movsw: save 51 BIOS GDT words from phys 0x800 (DS=0080:0) to FF6D:A5D2 (ES=FF6D)",
+    "FF6D:A745": "rep movsw: install 51-word XMS transfer GDT from FF6D:A638 (DS=FF6D) into phys 0x800 (ES=0080:0)",
+    "FF6D:A747": "0F 05 — 286 LOADALL: loads all CPU state from phys 0x800. CS selector=0x0001 (table offset 0x22) but cs_cache.base=0xFF6E0 (from descriptor cache at 0x3C-0x41 after rotate_descriptor_words), so post-LOADALL code fetches from physical FF6E:A749 correctly. ES cache base = dest physical addr (increments each iteration), DS cache base = src physical addr (fixed at 0x003F82 for conventional memory read). FLAGS=0x0000 so interrupts are disabled (IF=0) during the GDT restore loop. IP=0xA749.",
+    "FF6D:A775": "return point after LOADALL (far jmp from FF6E:A75B restores normal CS)",
+    "FF6D:A777": "SI = bytes just transferred (from post-LOADALL movsw); shr converts to words",
+    "FF6D:A77B": "subtract words transferred from 32-bit remaining count [bp-0x04]:[bp-0x02]",
+    "FF6D:A784": "advance dest addr [A680]/[A682] by SI bytes transferred",
+    "FF6D:A78F": "advance src addr [A66E]/[A670] by DI bytes transferred",
+    "FF6D:A7A3": "LOADALL restores template area (covers [A69E]) resetting counter to 0x0000; je always taken in observed trace",
+    "FF6D:A7E2": "dec [A69E] (0x0000 → 0xFFFF) before ret; keeps counter in sync across calls"
   },
   "gaps": {
     "01BA:A6A4": "normal-path descriptor updates; protected-mode instructions not decoded by disassembler",
-    "01BA:A74B": "post-LOADALL return path: counts transferred words, decrements remaining count, loops or returns"
+    "01BA:A74B": "post-LOADALL return path: counts transferred words, decrements remaining count, loops or returns",
+    "FF6D:A6CE": "descriptor setup: 286 protected-mode instructions (LGDT/LIDT) to update GDT entries; not decoded by disassembler; skipped on 65536-transfer counter wrap",
+    "FF6D:A749": "post-LOADALL stub fully decoded (runs at FF6E under LOADALL-injected CS cache, CS selector=0x0001 but cs_cache.base=0xFF6E0 so physical fetch is correct): [A749] 2E AD lodsw (CS override, reads from CS:SI=FF6E:A5D2+n saving BIOS GDT words); [A74B] 89 46 00 mov [bp+0x00],ax (writes to SS:BP=0x0080:0=phys 0x800, restoring BIOS GDT table); [A74E-A74F] inc bp; inc bp; [A750] E2 F7 loop A749 (51 iterations, CX=0x33); [A752] 8E D3 mov ss,bx (restores SS=0x10F4); [A754] 8B CA mov cx,dx (CX=transfer word count, observed 7); [A756] 8B F7 mov si,di (SI=0); [A758] FB sti; [A759] F3 A5 rep movsw (XMS data copy using LOADALL-set ES/DS caches); [A75B] EA 75 A7 6D FF jmp far FF6D:A775. BUG: if timer fires between A758 (sti) and A759 (rep movsw), INT 8 at 0575:3AF7 corrupts DS/ES caches via pop es/pop ds restoring 0x8000; after IRET the byte at FF6E:A759 reads as 0xFB (sti, not F3) causing 7 sti nops until jmp far at A760 returns to FF6D:A775 with SI=0 (zero bytes transferred reported).",
+    "FF6D:A7AB": "alternate cleanup path when [A69E] is non-zero; not reached in observed trace"
   },
   "memLabels": {
     "01BA:A5A8": "gdt_save_area",
@@ -204,6 +298,27 @@
     "1BB5:9F40": "bios_chain_period_low",
     "1BB5:9F42": "bios_chain_period_high",
     "1BB5:9F44": "midi_driver_far_ptr",
+    "0116:001A": "xms_handle",
+    "0116:0094": "far_ptr_xms_stub_success",
+    "0116:00B0": "far_ptr_xms_stub_success",
+    "0116:00C0": "far_ptr_xms_stub_success",
+    "0116:00C8": "far_ptr_xms_stub_fail",
+    "0116:0323": "xms_lock_flag",
+    "0116:0D0C": "irq_nesting_counter",
+    "FF6D:A00E": "far_ptr_a20_lock",
+    "FF6D:A012": "far_ptr_a20_unlock",
+    "FF6D:A5D2": "bios_gdt_save_area",
+    "FF6D:A638": "xms_gdt_template",
+    "FF6D:A664": "saved_sp",
+    "FF6D:A666": "saved_ss",
+    "FF6D:A668": "xms_word_count",
+    "FF6D:A66E": "xms_src_addr_low",
+    "FF6D:A670": "xms_src_addr_high",
+    "FF6D:A680": "xms_dest_addr_low",
+    "FF6D:A682": "xms_dest_addr_high",
+    "FF6D:A686": "xms_src_descriptor",
+    "FF6D:A692": "xms_dest_descriptor",
+    "FF6D:A69E": "xms_transfer_counter",
     "1BB5:A802": "track_file_handle",
     "1BB5:A804": "track_size_low",
     "1BB5:A806": "track_size_high",

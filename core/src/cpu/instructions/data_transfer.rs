@@ -390,8 +390,9 @@ impl Cpu {
     /// Reads 102 bytes from physical address 0x800 and atomically loads all CPU
     /// state. Table layout (little-endian words unless noted):
     ///
-    ///   +0x00  MSW (CR0 low 16 bits)
-    ///   +0x02  reserved (20 bytes)
+    ///   +0x00  reserved (6 bytes)
+    ///   +0x06  MSW (CR0 low 16 bits)
+    ///   +0x08  reserved (14 bytes)
     ///   +0x16  TR selector
     ///   +0x18  FLAGS
     ///   +0x1A  IP
@@ -400,17 +401,16 @@ impl Cpu {
     ///   +0x26  DI  +0x28  SI  +0x2A  BP  +0x2C  SP
     ///   +0x2E  BX  +0x30  DX  +0x32  CX  +0x34  AX
     ///
-    /// Descriptor cache entries (6 bytes each: base_lo[1], base_mid[1], base_hi[1], limit[2], access[1]):
+    /// Descriptor cache entries (6 bytes each):
+    ///   bytes [0-1]: base low word, byte [2]: base high, byte [3]: access, bytes [4-5]: limit
     ///   +0x36  ES  +0x3C  CS  +0x42  SS  +0x48  DS
     ///
-    /// GDTR/IDTR pseudo-descriptors (6 bytes each: limit[2], base_low[2], base_hi[1], unused[1]):
-    ///   +0x4E  GDT  +0x54  IDT
+    /// System descriptor pseudo-descriptors (6 bytes each):
+    ///   bytes [0-1]: base low word, byte [2]: base high, byte [3]: unused/access, bytes [4-5]: limit
+    ///   +0x4E  GDT  +0x54  LDT  +0x5A  IDT  +0x60  TR
     ///
-    /// Descriptor caches for LDTR and TR:
-    ///   +0x5A  LDTR  +0x60  TR
-    ///
-    /// Used by HIMEM.SYS to switch from protected mode back to real mode while
-    /// bypassing the normal descriptor-load rules.
+    /// Used by HIMEM.SYS to access XMS extended memory from real mode by setting
+    /// arbitrary hidden descriptor cache bases while leaving PE=0.
     fn exec_0f_05(&mut self, bus: &mut Bus) {
         use crate::cpu::protected_mode::SegmentCache;
 
@@ -418,16 +418,22 @@ impl Cpu {
 
         let r16 = |bus: &Bus, off: usize| bus.memory_read_u16(BASE + off);
         let r8 = |bus: &Bus, off: usize| bus.memory_read_u8(BASE + off);
+        // Each descriptor cache entry is 6 bytes:
+        //   [0-1] base_lo word, [2] base_hi byte, [3] access byte, [4-5] limit word
         let cache = |bus: &Bus, off: usize| SegmentCache {
             base: (bus.memory_read_u8(BASE + off) as u32)
                 | ((bus.memory_read_u8(BASE + off + 1) as u32) << 8)
                 | ((bus.memory_read_u8(BASE + off + 2) as u32) << 16),
-            limit: bus.memory_read_u16(BASE + off + 3),
+            limit: bus.memory_read_u16(BASE + off + 4),
         };
 
-        let new_msw = r16(bus, 0x00);
+        // MSW is at +0x06 (bytes 0x00-0x05 are reserved).
+        // Preserve the current PE bit: LOADALL can set MSW fields but hardware
+        // prevents clearing PE once set (same behaviour as 86Box).
+        let new_msw = (self.cr0 & 1) | r16(bus, 0x06);
         let new_tr = r16(bus, 0x16);
-        let new_flags = r16(bus, 0x18);
+        // FLAGS: clear reserved bits (mask 0xffd5) and force the always-1 bit 1.
+        let new_flags = (r16(bus, 0x18) & 0xffd5) | 0x0002;
         let new_ip = r16(bus, 0x1A);
         let new_ldtr = r16(bus, 0x1C);
         let new_ds = r16(bus, 0x1E);
@@ -448,14 +454,12 @@ impl Cpu {
         let new_ss_cache = cache(bus, 0x42);
         let new_ds_cache = cache(bus, 0x48);
 
-        // GDTR: limit(2) + base_low(2) + base_hi(1) + unused(1)
-        let gdtr_limit = r16(bus, 0x4E);
-        let gdtr_base_lo = r16(bus, 0x50);
-        let gdtr_base_hi = r8(bus, 0x52);
-        // IDTR
-        let idtr_limit = r16(bus, 0x54);
-        let idtr_base_lo = r16(bus, 0x56);
-        let idtr_base_hi = r8(bus, 0x58);
+        // System descriptors: [base_lo(2), base_hi(1), unused/access(1), limit(2)]
+        // GDT at +0x4E, LDT at +0x54, IDT at +0x5A, TR cache at +0x60
+        let gdtr_base = r16(bus, 0x4E) as u32 | ((r8(bus, 0x50) as u32) << 16);
+        let gdtr_limit = r16(bus, 0x52);
+        let idtr_base = r16(bus, 0x5A) as u32 | ((r8(bus, 0x5C) as u32) << 16);
+        let idtr_limit = r16(bus, 0x5E);
 
         // Apply all state atomically
         self.cr0 = new_msw;
@@ -483,12 +487,14 @@ impl Cpu {
         self.ldtr = new_ldtr;
         self.tr = new_tr;
 
+        self.gdtr_base = gdtr_base;
         self.gdtr_limit = gdtr_limit;
-        self.gdtr_base = (gdtr_base_lo as u32) | ((gdtr_base_hi as u32) << 16);
+        self.idtr_base = idtr_base;
         self.idtr_limit = idtr_limit;
-        self.idtr_base = (idtr_base_lo as u32) | ((idtr_base_hi as u32) << 16);
 
-        if log::log_enabled!(log::Level::Debug) {
+        bus.increment_cycle_count(timing::cycles::LOADALL);
+
+        if self.exec_logging_enabled && log::log_enabled!(log::Level::Debug) {
             let mut row = String::new();
             for i in (0..0x60).step_by(2) {
                 if i % 16 == 0 && !row.is_empty() {
@@ -724,12 +730,14 @@ impl Cpu {
             // SMSW r/m16 — store Machine Status Word (CR0 low 16 bits) to r/m
             4 => {
                 let msw = self.cr0;
-                log::debug!(
-                    "SMSW at {:04X}:{:04X} — returning MSW=0x{:04X}",
-                    self.cs,
-                    self.ip.wrapping_sub(3),
-                    msw
-                );
+                if self.exec_logging_enabled {
+                    log::debug!(
+                        "SMSW at {:04X}:{:04X} — returning MSW=0x{:04X}",
+                        self.cs,
+                        self.ip.wrapping_sub(3),
+                        msw
+                    );
+                }
                 if mode == 0b11 {
                     self.set_reg16(rm, msw);
                 } else {

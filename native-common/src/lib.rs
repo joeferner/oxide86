@@ -39,12 +39,8 @@ use oxide86_core::{
 };
 
 use crate::{
-    cli::CommonCli,
-    clock::NativeClock,
-    disk::FileDiskBackend,
-    gilrs_joystick::GilrsJoystick,
-    modem_transport::NativeDialer,
-    rodio_pc_speaker::RodioPcSpeaker,
+    cli::CommonCli, clock::NativeClock, disk::FileDiskBackend, gilrs_joystick::GilrsJoystick,
+    modem_transport::NativeDialer, rodio_pc_speaker::RodioPcSpeaker,
     rodio_sound_card::RodioSoundCard,
 };
 use rodio::{DeviceSinkBuilder, MixerDeviceSink};

@@ -611,6 +611,9 @@ pub mod cycles {
 
     /// LEAVE (80186+): 8 cycles
     pub const LEAVE: u32 = 8;
+
+    /// LOADALL (286, undocumented 0F 05): 195 cycles
+    pub const LOADALL: u32 = 195;
 }
 
 #[cfg(test)]
