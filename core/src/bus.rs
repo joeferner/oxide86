@@ -72,6 +72,14 @@ pub(crate) struct Bus {
     /// Cycle count to accurately track CPU cycles
     cycle_count: u32,
 
+    /// Earliest cycle at which the DMA controller will have work to do.
+    /// Avoids a borrow_mut on every cycle when no DMA transfer is pending.
+    next_dma_tick_cycle: u32,
+
+    /// Cached next cycle at which the sound card needs to be advanced.
+    /// Avoids a borrow on every cycle just to read next_sample_cycle.
+    next_sound_cycle: u32,
+
     /// A20 address line gate. When false, bit 20 of every memory address is
     /// masked out, causing the region 0x100000–0x10FFEF to alias 0x00000–0x0FFEF
     /// (classic 8086 wrap-around behaviour). Starts disabled, matching real
@@ -154,6 +162,8 @@ impl Bus {
             dma,
             dma_devices,
             cycle_count: 0,
+            next_dma_tick_cycle: 0,
+            next_sound_cycle: 0,
             rtc,
             a20_enabled: false,
             watchpoints: Vec::new(),
@@ -185,14 +195,18 @@ impl Bus {
 
     pub(crate) fn increment_cycle_count(&mut self, cycles: u32) {
         self.cycle_count = self.cycle_count.wrapping_add(cycles);
-        let transfers = self.dma.borrow_mut().tick(self.cycle_count);
-        for transfer in transfers {
-            self.execute_dma_transfer(transfer);
+        if wrapping_ge(self.cycle_count, self.next_dma_tick_cycle) {
+            let transfers = self.dma.borrow_mut().tick(self.cycle_count);
+            self.next_dma_tick_cycle = self.dma.borrow().next_tick_cycle();
+            for transfer in transfers {
+                self.execute_dma_transfer(transfer);
+            }
         }
         if let Some(sc) = &self.sound_card
-            && wrapping_ge(self.cycle_count, sc.borrow().next_sample_cycle())
+            && wrapping_ge(self.cycle_count, self.next_sound_cycle)
         {
             sc.borrow_mut().advance_to_cycle(self.cycle_count);
+            self.next_sound_cycle = sc.borrow().next_sample_cycle();
         }
     }
 
@@ -309,6 +323,7 @@ impl Bus {
         debug_assert!(self.sound_card.is_none(), "sound card already registered");
         let rc = Rc::new(RefCell::new(device));
         self.devices.push(rc.clone());
+        self.next_sound_cycle = rc.borrow().next_sample_cycle();
         self.sound_card = Some(rc);
     }
 
@@ -337,6 +352,7 @@ impl Bus {
         );
         let rc = Rc::new(RefCell::new(device));
         self.devices.push(rc.clone());
+        self.next_sound_cycle = rc.borrow().next_sample_cycle();
         self.sound_card = Some(rc.clone());
         self.cdrom_controller = Some(rc.clone());
         // Channel 1: 8-bit DMA for SB16 PCM playback.

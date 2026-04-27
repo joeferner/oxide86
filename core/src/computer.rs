@@ -439,6 +439,10 @@ impl Computer {
     }
 
     fn process_key_presses(&mut self) {
+        // Short-circuit when nothing is queued to avoid two RefCell borrows per step.
+        if self.key_presses.is_empty() {
+            return;
+        }
         // Gate on output_buffer_full (obf) rather than pending_key.
         // pending_key is cleared by the PIC as soon as it dispatches the IRQ,
         // but the BIOS INT 09h handler hasn't read port 0x60 yet at that point.

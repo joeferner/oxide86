@@ -1078,6 +1078,7 @@ fn step_emulator(pixels: &mut Pixels, ctx: &mut StepContext) -> bool {
         // Cap wall-clock time per frame so exec logging (or any other slow path)
         // doesn't block the UI event loop for more than ~16ms.
         let frame_start = Instant::now();
+        let mut steps_since_time_check = 0u32;
         while ctx.computer.get_cycle_count() < frame_target {
             ctx.computer.step();
             // Only treat as a terminal halt when IF=0 (e.g. INT 20h / INT 21h AH=4Ch exit).
@@ -1100,9 +1101,12 @@ fn step_emulator(pixels: &mut Pixels, ctx: &mut StepContext) -> bool {
                 break;
             }
             // Yield back to the UI event loop if we've spent too long this frame.
-            // This keeps the window responsive even when exec logging is enabled.
-            if frame_start.elapsed().as_millis() >= 16 {
-                break;
+            steps_since_time_check += 1;
+            if steps_since_time_check >= 10000 {
+                steps_since_time_check = 0;
+                if frame_start.elapsed().as_millis() >= 16 {
+                    break;
+                }
             }
         }
     }

@@ -84,6 +84,38 @@ SET BLASTER=A220 I5 D1 T5 P330 H5
 
 > **Note:** Do **not** include an `E` (EMU8000) parameter — the AWE32 wavetable chip is not emulated. Applications that require EMU8000 detection (e.g. DOSMID in AWE mode) will fail with "no emu8000 chip detected". Use MPU-401 (`P330`) for MIDI output instead.
 
+## Profiling
+
+Add debug symbols to release builds so profiler output includes function names. In the root `Cargo.toml`:
+
+```toml
+[profile.release]
+debug = 1
+```
+
+### Flamegraph
+
+```bash
+cargo install flamegraph
+RUST_LOG=info cargo flamegraph --release -p oxide86-native-gui -- --hdd tmp/hdd.img --debug-mcp 7777
+```
+
+Run the emulator for 10–30 seconds of representative workload, then Ctrl+C. Opens `flamegraph.svg` — view it in a browser. Wider bars are hotter; click to zoom into a call stack.
+
+### perf report
+
+If you already have a `perf.data` file from a flamegraph run, generate a flat hotspot list:
+
+```bash
+perf report --stdio -n --no-call-graph > perf.data.txt
+```
+
+For call-graph detail:
+
+```bash
+perf report --stdio -n -g > perf.data.txt
+```
+
 ## Debugging with Claude Code
 
 The emulator can expose a live debug interface over MCP, letting Claude inspect registers, memory,

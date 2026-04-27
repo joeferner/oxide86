@@ -219,6 +219,11 @@ impl Dma8237 {
             .last_tick_cycle
             .wrapping_add(dma_cycles * CPU_CYCLES_PER_DMA_CYCLE);
 
+        // Fast-path: skip the per-channel loop if no unmasked channel has a DREQ.
+        if !self.mask & self.dreq == 0 {
+            return Vec::new();
+        }
+
         let mut transfers = Vec::new();
 
         for ch in 0..4usize {
@@ -317,6 +322,24 @@ impl DmaController {
         let mut transfers = self.dma1.tick(cycle_count, 0);
         transfers.extend(self.dma2.tick(cycle_count, 4));
         transfers
+    }
+
+    /// Earliest cycle count at which the next DMA tick will produce work.
+    pub(crate) fn next_tick_cycle(&self) -> u32 {
+        let c1 = self
+            .dma1
+            .last_tick_cycle
+            .wrapping_add(CPU_CYCLES_PER_DMA_CYCLE);
+        let c2 = self
+            .dma2
+            .last_tick_cycle
+            .wrapping_add(CPU_CYCLES_PER_DMA_CYCLE);
+        if c1.wrapping_sub(self.dma1.last_tick_cycle) <= c2.wrapping_sub(self.dma2.last_tick_cycle)
+        {
+            c1
+        } else {
+            c2
+        }
     }
 
     /// Assert or deassert a DREQ line on the given global channel (0–7).
