@@ -1,0 +1,65 @@
+{
+  "functions": {
+    "0255:03DC": {
+      "label": "a20_query_ps2",
+      "comment": "Query current A20 gate state using the PS/2 fast gate method.\nReturns AX=1 if A20 is enabled, AX=0 if disabled (or if PS/2 method is unavailable).\nChecks [0x0031] first; if zero, skips the query entirely and returns 0."
+    },
+    "0255:0418": {
+      "label": "a20_gate_ps2",
+      "comment": "Control or query the A20 gate via PS/2 fast gate (port 0x92, bit 1).\nAX=0: disable A20 (clear bit 1); AX=1: enable A20 (set bit 1); AX>=2: query state.\nAfter a set, polls port 0x92 up to 65536 times waiting for the bit to confirm.\nReturns AX=1 on success or A20-enabled; AX=0 on timeout or A20-disabled."
+    },
+    "0BFF:0147": {
+      "label": "vmm_dispatch_interrupt",
+      "comment": "Windows VMM cooperative interrupt dispatcher.\nAcquires a test-and-set spinlock at ES:[BP] (vmm_ctrl_seg:vmm_ctrl_slot_ptr).\nIf the lock is free: saves current SS:SP into the control block, walks the linked\nlist of 8-byte slots to find the queued handler address, then simulates an interrupt\nwith pushf+call-far, restores SS:SP on return, releases the lock, and irets.\nIf the lock is busy (lbl_0BFF_01AF): yields without dispatching.\nBUG: selector vmm_ctrl_seg (0x0C26) has GDT limit=0 in the emulator, so the xchg\nspinlock acquire always faults with #GP. The IDT has no gate for #GP, the emulator\nfalls back to the IVT whose int-0Dh vector points back here, causing an infinite loop\n(387k+ hot iterations)."
+    }
+  },
+  "labels": {
+    "0255:0429": {
+      "label": "a20_disable_path",
+      "comment": "AX=0: clear AH so bit 1 will be left unset (disable A20), then fall into write path"
+    },
+    "0255:042B": {
+      "label": "a20_write_gate"
+    },
+    "0255:0439": {
+      "label": "a20_poll_loop"
+    },
+    "0255:0445": {
+      "label": "a20_success"
+    },
+    "0255:0449": {
+      "label": "a20_failure"
+    },
+    "0BFF:00B1": {
+      "label": "vmm_dispatch_loop"
+    }
+  },
+  "lineComments": {
+    "0255:0418": "AX<2 = set operation (0=disable, 1=enable); AX>=2 = query current state",
+    "0255:041B": "preload enable bit mask; doubles as the target state value for polling after an enable",
+    "0255:042D": "clear A20 bit only (0xFD = ~0x02)",
+    "0255:042F": "merge desired state: AH=0x02 to enable, AH=0x00 to disable",
+    "0255:0431": "i/o delay — pipeline flush before reading back port 0x92",
+    "0255:0437": "CX=0 gives 65536 poll iterations on the first LOOPNZ decrement",
+    "0255:0441": "spin until A20 bit matches desired state or 65536 iterations elapsed",
+    "0BFF:014A": "load segment selector for the control block (GDT entry must cover offset 0x04CC+)",
+    "0BFF:014F": "load current control block slot offset within vmm_ctrl_seg",
+    "0BFF:0154": "lock value = 1",
+    "0BFF:0156": "test-and-set spinlock: atomically swap 1 in, read old value; 0 = lock was free",
+    "0BFF:015E": "advance control block list pointer by one 8-byte slot",
+    "0BFF:0164": "save current SP into control block for restoration after dispatch",
+    "0BFF:0168": "save current SS into control block (mov [bp+0x04], ss — disasm shows immediate)",
+    "0BFF:016E": "follow linked list: load next pending interrupt's control block offset",
+    "0BFF:0172": "sanity check: next slot's back-pointer must match current slot offset",
+    "0BFF:018B": "simulate an interrupt: push flags then far-call the handler",
+    "0BFF:0192": "reload control block pointer after handler return (ES:[SP] holds it)",
+    "0BFF:019E": "release spinlock: write 0 to ES:[BP] (lock byte)",
+    "0BFF:01AB": "discard the stale return address that was on the stack before the call into this function"
+  },
+  "memLabels": {
+    "0255:0031": "a20_ps2_method_available",
+    "0BFF:000A": "vmm_ctrl_seg",
+    "0BFF:0010": "vmm_ctrl_slot_ptr",
+    "0BFF:0038": "vmm_dispatch_record"
+  }
+}

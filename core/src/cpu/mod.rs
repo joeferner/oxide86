@@ -550,12 +550,38 @@ impl Cpu {
                 )
             } else {
                 // LDT
-                protected_mode::load_descriptor_from_table(
+                let result = protected_mode::load_descriptor_from_table(
                     bus,
                     self.ldtr_base,
                     self.ldtr_limit,
                     selector,
-                )
+                );
+                match &result {
+                    None => {
+                        let byte_offset = (selector & 0xFFF8) as u32;
+                        let raw: [u8; 8] = std::array::from_fn(|i| {
+                            bus.memory_read_u8((self.ldtr_base + byte_offset + i as u32) as usize)
+                        });
+                        log::warn!(
+                            "LDT selector 0x{:04X} out of bounds: ldtr_base=0x{:06X} ldtr_limit=0x{:04X} byte_offset=0x{:04X} raw=[{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}]",
+                            selector, self.ldtr_base, self.ldtr_limit, byte_offset,
+                            raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]
+                        );
+                    }
+                    Some(desc) if desc.limit == 0 => {
+                        let byte_offset = (selector & 0xFFF8) as u32;
+                        let raw: [u8; 8] = std::array::from_fn(|i| {
+                            bus.memory_read_u8((self.ldtr_base + byte_offset + i as u32) as usize)
+                        });
+                        log::warn!(
+                            "LDT selector 0x{:04X} has limit=0: ldtr_base=0x{:06X} ldtr_limit=0x{:04X} byte_offset=0x{:04X} raw=[{:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X} {:02X}]",
+                            selector, self.ldtr_base, self.ldtr_limit, byte_offset,
+                            raw[0], raw[1], raw[2], raw[3], raw[4], raw[5], raw[6], raw[7]
+                        );
+                    }
+                    _ => {}
+                }
+                result
             };
 
             match descriptor {
@@ -1060,11 +1086,17 @@ impl Cpu {
         let gate = match gate {
             Some(g) if g.is_present() && (g.is_interrupt_gate() || g.is_trap_gate()) => g,
             _ => {
+                if int_num == 0x08 {
+                    // No gate for #DF → triple fault → halt
+                    log::error!("Triple fault: no IDT gate for #DF (0x08), halting CPU");
+                    self.halted = true;
+                    return;
+                }
                 log::warn!(
-                    "Exception 0x{:02X}: no valid IDT gate, falling back to IVT",
+                    "Exception 0x{:02X}: no valid IDT gate, raising #DF (double fault)",
                     int_num
                 );
-                self.dispatch_interrupt_real(bus, int_num);
+                self.dispatch_exception_pm(bus, 0x08, Some(0));
                 return;
             }
         };
