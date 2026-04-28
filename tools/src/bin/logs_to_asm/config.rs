@@ -20,6 +20,7 @@ pub struct DataEntry {
 }
 
 pub struct Config {
+    pub comment: Option<String>,
     pub functions: HashMap<String, LabelEntry>,
     pub labels: HashMap<String, LabelEntry>,
     pub line_comments: HashMap<String, String>, // addr -> comment text
@@ -33,6 +34,7 @@ pub struct Config {
 impl Default for Config {
     fn default() -> Self {
         Self {
+            comment: None,
             functions: HashMap::new(),
             labels: HashMap::new(),
             line_comments: HashMap::new(),
@@ -250,6 +252,7 @@ pub fn load_config(path: &PathBuf) -> Result<Config> {
     let mut ports = Config::default().ports;
     ports.extend(str_map("ports")); // user wins on conflict
     let config = Config {
+        comment: data.get("comment").and_then(Value::as_str).map(String::from),
         functions: parse_entry_map("functions"),
         labels: parse_entry_map("labels"),
         line_comments: str_map("lineComments"),

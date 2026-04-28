@@ -76,6 +76,10 @@ int_21h:
 
 An optional JSON file annotates specific functions and instructions.
 
+### `comment`
+
+A top-level string appended to the output file immediately after the generated header. Use it to record a high-level description of the program or analysis notes. Multi-line strings (using `\n`) are supported; each line is emitted as a `;`-prefixed comment.
+
 ### `functions`
 
 Keyed by `"SEG:OFF"`. Replaces the generated `func_SSSS_OOOO:` label with a human-readable name and optional comment block.
@@ -167,6 +171,7 @@ Note: bracket references like `mov ax, [0x2962]` are handled by `memLabels` and 
 
 ```json
 {
+  "comment": "CD-ROM driver — reverse-engineered from oxide86 execution log",
   "functions": {
     "0019:423F": {
       "label": "func_write_screen",

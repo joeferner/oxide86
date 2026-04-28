@@ -59,6 +59,12 @@ fn main() -> Result<()> {
         writeln!(out, "; Config: {}", cfg.display())?;
     }
     writeln!(out)?;
+    if let Some(comment) = &config.comment {
+        for line in comment.lines() {
+            writeln!(out, "; {line}")?;
+        }
+        writeln!(out)?;
+    }
 
     generate(&mut out, &result, &config, args.hot_threshold)
 }
