@@ -1,5 +1,14 @@
 {
+  "comment": "Windows 3.11 Setup — oxide86 debug session\n\nGoal: Windows 3.11 Setup completes but fails to launch Windows itself afterward.\n\nMechanism: Windows 3.x Standard Mode uses 286 protected mode (not 386 Enhanced Mode).\nThe setup binary (SETUP.EXE) switches to 286 PM to move extended memory, then exits\nPM and continues in real mode. If anything goes wrong in the PM round-trip, Windows\nnever actually starts.\n\nPM entry/exit cycle (confirmed from execution log):\n  1. func_005B_35xx (preamble): builds GDT at 000B:0058/0078, far-calls func_005B_0B61\n  2. func_005B_0B61 (pm_entry_setup): sets warm-boot vector in CMOS (reg 0x0F=0x09)\n     and BDA (0040:0067/0069 = CS:SP at entry), masks IRQs, calls 00CB:0000\n  3. 00CB:0000 (pm_entry_stub): LGDT + LMSW → 286 PM; far-jumps to CS=0x0078\n     (GDT entry 15, XMS segment 0x11E0 × 16 = physical 0x011E00)\n  4. Windows PM kernel runs at 0078:xxxx (sets up GDT, LDT, copies memory)\n  5. 0078:0C5D (pm_exit_sequence): LIDT base=0/limit=0 then int3 → intentional\n     triple fault → BIOS warm-boot → CPU resets to real mode, BIOS reads CMOS\n     0x0F=0x09 and jumps via BDA 0040:0067/0069 back into Windows real-mode code\n\nFixes applied:\n  - BIOS model byte 0xFF (IBM PC) → 0xFC (IBM AT/286): Windows machine-table lookup\n    now succeeds; INT 15h AH=0xC0h returns correct model\n  - dispatch_exception_pm IVT fallback removed: #GP with no IDT gate now escalates\n    to #DF → triple fault instead of looping through the real-mode IVT\n  - Triple fault warm-boot: reads CMOS 0x0F; if 0x09, clears PE bit and jumps\n    to BDA warm-boot vector (0x0DB5:0x00DE) in real mode instead of halting\n  - FF/3 and FF/5 mod=11 panics replaced with #UD exception\n\nCurrent status / remaining unknowns:\n  - Windows Setup still does not launch Windows after completing\n  - After the warm-boot return to 0x0DB5:0x00DE the recovery code encounters\n    at least one invalid instruction (FF /3 mod=11) which now raises #UD;\n    unclear if that or subsequent failures prevent the launch\n  - SS:SP after warm-boot reset to 0:0 — Windows recovery code may need the\n    original stack intact (the pre-PM PUSHA frame is on it)\n  - Further tracing of the 0x0DB5:0x00DE recovery path is needed",
   "functions": {
+    "005B:0B61": {
+      "label": "pm_entry_setup",
+      "comment": "Windows 3.x Standard Mode 286 protected-mode entry preparation.\nSets ES=0x004B; if setup stage < 3, pushes a real-mode IRET recovery frame\n(FLAGS, XMS-seg, 0x0C13), saves own CS as warm-boot recovery segment,\nwrites warm-boot vector to BDA 0040:0067/0069, copies 6-byte GDT template\nfrom 001B:03FA to ES:0x2A37, programs CMOS reg 0x0F=0x09 (shutdown via\nwarm-boot vector), saves PIC1 IMR, masks all IRQs, then calls far 00CB:0000."
+    },
+    "00CB:0000": {
+      "label": "pm_entry_stub",
+      "comment": "Real-mode stub that enters 286 protected mode.\nExecutes LGDT (GDT built at 000B:0058/0078 by the 005B:35xx preamble) then LMSW\nto set the PE bit, switching the CPU to protected mode.\nFar-jumps to CS=0x0078 (GDT entry 15, base=0x011E00 = XMS segment 0x11E0 × 16)\nwhere the Windows PM kernel begins executing.\nNot traced in execution log — execution resumes at 0078:xxxx in PM."
+    },
     "0255:03DC": {
       "label": "a20_query_ps2",
       "comment": "Query current A20 gate state using the PS/2 fast gate method.\nReturns AX=1 if A20 is enabled, AX=0 if disabled (or if PS/2 method is unavailable).\nChecks [0x0031] first; if zero, skips the query entirely and returns 0."
@@ -10,7 +19,7 @@
     },
     "0BFF:0147": {
       "label": "vmm_dispatch_interrupt",
-      "comment": "Windows VMM cooperative interrupt dispatcher.\nAcquires a test-and-set spinlock at ES:[BP] (vmm_ctrl_seg:vmm_ctrl_slot_ptr).\nIf the lock is free: saves current SS:SP into the control block, walks the linked\nlist of 8-byte slots to find the queued handler address, then simulates an interrupt\nwith pushf+call-far, restores SS:SP on return, releases the lock, and irets.\nIf the lock is busy (lbl_0BFF_01AF): yields without dispatching.\nBUG: selector vmm_ctrl_seg (0x0C26) has GDT limit=0 in the emulator, so the xchg\nspinlock acquire always faults with #GP. The IDT has no gate for #GP, the emulator\nfalls back to the IVT whose int-0Dh vector points back here, causing an infinite loop\n(387k+ hot iterations)."
+      "comment": "Windows VMM cooperative interrupt dispatcher.\nAcquires a test-and-set spinlock at ES:[BP] (vmm_ctrl_seg:vmm_ctrl_slot_ptr).\nIf the lock is free: saves current SS:SP into the control block, walks the linked\nlist of 8-byte slots to find the queued handler address, then simulates an interrupt\nwith pushf+call-far, restores SS:SP on return, releases the lock, and irets.\nIf the lock is busy (lbl_0BFF_01AF): yields without dispatching."
     }
   },
   "labels": {
@@ -32,6 +41,17 @@
     },
     "0BFF:00B1": {
       "label": "vmm_dispatch_loop"
+    },
+    "005B:0B8B": { "label": "pm_check_entered" },
+    "005B:0B9A": { "label": "pm_load_cs" },
+    "005B:0BAC": { "label": "pm_save_regs" },
+    "005B:0BC3": { "label": "pm_skip_warmboot" },
+    "005B:0BD7": { "label": "pm_copy_gdt" },
+    "005B:0BF5": { "label": "pm_cmos_write" },
+    "005B:35BD": { "label": "pm_gdt2_setup" },
+    "0078:0C5D": {
+      "label": "pm_exit_sequence",
+      "comment": "Intentional 286 PM exit: load null IDT then fire int3 to force triple fault → warm-boot"
     }
   },
   "lineComments": {
@@ -54,12 +74,41 @@
     "0BFF:018B": "simulate an interrupt: push flags then far-call the handler",
     "0BFF:0192": "reload control block pointer after handler return (ES:[SP] holds it)",
     "0BFF:019E": "release spinlock: write 0 to ES:[BP] (lock byte)",
-    "0BFF:01AB": "discard the stale return address that was on the stack before the call into this function"
+    "0BFF:01AB": "discard the stale return address that was on the stack before the call into this function",
+    "005B:0B66": "check setup stage: ES:[0x0134] < 3 → first-time PM entry path",
+    "005B:0B8B": "check PM-already-entered flag: ES:[0x2F5A] == 0 means first entry",
+    "005B:0B92": "push real-mode IRET recovery frame: FLAGS, XMS segment (0x11E0), return IP (0x0C13)",
+    "005B:0B9A": "AX = CS:[0x0000] = own segment value (0x0DB5), used as warm-boot recovery CS",
+    "005B:0B9E": "if bit 1 of ES:[0x2F16] is clear, take PUSHA save-registers path",
+    "005B:0BAC": "0x60 = PUSHA: save all general registers (AX CX DX BX SP BP SI DI)",
+    "005B:0BBA": "warm-boot recovery CS → BDA 0040:0069",
+    "005B:0BBD": "warm-boot recovery SP → BDA 0040:0067",
+    "005B:0BDA": "source: 001B:03FA — 6-byte GDT descriptor template (3 × movsw)",
+    "005B:0BDD": "dest: ES:0x2A37 — GDT copy destination in config segment",
+    "005B:0BE6": "CMOS: disable NMI (bit 7) and select Shutdown Status register (0x0F)",
+    "005B:0BF5": "CMOS reg 0x0F = 0x09: shutdown type = jump via warm-boot vector at 0040:0067",
+    "005B:0BF7": "save current PIC1 IRQ mask before masking all hardware interrupts",
+    "005B:0BFE": "mask all hardware IRQs: PIC1 IMR = 0xFF",
+    "005B:0C00": "enter 286 protected mode via 00CB:0000 (MOVEPM / INT 15h AH=87h stub)",
+    "005B:3591": "0x8CC8 = MOV AX,CS — load own segment value for GDT physical base calculation",
+    "005B:3599": "rep movsb: copy 0x35EC bytes from 005B:0000 → 004B:DI (relocate setup to XMS segment)",
+    "005B:35A7": "AX=0x11E0 × 0x10 → DX:AX=0x0001:0x1E00 — 24-bit physical base of XMS segment",
+    "005B:35B8": "far jump flushes instruction queue and reloads CS (required before GDT pointer writes)",
+    "0078:0C5D": "LIDT [null]: load IDT with base=0x000000, limit=0x0000 — any exception will triple-fault",
+    "0078:0C62": "int3 fires → #GP (IDT gate 3 beyond limit=0) → #DF → triple fault → BIOS warm-boot → BDA 0040:0067/0069"
   },
   "memLabels": {
     "0255:0031": "a20_ps2_method_available",
     "0BFF:000A": "vmm_ctrl_seg",
     "0BFF:0010": "vmm_ctrl_slot_ptr",
-    "0BFF:0038": "vmm_dispatch_record"
+    "0BFF:0038": "vmm_dispatch_record",
+    "004B:0134": "setup_stage_counter",
+    "004B:2F5A": "pm_entered_flag",
+    "004B:0148": "xms_segment",
+    "004B:2A30": "saved_pic1_imr",
+    "004B:2A37": "gdt_template_dest",
+    "004B:2F16": "pm_state_flags",
+    "0040:0067": "warmboot_ip",
+    "0040:0069": "warmboot_cs"
   }
 }
